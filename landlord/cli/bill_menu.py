@@ -64,6 +64,8 @@ def _show_bill_detail(bill: Bill, bill_service: BillService) -> None:
     console.print(detail_table)
     console.print(f"  [bold]Total: {format_brl(bill.total_amount)}[/bold]")
 
+    if bill.due_date:
+        console.print(f"  Vencimento: {bill.due_date}")
     if bill.notes:
         console.print(f"  Observa\u00e7\u00f5es: {bill.notes}")
     if bill.pdf_path:
@@ -128,6 +130,9 @@ def generate_bill_menu(billing: Billing, bill_service: BillService) -> None:
                 break
             console.print("[red]Valor inv\u00e1lido. Tente novamente.[/red]")
 
+    # Due date
+    due_date = questionary.text("Vencimento (ex: 10/03/2025, opcional):").ask() or ""
+
     # Notes
     notes = questionary.text("Observa\u00e7\u00f5es (opcional):").ask() or ""
 
@@ -138,6 +143,7 @@ def generate_bill_menu(billing: Billing, bill_service: BillService) -> None:
         variable_amounts=variable_amounts,
         extras=extras,
         notes=notes,
+        due_date=due_date,
     )
 
     console.print()
@@ -256,6 +262,12 @@ def edit_bill_menu(
                 break
             console.print("[red]Valor inv\u00e1lido. Tente novamente.[/red]")
 
+    # Due date
+    due_date = questionary.text(
+        "Vencimento (ex: 10/03/2025, opcional):",
+        default=bill.due_date or "",
+    ).ask() or ""
+
     # Notes
     notes = questionary.text(
         "Observa\u00e7\u00f5es:",
@@ -268,6 +280,7 @@ def edit_bill_menu(
         billing=billing,
         line_items=new_line_items,
         notes=notes,
+        due_date=due_date,
     )
 
     console.print()

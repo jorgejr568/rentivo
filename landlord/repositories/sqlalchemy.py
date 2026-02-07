@@ -121,12 +121,12 @@ class SQLAlchemyBillRepository(BillRepository):
         bill_uuid = str(uuid4())
         result = self.conn.execute(
             text(
-                "INSERT INTO bills (billing_id, reference_month, total_amount, pdf_path, notes, uuid) "
-                "VALUES (:billing_id, :reference_month, :total_amount, :pdf_path, :notes, :uuid)"
+                "INSERT INTO bills (billing_id, reference_month, total_amount, pdf_path, notes, uuid, due_date) "
+                "VALUES (:billing_id, :reference_month, :total_amount, :pdf_path, :notes, :uuid, :due_date)"
             ),
             {"billing_id": bill.billing_id, "reference_month": bill.reference_month,
              "total_amount": bill.total_amount, "pdf_path": bill.pdf_path,
-             "notes": bill.notes, "uuid": bill_uuid},
+             "notes": bill.notes, "uuid": bill_uuid, "due_date": bill.due_date},
         )
         bill_id = result.lastrowid
         for i, item in enumerate(bill.line_items):
@@ -171,6 +171,7 @@ class SQLAlchemyBillRepository(BillRepository):
             ],
             pdf_path=row["pdf_path"],
             notes=row["notes"],
+            due_date=row["due_date"],
             created_at=row["created_at"],
         )
 
@@ -190,10 +191,10 @@ class SQLAlchemyBillRepository(BillRepository):
         self.conn.execute(
             text(
                 "UPDATE bills SET reference_month = :reference_month, "
-                "total_amount = :total_amount, notes = :notes WHERE id = :id"
+                "total_amount = :total_amount, notes = :notes, due_date = :due_date WHERE id = :id"
             ),
             {"reference_month": bill.reference_month, "total_amount": bill.total_amount,
-             "notes": bill.notes, "id": bill.id},
+             "notes": bill.notes, "due_date": bill.due_date, "id": bill.id},
         )
         self.conn.execute(
             text("DELETE FROM bill_line_items WHERE bill_id = :bill_id"),

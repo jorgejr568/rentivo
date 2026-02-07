@@ -23,4 +23,5 @@ class Bill(BaseModel):
     line_items: list[BillLineItem] = []
     pdf_path: str | None = None
     notes: str = ""
+    due_date: str | None = None
     created_at: datetime | None = None

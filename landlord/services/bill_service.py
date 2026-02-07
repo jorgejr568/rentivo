@@ -50,6 +50,7 @@ class BillService:
         variable_amounts: dict[int, int],
         extras: list[tuple[str, int]],
         notes: str = "",
+        due_date: str = "",
     ) -> Bill:
         line_items: list[BillLineItem] = []
         sort = 0
@@ -88,6 +89,7 @@ class BillService:
             total_amount=total,
             line_items=line_items,
             notes=notes,
+            due_date=due_date or None,
         )
         bill = self.bill_repo.create(bill)
 
@@ -110,10 +112,12 @@ class BillService:
         billing: Billing,
         line_items: list[BillLineItem],
         notes: str,
+        due_date: str = "",
     ) -> Bill:
         bill.line_items = line_items
         bill.total_amount = sum(li.amount for li in line_items)
         bill.notes = notes
+        bill.due_date = due_date or None
 
         bill = self.bill_repo.update(bill)
 

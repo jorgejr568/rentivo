@@ -68,7 +68,7 @@ class InvoicePDF:
 
         page_w = pdf.w - pdf.l_margin - pdf.r_margin
 
-        self._draw_header(pdf, page_w, billing_name, bill.reference_month)
+        self._draw_header(pdf, page_w, billing_name, bill.reference_month, bill.due_date)
         self._draw_table(pdf, page_w, bill)
         self._draw_total(pdf, page_w, bill.total_amount)
 
@@ -87,7 +87,8 @@ class InvoicePDF:
         return pdf.output()
 
     def _draw_header(
-        self, pdf: FPDF, page_w: float, billing_name: str, reference_month: str
+        self, pdf: FPDF, page_w: float, billing_name: str, reference_month: str,
+        due_date: str | None = None,
     ) -> None:
         x = pdf.l_margin
         y = pdf.get_y()
@@ -113,41 +114,67 @@ class InvoicePDF:
 
         # Info cards
         pdf.set_text_color(*DARK_TEXT)
-        card_w = page_w / 2 - 3
         card_h = 24
         card_y = pdf.get_y()
 
-        # Left card — billing name
-        pdf.set_fill_color(*PURPLE_LIGHT)
-        pdf.rect(x, card_y, card_w, card_h, "F")
-        # Left accent strip
-        pdf.set_fill_color(*TEAL_DARK)
-        pdf.rect(x, card_y, 3, card_h, "F")
+        if due_date:
+            # 3-card layout
+            gap = 4
+            card_w = (page_w - gap * 2) / 3
+            cards = [
+                ("COBRAN\u00c7A", billing_name),
+                ("REFER\u00caNCIA", _format_month(reference_month)),
+                ("VENCIMENTO", due_date),
+            ]
+            for i, (label, value) in enumerate(cards):
+                card_x = x + i * (card_w + gap)
+                pdf.set_fill_color(*PURPLE_LIGHT)
+                pdf.rect(card_x, card_y, card_w, card_h, "F")
+                pdf.set_fill_color(*TEAL_DARK)
+                pdf.rect(card_x, card_y, 3, card_h, "F")
 
-        pdf.set_xy(x + 10, card_y + 3)
-        pdf.set_font("MontserratSB", "", 7)
-        pdf.set_text_color(*MUTED_TEXT)
-        pdf.cell(card_w - 14, 5, "COBRAN\u00c7A", new_x="LEFT", new_y="NEXT")
-        pdf.set_x(x + 10)
-        pdf.set_font("Montserrat", "B", 13)
-        pdf.set_text_color(*DARK_TEXT)
-        pdf.cell(card_w - 14, 9, billing_name)
+                pdf.set_xy(card_x + 10, card_y + 3)
+                pdf.set_font("MontserratSB", "", 7)
+                pdf.set_text_color(*MUTED_TEXT)
+                pdf.cell(card_w - 14, 5, label, new_x="LEFT", new_y="NEXT")
+                pdf.set_x(card_x + 10)
+                pdf.set_font("Montserrat", "B", 13)
+                pdf.set_text_color(*DARK_TEXT)
+                pdf.cell(card_w - 14, 9, value)
+        else:
+            # 2-card layout (original)
+            card_w = page_w / 2 - 3
 
-        # Right card — reference month
-        right_x = x + card_w + 6
-        pdf.set_fill_color(*PURPLE_LIGHT)
-        pdf.rect(right_x, card_y, card_w, card_h, "F")
-        pdf.set_fill_color(*TEAL_DARK)
-        pdf.rect(right_x, card_y, 3, card_h, "F")
+            # Left card — billing name
+            pdf.set_fill_color(*PURPLE_LIGHT)
+            pdf.rect(x, card_y, card_w, card_h, "F")
+            pdf.set_fill_color(*TEAL_DARK)
+            pdf.rect(x, card_y, 3, card_h, "F")
 
-        pdf.set_xy(right_x + 10, card_y + 3)
-        pdf.set_font("MontserratSB", "", 7)
-        pdf.set_text_color(*MUTED_TEXT)
-        pdf.cell(card_w - 14, 5, "REFER\u00caNCIA", new_x="LEFT", new_y="NEXT")
-        pdf.set_x(right_x + 10)
-        pdf.set_font("Montserrat", "B", 13)
-        pdf.set_text_color(*DARK_TEXT)
-        pdf.cell(card_w - 14, 9, _format_month(reference_month))
+            pdf.set_xy(x + 10, card_y + 3)
+            pdf.set_font("MontserratSB", "", 7)
+            pdf.set_text_color(*MUTED_TEXT)
+            pdf.cell(card_w - 14, 5, "COBRAN\u00c7A", new_x="LEFT", new_y="NEXT")
+            pdf.set_x(x + 10)
+            pdf.set_font("Montserrat", "B", 13)
+            pdf.set_text_color(*DARK_TEXT)
+            pdf.cell(card_w - 14, 9, billing_name)
+
+            # Right card — reference month
+            right_x = x + card_w + 6
+            pdf.set_fill_color(*PURPLE_LIGHT)
+            pdf.rect(right_x, card_y, card_w, card_h, "F")
+            pdf.set_fill_color(*TEAL_DARK)
+            pdf.rect(right_x, card_y, 3, card_h, "F")
+
+            pdf.set_xy(right_x + 10, card_y + 3)
+            pdf.set_font("MontserratSB", "", 7)
+            pdf.set_text_color(*MUTED_TEXT)
+            pdf.cell(card_w - 14, 5, "REFER\u00caNCIA", new_x="LEFT", new_y="NEXT")
+            pdf.set_x(right_x + 10)
+            pdf.set_font("Montserrat", "B", 13)
+            pdf.set_text_color(*DARK_TEXT)
+            pdf.cell(card_w - 14, 9, _format_month(reference_month))
 
         pdf.set_y(card_y + card_h + 14)
 
