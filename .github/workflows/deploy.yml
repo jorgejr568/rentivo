@@ -9,9 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger deploy
+        env:
+          DEPLOY_TRIGGER_URL: ${{ secrets.DEPLOY_TRIGGER_URL }}
         run: |
           for i in 1 2 3 4 5; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" "https://dns.jorgejunior.dev/api/deploy/9c07ecbcf4fd0c856d405f796418f862639aaaf31e7230ab")
+            status=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_TRIGGER_URL")
             echo "Attempt $i: HTTP $status"
             if [ "$status" = "200" ]; then
               echo "Deploy triggered successfully"
