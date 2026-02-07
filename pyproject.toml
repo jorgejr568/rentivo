@@ -1,0 +1,22 @@
+[project]
+name = "billing-generator"
+version = "0.1.0"
+description = "Apartment billing management and invoice generation"
+requires-python = ">=3.10"
+dependencies = [
+    "questionary>=2.1.0,<3",
+    "rich>=13.0,<14",
+    "fpdf2>=2.8,<3",
+    "pydantic>=2.0,<3",
+    "pydantic-settings>=2.0,<3",
+    "alembic>=1.18,<2",
+    "qrcode[pil]>=8.0,<9",
+    "boto3>=1.35,<2",
+    "mysqlclient>=2.2,<3",
+]
+
+[tool.setuptools.packages.find]
+include = ["billing*"]
+
+[project.scripts]
+billing = "billing.__main__:main"
