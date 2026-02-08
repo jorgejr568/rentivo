@@ -7,3 +7,4 @@ build/
 .env
 landlord.db
 invoices/
+web/staticfiles/

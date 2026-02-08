@@ -12,6 +12,8 @@ COPY . .
 
 RUN pip install --no-cache-dir -e . gunicorn
 
+RUN cd web && python manage.py collectstatic --no-input
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
