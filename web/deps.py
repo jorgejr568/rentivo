@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from functools import lru_cache
-
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
-from landlord.repositories.factory import (
-    get_bill_repository,
-    get_billing_repository,
-    get_user_repository,
+from landlord.db import get_engine
+from landlord.repositories.sqlalchemy import (
+    SQLAlchemyBillingRepository,
+    SQLAlchemyBillRepository,
+    SQLAlchemyUserRepository,
 )
 from landlord.services.bill_service import BillService
 from landlord.services.billing_service import BillingService
@@ -33,16 +32,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+def _connect():
+    """Fresh connection per call — avoids stale transactions in long-running server."""
+    return get_engine().connect()
+
+
 def get_billing_service() -> BillingService:
-    return BillingService(get_billing_repository())
+    return BillingService(SQLAlchemyBillingRepository(_connect()))
 
 
 def get_bill_service() -> BillService:
-    return BillService(get_bill_repository(), get_storage())
+    return BillService(SQLAlchemyBillRepository(_connect()), get_storage())
 
 
 def get_user_service() -> UserService:
-    return UserService(get_user_repository())
+    return UserService(SQLAlchemyUserRepository(_connect()))
 
 
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:
