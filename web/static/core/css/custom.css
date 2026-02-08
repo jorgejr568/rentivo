@@ -167,6 +167,21 @@ a:hover {
     color: white;
 }
 
+.badge-paid {
+    background-color: var(--emerald);
+    color: white;
+}
+
+.badge-pending {
+    background-color: #f39c12;
+    color: white;
+}
+
+.badge-overdue {
+    background-color: #c0392b;
+    color: white;
+}
+
 /* Alerts */
 .alert-success {
     background-color: var(--emerald-light);

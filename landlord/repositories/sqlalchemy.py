@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import Connection, text
@@ -173,6 +174,7 @@ class SQLAlchemyBillRepository(BillRepository):
             pdf_path=row["pdf_path"],
             notes=row["notes"],
             due_date=row["due_date"],
+            paid_at=row["paid_at"],
             created_at=row["created_at"],
         )
 
@@ -217,6 +219,13 @@ class SQLAlchemyBillRepository(BillRepository):
         self.conn.execute(
             text("UPDATE bills SET pdf_path = :pdf_path WHERE id = :id"),
             {"pdf_path": pdf_path, "id": bill_id},
+        )
+        self.conn.commit()
+
+    def update_paid_at(self, bill_id: int, paid_at: datetime | None) -> None:
+        self.conn.execute(
+            text("UPDATE bills SET paid_at = :paid_at WHERE id = :id"),
+            {"paid_at": paid_at, "id": bill_id},
         )
         self.conn.commit()
 

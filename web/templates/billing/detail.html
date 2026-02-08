@@ -70,6 +70,7 @@
                     <th>Referência</th>
                     <th class="text-end">Total</th>
                     <th class="text-center">Vencimento</th>
+                    <th class="text-center">Status</th>
                     <th></th>
                 </tr>
             </thead>
@@ -79,6 +80,15 @@
                     <td>{{ format_month(bill.reference_month) }}</td>
                     <td class="text-end">{{ format_brl(bill.total_amount) }}</td>
                     <td class="text-center">{{ bill.due_date or "-" }}</td>
+                    <td class="text-center">
+                        {% if bill.payment_status == "paid" %}
+                        <span class="badge badge-paid">Pago</span>
+                        {% elif bill.payment_status == "overdue" %}
+                        <span class="badge badge-overdue">Vencido</span>
+                        {% else %}
+                        <span class="badge badge-pending">Pendente</span>
+                        {% endif %}
+                    </td>
                     <td class="text-end">
                         <a href="/bills/{{ bill.id }}" class="btn btn-sm btn-outline-secondary">Ver</a>
                     </td>

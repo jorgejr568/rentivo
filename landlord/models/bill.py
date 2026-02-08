@@ -24,4 +24,25 @@ class Bill(BaseModel):
     pdf_path: str | None = None
     notes: str = ""
     due_date: str | None = None
+    paid_at: datetime | None = None
     created_at: datetime | None = None
+
+    @property
+    def is_overdue(self) -> bool:
+        if self.paid_at is not None:
+            return False
+        if not self.due_date:
+            return False
+        try:
+            due = datetime.strptime(self.due_date, "%d/%m/%Y")
+            return datetime.now() > due
+        except ValueError:
+            return False
+
+    @property
+    def payment_status(self) -> str:
+        if self.paid_at is not None:
+            return "paid"
+        if self.is_overdue:
+            return "overdue"
+        return "pending"

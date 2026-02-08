@@ -5,7 +5,16 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-        <h2>Fatura - {{ format_month(bill.reference_month) }}</h2>
+        <h2>
+            Fatura - {{ format_month(bill.reference_month) }}
+            {% if bill.payment_status == "paid" %}
+            <span class="badge badge-paid">Pago</span>
+            {% elif bill.payment_status == "overdue" %}
+            <span class="badge badge-overdue">Vencido</span>
+            {% else %}
+            <span class="badge badge-pending">Pendente</span>
+            {% endif %}
+        </h2>
         <p class="text-muted mb-0">Cobrança: {{ billing.name }}</p>
     </div>
     <div>
@@ -14,6 +23,13 @@
         {% endif %}
         <form method="post" action="/bills/{{ bill.id }}/regenerate-pdf" class="d-inline">
             <button type="submit" class="btn btn-outline-primary">Regenerar PDF</button>
+        </form>
+        <form method="post" action="/bills/{{ bill.id }}/toggle-paid" class="d-inline">
+            {% if bill.paid_at %}
+            <button type="submit" class="btn btn-outline-secondary">Desmarcar Pagamento</button>
+            {% else %}
+            <button type="submit" class="btn btn-outline-primary">Marcar como Pago</button>
+            {% endif %}
         </form>
         <a href="/bills/{{ bill.id }}/edit" class="btn btn-outline-secondary">Editar</a>
     </div>
@@ -58,6 +74,10 @@
 
 {% if bill.due_date %}
 <p><strong>Vencimento:</strong> {{ bill.due_date }}</p>
+{% endif %}
+
+{% if bill.paid_at %}
+<p><strong>Pago em:</strong> {{ bill.paid_at.strftime("%d/%m/%Y %H:%M") }}</p>
 {% endif %}
 
 {% if bill.notes %}

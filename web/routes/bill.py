@@ -169,6 +169,22 @@ async def bill_regenerate_pdf(request: Request, bill_id: int):
     return RedirectResponse(f"/bills/{bill.id}", status_code=302)
 
 
+@router.post("/{bill_id}/toggle-paid")
+async def bill_toggle_paid(request: Request, bill_id: int):
+    bill_service = get_bill_service(request)
+    bill = bill_service.get_bill(bill_id)
+    if not bill:
+        flash(request, "Fatura não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    bill_service.toggle_paid(bill)
+    if bill.paid_at:
+        flash(request, "Fatura marcada como paga!", "success")
+    else:
+        flash(request, "Pagamento desmarcado.", "info")
+    return RedirectResponse(f"/bills/{bill.id}", status_code=302)
+
+
 @router.get("/{bill_id}/invoice")
 async def bill_invoice(request: Request, bill_id: int):
     bill_service = get_bill_service(request)

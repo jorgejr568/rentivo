@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from landlord.models.bill import Bill
 from landlord.models.billing import Billing
@@ -37,6 +38,9 @@ class BillRepository(ABC):
 
     @abstractmethod
     def update_pdf_path(self, bill_id: int, pdf_path: str) -> None: ...
+
+    @abstractmethod
+    def update_paid_at(self, bill_id: int, paid_at: datetime | None) -> None: ...
 
 
 class UserRepository(ABC):
