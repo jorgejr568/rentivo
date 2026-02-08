@@ -1,40 +1,40 @@
-/* === Black & Yellow Theme === */
+/* === Navy & Gold Theme === */
 
 :root {
-    --black: #1a1a1a;
-    --black-soft: #2d2d2d;
-    --black-muted: #3d3d3d;
-    --yellow: #f5c518;
-    --yellow-hover: #ddb115;
-    --yellow-light: #fef9e7;
-    --yellow-pale: #fff8d6;
-    --text-dark: #1a1a1a;
+    --navy: #1B2A4A;
+    --navy-light: #253A5E;
+    --navy-muted: #3D5278;
+    --gold: #D4A843;
+    --gold-hover: #C09635;
+    --gold-light: #FBF5E8;
+    --gold-pale: #F7EDCF;
+    --text-dark: #1B2A4A;
     --text-muted: #6c757d;
 }
 
 body {
-    background-color: #f5f5f5;
+    background-color: #f4f5f7;
     color: var(--text-dark);
 }
 
 /* Links */
 a {
-    color: var(--black);
+    color: var(--navy);
     text-decoration: underline;
 }
 
 a:hover {
-    color: var(--black-soft);
+    color: var(--navy-light);
 }
 
 /* Navbar */
 .navbar {
-    background-color: var(--black) !important;
+    background-color: var(--navy) !important;
 }
 
 .navbar-brand {
     font-weight: 700;
-    color: var(--yellow) !important;
+    color: var(--gold) !important;
 }
 
 .navbar .nav-link {
@@ -42,49 +42,49 @@ a:hover {
 }
 
 .navbar .nav-link:hover {
-    color: var(--yellow) !important;
+    color: var(--gold) !important;
 }
 
 .navbar .navbar-text {
-    color: rgba(255, 255, 255, 0.6) !important;
+    color: rgba(255, 255, 255, 0.55) !important;
 }
 
 /* Buttons */
 .btn-primary {
-    background-color: var(--black);
-    border-color: var(--black);
-    color: var(--yellow);
+    background-color: var(--navy);
+    border-color: var(--navy);
+    color: white;
     font-weight: 600;
 }
 
 .btn-primary:hover,
 .btn-primary:active,
 .btn-primary:focus {
-    background-color: var(--black-soft);
-    border-color: var(--black-soft);
-    color: var(--yellow);
+    background-color: var(--navy-light);
+    border-color: var(--navy-light);
+    color: white;
 }
 
 .btn-outline-primary {
-    color: var(--black);
-    border-color: var(--black);
+    color: var(--navy);
+    border-color: var(--navy);
 }
 
 .btn-outline-primary:hover,
 .btn-outline-primary:active {
-    background-color: var(--black);
-    border-color: var(--black);
-    color: var(--yellow);
+    background-color: var(--navy);
+    border-color: var(--navy);
+    color: white;
 }
 
 .btn-outline-secondary {
-    color: var(--black-muted);
-    border-color: #bbb;
+    color: var(--navy-muted);
+    border-color: #b0b8c4;
 }
 
 .btn-outline-secondary:hover {
-    background-color: var(--black-muted);
-    border-color: var(--black-muted);
+    background-color: var(--navy-muted);
+    border-color: var(--navy-muted);
     color: white;
 }
 
@@ -102,29 +102,29 @@ a:hover {
 /* Cards */
 .card {
     border: none;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 1px 3px rgba(27, 42, 74, 0.1);
 }
 
 .card-header {
-    background-color: var(--black);
-    color: var(--yellow);
+    background-color: var(--navy);
+    color: var(--gold);
     font-weight: 600;
 }
 
 .card-header h5,
 .card-header h6 {
-    color: var(--yellow);
+    color: var(--gold);
 }
 
 .card-header .btn-outline-primary {
-    color: var(--yellow);
-    border-color: var(--yellow);
+    color: var(--gold);
+    border-color: var(--gold);
 }
 
 .card-header .btn-outline-primary:hover {
-    background-color: var(--yellow);
-    border-color: var(--yellow);
-    color: var(--black);
+    background-color: var(--gold);
+    border-color: var(--gold);
+    color: var(--navy);
 }
 
 /* Tables */
@@ -137,46 +137,46 @@ a:hover {
 }
 
 .table a {
-    color: var(--black);
+    color: var(--navy);
     font-weight: 500;
 }
 
 .table a:hover {
-    color: var(--black-soft);
+    color: var(--navy-light);
 }
 
 .table-active {
-    background-color: var(--yellow-pale) !important;
+    background-color: var(--gold-pale) !important;
 }
 
 /* Badges */
 .badge-fixed {
-    background-color: var(--black);
-    color: var(--yellow);
+    background-color: var(--navy);
+    color: var(--gold);
 }
 
 .badge-variable {
-    background-color: var(--yellow);
-    color: var(--black);
+    background-color: var(--gold);
+    color: var(--navy);
 }
 
 .badge-extra {
-    background-color: var(--black-muted);
+    background-color: var(--navy-muted);
     color: white;
 }
 
 /* Alerts */
 .alert-success {
-    background-color: var(--yellow-light);
-    border-color: var(--yellow);
-    color: var(--black);
+    background-color: var(--gold-light);
+    border-color: var(--gold);
+    color: var(--navy);
 }
 
 /* Forms */
 .form-control:focus,
 .form-select:focus {
-    border-color: var(--yellow);
-    box-shadow: 0 0 0 0.2rem rgba(245, 197, 24, 0.25);
+    border-color: var(--gold);
+    box-shadow: 0 0 0 0.2rem rgba(212, 168, 67, 0.25);
 }
 
 .formset-row {
@@ -194,5 +194,5 @@ a:hover {
 }
 
 .login-container .card-title {
-    color: var(--black);
+    color: var(--navy);
 }
