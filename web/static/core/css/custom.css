@@ -1,0 +1,62 @@
+body {
+    background-color: #f8f9fa;
+}
+
+.navbar {
+    background-color: #8a4c94 !important;
+}
+
+.navbar-brand {
+    font-weight: 700;
+}
+
+.btn-primary {
+    background-color: #8a4c94;
+    border-color: #8a4c94;
+}
+
+.btn-primary:hover {
+    background-color: #6e3c76;
+    border-color: #6e3c76;
+}
+
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+}
+
+.table th {
+    border-top: none;
+    color: #6c757d;
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+}
+
+.badge-fixed {
+    background-color: #357b7c;
+    color: white;
+}
+
+.badge-variable {
+    background-color: #6eafae;
+    color: white;
+}
+
+.badge-extra {
+    background-color: #8a4c94;
+    color: white;
+}
+
+.formset-row {
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 1rem;
+    margin-bottom: 0.5rem;
+    background-color: white;
+}
+
+.login-container {
+    max-width: 400px;
+    margin: 100px auto;
+}

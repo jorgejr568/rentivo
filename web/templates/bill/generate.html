@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Gerar Fatura - {{ billing.name }} - Landlord{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Gerar Fatura</h2>
+<p class="text-muted">Cobrança: <strong>{{ billing.name }}</strong></p>
+
+<form method="post" action="/bills/{{ billing.id }}/generate">
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="reference_month" class="form-label">Mês de Referência</label>
+                    <input type="month" class="form-control" id="reference_month"
+                           name="reference_month" required>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label for="due_date" class="form-label">Vencimento</label>
+                    <input type="text" class="form-control" id="due_date"
+                           name="due_date" placeholder="10/03/2025">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Itens</h5>
+        </div>
+        <div class="card-body">
+            {% for item in billing.items %}
+            <div class="row mb-3 align-items-center">
+                <div class="col-md-5">
+                    <strong>{{ item.description }}</strong>
+                    {% if item.item_type.value == "fixed" %}
+                    <span class="badge badge-fixed ms-2">Fixo</span>
+                    {% else %}
+                    <span class="badge badge-variable ms-2">Variável</span>
+                    {% endif %}
+                </div>
+                <div class="col-md-4">
+                    {% if item.item_type.value == "fixed" %}
+                    <input type="text" class="form-control" disabled
+                           value="{{ '%.2f' | format(item.amount / 100) }}">
+                    {% else %}
+                    <input type="text" class="form-control"
+                           name="variable_{{ item.id }}" placeholder="0.00" required>
+                    {% endif %}
+                </div>
+                <div class="col-md-3 text-muted">
+                    {% if item.item_type.value == "fixed" %}
+                    {{ format_brl(item.amount) }}
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Despesas Extras</h5>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFormsetRow('extras')">
+                Adicionar Extra
+            </button>
+        </div>
+        <div class="card-body">
+            <input type="hidden" name="extras-TOTAL_FORMS" id="id_extras-TOTAL_FORMS" value="0">
+
+            <div id="extras-container"></div>
+
+            <template id="extras-empty-row">
+                <div class="row">
+                    <div class="col-md-6 mb-2">
+                        <input type="text" class="form-control" name="extras-__prefix__-description"
+                               placeholder="Descrição">
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <input type="text" class="form-control" name="extras-__prefix__-amount"
+                               placeholder="0.00">
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                onclick="removeFormsetRow('extras', __prefix__)">Remover</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="mb-3">
+                <label for="notes" class="form-label">Observações</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Gerar Fatura</button>
+        <a href="/billings/{{ billing.id }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='core/js/formset.js') }}"></script>
+{% endblock %}

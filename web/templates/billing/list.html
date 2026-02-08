@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Cobranças - Landlord{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Cobranças</h2>
+    <a href="/billings/create" class="btn btn-primary">Nova Cobrança</a>
+</div>
+
+{% if billings %}
+<div class="card">
+    <div class="table-responsive">
+        <table class="table table-hover mb-0">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Descrição</th>
+                    <th class="text-center">Itens</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for billing in billings %}
+                <tr>
+                    <td><a href="/billings/{{ billing.id }}">{{ billing.name }}</a></td>
+                    <td class="text-muted">{{ billing.description }}</td>
+                    <td class="text-center">{{ billing.items | length }}</td>
+                    <td class="text-end">
+                        <a href="/billings/{{ billing.id }}" class="btn btn-sm btn-outline-secondary">Ver</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="text-center text-muted py-5">
+    <p>Nenhuma cobrança cadastrada.</p>
+    <a href="/billings/create" class="btn btn-primary">Criar primeira cobrança</a>
+</div>
+{% endif %}
+{% endblock %}

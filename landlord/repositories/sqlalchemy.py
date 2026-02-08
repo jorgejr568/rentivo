@@ -6,7 +6,8 @@ from sqlalchemy import Connection, text
 
 from landlord.models.bill import Bill, BillLineItem
 from landlord.models.billing import Billing, BillingItem, ItemType
-from landlord.repositories.base import BillingRepository, BillRepository
+from landlord.models.user import User
+from landlord.repositories.base import BillingRepository, BillRepository, UserRepository
 
 
 class SQLAlchemyBillingRepository(BillingRepository):
@@ -218,3 +219,47 @@ class SQLAlchemyBillRepository(BillRepository):
             {"pdf_path": pdf_path, "id": bill_id},
         )
         self.conn.commit()
+
+
+class SQLAlchemyUserRepository(UserRepository):
+    def __init__(self, conn: Connection) -> None:
+        self.conn = conn
+
+    def create(self, user: User) -> User:
+        result = self.conn.execute(
+            text(
+                "INSERT INTO users (username, password_hash) "
+                "VALUES (:username, :password_hash)"
+            ),
+            {"username": user.username, "password_hash": user.password_hash},
+        )
+        self.conn.commit()
+        return self.get_by_username(user.username)  # type: ignore[return-value]
+
+    def get_by_username(self, username: str) -> User | None:
+        row = self.conn.execute(
+            text("SELECT * FROM users WHERE username = :username"),
+            {"username": username},
+        ).mappings().fetchone()
+        if row is None:
+            return None
+        return User(
+            id=row["id"],
+            username=row["username"],
+            password_hash=row["password_hash"],
+            created_at=row["created_at"],
+        )
+
+    def list_all(self) -> list[User]:
+        rows = self.conn.execute(
+            text("SELECT * FROM users ORDER BY created_at DESC")
+        ).mappings().fetchall()
+        return [
+            User(
+                id=row["id"],
+                username=row["username"],
+                password_hash=row["password_hash"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]

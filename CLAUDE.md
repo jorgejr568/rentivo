@@ -1,6 +1,6 @@
 # Landlord
 
-Apartment billing management with PDF invoice generation — CLI + Django web UI.
+Apartment billing management with PDF invoice generation — CLI + FastAPI web UI.
 
 ## Running
 
@@ -9,8 +9,8 @@ Apartment billing management with PDF invoice generation — CLI + Django web UI
 make run
 
 # Web (local)
-make web-migrate         # first time only
-make web-createsuperuser # first time only
+make migrate             # first time only
+make web-createuser      # first time only
 make web-run             # http://localhost:8000
 ```
 
@@ -28,7 +28,7 @@ make docker-regenerate
 ## Docker
 
 Two Dockerfiles:
-- **`Dockerfile`** — Web app (Django + gunicorn on port 8000)
+- **`Dockerfile`** — Web app (FastAPI + uvicorn on port 8000)
 - **`Dockerfile.cli`** — CLI container (health check on port 2019)
 
 ```bash
@@ -51,7 +51,7 @@ make shell-cli   # bash session
 make compose-up            # start web + cli
 make compose-down          # stop all
 make compose-landlord      # run CLI in cli container
-make compose-createsuperuser # create Django admin user
+make compose-createuser    # create web user
 ```
 
 ## Architecture
@@ -79,41 +79,44 @@ make compose-createsuperuser # create Django admin user
 - Money stored as **centavos (int)** in the database — never use floats for money
 - Code (variable names, comments) in English
 
-## Django Web App
+## FastAPI Web App
 
-The `web/` directory contains a Django web application that provides a browser-based UI for the same functionality as the CLI.
+The `web/` directory contains a FastAPI web application that provides a browser-based UI for the same functionality as the CLI.
 
 ### Running
 
 ```bash
-make web-migrate         # create Django auth tables (first time only)
-make web-createsuperuser # create admin user (first time only)
-make web-run             # start dev server at http://localhost:8000
+make migrate             # run Alembic migrations (creates users table etc.)
+make web-createuser      # create web login user
+make web-run             # start uvicorn at http://localhost:8000
 ```
 
 ### Architecture
 
-- **Project config**: `web/landlord_web/` — Django settings, URLs, WSGI
-- **Core app**: `web/core/` — models, views, forms, templates
-- **Models**: Django ORM with `managed = False` — maps to existing Alembic-managed tables
-- **Admin**: Full Django admin at `/admin/` with inline editing
-- **Adapters**: `web/core/adapters.py` converts Django models to Pydantic models for PDF/PIX generation
-- **Auth**: Single user via `createsuperuser`, login at `/login/`
-- **Templates**: Bootstrap 5 via CDN, all customer-facing text in PT-BR
+- **App**: `web/app.py` — FastAPI app, SessionMiddleware, Jinja2 templates, static files
+- **Auth**: `web/auth.py` — login/logout routes, session-based auth
+- **Middleware**: `web/deps.py` — AuthMiddleware (redirects to /login), service factories, render helper
+- **Flash**: `web/flash.py` — session-based flash messages
+- **Forms**: `web/forms.py` — `parse_brl()` and `parse_formset()` helpers
+- **Routes**: `web/routes/billing.py` and `web/routes/bill.py`
+- **Templates**: Jinja2 with Bootstrap 5 via CDN, all customer-facing text in PT-BR
+- **Static**: `web/static/core/` — CSS and JS (served via Starlette StaticFiles)
 
 ### Key URLs
 
 | URL | Purpose |
 |-----|---------|
-| `/` | Billing list (home) |
-| `/billings/create/` | Create new billing |
-| `/billings/<id>/` | Billing detail + bills |
-| `/billings/<id>/edit/` | Edit billing |
-| `/billings/<id>/generate/` | Generate new bill |
-| `/bills/<id>/` | Bill detail |
-| `/bills/<id>/edit/` | Edit bill |
-| `/bills/<id>/invoice/` | Download/view PDF |
-| `/admin/` | Django admin |
+| `/` | Redirect to billing list |
+| `/billings/` | Billing list |
+| `/billings/create` | Create new billing |
+| `/billings/<id>` | Billing detail + bills |
+| `/billings/<id>/edit` | Edit billing |
+| `/bills/<id>/generate` | Generate new bill |
+| `/bills/<id>` | Bill detail |
+| `/bills/<id>/edit` | Edit bill |
+| `/bills/<id>/invoice` | Download/view PDF |
+| `/login` | Login page |
+| `/logout` | Logout |
 
 ## Key Rules
 

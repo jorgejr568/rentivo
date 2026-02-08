@@ -26,19 +26,15 @@ regenerate-pdfs:
 regenerate-pdfs-dry:
 	.venv/bin/python -m landlord.scripts.regenerate_pdfs --dry-run
 
-# --- Django Web (local) ---
+# --- Web (local) ---
 
 .PHONY: web-run
 web-run:
-	cd web && ../.venv/bin/python manage.py runserver
+	.venv/bin/uvicorn web.app:app --reload --port 8000
 
-.PHONY: web-migrate
-web-migrate:
-	cd web && ../.venv/bin/python manage.py migrate
-
-.PHONY: web-createsuperuser
-web-createsuperuser:
-	cd web && ../.venv/bin/python manage.py createsuperuser
+.PHONY: web-createuser
+web-createuser:
+	.venv/bin/python -c "from landlord.db import initialize_db; initialize_db(); from landlord.repositories.factory import get_user_repository; from landlord.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
 
 # --- Docker: Web (standalone) ---
 
@@ -74,11 +70,11 @@ health:
 
 .PHONY: docker-migrate
 docker-migrate:
-	docker exec $(CONTAINER) sh -c "cd web && python manage.py migrate --no-input"
+	docker exec $(CONTAINER) python -c "from landlord.db import initialize_db; initialize_db()"
 
-.PHONY: docker-createsuperuser
-docker-createsuperuser:
-	docker exec -it $(CONTAINER) sh -c "cd web && python manage.py createsuperuser"
+.PHONY: docker-createuser
+docker-createuser:
+	docker exec -it $(CONTAINER) python -c "from landlord.db import initialize_db; initialize_db(); from landlord.repositories.factory import get_user_repository; from landlord.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
 
 .PHONY: docker-regenerate
 docker-regenerate:
@@ -138,11 +134,11 @@ compose-landlord:
 
 .PHONY: compose-migrate
 compose-migrate:
-	docker compose exec landlord sh -c "cd web && python manage.py migrate --no-input"
+	docker compose exec landlord python -c "from landlord.db import initialize_db; initialize_db()"
 
-.PHONY: compose-createsuperuser
-compose-createsuperuser:
-	docker compose exec landlord sh -c "cd web && python manage.py createsuperuser"
+.PHONY: compose-createuser
+compose-createuser:
+	docker compose exec -it landlord python -c "from landlord.db import initialize_db; initialize_db(); from landlord.repositories.factory import get_user_repository; from landlord.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
 
 .PHONY: compose-regenerate
 compose-regenerate:

@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 
-from landlord.models.billing import Billing
 from landlord.models.bill import Bill
+from landlord.models.billing import Billing
+from landlord.models.user import User
 
 
 class BillingRepository(ABC):
@@ -36,3 +37,14 @@ class BillRepository(ABC):
 
     @abstractmethod
     def update_pdf_path(self, bill_id: int, pdf_path: str) -> None: ...
+
+
+class UserRepository(ABC):
+    @abstractmethod
+    def create(self, user: User) -> User: ...
+
+    @abstractmethod
+    def get_by_username(self, username: str) -> User | None: ...
+
+    @abstractmethod
+    def list_all(self) -> list[User]: ...

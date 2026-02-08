@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Fatura - Landlord{% endblock %}
+
+{% block content %}
+<h2 class="mb-4">Editar Fatura</h2>
+<p class="text-muted">
+    Cobrança: <strong>{{ billing.name }}</strong> |
+    Referência: <strong>{{ format_month(bill.reference_month) }}</strong>
+</p>
+
+<form method="post" action="/bills/{{ bill.id }}/edit">
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Itens</h5>
+        </div>
+        <div class="card-body">
+            <input type="hidden" name="items-TOTAL_FORMS" id="id_items-TOTAL_FORMS"
+                   value="{{ bill.line_items | length }}">
+
+            <div id="items-container">
+                {% for item in bill.line_items %}
+                <div class="formset-row" id="items-row-{{ loop.index0 }}">
+                    <div class="row align-items-center">
+                        <div class="col-md-5 mb-2">
+                            <label class="form-label">Descrição</label>
+                            <input type="text" class="form-control"
+                                   name="items-{{ loop.index0 }}-description"
+                                   value="{{ item.description }}">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <label class="form-label">Tipo</label>
+                            <select class="form-select" name="items-{{ loop.index0 }}-item_type" disabled>
+                                <option value="fixed" {% if item.item_type == "fixed" %}selected{% endif %}>Fixo</option>
+                                <option value="variable" {% if item.item_type == "variable" %}selected{% endif %}>Variável</option>
+                                <option value="extra" {% if item.item_type == "extra" %}selected{% endif %}>Extra</option>
+                            </select>
+                            <input type="hidden" name="items-{{ loop.index0 }}-item_type" value="{{ item.item_type }}">
+                        </div>
+                        <div class="col-md-3 mb-2">
+                            <label class="form-label">Valor (R$)</label>
+                            <input type="text" class="form-control"
+                                   name="items-{{ loop.index0 }}-amount"
+                                   value="{{ '%.2f' | format(item.amount / 100) }}">
+                        </div>
+                        <div class="col-md-1 mb-2 d-flex align-items-end">
+                            {% if item.item_type == "extra" %}
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                                    onclick="removeFormsetRow('items', {{ loop.index0 }})">X</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <label for="due_date" class="form-label">Vencimento</label>
+                    <input type="text" class="form-control" id="due_date"
+                           name="due_date" value="{{ bill.due_date or '' }}"
+                           placeholder="10/03/2025">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="notes" class="form-label">Observações</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3">{{ bill.notes }}</textarea>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Salvar</button>
+        <a href="/bills/{{ bill.id }}" class="btn btn-outline-secondary">Cancelar</a>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='core/js/formset.js') }}"></script>
+{% endblock %}

@@ -22,5 +22,7 @@ class Settings(BaseSettings):
     pix_merchant_name: str = ""
     pix_merchant_city: str = ""
 
+    secret_key: str = "change-me-in-production"
+
 
 settings = Settings()
