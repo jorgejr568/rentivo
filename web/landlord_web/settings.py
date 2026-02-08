@@ -12,10 +12,21 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("LANDLORD_DEBUG", "true").lower() in ("true", "1", "yes")
 
-ALLOWED_HOSTS = os.environ.get("LANDLORD_ALLOWED_HOSTS", "*").split(",")
-
-_trusted_origins = os.environ.get("LANDLORD_CSRF_TRUSTED_ORIGINS", "")
-CSRF_TRUSTED_ORIGINS = [o.strip() for o in _trusted_origins.split(",") if o.strip()]
+_raw_hosts = os.environ.get("LANDLORD_ALLOWED_HOSTS", "*")
+# Strip scheme if provided (e.g. "https://example.com" -> "example.com")
+ALLOWED_HOSTS = []
+CSRF_TRUSTED_ORIGINS = []
+for h in _raw_hosts.split(","):
+    h = h.strip()
+    if not h:
+        continue
+    if h.startswith("https://") or h.startswith("http://"):
+        CSRF_TRUSTED_ORIGINS.append(h)
+        ALLOWED_HOSTS.append(h.split("://", 1)[1])
+    else:
+        ALLOWED_HOSTS.append(h)
+        if h != "*":
+            CSRF_TRUSTED_ORIGINS.append(f"https://{h}")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
