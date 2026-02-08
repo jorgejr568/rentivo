@@ -14,6 +14,9 @@ DEBUG = os.environ.get("LANDLORD_DEBUG", "true").lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = os.environ.get("LANDLORD_ALLOWED_HOSTS", "*").split(",")
 
+_trusted_origins = os.environ.get("LANDLORD_CSRF_TRUSTED_ORIGINS", "")
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _trusted_origins.split(",") if o.strip()]
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -26,7 +29,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-"django.contrib.sessions.middleware.SessionMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
