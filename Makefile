@@ -30,6 +30,16 @@ regenerate-pdfs:
 regenerate-pdfs-dry:
 	$(PYTHON) -m landlord.scripts.regenerate_pdfs --dry-run
 
+# --- Tests ---
+
+.PHONY: test
+test:
+	$(PYTHON) -m pytest
+
+.PHONY: test-cov
+test-cov:
+	$(PYTHON) -m pytest --cov --cov-report=term-missing
+
 # --- Web (local) ---
 
 .PHONY: web-run

@@ -9,3 +9,5 @@ landlord.db
 landlord.db-shm
 landlord.db-wal
 invoices/
+.coverage
+.pytest_cache/
