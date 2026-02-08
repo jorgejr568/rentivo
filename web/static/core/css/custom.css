@@ -1,40 +1,40 @@
-/* === Navy & Gold Theme === */
+/* === Charcoal & Emerald Theme === */
 
 :root {
-    --navy: #1B2A4A;
-    --navy-light: #253A5E;
-    --navy-muted: #3D5278;
-    --gold: #D4A843;
-    --gold-hover: #C09635;
-    --gold-light: #FBF5E8;
-    --gold-pale: #F7EDCF;
-    --text-dark: #1B2A4A;
-    --text-muted: #6c757d;
+    --charcoal: #2C3E50;
+    --charcoal-light: #34495E;
+    --charcoal-muted: #5D6D7E;
+    --emerald: #27AE60;
+    --emerald-hover: #219A52;
+    --emerald-light: #EAFAF1;
+    --emerald-pale: #D5F5E3;
+    --text-dark: #2C3E50;
+    --text-muted: #7f8c8d;
 }
 
 body {
-    background-color: #f4f5f7;
+    background-color: #f4f6f7;
     color: var(--text-dark);
 }
 
 /* Links */
 a {
-    color: var(--navy);
+    color: var(--charcoal);
     text-decoration: underline;
 }
 
 a:hover {
-    color: var(--navy-light);
+    color: var(--emerald);
 }
 
 /* Navbar */
 .navbar {
-    background-color: var(--navy) !important;
+    background-color: var(--charcoal) !important;
 }
 
 .navbar-brand {
     font-weight: 700;
-    color: var(--gold) !important;
+    color: var(--emerald) !important;
 }
 
 .navbar .nav-link {
@@ -42,7 +42,7 @@ a:hover {
 }
 
 .navbar .nav-link:hover {
-    color: var(--gold) !important;
+    color: var(--emerald) !important;
 }
 
 .navbar .navbar-text {
@@ -51,8 +51,8 @@ a:hover {
 
 /* Buttons */
 .btn-primary {
-    background-color: var(--navy);
-    border-color: var(--navy);
+    background-color: var(--emerald);
+    border-color: var(--emerald);
     color: white;
     font-weight: 600;
 }
@@ -60,31 +60,31 @@ a:hover {
 .btn-primary:hover,
 .btn-primary:active,
 .btn-primary:focus {
-    background-color: var(--navy-light);
-    border-color: var(--navy-light);
+    background-color: var(--emerald-hover);
+    border-color: var(--emerald-hover);
     color: white;
 }
 
 .btn-outline-primary {
-    color: var(--navy);
-    border-color: var(--navy);
+    color: var(--emerald);
+    border-color: var(--emerald);
 }
 
 .btn-outline-primary:hover,
 .btn-outline-primary:active {
-    background-color: var(--navy);
-    border-color: var(--navy);
+    background-color: var(--emerald);
+    border-color: var(--emerald);
     color: white;
 }
 
 .btn-outline-secondary {
-    color: var(--navy-muted);
+    color: var(--charcoal-muted);
     border-color: #b0b8c4;
 }
 
 .btn-outline-secondary:hover {
-    background-color: var(--navy-muted);
-    border-color: var(--navy-muted);
+    background-color: var(--charcoal-muted);
+    border-color: var(--charcoal-muted);
     color: white;
 }
 
@@ -102,29 +102,29 @@ a:hover {
 /* Cards */
 .card {
     border: none;
-    box-shadow: 0 1px 3px rgba(27, 42, 74, 0.1);
+    box-shadow: 0 1px 3px rgba(44, 62, 80, 0.1);
 }
 
 .card-header {
-    background-color: var(--navy);
-    color: var(--gold);
+    background-color: var(--charcoal);
+    color: white;
     font-weight: 600;
 }
 
 .card-header h5,
 .card-header h6 {
-    color: var(--gold);
+    color: white;
 }
 
 .card-header .btn-outline-primary {
-    color: var(--gold);
-    border-color: var(--gold);
+    color: var(--emerald);
+    border-color: var(--emerald);
 }
 
 .card-header .btn-outline-primary:hover {
-    background-color: var(--gold);
-    border-color: var(--gold);
-    color: var(--navy);
+    background-color: var(--emerald);
+    border-color: var(--emerald);
+    color: white;
 }
 
 /* Tables */
@@ -137,46 +137,48 @@ a:hover {
 }
 
 .table a {
-    color: var(--navy);
+    color: var(--charcoal);
     font-weight: 500;
+    text-decoration: none;
 }
 
 .table a:hover {
-    color: var(--navy-light);
+    color: var(--emerald);
+    text-decoration: underline;
 }
 
 .table-active {
-    background-color: var(--gold-pale) !important;
+    background-color: var(--emerald-pale) !important;
 }
 
 /* Badges */
 .badge-fixed {
-    background-color: var(--navy);
-    color: var(--gold);
+    background-color: var(--charcoal);
+    color: white;
 }
 
 .badge-variable {
-    background-color: var(--gold);
-    color: var(--navy);
+    background-color: var(--emerald);
+    color: white;
 }
 
 .badge-extra {
-    background-color: var(--navy-muted);
+    background-color: var(--charcoal-muted);
     color: white;
 }
 
 /* Alerts */
 .alert-success {
-    background-color: var(--gold-light);
-    border-color: var(--gold);
-    color: var(--navy);
+    background-color: var(--emerald-light);
+    border-color: var(--emerald);
+    color: var(--charcoal);
 }
 
 /* Forms */
 .form-control:focus,
 .form-select:focus {
-    border-color: var(--gold);
-    box-shadow: 0 0 0 0.2rem rgba(212, 168, 67, 0.25);
+    border-color: var(--emerald);
+    box-shadow: 0 0 0 0.2rem rgba(39, 174, 96, 0.25);
 }
 
 .formset-row {
@@ -194,5 +196,5 @@ a:hover {
 }
 
 .login-container .card-title {
-    color: var(--navy);
+    color: var(--charcoal);
 }
