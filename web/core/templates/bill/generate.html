@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% load brl_filters %}
+
+{% block title %}Gerar Fatura - {{ billing.name }} - Landlord{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'billing_list' %}">Cobranças</a></li>
+    <li class="breadcrumb-item"><a href="{% url 'billing_detail' billing.id %}">{{ billing.name }}</a></li>
+    <li class="breadcrumb-item active">Gerar Fatura</li>
+  </ol>
+</nav>
+
+<h2 class="mb-4">Gerar Fatura</h2>
+
+<form method="post">
+  {% csrf_token %}
+
+  <!-- Bill info -->
+  <div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0">Dados da Fatura</h5></div>
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <label for="id_reference_month" class="form-label">Mês de Referência *</label>
+          {{ form.reference_month }}
+          {% if form.reference_month.errors %}
+          <div class="invalid-feedback d-block">{{ form.reference_month.errors.0 }}</div>
+          {% endif %}
+          <div class="form-text">{{ form.reference_month.help_text }}</div>
+        </div>
+        <div class="col-md-4 mb-3">
+          <label for="id_due_date" class="form-label">Data de Vencimento</label>
+          {{ form.due_date }}
+        </div>
+      </div>
+      <div class="mb-3">
+        <label for="id_notes" class="form-label">Observações</label>
+        {{ form.notes }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Fixed items (read-only display) -->
+  {% if fixed_items %}
+  <div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0">Itens Fixos</h5></div>
+    <div class="card-body p-0">
+      <table class="table mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Descrição</th>
+            <th class="text-end">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in fixed_items %}
+          <tr>
+            <td>{{ item.description }}</td>
+            <td class="text-end">{{ item.amount|format_brl }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Variable items -->
+  {% if variable_formset.forms %}
+  <div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0">Itens Variáveis</h5></div>
+    <div class="card-body">
+      {{ variable_formset.management_form }}
+      {% for vform in variable_formset %}
+      <div class="row g-2 align-items-end mb-2">
+        {{ vform.item_id }}
+        <div class="col-md-6">
+          {% if forloop.first %}
+          <label class="form-label">Descrição</label>
+          {% endif %}
+          {{ vform.description }}
+        </div>
+        <div class="col-md-4">
+          {% if forloop.first %}
+          <label class="form-label">Valor (R$)</label>
+          {% endif %}
+          {{ vform.amount }}
+          {% if vform.amount.errors %}
+          <div class="invalid-feedback d-block">{{ vform.amount.errors.0 }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Extra expenses -->
+  <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <h5 class="mb-0">Despesas Extras</h5>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFormRow('extras')">
+        <i class="bi bi-plus-lg"></i> Adicionar Extra
+      </button>
+    </div>
+    <div class="card-body">
+      {{ extras_formset.management_form }}
+      <div id="extras-container">
+        {% for eform in extras_formset %}
+        <div class="formset-row row g-2 align-items-end mb-2">
+          {% if eform.DELETE %}
+          <input type="hidden" name="{{ eform.DELETE.html_name }}" value="">
+          {% endif %}
+          <div class="col-md-6">
+            {% if forloop.first %}
+            <label class="form-label">Descrição</label>
+            {% endif %}
+            {{ eform.description }}
+          </div>
+          <div class="col-md-4">
+            {% if forloop.first %}
+            <label class="form-label">Valor (R$)</label>
+            {% endif %}
+            {{ eform.amount }}
+          </div>
+          <div class="col-md-2">
+            {% if forloop.first %}
+            <label class="form-label">&nbsp;</label><br>
+            {% endif %}
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFormRow(this, 'extras')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <template id="extras-empty-form">
+        <div class="formset-row row g-2 align-items-end mb-2">
+          <div class="col-md-6">
+            <input type="text" name="extras-__prefix__-description" maxlength="255"
+                   class="form-control" placeholder="Descrição do extra">
+          </div>
+          <div class="col-md-4">
+            <input type="text" name="extras-__prefix__-amount" class="form-control" placeholder="0,00">
+          </div>
+          <div class="col-md-2">
+            <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeFormRow(this, 'extras')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-teal">
+      <i class="bi bi-file-earmark-pdf"></i> Gerar Fatura
+    </button>
+    <a href="{% url 'billing_detail' billing.id %}" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}

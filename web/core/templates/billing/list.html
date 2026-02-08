@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% load brl_filters %}
+
+{% block title %}Cobranças - Landlord{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h2>Cobranças</h2>
+  <a href="{% url 'billing_create' %}" class="btn btn-primary">
+    <i class="bi bi-plus-lg"></i> Nova Cobrança
+  </a>
+</div>
+
+{% if billings %}
+<div class="row">
+  {% for billing in billings %}
+  <div class="col-md-6 col-lg-4 mb-3">
+    <div class="card billing-card h-100">
+      <div class="card-body">
+        <h5 class="card-title">
+          <a href="{% url 'billing_detail' billing.id %}" class="text-decoration-none">
+            {{ billing.name }}
+          </a>
+        </h5>
+        {% if billing.description %}
+        <p class="card-text text-muted small">{{ billing.description }}</p>
+        {% endif %}
+        <div class="d-flex gap-2 flex-wrap">
+          <span class="badge bg-light text-dark">
+            {{ billing.items.count }} item{{ billing.items.count|pluralize:"s" }}
+          </span>
+          {% if billing.pix_key %}
+          <span class="badge bg-success">PIX</span>
+          {% endif %}
+          <span class="badge bg-light text-muted">
+            {{ billing.bills.count }} fatura{{ billing.bills.count|pluralize:"s" }}
+          </span>
+        </div>
+      </div>
+      <div class="card-footer bg-transparent">
+        <small class="text-muted">
+          Criada em {{ billing.created_at|date:"d/m/Y" }}
+        </small>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-5">
+  <i class="bi bi-inbox display-1 text-muted"></i>
+  <p class="text-muted mt-3">Nenhuma cobrança cadastrada.</p>
+  <a href="{% url 'billing_create' %}" class="btn btn-primary">
+    <i class="bi bi-plus-lg"></i> Criar primeira cobrança
+  </a>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,84 @@
+:root {
+  --purple: #8A4C94;
+  --purple-light: #EEE4F1;
+  --teal: #6EAFAE;
+  --teal-dark: #357B7C;
+}
+
+body {
+  background-color: #f8f9fa;
+}
+
+.navbar {
+  background-color: var(--purple) !important;
+}
+
+.btn-primary {
+  background-color: var(--purple);
+  border-color: var(--purple);
+}
+
+.btn-primary:hover {
+  background-color: #7a3f84;
+  border-color: #7a3f84;
+}
+
+.btn-teal {
+  background-color: var(--teal-dark);
+  border-color: var(--teal-dark);
+  color: #fff;
+}
+
+.btn-teal:hover {
+  background-color: #2d6b6c;
+  border-color: #2d6b6c;
+  color: #fff;
+}
+
+.card {
+  border: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.badge-fixed {
+  background-color: var(--purple-light);
+  color: var(--purple);
+}
+
+.badge-variable {
+  background-color: #e0f2f1;
+  color: var(--teal-dark);
+}
+
+.badge-extra {
+  background-color: #fff3e0;
+  color: #e65100;
+}
+
+.total-bar {
+  background-color: var(--teal-dark);
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 6px;
+  font-size: 1.2rem;
+}
+
+.billing-card {
+  transition: transform 0.15s;
+}
+
+.billing-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.formset-row {
+  border-bottom: 1px solid #eee;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+}
+
+.deleted-row {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
