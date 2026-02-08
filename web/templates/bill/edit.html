@@ -57,6 +57,37 @@
     </div>
 
     <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Despesas Extras</h5>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFormsetRow('extras')">
+                Adicionar Extra
+            </button>
+        </div>
+        <div class="card-body">
+            <input type="hidden" name="extras-TOTAL_FORMS" id="id_extras-TOTAL_FORMS" value="0">
+
+            <div id="extras-container"></div>
+
+            <template id="extras-empty-row">
+                <div class="row">
+                    <div class="col-md-6 mb-2">
+                        <input type="text" class="form-control" name="extras-__prefix__-description"
+                               placeholder="Descrição">
+                    </div>
+                    <div class="col-md-4 mb-2">
+                        <input type="text" class="form-control" name="extras-__prefix__-amount"
+                               placeholder="0.00">
+                    </div>
+                    <div class="col-md-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                onclick="removeFormsetRow('extras', __prefix__)">Remover</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
+    <div class="card mb-4">
         <div class="card-body">
             <div class="row">
                 <div class="col-md-4 mb-3">

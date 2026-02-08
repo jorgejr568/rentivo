@@ -138,6 +138,21 @@ async def bill_edit(request: Request, bill_id: int):
             )
         )
 
+    # Parse new extras
+    extras_data = parse_formset(dict(form), "extras")
+    for row in extras_data:
+        desc = row.get("description", "").strip()
+        amount = parse_brl(row.get("amount", ""))
+        if desc and amount and amount > 0:
+            line_items.append(
+                BillLineItem(
+                    description=desc,
+                    amount=amount,
+                    item_type="extra",
+                    sort_order=len(line_items),
+                )
+            )
+
     bill = bill_service.update_bill(
         bill=bill,
         billing=billing,
