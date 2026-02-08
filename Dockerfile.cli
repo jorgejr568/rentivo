@@ -8,9 +8,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY . .
-
+COPY pyproject.toml .
+RUN mkdir -p landlord web && touch landlord/__init__.py web/__init__.py
 RUN pip install --no-cache-dir -e .
+
+COPY . .
 
 EXPOSE 2019
 
