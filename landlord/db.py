@@ -23,7 +23,11 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         url = _get_url()
-        _engine = create_engine(url)
+        connect_args = {}
+        if not url.startswith("sqlite"):
+            connect_args["pool_pre_ping"] = True
+            connect_args["pool_recycle"] = 1800
+        _engine = create_engine(url, **connect_args)
         if url.startswith("sqlite"):
 
             @event.listens_for(_engine, "connect")

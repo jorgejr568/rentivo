@@ -32,21 +32,39 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
-def _connect():
-    """Fresh connection per call — avoids stale transactions in long-running server."""
-    return get_engine().connect()
+class DBConnectionMiddleware(BaseHTTPMiddleware):
+    """Creates a single DB connection per request and closes it when done."""
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        request.state.db_conn = None
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            conn = getattr(request.state, "db_conn", None)
+            if conn is not None:
+                conn.close()
 
 
-def get_billing_service() -> BillingService:
-    return BillingService(SQLAlchemyBillingRepository(_connect()))
+def _get_conn(request: Request):
+    """Lazy per-request connection — created on first use, closed by middleware."""
+    if request.state.db_conn is None:
+        request.state.db_conn = get_engine().connect()
+    return request.state.db_conn
 
 
-def get_bill_service() -> BillService:
-    return BillService(SQLAlchemyBillRepository(_connect()), get_storage())
+def get_billing_service(request: Request) -> BillingService:
+    return BillingService(SQLAlchemyBillingRepository(_get_conn(request)))
 
 
-def get_user_service() -> UserService:
-    return UserService(SQLAlchemyUserRepository(_connect()))
+def get_bill_service(request: Request) -> BillService:
+    return BillService(SQLAlchemyBillRepository(_get_conn(request)), get_storage())
+
+
+def get_user_service(request: Request) -> UserService:
+    return UserService(SQLAlchemyUserRepository(_get_conn(request)))
 
 
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:

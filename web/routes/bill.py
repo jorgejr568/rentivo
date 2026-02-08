@@ -16,7 +16,7 @@ router = APIRouter(prefix="/bills")
 
 @router.get("/{billing_id}/generate")
 async def bill_generate_form(request: Request, billing_id: int):
-    billing_service = get_billing_service()
+    billing_service = get_billing_service(request)
     billing = billing_service.get_billing(billing_id)
     if not billing:
         flash(request, "Cobrança não encontrada.", "danger")
@@ -26,8 +26,8 @@ async def bill_generate_form(request: Request, billing_id: int):
 
 @router.post("/{billing_id}/generate")
 async def bill_generate(request: Request, billing_id: int):
-    billing_service = get_billing_service()
-    bill_service = get_bill_service()
+    billing_service = get_billing_service(request)
+    bill_service = get_bill_service(request)
 
     billing = billing_service.get_billing(billing_id)
     if not billing:
@@ -73,8 +73,8 @@ async def bill_generate(request: Request, billing_id: int):
 
 @router.get("/{bill_id}")
 async def bill_detail(request: Request, bill_id: int):
-    bill_service = get_bill_service()
-    billing_service = get_billing_service()
+    bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
 
     bill = bill_service.get_bill(bill_id)
     if not bill:
@@ -90,8 +90,8 @@ async def bill_detail(request: Request, bill_id: int):
 
 @router.get("/{bill_id}/edit")
 async def bill_edit_form(request: Request, bill_id: int):
-    bill_service = get_bill_service()
-    billing_service = get_billing_service()
+    bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
 
     bill = bill_service.get_bill(bill_id)
     if not bill:
@@ -104,8 +104,8 @@ async def bill_edit_form(request: Request, bill_id: int):
 
 @router.post("/{bill_id}/edit")
 async def bill_edit(request: Request, bill_id: int):
-    bill_service = get_bill_service()
-    billing_service = get_billing_service()
+    bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
 
     bill = bill_service.get_bill(bill_id)
     if not bill:
@@ -151,8 +151,8 @@ async def bill_edit(request: Request, bill_id: int):
 
 @router.post("/{bill_id}/regenerate-pdf")
 async def bill_regenerate_pdf(request: Request, bill_id: int):
-    bill_service = get_bill_service()
-    billing_service = get_billing_service()
+    bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
 
     bill = bill_service.get_bill(bill_id)
     if not bill:
@@ -171,7 +171,7 @@ async def bill_regenerate_pdf(request: Request, bill_id: int):
 
 @router.get("/{bill_id}/invoice")
 async def bill_invoice(request: Request, bill_id: int):
-    bill_service = get_bill_service()
+    bill_service = get_bill_service(request)
     bill = bill_service.get_bill(bill_id)
     if not bill or not bill.pdf_path:
         flash(request, "Fatura sem PDF.", "danger")

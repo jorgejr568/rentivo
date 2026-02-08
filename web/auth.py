@@ -22,7 +22,7 @@ async def login(request: Request):
     username = form.get("username", "")
     password = form.get("password", "")
 
-    user_service = get_user_service()
+    user_service = get_user_service(request)
     user = user_service.authenticate(str(username), str(password))
 
     if user is None:
@@ -50,7 +50,7 @@ async def change_password(request: Request):
     if new_password != confirm_password:
         return render(request, "change_password.html", {"error": "As senhas não coincidem."})
 
-    user_service = get_user_service()
+    user_service = get_user_service(request)
     username = request.session.get("user", "")
     user = user_service.authenticate(username, current_password)
 

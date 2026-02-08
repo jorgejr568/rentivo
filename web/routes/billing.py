@@ -13,7 +13,7 @@ router = APIRouter(prefix="/billings")
 
 @router.get("/")
 async def billing_list(request: Request):
-    service = get_billing_service()
+    service = get_billing_service(request)
     billings = service.list_billings()
     return render(request, "billing/list.html", {"billings": billings})
 
@@ -50,7 +50,7 @@ async def billing_create(request: Request):
         flash(request, "Adicione pelo menos um item.", "danger")
         return RedirectResponse("/billings/create", status_code=302)
 
-    service = get_billing_service()
+    service = get_billing_service(request)
     billing = service.create_billing(name, description, items, pix_key=pix_key)
     flash(request, f"Cobrança '{billing.name}' criada com sucesso!", "success")
     return RedirectResponse(f"/billings/{billing.id}", status_code=302)
@@ -58,8 +58,8 @@ async def billing_create(request: Request):
 
 @router.get("/{billing_id}")
 async def billing_detail(request: Request, billing_id: int):
-    billing_service = get_billing_service()
-    bill_service = get_bill_service()
+    billing_service = get_billing_service(request)
+    bill_service = get_bill_service(request)
 
     billing = billing_service.get_billing(billing_id)
     if not billing:
@@ -72,7 +72,7 @@ async def billing_detail(request: Request, billing_id: int):
 
 @router.get("/{billing_id}/edit")
 async def billing_edit_form(request: Request, billing_id: int):
-    service = get_billing_service()
+    service = get_billing_service(request)
     billing = service.get_billing(billing_id)
     if not billing:
         flash(request, "Cobrança não encontrada.", "danger")
@@ -82,7 +82,7 @@ async def billing_edit_form(request: Request, billing_id: int):
 
 @router.post("/{billing_id}/edit")
 async def billing_edit(request: Request, billing_id: int):
-    service = get_billing_service()
+    service = get_billing_service(request)
     billing = service.get_billing(billing_id)
     if not billing:
         flash(request, "Cobrança não encontrada.", "danger")
@@ -117,7 +117,7 @@ async def billing_edit(request: Request, billing_id: int):
 
 @router.post("/{billing_id}/delete")
 async def billing_delete(request: Request, billing_id: int):
-    service = get_billing_service()
+    service = get_billing_service(request)
     billing = service.get_billing(billing_id)
     if not billing:
         flash(request, "Cobrança não encontrada.", "danger")

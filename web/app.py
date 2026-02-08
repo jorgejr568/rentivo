@@ -12,7 +12,7 @@ from landlord.db import initialize_db
 from landlord.models import format_brl
 from landlord.settings import settings
 from web.auth import router as auth_router
-from web.deps import AuthMiddleware
+from web.deps import AuthMiddleware, DBConnectionMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router
 
@@ -20,6 +20,7 @@ BASE_DIR = Path(__file__).parent
 
 app = FastAPI(docs_url=None, redoc_url=None)
 
+app.add_middleware(DBConnectionMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
 
