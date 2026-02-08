@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import boto3
-from botocore.exceptions import ClientError
 
 from landlord.storage.base import StorageBackend
 
@@ -39,17 +38,7 @@ class S3Storage(StorageBackend):
         )
         return key
 
-    def get_path(self, key: str) -> str:
-        return key
-
-    def exists(self, key: str) -> bool:
-        try:
-            self.client.head_object(Bucket=self.bucket, Key=key)
-            return True
-        except ClientError:
-            return False
-
-    def get_presigned_url(self, key: str) -> str:
+    def get_url(self, key: str) -> str:
         return self.client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self.bucket, "Key": key},

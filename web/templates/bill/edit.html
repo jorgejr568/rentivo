@@ -31,11 +31,11 @@
                         <div class="col-md-3 mb-2">
                             <label class="form-label">Tipo</label>
                             <select class="form-select" name="items-{{ loop.index0 }}-item_type" disabled>
-                                <option value="fixed" {% if item.item_type == "fixed" %}selected{% endif %}>Fixo</option>
-                                <option value="variable" {% if item.item_type == "variable" %}selected{% endif %}>Variável</option>
-                                <option value="extra" {% if item.item_type == "extra" %}selected{% endif %}>Extra</option>
+                                <option value="fixed" {% if item.item_type.value == "fixed" %}selected{% endif %}>Fixo</option>
+                                <option value="variable" {% if item.item_type.value == "variable" %}selected{% endif %}>Variável</option>
+                                <option value="extra" {% if item.item_type.value == "extra" %}selected{% endif %}>Extra</option>
                             </select>
-                            <input type="hidden" name="items-{{ loop.index0 }}-item_type" value="{{ item.item_type }}">
+                            <input type="hidden" name="items-{{ loop.index0 }}-item_type" value="{{ item.item_type.value }}">
                         </div>
                         <div class="col-md-3 mb-2">
                             <label class="form-label">Valor (R$)</label>
@@ -44,7 +44,7 @@
                                    value="{{ '%.2f' | format(item.amount / 100) }}">
                         </div>
                         <div class="col-md-1 mb-2 d-flex align-items-end">
-                            {% if item.item_type == "extra" %}
+                            {% if item.item_type.value == "extra" %}
                             <button type="button" class="btn btn-sm btn-outline-danger"
                                     onclick="removeFormsetRow('items', {{ loop.index0 }})">X</button>
                             {% endif %}

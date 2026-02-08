@@ -50,9 +50,9 @@
                 <tr>
                     <td>{{ item.description }}</td>
                     <td class="text-center">
-                        {% if item.item_type == "fixed" %}
+                        {% if item.item_type.value == "fixed" %}
                         <span class="badge badge-fixed">Fixo</span>
-                        {% elif item.item_type == "variable" %}
+                        {% elif item.item_type.value == "variable" %}
                         <span class="badge badge-variable">Variável</span>
                         {% else %}
                         <span class="badge badge-extra">Extra</span>

@@ -14,11 +14,5 @@ class LocalStorage(StorageBackend):
         path.write_bytes(data)
         return str(path.resolve())
 
-    def get_path(self, key: str) -> str:
-        return str((self.base_dir / key).resolve())
-
-    def exists(self, key: str) -> bool:
-        return (self.base_dir / key).exists()
-
-    def get_presigned_url(self, key: str) -> str:
+    def get_url(self, key: str) -> str:
         return str((self.base_dir / key).resolve())

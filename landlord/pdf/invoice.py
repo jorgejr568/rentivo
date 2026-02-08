@@ -5,31 +5,11 @@ from pathlib import Path
 
 from fpdf import FPDF
 
+from landlord.constants import TYPE_LABELS, format_month
 from landlord.models import format_brl
 from landlord.models.bill import Bill
 
 FONTS_DIR = Path(__file__).parent / "fonts"
-
-MONTHS_PT = {
-    "01": "Janeiro",
-    "02": "Fevereiro",
-    "03": "Mar\u00e7o",
-    "04": "Abril",
-    "05": "Maio",
-    "06": "Junho",
-    "07": "Julho",
-    "08": "Agosto",
-    "09": "Setembro",
-    "10": "Outubro",
-    "11": "Novembro",
-    "12": "Dezembro",
-}
-
-TYPE_LABELS = {
-    "fixed": "Fixo",
-    "variable": "Vari\u00e1vel",
-    "extra": "Extra",
-}
 
 # Color palette — derived from joy-purple / joy-teal / joy-teal-dark
 PURPLE = (138, 76, 148)
@@ -41,11 +21,6 @@ DARK_TEXT = (40, 40, 48)
 MUTED_TEXT = (108, 108, 120)
 ROW_ALT = (244, 240, 246)
 BORDER_COLOR = (210, 200, 215)
-
-
-def _format_month(ref: str) -> str:
-    year, month = ref.split("-")
-    return f"{MONTHS_PT.get(month, month)}/{year}"
 
 
 class InvoicePDF:
@@ -140,7 +115,7 @@ class InvoicePDF:
             card_w = page_w / 2 - 3
 
             for i, (label, value) in enumerate([
-                ("REFER\u00caNCIA", _format_month(reference_month)),
+                ("REFER\u00caNCIA", format_month(reference_month)),
                 ("VENCIMENTO", due_date),
             ]):
                 card_x = x + i * (card_w + 6)
@@ -192,7 +167,7 @@ class InvoicePDF:
             pdf.set_x(right_x + 10)
             pdf.set_font("Montserrat", "B", 13)
             pdf.set_text_color(*DARK_TEXT)
-            pdf.cell(card_w - 14, 9, _format_month(reference_month))
+            pdf.cell(card_w - 14, 9, format_month(reference_month))
 
         pdf.set_y(card_y + card_h + 14)
 

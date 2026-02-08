@@ -4,42 +4,13 @@ import questionary
 from rich.console import Console
 from rich.table import Table
 
-from landlord.models import format_brl
+from landlord.constants import TYPE_LABELS, format_month
+from landlord.models import format_brl, parse_brl
 from landlord.models.bill import Bill, BillLineItem
 from landlord.models.billing import Billing, ItemType
 from landlord.services.bill_service import BillService
 
 console = Console()
-
-MONTHS_PT = {
-    "01": "Janeiro",
-    "02": "Fevereiro",
-    "03": "Mar\u00e7o",
-    "04": "Abril",
-    "05": "Maio",
-    "06": "Junho",
-    "07": "Julho",
-    "08": "Agosto",
-    "09": "Setembro",
-    "10": "Outubro",
-    "11": "Novembro",
-    "12": "Dezembro",
-}
-
-TYPE_LABELS = {"fixed": "Fixo", "variable": "Vari\u00e1vel", "extra": "Extra"}
-
-
-def _format_month_display(ref: str) -> str:
-    year, month = ref.split("-")
-    return f"{MONTHS_PT.get(month, month)}/{year}"
-
-
-def _parse_amount(text: str) -> int | None:
-    text = text.strip().replace(",", ".")
-    try:
-        return int(round(float(text) * 100))
-    except ValueError:
-        return None
 
 
 def _format_amount_input(centavos: int) -> str:
@@ -103,9 +74,10 @@ def generate_bill_menu(billing: Billing, bill_service: BillService) -> None:
                 val = questionary.text(
                     f"  Valor para '{item.description}' (ex: 85.50):"
                 ).ask()
-                parsed = _parse_amount(val or "")
+                parsed = parse_brl(val or "")
                 if parsed is not None and parsed >= 0:
-                    variable_amounts[item.id] = parsed  # type: ignore[index]
+                    assert item.id is not None
+                    variable_amounts[item.id] = parsed
                     break
                 console.print("[red]Valor inv\u00e1lido. Tente novamente.[/red]")
 
@@ -123,7 +95,7 @@ def generate_bill_menu(billing: Billing, bill_service: BillService) -> None:
 
         while True:
             val = questionary.text("  Valor (ex: 50.00):").ask()
-            parsed = _parse_amount(val or "")
+            parsed = parse_brl(val or "")
             if parsed is not None and parsed > 0:
                 extras.append((desc, parsed))
                 console.print(f"  [green]Despesa adicionada: {desc}[/green]")
@@ -159,7 +131,7 @@ def edit_bill_menu(
     console.print()
     console.print("[bold]Editar Fatura[/bold]", style="cyan")
     console.print(
-        f"  Refer\u00eancia: {_format_month_display(bill.reference_month)}"
+        f"  Refer\u00eancia: {format_month(bill.reference_month)}"
     )
     console.print()
 
@@ -169,14 +141,14 @@ def edit_bill_menu(
     # Walk through existing line items by type
     # Fixed and variable items — let user update amounts
     for item in bill.line_items:
-        if item.item_type in ("fixed", "variable"):
+        if item.item_type in (ItemType.FIXED, ItemType.VARIABLE):
             default = _format_amount_input(item.amount)
             while True:
                 val = questionary.text(
                     f"  {item.description} [{TYPE_LABELS[item.item_type]}] (atual: {format_brl(item.amount)}):",
                     default=default,
                 ).ask()
-                parsed = _parse_amount(val or "")
+                parsed = parse_brl(val or "")
                 if parsed is not None and parsed >= 0:
                     new_line_items.append(
                         BillLineItem(
@@ -191,7 +163,7 @@ def edit_bill_menu(
                 console.print("[red]Valor inv\u00e1lido. Tente novamente.[/red]")
 
     # Existing extras — let user keep, edit, or remove each
-    existing_extras = [i for i in bill.line_items if i.item_type == "extra"]
+    existing_extras = [i for i in bill.line_items if i.item_type == ItemType.EXTRA]
     if existing_extras:
         console.print()
         console.print("  [dim]Despesas extras existentes:[/dim]")
@@ -207,7 +179,7 @@ def edit_bill_menu(
                 BillLineItem(
                     description=item.description,
                     amount=item.amount,
-                    item_type="extra",
+                    item_type=ItemType.EXTRA,
                     sort_order=sort,
                 )
             )
@@ -219,13 +191,13 @@ def edit_bill_menu(
                     f"    Novo valor para '{item.description}':",
                     default=default,
                 ).ask()
-                parsed = _parse_amount(val or "")
+                parsed = parse_brl(val or "")
                 if parsed is not None and parsed > 0:
                     new_line_items.append(
                         BillLineItem(
                             description=item.description,
                             amount=parsed,
-                            item_type="extra",
+                            item_type=ItemType.EXTRA,
                             sort_order=sort,
                         )
                     )
@@ -247,13 +219,13 @@ def edit_bill_menu(
 
         while True:
             val = questionary.text("  Valor (ex: 50.00):").ask()
-            parsed = _parse_amount(val or "")
+            parsed = parse_brl(val or "")
             if parsed is not None and parsed > 0:
                 new_line_items.append(
                     BillLineItem(
                         description=desc,
                         amount=parsed,
-                        item_type="extra",
+                        item_type=ItemType.EXTRA,
                         sort_order=sort,
                     )
                 )
@@ -293,7 +265,8 @@ def edit_bill_menu(
 
 
 def list_bills_menu(billing: Billing, bill_service: BillService) -> None:
-    bills = bill_service.list_bills(billing.id)  # type: ignore[arg-type]
+    assert billing.id is not None
+    bills = bill_service.list_bills(billing.id)
 
     if not bills:
         console.print("[yellow]Nenhuma fatura gerada para esta cobran\u00e7a.[/yellow]")
@@ -309,7 +282,7 @@ def list_bills_menu(billing: Billing, bill_service: BillService) -> None:
         url = bill_service.get_invoice_url(b.pdf_path) if b.pdf_path else "-"
         table.add_row(
             str(b.id),
-            _format_month_display(b.reference_month),
+            format_month(b.reference_month),
             format_brl(b.total_amount),
             url,
         )
@@ -318,7 +291,7 @@ def list_bills_menu(billing: Billing, bill_service: BillService) -> None:
     console.print(table)
 
     choices = [
-        f"{b.id} - {_format_month_display(b.reference_month)}" for b in bills
+        f"{b.id} - {format_month(b.reference_month)}" for b in bills
     ] + ["Voltar"]
     choice = questionary.select("Selecione uma fatura:", choices=choices).ask()
 
@@ -340,17 +313,46 @@ def _bill_detail_menu(
     while True:
         console.print()
         console.print(
-            f"[bold cyan]Fatura {_format_month_display(bill.reference_month)}[/bold cyan]"
+            f"[bold cyan]Fatura {format_month(bill.reference_month)}[/bold cyan]"
         )
         _show_bill_detail(bill, bill_service)
+        if bill.paid_at:
+            console.print(f"  [green]Pago em: {bill.paid_at.strftime('%d/%m/%Y %H:%M')}[/green]")
         console.print()
 
+        paid_label = "Desmarcar Pagamento" if bill.paid_at else "Marcar como Pago"
         action = questionary.select(
             "A\u00e7\u00f5es:",
-            choices=["Editar Fatura", "Voltar"],
+            choices=[
+                "Editar Fatura",
+                paid_label,
+                "Regenerar PDF",
+                "Excluir Fatura",
+                "Voltar",
+            ],
         ).ask()
 
         if action is None or action == "Voltar":
             break
         elif action == "Editar Fatura":
             bill = edit_bill_menu(bill, billing, bill_service)
+        elif action == paid_label:
+            bill = bill_service.toggle_paid(bill)
+            if bill.paid_at:
+                console.print("[green]Fatura marcada como paga![/green]")
+            else:
+                console.print("[yellow]Pagamento desmarcado.[/yellow]")
+        elif action == "Regenerar PDF":
+            bill = bill_service.regenerate_pdf(bill, billing)
+            url = bill_service.get_invoice_url(bill.pdf_path)
+            console.print(f"[green]PDF regenerado![/green]")
+            console.print(f"  Link: {url}")
+        elif action == "Excluir Fatura":
+            confirm = questionary.confirm(
+                "Tem certeza que deseja excluir esta fatura?", default=False
+            ).ask()
+            if confirm:
+                assert bill.id is not None
+                bill_service.delete_bill(bill.id)
+                console.print("[green]Fatura exclu\u00edda.[/green]")
+                break

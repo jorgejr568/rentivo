@@ -48,7 +48,8 @@ async def bill_generate(request: Request, billing_uuid: str):
     for item in billing.items:
         if item.item_type == ItemType.VARIABLE:
             val = str(form.get(f"variable_{item.id}", ""))
-            variable_amounts[item.id] = parse_brl(val) or 0  # type: ignore[index]
+            assert item.id is not None
+            variable_amounts[item.id] = parse_brl(val) or 0
 
     # Parse extras
     extras_data = parse_formset(dict(form), "extras")
@@ -128,7 +129,7 @@ async def bill_edit(request: Request, bill_uuid: str):
         if not desc:
             continue
         amount = parse_brl(row.get("amount", "")) or 0
-        item_type = row.get("item_type", "fixed")
+        item_type = ItemType(row.get("item_type", "fixed"))
         line_items.append(
             BillLineItem(
                 description=desc,
@@ -148,7 +149,7 @@ async def bill_edit(request: Request, bill_uuid: str):
                 BillLineItem(
                     description=desc,
                     amount=amount,
-                    item_type="extra",
+                    item_type=ItemType.EXTRA,
                     sort_order=len(line_items),
                 )
             )
@@ -211,7 +212,8 @@ async def bill_delete(request: Request, bill_uuid: str):
         return RedirectResponse("/", status_code=302)
 
     billing = billing_service.get_billing(bill.billing_id)
-    bill_service.delete_bill(bill.id)  # type: ignore[arg-type]
+    assert bill.id is not None
+    bill_service.delete_bill(bill.id)
     flash(request, "Fatura excluída.", "success")
     if billing:
         return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)

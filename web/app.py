@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
+from landlord.constants import format_month
 from landlord.db import initialize_db
 from landlord.models import format_brl
 from landlord.settings import settings
@@ -28,21 +29,6 @@ app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 templates.env.globals["format_brl"] = format_brl
-
-MONTHS_PT = {
-    "01": "Janeiro", "02": "Fevereiro", "03": "Março", "04": "Abril",
-    "05": "Maio", "06": "Junho", "07": "Julho", "08": "Agosto",
-    "09": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro",
-}
-
-
-def format_month(ref: str) -> str:
-    if not ref or "-" not in ref:
-        return ref or ""
-    year, month = ref.split("-")
-    return f"{MONTHS_PT.get(month, month)}/{year}"
-
-
 templates.env.globals["format_month"] = format_month
 
 app.include_router(auth_router)

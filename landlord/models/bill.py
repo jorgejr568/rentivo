@@ -5,6 +5,8 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
 
+from landlord.models.billing import ItemType
+
 SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 
@@ -13,7 +15,7 @@ class BillLineItem(BaseModel):
     bill_id: int | None = None
     description: str
     amount: int  # centavos
-    item_type: str  # 'fixed', 'variable', 'extra'
+    item_type: ItemType
     sort_order: int = 0
 
 
@@ -38,8 +40,8 @@ class Bill(BaseModel):
         if not self.due_date:
             return False
         try:
-            due = datetime.strptime(self.due_date, "%d/%m/%Y")
-            return datetime.now(SP_TZ).replace(tzinfo=None) > due
+            due = datetime.strptime(self.due_date, "%d/%m/%Y").date()
+            return datetime.now(SP_TZ).date() > due
         except ValueError:
             return False
 

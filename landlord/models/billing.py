@@ -9,6 +9,7 @@ from pydantic import BaseModel
 class ItemType(str, Enum):
     FIXED = "fixed"
     VARIABLE = "variable"
+    EXTRA = "extra"
 
 
 class BillingItem(BaseModel):

@@ -3,38 +3,42 @@ IMAGE_NAME_CLI := landlord-cli
 CONTAINER      := landlord
 CONTAINER_CLI  := landlord-cli
 
+PYTHON  := $(shell [ -d .venv ] && echo .venv/bin/python || echo python)
+PIP     := $(shell [ -d .venv ] && echo .venv/bin/pip || echo pip)
+UVICORN := $(shell [ -d .venv ] && echo .venv/bin/uvicorn || echo uvicorn)
+
 # --- Local development ---
 
 .PHONY: install
 install:
 	python -m venv .venv
-	.venv/bin/pip install -e .
+	$(PIP) install -e .
 
 .PHONY: run
 run:
-	.venv/bin/python -m landlord
+	$(PYTHON) -m landlord
 
 .PHONY: migrate
 migrate:
-	.venv/bin/python -c "from landlord.db import initialize_db; initialize_db()"
+	$(PYTHON) -c "from landlord.db import initialize_db; initialize_db()"
 
 .PHONY: regenerate-pdfs
 regenerate-pdfs:
-	.venv/bin/python -m landlord.scripts.regenerate_pdfs
+	$(PYTHON) -m landlord.scripts.regenerate_pdfs
 
 .PHONY: regenerate-pdfs-dry
 regenerate-pdfs-dry:
-	.venv/bin/python -m landlord.scripts.regenerate_pdfs --dry-run
+	$(PYTHON) -m landlord.scripts.regenerate_pdfs --dry-run
 
 # --- Web (local) ---
 
 .PHONY: web-run
 web-run:
-	.venv/bin/uvicorn web.app:app --reload --port 8000
+	$(UVICORN) web.app:app --reload --port 8000
 
 .PHONY: web-createuser
 web-createuser:
-	.venv/bin/python -c "from landlord.db import initialize_db; initialize_db(); from landlord.repositories.factory import get_user_repository; from landlord.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
+	$(PYTHON) -c "from landlord.db import initialize_db; initialize_db(); from landlord.repositories.factory import get_user_repository; from landlord.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
 
 # --- Docker: Web (standalone) ---
 

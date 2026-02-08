@@ -66,7 +66,8 @@ async def billing_detail(request: Request, billing_uuid: str):
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    bills = bill_service.list_bills(billing.id)  # type: ignore[arg-type]
+    assert billing.id is not None
+    bills = bill_service.list_bills(billing.id)
     return render(request, "billing/detail.html", {"billing": billing, "bills": bills})
 
 
@@ -123,6 +124,7 @@ async def billing_delete(request: Request, billing_uuid: str):
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    service.delete_billing(billing.id)  # type: ignore[arg-type]
+    assert billing.id is not None
+    service.delete_billing(billing.id)
     flash(request, f"Cobrança '{billing.name}' excluída.", "success")
     return RedirectResponse("/", status_code=302)

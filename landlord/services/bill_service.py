@@ -24,8 +24,9 @@ class BillService:
         self.storage = storage
         self.pdf_generator = InvoicePDF()
 
+    @staticmethod
     def _get_pix_data(
-        self, billing: Billing, total_centavos: int
+        billing: Billing, total_centavos: int
     ) -> tuple[bytes | None, str, str]:
         """Resolve PIX config and return (qrcode_png, pix_key, pix_payload)."""
         pix_key = billing.pix_key or settings.pix_key
@@ -68,12 +69,13 @@ class BillService:
             if item.item_type == ItemType.FIXED:
                 amount = item.amount
             else:
-                amount = variable_amounts.get(item.id, 0)  # type: ignore[arg-type]
+                assert item.id is not None
+                amount = variable_amounts.get(item.id, 0)
             line_items.append(
                 BillLineItem(
                     description=item.description,
                     amount=amount,
-                    item_type=item.item_type.value,
+                    item_type=item.item_type,
                     sort_order=sort,
                 )
             )
@@ -84,7 +86,7 @@ class BillService:
                 BillLineItem(
                     description=desc,
                     amount=amt,
-                    item_type="extra",
+                    item_type=ItemType.EXTRA,
                     sort_order=sort,
                 )
             )
@@ -92,8 +94,9 @@ class BillService:
 
         total = sum(li.amount for li in line_items)
 
+        assert billing.id is not None
         bill = Bill(
-            billing_id=billing.id,  # type: ignore[arg-type]
+            billing_id=billing.id,
             reference_month=reference_month,
             total_amount=total,
             line_items=line_items,
@@ -110,7 +113,8 @@ class BillService:
         key = _storage_key(billing.uuid, bill.uuid)
         path = self.storage.save(key, pdf_bytes)
 
-        self.bill_repo.update_pdf_path(bill.id, path)  # type: ignore[arg-type]
+        assert bill.id is not None
+        self.bill_repo.update_pdf_path(bill.id, path)
         bill.pdf_path = path
 
         return bill
@@ -138,7 +142,8 @@ class BillService:
         key = _storage_key(billing.uuid, bill.uuid)
         path = self.storage.save(key, pdf_bytes)
 
-        self.bill_repo.update_pdf_path(bill.id, path)  # type: ignore[arg-type]
+        assert bill.id is not None
+        self.bill_repo.update_pdf_path(bill.id, path)
         bill.pdf_path = path
 
         return bill
@@ -153,14 +158,15 @@ class BillService:
         key = _storage_key(billing.uuid, bill.uuid)
         path = self.storage.save(key, pdf_bytes)
 
-        self.bill_repo.update_pdf_path(bill.id, path)  # type: ignore[arg-type]
+        assert bill.id is not None
+        self.bill_repo.update_pdf_path(bill.id, path)
         bill.pdf_path = path
         return bill
 
     def get_invoice_url(self, pdf_path: str | None) -> str:
         if not pdf_path:
             return ""
-        return self.storage.get_presigned_url(pdf_path)
+        return self.storage.get_url(pdf_path)
 
     def list_bills(self, billing_id: int) -> list[Bill]:
         return self.bill_repo.list_by_billing(billing_id)
@@ -170,7 +176,8 @@ class BillService:
             paid_at = datetime.now(SP_TZ)
         else:
             paid_at = None
-        self.bill_repo.update_paid_at(bill.id, paid_at)  # type: ignore[arg-type]
+        assert bill.id is not None
+        self.bill_repo.update_paid_at(bill.id, paid_at)
         bill.paid_at = paid_at
         return bill
 

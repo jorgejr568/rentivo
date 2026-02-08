@@ -8,14 +8,6 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    def get_path(self, key: str) -> str:
-        """Return a local file path or URL for the stored object."""
-        ...
-
-    @abstractmethod
-    def exists(self, key: str) -> bool: ...
-
-    @abstractmethod
-    def get_presigned_url(self, key: str) -> str:
+    def get_url(self, key: str) -> str:
         """Return a presigned URL (S3) or absolute file path (local)."""
         ...

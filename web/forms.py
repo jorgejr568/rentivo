@@ -1,21 +1,6 @@
 from __future__ import annotations
 
-
-def parse_brl(text: str) -> int | None:
-    """Parse a BRL amount string into centavos. Returns None on invalid input.
-
-    Accepts formats like '2850', '2850.00', '2.850,00', '2850,50'.
-    """
-    text = text.strip()
-    if not text:
-        return None
-    # Handle PT-BR format: '2.850,00' -> '2850.00'
-    if "," in text:
-        text = text.replace(".", "").replace(",", ".")
-    try:
-        return int(round(float(text) * 100))
-    except ValueError:
-        return None
+from landlord.models import parse_brl as parse_brl  # noqa: F401 — re-export
 
 
 def parse_formset(form_data: dict, prefix: str) -> list[dict[str, str]]:

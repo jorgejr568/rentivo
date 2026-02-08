@@ -13,35 +13,14 @@ from rich.table import Table
 
 from landlord.db import initialize_db
 from landlord.models import format_brl
+from landlord.models.bill import Bill
 from landlord.models.billing import Billing
 from landlord.pdf.invoice import InvoicePDF
-from landlord.pix import generate_pix_payload, generate_pix_qrcode_png
 from landlord.repositories.factory import get_bill_repository, get_billing_repository
-from landlord.services.bill_service import _storage_key
-from landlord.settings import settings
+from landlord.services.bill_service import BillService, _storage_key
 from landlord.storage.factory import get_storage
 
 console = Console()
-
-
-def _get_pix_data(billing: Billing, total_centavos: int) -> tuple[bytes | None, str, str]:
-    pix_key = billing.pix_key or settings.pix_key
-    if not pix_key or not settings.pix_merchant_name or not settings.pix_merchant_city:
-        return None, "", ""
-    amount = total_centavos / 100
-    payload = generate_pix_payload(
-        pix_key=pix_key,
-        merchant_name=settings.pix_merchant_name,
-        merchant_city=settings.pix_merchant_city,
-        amount=amount,
-    )
-    png = generate_pix_qrcode_png(
-        pix_key=pix_key,
-        merchant_name=settings.pix_merchant_name,
-        merchant_city=settings.pix_merchant_city,
-        amount=amount,
-    )
-    return png, pix_key, payload
 
 
 def main() -> None:
@@ -60,9 +39,10 @@ def main() -> None:
         console.print("[yellow]Nenhuma cobrança encontrada.[/yellow]")
         return
 
-    all_bills: list[tuple[Billing, object]] = []
+    all_bills: list[tuple[Billing, Bill]] = []
     for billing in billings:
-        bills = bill_repo.list_by_billing(billing.id)  # type: ignore[arg-type]
+        assert billing.id is not None
+        bills = bill_repo.list_by_billing(billing.id)
         for bill in bills:
             all_bills.append((billing, bill))
 
@@ -78,7 +58,7 @@ def main() -> None:
     table.add_column("Link", style="dim")
 
     for billing, bill in all_bills:
-        link = storage.get_presigned_url(bill.pdf_path) if bill.pdf_path else "-"
+        link = storage.get_url(bill.pdf_path) if bill.pdf_path else "-"
         table.add_row(
             str(bill.id),
             billing.name,
@@ -97,15 +77,16 @@ def main() -> None:
     console.print("\n[cyan]Regenerando PDFs...[/cyan]\n")
 
     for billing, bill in all_bills:
-        pix_png, pix_key, pix_payload = _get_pix_data(billing, bill.total_amount)
+        pix_png, pix_key, pix_payload = BillService._get_pix_data(billing, bill.total_amount)
         pdf_bytes = pdf_generator.generate(
             bill, billing.name,
             pix_qrcode_png=pix_png, pix_key=pix_key, pix_payload=pix_payload,
         )
         key = _storage_key(billing.uuid, bill.uuid)
         path = storage.save(key, pdf_bytes)
-        bill_repo.update_pdf_path(bill.id, path)  # type: ignore[arg-type]
-        url = storage.get_presigned_url(path)
+        assert bill.id is not None
+        bill_repo.update_pdf_path(bill.id, path)
+        url = storage.get_url(path)
         console.print(f"  [green]\u2713[/green] {billing.name} - {bill.reference_month} \u2192 {url}")
 
     console.print(f"\n[green bold]{len(all_bills)} fatura(s) regenerada(s) com sucesso![/green bold]")

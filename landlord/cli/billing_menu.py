@@ -5,21 +5,12 @@ from rich.console import Console
 from rich.table import Table
 
 from landlord.cli.bill_menu import generate_bill_menu, list_bills_menu
-from landlord.models import format_brl
+from landlord.models import format_brl, parse_brl
 from landlord.models.billing import BillingItem, ItemType
 from landlord.services.bill_service import BillService
 from landlord.services.billing_service import BillingService
 
 console = Console()
-
-
-def _parse_amount(text: str) -> int | None:
-    """Parse a user-entered amount like '2850' or '2850.00' into centavos."""
-    text = text.strip().replace(",", ".")
-    try:
-        return int(round(float(text) * 100))
-    except ValueError:
-        return None
 
 
 def create_billing_menu(billing_service: BillingService) -> None:
@@ -55,7 +46,7 @@ def create_billing_menu(billing_service: BillingService) -> None:
         if item_type == ItemType.FIXED:
             while True:
                 amount_str = questionary.text("  Valor (ex: 2850.00):").ask()
-                parsed = _parse_amount(amount_str or "")
+                parsed = parse_brl(amount_str or "")
                 if parsed is not None and parsed > 0:
                     amount = parsed
                     break
@@ -256,7 +247,7 @@ def _edit_item(billing, billing_service: BillingService):
             amount_str = questionary.text("  Valor (ex: 2850.00):", default=default_val).ask()
             if amount_str is None:
                 return billing
-            parsed = _parse_amount(amount_str)
+            parsed = parse_brl(amount_str)
             if parsed is not None and parsed > 0:
                 item.amount = parsed
                 break
@@ -288,7 +279,7 @@ def _add_item(billing, billing_service: BillingService):
             amount_str = questionary.text("  Valor (ex: 2850.00):").ask()
             if amount_str is None:
                 return billing
-            parsed = _parse_amount(amount_str or "")
+            parsed = parse_brl(amount_str or "")
             if parsed is not None and parsed > 0:
                 amount = parsed
                 break
