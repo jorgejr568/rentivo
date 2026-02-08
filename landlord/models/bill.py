@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
+
+SP_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 class BillLineItem(BaseModel):
@@ -35,7 +38,7 @@ class Bill(BaseModel):
             return False
         try:
             due = datetime.strptime(self.due_date, "%d/%m/%Y")
-            return datetime.now() > due
+            return datetime.now(SP_TZ).replace(tzinfo=None) > due
         except ValueError:
             return False
 
