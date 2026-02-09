@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -17,6 +19,8 @@ from landlord.services.user_service import UserService
 from landlord.storage.factory import get_storage
 from web.flash import get_flashed_messages
 
+logger = logging.getLogger(__name__)
+
 PUBLIC_PATHS = {"/login", "/static"}
 
 
@@ -28,6 +32,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(path.startswith(p) for p in PUBLIC_PATHS):
             return await call_next(request)
         if not request.session.get("user"):
+            logger.info("Auth redirect: %s %s — no session", request.method, path)
             return RedirectResponse("/login", status_code=302)
         return await call_next(request)
 
@@ -42,6 +47,11 @@ class DBConnectionMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             return response
+        except Exception:
+            logger.exception(
+                "Exception in %s %s", request.method, request.url.path,
+            )
+            raise
         finally:
             conn = getattr(request.state, "db_conn", None)
             if conn is not None:
@@ -51,6 +61,7 @@ class DBConnectionMiddleware(BaseHTTPMiddleware):
 def _get_conn(request: Request):
     """Lazy per-request connection — created on first use, closed by middleware."""
     if request.state.db_conn is None:
+        logger.debug("Creating DB connection for %s %s", request.method, request.url.path)
         request.state.db_conn = get_engine().connect()
     return request.state.db_conn
 
@@ -71,9 +82,12 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     from web.app import templates
     from web.csrf import get_csrf_token
 
+    logger.info("Rendering template: %s", template_name)
     ctx = context or {}
     ctx["request"] = request
     ctx["user"] = request.session.get("user")
     ctx["messages"] = get_flashed_messages(request)
     ctx["csrf_token"] = get_csrf_token(request)
-    return templates.TemplateResponse(request, template_name, ctx)
+    response = templates.TemplateResponse(request, template_name, ctx)
+    logger.info("Template rendered successfully: %s", template_name)
+    return response
