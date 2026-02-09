@@ -644,11 +644,6 @@ body::before {
 }
 
 .login-panel {
-    transform: rotate(-0.5deg);
-}
-
-.login-panel:hover {
-    transform: rotate(0deg);
 }
 
 .login-title {
