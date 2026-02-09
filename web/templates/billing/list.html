@@ -3,42 +3,35 @@
 {% block title %}Cobranças - Landlord{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h2>Cobranças</h2>
-    <a href="/billings/create" class="btn btn-primary">Nova Cobrança</a>
+<div class="page-header">
+    <div class="page-header-info">
+        <h2 class="page-title">Cobranças</h2>
+    </div>
+    <div class="page-actions">
+        <a href="/billings/create" class="btn btn--primary">+ Nova Cobrança</a>
+    </div>
 </div>
 
 {% if billings %}
-<div class="card">
-    <div class="table-responsive">
-        <table class="table table-hover mb-0">
-            <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th>Descrição</th>
-                    <th class="text-center">Itens</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for billing in billings %}
-                <tr>
-                    <td><a href="/billings/{{ billing.uuid }}">{{ billing.name }}</a></td>
-                    <td class="text-muted">{{ billing.description }}</td>
-                    <td class="text-center">{{ billing.items | length }}</td>
-                    <td class="text-end">
-                        <a href="/billings/{{ billing.uuid }}" class="btn btn-sm btn-outline-secondary">Ver</a>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+<div>
+    {% for billing in billings %}
+    <a href="/billings/{{ billing.uuid }}" class="billing-card">
+        <div class="billing-card-info">
+            <p class="billing-card-name">{{ billing.name }}</p>
+            {% if billing.description %}
+            <p class="billing-card-desc">{{ billing.description }}</p>
+            {% endif %}
+        </div>
+        <span class="billing-card-count">{{ billing.items | length }} itens</span>
+    </a>
+    {% endfor %}
 </div>
 {% else %}
-<div class="text-center text-muted py-5">
-    <p>Nenhuma cobrança cadastrada.</p>
-    <a href="/billings/create" class="btn btn-primary">Criar primeira cobrança</a>
+<div class="panel">
+    <div class="empty-state">
+        <p>Nenhuma cobrança cadastrada.</p>
+        <a href="/billings/create" class="btn btn--primary">Criar primeira cobrança</a>
+    </div>
 </div>
 {% endif %}
 {% endblock %}

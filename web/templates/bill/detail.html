@@ -3,46 +3,48 @@
 {% block title %}Fatura {{ format_month(bill.reference_month) }} - Landlord{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <h2>
-            Fatura - {{ format_month(bill.reference_month) }}
+<div class="page-header">
+    <div class="page-header-info">
+        <h2 class="page-title">
+            Fatura — {{ format_month(bill.reference_month) }}
             {% if bill.payment_status == "paid" %}
-            <span class="badge badge-paid">Pago</span>
+            <span class="tag tag--paid">Pago</span>
             {% elif bill.payment_status == "overdue" %}
-            <span class="badge badge-overdue">Vencido</span>
+            <span class="tag tag--overdue">Vencido</span>
             {% else %}
-            <span class="badge badge-pending">Pendente</span>
+            <span class="tag tag--pending">Pendente</span>
             {% endif %}
         </h2>
-        <p class="text-muted mb-0">Cobrança: {{ billing.name }}</p>
+        <p class="page-subtitle">Cobrança: {{ billing.name }}</p>
     </div>
-    <div>
+    <div class="page-actions">
         {% if bill.pdf_path %}
-        <a href="/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn-primary">Ver PDF</a>
+        <a href="/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
         {% endif %}
-        <form method="post" action="/bills/{{ bill.uuid }}/regenerate-pdf" class="d-inline">
-            <button type="submit" class="btn btn-outline-primary">Regenerar PDF</button>
+        <form method="post" action="/bills/{{ bill.uuid }}/regenerate-pdf" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn">Regenerar PDF</button>
         </form>
-        <form method="post" action="/bills/{{ bill.uuid }}/toggle-paid" class="d-inline">
+        <form method="post" action="/bills/{{ bill.uuid }}/toggle-paid" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% if bill.paid_at %}
-            <button type="submit" class="btn btn-outline-secondary">Desmarcar Pagamento</button>
+            <button type="submit" class="btn">Desmarcar Pagamento</button>
             {% else %}
-            <button type="submit" class="btn btn-outline-primary">Marcar como Pago</button>
+            <button type="submit" class="btn btn--primary">Marcar como Pago</button>
             {% endif %}
         </form>
-        <a href="/bills/{{ bill.uuid }}/edit" class="btn btn-outline-secondary">Editar</a>
+        <a href="/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
     </div>
 </div>
 
-<div class="card mb-4">
-    <div class="table-responsive">
-        <table class="table mb-0">
+<div class="panel">
+    <div class="data-table-wrap">
+        <table class="data-table">
             <thead>
                 <tr>
                     <th>Descrição</th>
                     <th class="text-center">Tipo</th>
-                    <th class="text-end">Valor</th>
+                    <th class="text-right">Valor</th>
                 </tr>
             </thead>
             <tbody>
@@ -51,47 +53,55 @@
                     <td>{{ item.description }}</td>
                     <td class="text-center">
                         {% if item.item_type.value == "fixed" %}
-                        <span class="badge badge-fixed">Fixo</span>
+                        <span class="tag tag--fixed">Fixo</span>
                         {% elif item.item_type.value == "variable" %}
-                        <span class="badge badge-variable">Variável</span>
+                        <span class="tag tag--variable">Variável</span>
                         {% else %}
-                        <span class="badge badge-extra">Extra</span>
+                        <span class="tag tag--extra">Extra</span>
                         {% endif %}
                     </td>
-                    <td class="text-end">{{ format_brl(item.amount) }}</td>
+                    <td class="text-right text-mono">{{ format_brl(item.amount) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot>
-                <tr class="table-active">
-                    <td colspan="2" class="text-end"><strong>Total</strong></td>
-                    <td class="text-end"><strong>{{ format_brl(bill.total_amount) }}</strong></td>
+                <tr class="total-row">
+                    <td colspan="2" class="text-right">Total</td>
+                    <td class="text-right text-mono">{{ format_brl(bill.total_amount) }}</td>
                 </tr>
             </tfoot>
         </table>
     </div>
 </div>
 
-{% if bill.due_date %}
-<p><strong>Vencimento:</strong> {{ bill.due_date }}</p>
-{% endif %}
-
-{% if bill.paid_at %}
-<p><strong>Pago em:</strong> {{ bill.paid_at.strftime("%d/%m/%Y %H:%M") }}</p>
-{% endif %}
-
-{% if bill.notes %}
-<div class="card mb-4">
-    <div class="card-header"><h6 class="mb-0">Observações</h6></div>
-    <div class="card-body">{{ bill.notes }}</div>
+{% if bill.due_date or bill.paid_at %}
+<div class="detail-meta">
+    {% if bill.due_date %}
+    <div class="detail-meta-item">
+        <strong>Vencimento:</strong> {{ bill.due_date }}
+    </div>
+    {% endif %}
+    {% if bill.paid_at %}
+    <div class="detail-meta-item">
+        <strong>Pago em:</strong> {{ bill.paid_at.strftime("%d/%m/%Y %H:%M") }}
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 
-<div class="d-flex gap-2">
-    <a href="/billings/{{ billing.uuid }}" class="btn btn-outline-secondary">Voltar</a>
+{% if bill.notes %}
+<div class="panel">
+    <div class="panel-head"><h6>Observações</h6></div>
+    <div class="panel-body">{{ bill.notes }}</div>
+</div>
+{% endif %}
+
+<div class="btn-group">
+    <a href="/billings/{{ billing.uuid }}" class="btn btn--ghost">Voltar</a>
     <form method="post" action="/bills/{{ bill.uuid }}/delete"
           onsubmit="return confirm('Tem certeza que deseja excluir esta fatura?')">
-        <button type="submit" class="btn btn-outline-danger">Excluir Fatura</button>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn--danger">Excluir Fatura</button>
     </form>
 </div>
 {% endblock %}

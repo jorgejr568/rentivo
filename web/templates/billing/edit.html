@@ -3,68 +3,70 @@
 {% block title %}Editar {{ billing.name }} - Landlord{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Editar Cobrança</h2>
+<h2 class="mb-3">Editar Cobrança</h2>
 
 <form method="post" action="/billings/{{ billing.uuid }}/edit">
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="mb-3">
-                <label for="name" class="form-label">Nome</label>
-                <input type="text" class="form-control" id="name" name="name"
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="panel">
+        <div class="panel-body">
+            <div class="field">
+                <label for="name" class="field-label">Nome</label>
+                <input type="text" class="field-input" id="name" name="name"
                        value="{{ billing.name }}" required>
             </div>
-            <div class="mb-3">
-                <label for="description" class="form-label">Descrição</label>
-                <input type="text" class="form-control" id="description" name="description"
+            <div class="field">
+                <label for="description" class="field-label">Descrição</label>
+                <input type="text" class="field-input" id="description" name="description"
                        value="{{ billing.description }}">
             </div>
-            <div class="mb-3">
-                <label for="pix_key" class="form-label">Chave PIX</label>
-                <input type="text" class="form-control" id="pix_key" name="pix_key"
+            <div class="field mb-0">
+                <label for="pix_key" class="field-label">Chave PIX</label>
+                <input type="text" class="field-input" id="pix_key" name="pix_key"
                        value="{{ billing.pix_key }}">
             </div>
         </div>
     </div>
 
-    <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Itens</h5>
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFormsetRow('items')">
-                Adicionar Item
+    <div class="panel">
+        <div class="panel-head">
+            <h5>Itens</h5>
+            <button type="button" class="btn btn--sm btn--primary" onclick="addFormsetRow('items')">
+                + Adicionar
             </button>
         </div>
-        <div class="card-body">
+        <div class="panel-body">
             <input type="hidden" name="items-TOTAL_FORMS" id="id_items-TOTAL_FORMS"
                    value="{{ billing.items | length }}">
 
             <div id="items-container">
                 {% for item in billing.items %}
                 <div class="formset-row" id="items-row-{{ loop.index0 }}">
-                    <div class="row">
-                        <div class="col-md-5 mb-2">
-                            <label class="form-label">Descrição</label>
-                            <input type="text" class="form-control"
+                    <div class="item-grid">
+                        <div class="field mb-0">
+                            <label class="field-label">Descrição</label>
+                            <input type="text" class="field-input"
                                    name="items-{{ loop.index0 }}-description"
                                    value="{{ item.description }}" required>
                         </div>
-                        <div class="col-md-3 mb-2">
-                            <label class="form-label">Tipo</label>
-                            <select class="form-select" name="items-{{ loop.index0 }}-item_type"
+                        <div class="field mb-0">
+                            <label class="field-label">Tipo</label>
+                            <select class="field-select" name="items-{{ loop.index0 }}-item_type"
                                     onchange="toggleAmount(this, {{ loop.index0 }}, 'items')">
                                 <option value="fixed" {% if item.item_type.value == "fixed" %}selected{% endif %}>Fixo</option>
                                 <option value="variable" {% if item.item_type.value == "variable" %}selected{% endif %}>Variável</option>
                             </select>
                         </div>
-                        <div class="col-md-3 mb-2">
-                            <label class="form-label">Valor (R$)</label>
-                            <input type="text" class="form-control"
+                        <div class="field mb-0">
+                            <label class="field-label">Valor (R$)</label>
+                            <input type="text" class="field-input"
                                    name="items-{{ loop.index0 }}-amount"
                                    id="items-{{ loop.index0 }}-amount"
                                    value="{% if item.item_type.value == 'fixed' %}{{ '%.2f' | format(item.amount / 100) }}{% endif %}"
                                    {% if item.item_type.value == "variable" %}disabled{% endif %}>
                         </div>
-                        <div class="col-md-1 mb-2 d-flex align-items-end">
-                            <button type="button" class="btn btn-sm btn-outline-danger"
+                        <div>
+                            <button type="button" class="btn btn--sm btn--danger"
                                     onclick="removeFormsetRow('items', {{ loop.index0 }})">X</button>
                         </div>
                     </div>
@@ -73,26 +75,26 @@
             </div>
 
             <template id="items-empty-row">
-                <div class="row">
-                    <div class="col-md-5 mb-2">
-                        <label class="form-label">Descrição</label>
-                        <input type="text" class="form-control" name="items-__prefix__-description" required>
+                <div class="item-grid">
+                    <div class="field mb-0">
+                        <label class="field-label">Descrição</label>
+                        <input type="text" class="field-input" name="items-__prefix__-description" required>
                     </div>
-                    <div class="col-md-3 mb-2">
-                        <label class="form-label">Tipo</label>
-                        <select class="form-select" name="items-__prefix__-item_type"
+                    <div class="field mb-0">
+                        <label class="field-label">Tipo</label>
+                        <select class="field-select" name="items-__prefix__-item_type"
                                 onchange="toggleAmount(this, '__prefix__', 'items')">
                             <option value="fixed">Fixo</option>
                             <option value="variable">Variável</option>
                         </select>
                     </div>
-                    <div class="col-md-3 mb-2">
-                        <label class="form-label">Valor (R$)</label>
-                        <input type="text" class="form-control" name="items-__prefix__-amount"
+                    <div class="field mb-0">
+                        <label class="field-label">Valor (R$)</label>
+                        <input type="text" class="field-input" name="items-__prefix__-amount"
                                id="items-__prefix__-amount" placeholder="0.00">
                     </div>
-                    <div class="col-md-1 mb-2 d-flex align-items-end">
-                        <button type="button" class="btn btn-sm btn-outline-danger"
+                    <div>
+                        <button type="button" class="btn btn--sm btn--danger"
                                 onclick="removeFormsetRow('items', __prefix__)">X</button>
                     </div>
                 </div>
@@ -100,9 +102,9 @@
         </div>
     </div>
 
-    <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary">Salvar</button>
-        <a href="/billings/{{ billing.uuid }}" class="btn btn-outline-secondary">Cancelar</a>
+    <div class="btn-group">
+        <button type="submit" class="btn btn--primary">Salvar</button>
+        <a href="/billings/{{ billing.uuid }}" class="btn btn--ghost">Cancelar</a>
     </div>
 </form>
 {% endblock %}

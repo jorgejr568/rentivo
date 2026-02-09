@@ -3,49 +3,51 @@
 {% block title %}Editar Fatura - Landlord{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">Editar Fatura</h2>
+<h2 class="mb-1">Editar Fatura</h2>
 <p class="text-muted">
-    Cobrança: <strong>{{ billing.name }}</strong> |
+    Cobrança: <strong>{{ billing.name }}</strong> ·
     Referência: <strong>{{ format_month(bill.reference_month) }}</strong>
 </p>
 
 <form method="post" action="/bills/{{ bill.uuid }}/edit">
-    <div class="card mb-4">
-        <div class="card-header">
-            <h5 class="mb-0">Itens</h5>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="panel">
+        <div class="panel-head">
+            <h5>Itens</h5>
         </div>
-        <div class="card-body">
+        <div class="panel-body">
             <input type="hidden" name="items-TOTAL_FORMS" id="id_items-TOTAL_FORMS"
                    value="{{ bill.line_items | length }}">
 
             <div id="items-container">
                 {% for item in bill.line_items %}
                 <div class="formset-row" id="items-row-{{ loop.index0 }}">
-                    <div class="row align-items-center">
-                        <div class="col-md-5 mb-2">
-                            <label class="form-label">Descrição</label>
-                            <input type="text" class="form-control"
+                    <div class="item-grid">
+                        <div class="field mb-0">
+                            <label class="field-label">Descrição</label>
+                            <input type="text" class="field-input"
                                    name="items-{{ loop.index0 }}-description"
                                    value="{{ item.description }}">
                         </div>
-                        <div class="col-md-3 mb-2">
-                            <label class="form-label">Tipo</label>
-                            <select class="form-select" name="items-{{ loop.index0 }}-item_type" disabled>
+                        <div class="field mb-0">
+                            <label class="field-label">Tipo</label>
+                            <select class="field-select" name="items-{{ loop.index0 }}-item_type" disabled>
                                 <option value="fixed" {% if item.item_type.value == "fixed" %}selected{% endif %}>Fixo</option>
                                 <option value="variable" {% if item.item_type.value == "variable" %}selected{% endif %}>Variável</option>
                                 <option value="extra" {% if item.item_type.value == "extra" %}selected{% endif %}>Extra</option>
                             </select>
                             <input type="hidden" name="items-{{ loop.index0 }}-item_type" value="{{ item.item_type.value }}">
                         </div>
-                        <div class="col-md-3 mb-2">
-                            <label class="form-label">Valor (R$)</label>
-                            <input type="text" class="form-control"
+                        <div class="field mb-0">
+                            <label class="field-label">Valor (R$)</label>
+                            <input type="text" class="field-input"
                                    name="items-{{ loop.index0 }}-amount"
                                    value="{{ '%.2f' | format(item.amount / 100) }}">
                         </div>
-                        <div class="col-md-1 mb-2 d-flex align-items-end">
+                        <div>
                             {% if item.item_type.value == "extra" %}
-                            <button type="button" class="btn btn-sm btn-outline-danger"
+                            <button type="button" class="btn btn--sm btn--danger"
                                     onclick="removeFormsetRow('items', {{ loop.index0 }})">X</button>
                             {% endif %}
                         </div>
@@ -56,30 +58,30 @@
         </div>
     </div>
 
-    <div class="card mb-4">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0">Despesas Extras</h5>
-            <button type="button" class="btn btn-sm btn-outline-primary" onclick="addFormsetRow('extras')">
-                Adicionar Extra
+    <div class="panel">
+        <div class="panel-head">
+            <h5>Despesas Extras</h5>
+            <button type="button" class="btn btn--sm btn--primary" onclick="addFormsetRow('extras')">
+                + Adicionar
             </button>
         </div>
-        <div class="card-body">
+        <div class="panel-body">
             <input type="hidden" name="extras-TOTAL_FORMS" id="id_extras-TOTAL_FORMS" value="0">
 
             <div id="extras-container"></div>
 
             <template id="extras-empty-row">
-                <div class="row">
-                    <div class="col-md-6 mb-2">
-                        <input type="text" class="form-control" name="extras-__prefix__-description"
+                <div class="extras-grid">
+                    <div class="field mb-0">
+                        <input type="text" class="field-input" name="extras-__prefix__-description"
                                placeholder="Descrição">
                     </div>
-                    <div class="col-md-4 mb-2">
-                        <input type="text" class="form-control" name="extras-__prefix__-amount"
+                    <div class="field mb-0">
+                        <input type="text" class="field-input" name="extras-__prefix__-amount"
                                placeholder="0.00">
                     </div>
-                    <div class="col-md-2 mb-2">
-                        <button type="button" class="btn btn-sm btn-outline-danger"
+                    <div>
+                        <button type="button" class="btn btn--sm btn--danger"
                                 onclick="removeFormsetRow('extras', __prefix__)">Remover</button>
                     </div>
                 </div>
@@ -87,26 +89,26 @@
         </div>
     </div>
 
-    <div class="card mb-4">
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-4 mb-3">
-                    <label for="due_date" class="form-label">Vencimento</label>
-                    <input type="text" class="form-control" id="due_date"
+    <div class="panel">
+        <div class="panel-body">
+            <div class="dates-grid">
+                <div class="field">
+                    <label for="due_date" class="field-label">Vencimento</label>
+                    <input type="text" class="field-input" id="due_date"
                            name="due_date" value="{{ bill.due_date or '' }}"
                            placeholder="10/03/2025">
                 </div>
             </div>
-            <div class="mb-3">
-                <label for="notes" class="form-label">Observações</label>
-                <textarea class="form-control" id="notes" name="notes" rows="3">{{ bill.notes }}</textarea>
+            <div class="field mb-0">
+                <label for="notes" class="field-label">Observações</label>
+                <textarea class="field-textarea" id="notes" name="notes" rows="3">{{ bill.notes }}</textarea>
             </div>
         </div>
     </div>
 
-    <div class="d-flex gap-2">
-        <button type="submit" class="btn btn-primary">Salvar</button>
-        <a href="/bills/{{ bill.uuid }}" class="btn btn-outline-secondary">Cancelar</a>
+    <div class="btn-group">
+        <button type="submit" class="btn btn--primary">Salvar</button>
+        <a href="/bills/{{ bill.uuid }}" class="btn btn--ghost">Cancelar</a>
     </div>
 </form>
 {% endblock %}
