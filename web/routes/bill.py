@@ -14,10 +14,10 @@ from web.forms import parse_brl, parse_formset
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/bills")
+router = APIRouter(prefix="/billings/{billing_uuid}/bills")
 
 
-@router.get("/{billing_uuid}/generate")
+@router.get("/generate")
 async def bill_generate_form(request: Request, billing_uuid: str):
     logger.info("GET /bills/%s/generate — rendering form", billing_uuid)
     billing_service = get_billing_service(request)
@@ -29,7 +29,7 @@ async def bill_generate_form(request: Request, billing_uuid: str):
     return render(request, "bill/generate.html", {"billing": billing})
 
 
-@router.post("/{billing_uuid}/generate")
+@router.post("/generate")
 async def bill_generate(request: Request, billing_uuid: str):
     logger.info("POST /bills/%s/generate — generating bill", billing_uuid)
     billing_service = get_billing_service(request)
@@ -49,7 +49,7 @@ async def bill_generate(request: Request, billing_uuid: str):
     if not reference_month:
         logger.warning("Bill generate rejected: empty reference_month")
         flash(request, "Mês de referência é obrigatório.", "danger")
-        return RedirectResponse(f"/bills/{billing_uuid}/generate", status_code=302)
+        return RedirectResponse(f"/billings/{billing_uuid}/bills/generate", status_code=302)
 
     # Parse variable amounts
     variable_amounts: dict[int, int] = {}
@@ -83,11 +83,11 @@ async def bill_generate(request: Request, billing_uuid: str):
     )
     logger.info("Bill generated: uuid=%s total=%d", bill.uuid, bill.total_amount)
     flash(request, "Fatura gerada com sucesso!", "success")
-    return RedirectResponse(f"/bills/{bill.uuid}", status_code=302)
+    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.get("/{bill_uuid}")
-async def bill_detail(request: Request, bill_uuid: str):
+async def bill_detail(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("GET /bills/%s — loading detail", bill_uuid)
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
@@ -118,7 +118,7 @@ async def bill_detail(request: Request, bill_uuid: str):
 
 
 @router.get("/{bill_uuid}/edit")
-async def bill_edit_form(request: Request, bill_uuid: str):
+async def bill_edit_form(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("GET /bills/%s/edit — loading edit form", bill_uuid)
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
@@ -138,7 +138,7 @@ async def bill_edit_form(request: Request, bill_uuid: str):
 
 
 @router.post("/{bill_uuid}/edit")
-async def bill_edit(request: Request, bill_uuid: str):
+async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("POST /bills/%s/edit — updating bill", bill_uuid)
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
@@ -204,11 +204,11 @@ async def bill_edit(request: Request, bill_uuid: str):
     )
     logger.info("Bill updated: uuid=%s total=%d", bill.uuid, bill.total_amount)
     flash(request, "Fatura atualizada com sucesso!", "success")
-    return RedirectResponse(f"/bills/{bill.uuid}", status_code=302)
+    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.post("/{bill_uuid}/regenerate-pdf")
-async def bill_regenerate_pdf(request: Request, bill_uuid: str):
+async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("POST /bills/%s/regenerate-pdf", bill_uuid)
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
@@ -228,11 +228,11 @@ async def bill_regenerate_pdf(request: Request, bill_uuid: str):
     bill_service.regenerate_pdf(bill, billing)
     logger.info("PDF regenerated for bill uuid=%s", bill_uuid)
     flash(request, "PDF regenerado com sucesso!", "success")
-    return RedirectResponse(f"/bills/{bill.uuid}", status_code=302)
+    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.post("/{bill_uuid}/toggle-paid")
-async def bill_toggle_paid(request: Request, bill_uuid: str):
+async def bill_toggle_paid(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("POST /bills/%s/toggle-paid", bill_uuid)
     bill_service = get_bill_service(request)
     bill = bill_service.get_bill_by_uuid(bill_uuid)
@@ -247,14 +247,13 @@ async def bill_toggle_paid(request: Request, bill_uuid: str):
         flash(request, "Fatura marcada como paga!", "success")
     else:
         flash(request, "Pagamento desmarcado.", "info")
-    return RedirectResponse(f"/bills/{bill.uuid}", status_code=302)
+    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.post("/{bill_uuid}/delete")
-async def bill_delete(request: Request, bill_uuid: str):
+async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("POST /bills/%s/delete", bill_uuid)
     bill_service = get_bill_service(request)
-    billing_service = get_billing_service(request)
 
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
@@ -262,7 +261,6 @@ async def bill_delete(request: Request, bill_uuid: str):
         flash(request, "Fatura não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    billing = billing_service.get_billing(bill.billing_id)
     if bill.id is None:
         logger.error("Bill has no id: uuid=%s", bill_uuid)
         flash(request, "Fatura inválida.", "danger")
@@ -270,13 +268,11 @@ async def bill_delete(request: Request, bill_uuid: str):
     bill_service.delete_bill(bill.id)
     logger.info("Bill deleted: uuid=%s id=%s", bill_uuid, bill.id)
     flash(request, "Fatura excluída.", "success")
-    if billing:
-        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
 
 @router.get("/{bill_uuid}/invoice")
-async def bill_invoice(request: Request, bill_uuid: str):
+async def bill_invoice(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("GET /bills/%s/invoice — serving PDF", bill_uuid)
     bill_service = get_bill_service(request)
     bill = bill_service.get_bill_by_uuid(bill_uuid)

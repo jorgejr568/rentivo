@@ -6,7 +6,7 @@
 <h2 class="mb-1">Gerar Fatura</h2>
 <p class="text-muted">Cobrança: <strong>{{ billing.name }}</strong></p>
 
-<form method="post" action="/bills/{{ billing.uuid }}/generate">
+<form method="post" action="/billings/{{ billing.uuid }}/bills/generate">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="panel">

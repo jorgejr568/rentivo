@@ -114,10 +114,10 @@ make web-run             # start uvicorn at http://localhost:8000
 | `/billings/create` | Create new billing |
 | `/billings/<id>` | Billing detail + bills |
 | `/billings/<id>/edit` | Edit billing |
-| `/bills/<id>/generate` | Generate new bill |
-| `/bills/<id>` | Bill detail |
-| `/bills/<id>/edit` | Edit bill |
-| `/bills/<id>/invoice` | Download/view PDF |
+| `/billings/<id>/bills/generate` | Generate new bill |
+| `/billings/<id>/bills/<bill_id>` | Bill detail |
+| `/billings/<id>/bills/<bill_id>/edit` | Edit bill |
+| `/billings/<id>/bills/<bill_id>/invoice` | Download/view PDF |
 | `/login` | Login page |
 | `/logout` | Logout |
 | `/change-password` | Change password |

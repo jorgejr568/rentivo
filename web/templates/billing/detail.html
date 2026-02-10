@@ -11,7 +11,7 @@
         {% endif %}
     </div>
     <div class="page-actions">
-        <a href="/bills/{{ billing.uuid }}/generate" class="btn btn--primary">Gerar Fatura</a>
+        <a href="/billings/{{ billing.uuid }}/bills/generate" class="btn btn--primary">Gerar Fatura</a>
         <a href="/billings/{{ billing.uuid }}/edit" class="btn">Editar</a>
     </div>
 </div>
@@ -81,7 +81,7 @@
             <tbody>
                 {% for bill in bills %}
                 <tr>
-                    <td><a href="/bills/{{ bill.uuid }}">{{ format_month(bill.reference_month) }}</a></td>
+                    <td><a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}">{{ format_month(bill.reference_month) }}</a></td>
                     <td class="text-right text-mono">{{ format_brl(bill.total_amount) }}</td>
                     <td class="text-center">{{ bill.due_date or "—" }}</td>
                     <td class="text-center">
@@ -94,7 +94,7 @@
                         {% endif %}
                     </td>
                     <td class="text-right">
-                        <a href="/bills/{{ bill.uuid }}" class="btn btn--sm">Ver</a>
+                        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" class="btn btn--sm">Ver</a>
                     </td>
                 </tr>
                 {% endfor %}

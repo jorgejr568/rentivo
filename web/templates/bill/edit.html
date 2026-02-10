@@ -9,7 +9,7 @@
     Referência: <strong>{{ format_month(bill.reference_month) }}</strong>
 </p>
 
-<form method="post" action="/bills/{{ bill.uuid }}/edit">
+<form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="panel">
@@ -108,7 +108,7 @@
 
     <div class="btn-group">
         <button type="submit" class="btn btn--primary">Salvar</button>
-        <a href="/bills/{{ bill.uuid }}" class="btn btn--ghost">Cancelar</a>
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" class="btn btn--ghost">Cancelar</a>
     </div>
 </form>
 {% endblock %}

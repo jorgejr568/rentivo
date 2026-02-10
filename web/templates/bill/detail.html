@@ -19,13 +19,13 @@
     </div>
     <div class="page-actions">
         {% if bill.pdf_path %}
-        <a href="/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
         {% endif %}
-        <form method="post" action="/bills/{{ bill.uuid }}/regenerate-pdf" class="inline-form">
+        <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/regenerate-pdf" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn">Regenerar PDF</button>
         </form>
-        <form method="post" action="/bills/{{ bill.uuid }}/toggle-paid" class="inline-form">
+        <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/toggle-paid" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% if bill.paid_at %}
             <button type="submit" class="btn">Desmarcar Pagamento</button>
@@ -33,7 +33,7 @@
             <button type="submit" class="btn btn--primary">Marcar como Pago</button>
             {% endif %}
         </form>
-        <a href="/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
     </div>
 </div>
 
@@ -98,7 +98,7 @@
 
 <div class="btn-group">
     <a href="/billings/{{ billing.uuid }}" class="btn btn--ghost">Voltar</a>
-    <form method="post" action="/bills/{{ bill.uuid }}/delete"
+    <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/delete"
           onsubmit="return confirm('Tem certeza que deseja excluir esta fatura?')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn--danger">Excluir Fatura</button>
