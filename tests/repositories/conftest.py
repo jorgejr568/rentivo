@@ -4,6 +4,8 @@ from sqlalchemy import Connection
 from landlord.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
+    SQLAlchemyInviteRepository,
+    SQLAlchemyOrganizationRepository,
     SQLAlchemyUserRepository,
 )
 
@@ -21,3 +23,13 @@ def bill_repo(db_connection: Connection) -> SQLAlchemyBillRepository:
 @pytest.fixture()
 def user_repo(db_connection: Connection) -> SQLAlchemyUserRepository:
     return SQLAlchemyUserRepository(db_connection)
+
+
+@pytest.fixture()
+def org_repo(db_connection: Connection) -> SQLAlchemyOrganizationRepository:
+    return SQLAlchemyOrganizationRepository(db_connection)
+
+
+@pytest.fixture()
+def invite_repo(db_connection: Connection) -> SQLAlchemyInviteRepository:
+    return SQLAlchemyInviteRepository(db_connection)

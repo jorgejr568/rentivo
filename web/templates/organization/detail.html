@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}{{ org.name }} - Landlord{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-info">
+        <h2 class="page-title">{{ org.name }}</h2>
+    </div>
+    {% if member_role == "admin" %}
+    <div class="page-actions">
+        <a href="/organizations/{{ org.uuid }}/edit" class="btn">Editar</a>
+    </div>
+    {% endif %}
+</div>
+
+<div class="panel">
+    <div class="panel-head">
+        <h5>Membros</h5>
+    </div>
+    <div class="data-table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Usuário</th>
+                    <th class="text-center">Papel</th>
+                    {% if member_role == "admin" %}
+                    <th class="text-right">Ações</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in members %}
+                <tr>
+                    <td>{{ m.username }}</td>
+                    <td class="text-center">
+                        {% if m.role == "admin" %}
+                        <span class="tag tag--fixed">Admin</span>
+                        {% elif m.role == "manager" %}
+                        <span class="tag tag--variable">Gerente</span>
+                        {% else %}
+                        <span class="tag tag--pending">Visualizador</span>
+                        {% endif %}
+                    </td>
+                    {% if member_role == "admin" %}
+                    <td class="text-right">
+                        {% if m.user_id != user_id %}
+                        <form method="post" action="/organizations/{{ org.uuid }}/members/{{ m.user_id }}/role" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <select name="role" class="field-select" style="width:auto;display:inline-block;">
+                                {% for r in roles %}
+                                <option value="{{ r }}" {% if r == m.role %}selected{% endif %}>{{ r }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn--sm">Alterar</button>
+                        </form>
+                        <form method="post" action="/organizations/{{ org.uuid }}/members/{{ m.user_id }}/remove" class="inline-form"
+                              onsubmit="return confirm('Remover este membro?')">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn--sm btn--danger">Remover</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% if member_role == "admin" %}
+<div class="panel">
+    <div class="panel-head">
+        <h5>Convidar Membro</h5>
+    </div>
+    <div class="panel-body">
+        <form method="post" action="/organizations/{{ org.uuid }}/invite">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="item-grid">
+                <div class="field mb-0">
+                    <label class="field-label">Usuário</label>
+                    <input type="text" class="field-input" name="username" required>
+                </div>
+                <div class="field mb-0">
+                    <label class="field-label">Papel</label>
+                    <select class="field-select" name="role">
+                        {% for r in roles %}
+                        <option value="{{ r }}">{{ r }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn--primary">Enviar Convite</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if org_billings %}
+<div class="panel">
+    <div class="panel-head">
+        <h5>Cobranças da Organização</h5>
+    </div>
+    <div class="data-table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th class="text-right">Itens</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in org_billings %}
+                <tr>
+                    <td><a href="/billings/{{ b.uuid }}">{{ b.name }}</a></td>
+                    <td class="text-right">{{ b.items | length }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if member_role == "admin" and invites %}
+<div class="panel">
+    <div class="panel-head">
+        <h5>Convites Enviados</h5>
+    </div>
+    <div class="data-table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Usuário</th>
+                    <th class="text-center">Papel</th>
+                    <th class="text-center">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for inv in invites %}
+                <tr>
+                    <td>{{ inv.invited_username }}</td>
+                    <td class="text-center">{{ inv.role }}</td>
+                    <td class="text-center">
+                        {% if inv.status == "pending" %}
+                        <span class="tag tag--pending">Pendente</span>
+                        {% elif inv.status == "accepted" %}
+                        <span class="tag tag--paid">Aceito</span>
+                        {% else %}
+                        <span class="tag tag--overdue">Recusado</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+{% if member_role == "admin" %}
+<div class="mt-2">
+    <form method="post" action="/organizations/{{ org.uuid }}/delete"
+          onsubmit="return confirm('Tem certeza que deseja excluir esta organização?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn--sm btn--danger">Excluir Organização</button>
+    </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,3 +1,7 @@
+from unittest.mock import patch
+
+import pytest
+
 from landlord.models.user import User
 from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
 
@@ -37,3 +41,17 @@ class TestUserRepo:
 
         fetched = user_repo.get_by_username("admin")
         assert fetched.password_hash == "new_hash"
+
+    def test_get_by_id(self, user_repo: SQLAlchemyUserRepository):
+        created = user_repo.create(User(username="admin", password_hash="hash"))
+        fetched = user_repo.get_by_id(created.id)
+        assert fetched is not None
+        assert fetched.username == "admin"
+
+    def test_get_by_id_not_found(self, user_repo: SQLAlchemyUserRepository):
+        assert user_repo.get_by_id(9999) is None
+
+    def test_create_runtime_error(self, user_repo: SQLAlchemyUserRepository):
+        with patch.object(user_repo, "get_by_username", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to retrieve user after create"):
+                user_repo.create(User(username="admin", password_hash="hash"))

@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from landlord.models.bill import BillLineItem
 from landlord.models.billing import ItemType
-from web.deps import get_bill_service, get_billing_service, render
+from web.deps import get_authorization_service, get_bill_service, get_billing_service, render
 from web.flash import flash
 from web.forms import parse_brl, parse_formset
 
@@ -21,11 +21,16 @@ router = APIRouter(prefix="/billings/{billing_uuid}/bills")
 async def bill_generate_form(request: Request, billing_uuid: str):
     logger.info("GET /bills/%s/generate — rendering form", billing_uuid)
     billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("Billing not found: uuid=%s", billing_uuid)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
+    user_id = request.session.get("user_id")
+    if not auth_service.can_manage_bills(user_id, billing):
+        flash(request, "Acesso negado.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
     return render(request, "bill/generate.html", {"billing": billing})
 
 
@@ -34,12 +39,18 @@ async def bill_generate(request: Request, billing_uuid: str):
     logger.info("POST /bills/%s/generate — generating bill", billing_uuid)
     billing_service = get_billing_service(request)
     bill_service = get_bill_service(request)
+    auth_service = get_authorization_service(request)
 
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("Billing not found: uuid=%s", billing_uuid)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
+
+    user_id = request.session.get("user_id")
+    if not auth_service.can_manage_bills(user_id, billing):
+        flash(request, "Acesso negado.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     form = await request.form()
     reference_month = str(form.get("reference_month", "")).strip()
@@ -91,6 +102,7 @@ async def bill_detail(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("GET /bills/%s — loading detail", bill_uuid)
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
 
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
@@ -98,22 +110,23 @@ async def bill_detail(request: Request, billing_uuid: str, bill_uuid: str):
         flash(request, "Fatura não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    logger.info(
-        "Bill loaded: id=%s uuid=%s billing_id=%s month=%s total=%d due=%s paid_at=%s pdf=%s",
-        bill.id, bill.uuid, bill.billing_id, bill.reference_month,
-        bill.total_amount, bill.due_date, bill.paid_at, bill.pdf_path,
-    )
-
     billing = billing_service.get_billing(bill.billing_id)
     if not billing:
         logger.warning("Billing not found for bill: billing_id=%s", bill.billing_id)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
+    user_id = request.session.get("user_id")
+    if not auth_service.can_view_billing(user_id, billing):
+        flash(request, "Acesso negado.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    role = auth_service.get_role_for_billing(user_id, billing)
     logger.info("Rendering bill/detail.html for bill uuid=%s", bill_uuid)
     return render(request, "bill/detail.html", {
         "bill": bill,
         "billing": billing,
+        "role": role,
     })
 
 

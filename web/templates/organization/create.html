@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Nova Organização - Landlord{% endblock %}
+
+{% block content %}
+<h2 class="mb-3">Nova Organização</h2>
+
+<form method="post" action="/organizations/create">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="panel">
+        <div class="panel-body">
+            <div class="field mb-0">
+                <label for="name" class="field-label">Nome</label>
+                <input type="text" class="field-input" id="name" name="name" required autofocus>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button type="submit" class="btn btn--primary">Criar Organização</button>
+        <a href="/organizations/" class="btn btn--ghost">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

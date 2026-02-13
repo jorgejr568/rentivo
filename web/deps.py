@@ -4,54 +4,70 @@ import logging
 
 from fastapi import Request
 from fastapi.responses import RedirectResponse
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from landlord.db import get_engine
 from landlord.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
+    SQLAlchemyInviteRepository,
+    SQLAlchemyOrganizationRepository,
     SQLAlchemyUserRepository,
 )
+from landlord.services.authorization_service import AuthorizationService
 from landlord.services.bill_service import BillService
 from landlord.services.billing_service import BillingService
+from landlord.services.invite_service import InviteService
+from landlord.services.organization_service import OrganizationService
 from landlord.services.user_service import UserService
 from landlord.storage.factory import get_storage
 from web.flash import get_flashed_messages
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = {"/login", "/static"}
+PUBLIC_PATHS = {"/login", "/signup", "/static"}
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+class AuthMiddleware:
+    """Pure ASGI middleware for authentication checks."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
         path = request.url.path
         if any(path.startswith(p) for p in PUBLIC_PATHS):
-            return await call_next(request)
-        if not request.session.get("user"):
+            await self.app(scope, receive, send)
+            return
+        if not request.session.get("user_id"):
             logger.info("Auth redirect: %s %s — no session", request.method, path)
-            return RedirectResponse("/login", status_code=302)
-        return await call_next(request)
+            response = RedirectResponse("/login", status_code=302)
+            await response(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
-class DBConnectionMiddleware(BaseHTTPMiddleware):
-    """Creates a single DB connection per request and closes it when done."""
+class DBConnectionMiddleware:
+    """Pure ASGI middleware — creates a single DB connection per request."""
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope)
         request.state.db_conn = None
         try:
-            response = await call_next(request)
-            return response
-        except Exception:
-            logger.exception(
-                "Exception in %s %s", request.method, request.url.path,
-            )
-            raise
+            await self.app(scope, receive, send)
         finally:
             conn = getattr(request.state, "db_conn", None)
             if conn is not None:
@@ -78,6 +94,23 @@ def get_user_service(request: Request) -> UserService:
     return UserService(SQLAlchemyUserRepository(_get_conn(request)))
 
 
+def get_organization_service(request: Request) -> OrganizationService:
+    return OrganizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+
+
+def get_invite_service(request: Request) -> InviteService:
+    conn = _get_conn(request)
+    return InviteService(
+        SQLAlchemyInviteRepository(conn),
+        SQLAlchemyOrganizationRepository(conn),
+        SQLAlchemyUserRepository(conn),
+    )
+
+
+def get_authorization_service(request: Request) -> AuthorizationService:
+    return AuthorizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+
+
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:
     from web.app import templates
     from web.csrf import get_csrf_token
@@ -85,9 +118,22 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     logger.info("Rendering template: %s", template_name)
     ctx = context or {}
     ctx["request"] = request
-    ctx["user"] = request.session.get("user")
+    ctx["user"] = request.session.get("username")
+    ctx["user_id"] = request.session.get("user_id")
     ctx["messages"] = get_flashed_messages(request)
     ctx["csrf_token"] = get_csrf_token(request)
+
+    user_id = request.session.get("user_id")
+    if user_id and "pending_invite_count" not in ctx:
+        try:
+            conn = _get_conn(request)
+            invite_repo = SQLAlchemyInviteRepository(conn)
+            ctx["pending_invite_count"] = invite_repo.count_pending_for_user(user_id)
+        except Exception:
+            ctx["pending_invite_count"] = 0
+    else:
+        ctx.setdefault("pending_invite_count", 0)
+
     response = templates.TemplateResponse(request, template_name, ctx)
     logger.info("Template rendered successfully: %s", template_name)
     return response

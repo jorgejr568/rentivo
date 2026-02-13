@@ -55,3 +55,22 @@ class TestUserService:
         self.mock_repo.list_all.return_value = [User(username="a"), User(username="b")]
         result = self.service.list_users()
         assert len(result) == 2
+
+    def test_get_by_id(self):
+        self.mock_repo.get_by_id.return_value = User(id=1, username="admin")
+        result = self.service.get_by_id(1)
+        assert result.username == "admin"
+        self.mock_repo.get_by_id.assert_called_once_with(1)
+
+    def test_register_user(self):
+        self.mock_repo.get_by_username.return_value = None
+        self.mock_repo.create.return_value = User(id=1, username="new", email="n@t.com")
+        result = self.service.register_user("new", "n@t.com", "pass")
+        assert result.username == "new"
+        self.mock_repo.create.assert_called_once()
+
+    def test_register_user_duplicate(self):
+        import pytest
+        self.mock_repo.get_by_username.return_value = User(username="existing")
+        with pytest.raises(ValueError, match="already exists"):
+            self.service.register_user("existing", "e@t.com", "pass")

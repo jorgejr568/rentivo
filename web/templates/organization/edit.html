@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block title %}Editar {{ org.name }} - Landlord{% endblock %}
+
+{% block content %}
+<h2 class="mb-3">Editar Organização</h2>
+
+<form method="post" action="/organizations/{{ org.uuid }}/edit">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="panel">
+        <div class="panel-body">
+            <div class="field mb-0">
+                <label for="name" class="field-label">Nome</label>
+                <input type="text" class="field-input" id="name" name="name" value="{{ org.name }}" required>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-group">
+        <button type="submit" class="btn btn--primary">Salvar</button>
+        <a href="/organizations/{{ org.uuid }}" class="btn btn--ghost">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

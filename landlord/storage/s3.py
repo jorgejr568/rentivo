@@ -4,7 +4,7 @@ import logging
 
 try:
     import boto3
-except ImportError:
+except ImportError:  # pragma: no cover
     boto3 = None  # type: ignore[assignment]
 
 from landlord.storage.base import StorageBackend

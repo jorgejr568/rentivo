@@ -9,8 +9,16 @@ from ulid import ULID
 from landlord.constants import SP_TZ
 from landlord.models.bill import Bill, BillLineItem
 from landlord.models.billing import Billing, BillingItem, ItemType
+from landlord.models.invite import Invite
+from landlord.models.organization import Organization, OrganizationMember
 from landlord.models.user import User
-from landlord.repositories.base import BillingRepository, BillRepository, UserRepository
+from landlord.repositories.base import (
+    BillingRepository,
+    BillRepository,
+    InviteRepository,
+    OrganizationRepository,
+    UserRepository,
+)
 
 
 def _now() -> datetime:
@@ -26,11 +34,12 @@ class SQLAlchemyBillingRepository(BillingRepository):
         now = _now()
         result = self.conn.execute(
             text(
-                "INSERT INTO billings (name, description, pix_key, uuid, created_at, updated_at) "
-                "VALUES (:name, :description, :pix_key, :uuid, :created_at, :updated_at)"
+                "INSERT INTO billings (name, description, pix_key, uuid, owner_type, owner_id, created_at, updated_at) "
+                "VALUES (:name, :description, :pix_key, :uuid, :owner_type, :owner_id, :created_at, :updated_at)"
             ),
             {"name": billing.name, "description": billing.description,
              "pix_key": billing.pix_key, "uuid": billing_uuid,
+             "owner_type": billing.owner_type, "owner_id": billing.owner_id,
              "created_at": now, "updated_at": now},
         )
         billing_id = result.lastrowid
@@ -57,6 +66,8 @@ class SQLAlchemyBillingRepository(BillingRepository):
             name=row["name"],
             description=row["description"],
             pix_key=row["pix_key"],
+            owner_type=row.get("owner_type", "user"),
+            owner_id=row.get("owner_id", 0),
             items=[
                 BillingItem(
                     id=item_row["id"],
@@ -102,6 +113,22 @@ class SQLAlchemyBillingRepository(BillingRepository):
         rows = self.conn.execute(
             text("SELECT * FROM billings WHERE deleted_at IS NULL ORDER BY created_at DESC")
         ).mappings().fetchall()
+        return self._build_billings_from_rows(rows)
+
+    def list_for_user(self, user_id: int) -> list[Billing]:
+        rows = self.conn.execute(
+            text(
+                "SELECT * FROM billings WHERE deleted_at IS NULL AND ("
+                "(owner_type = 'user' AND owner_id = :uid) OR "
+                "(owner_type = 'organization' AND owner_id IN "
+                "(SELECT organization_id FROM organization_members WHERE user_id = :uid))"
+                ") ORDER BY created_at DESC"
+            ),
+            {"uid": user_id},
+        ).mappings().fetchall()
+        return self._build_billings_from_rows(rows)
+
+    def _build_billings_from_rows(self, rows: list[RowMapping]) -> list[Billing]:
         if not rows:
             return []
         billing_ids = [row["id"] for row in rows]
@@ -142,7 +169,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                  "amount": item.amount, "item_type": item.item_type.value, "sort_order": i},
             )
         self.conn.commit()
-        if billing.id is None:
+        if billing.id is None:  # pragma: no cover
             raise ValueError("Cannot update billing without an id")
         result = self.get_by_id(billing.id)
         if result is None:
@@ -153,6 +180,17 @@ class SQLAlchemyBillingRepository(BillingRepository):
         self.conn.execute(
             text("UPDATE billings SET deleted_at = :deleted_at WHERE id = :id"),
             {"deleted_at": _now(), "id": billing_id},
+        )
+        self.conn.commit()
+
+    def transfer_owner(self, billing_id: int, owner_type: str, owner_id: int) -> None:
+        self.conn.execute(
+            text(
+                "UPDATE billings SET owner_type = :owner_type, owner_id = :owner_id, "
+                "updated_at = :updated_at WHERE id = :id"
+            ),
+            {"owner_type": owner_type, "owner_id": owner_id,
+             "updated_at": _now(), "id": billing_id},
         )
         self.conn.commit()
 
@@ -286,7 +324,7 @@ class SQLAlchemyBillRepository(BillRepository):
                  "amount": item.amount, "item_type": item.item_type.value, "sort_order": i},
             )
         self.conn.commit()
-        if bill.id is None:
+        if bill.id is None:  # pragma: no cover
             raise ValueError("Cannot update bill without an id")
         result = self.get_by_id(bill.id)
         if result is None:
@@ -319,20 +357,39 @@ class SQLAlchemyUserRepository(UserRepository):
     def __init__(self, conn: Connection) -> None:
         self.conn = conn
 
+    @staticmethod
+    def _row_to_user(row: RowMapping) -> User:
+        return User(
+            id=row["id"],
+            username=row["username"],
+            email=row.get("email", ""),
+            password_hash=row["password_hash"],
+            created_at=row["created_at"],
+        )
+
     def create(self, user: User) -> User:
-        result = self.conn.execute(
+        self.conn.execute(
             text(
-                "INSERT INTO users (username, password_hash, created_at) "
-                "VALUES (:username, :password_hash, :created_at)"
+                "INSERT INTO users (username, email, password_hash, created_at) "
+                "VALUES (:username, :email, :password_hash, :created_at)"
             ),
-            {"username": user.username, "password_hash": user.password_hash,
-             "created_at": _now()},
+            {"username": user.username, "email": user.email,
+             "password_hash": user.password_hash, "created_at": _now()},
         )
         self.conn.commit()
         result = self.get_by_username(user.username)
         if result is None:
             raise RuntimeError(f"Failed to retrieve user after create (username={user.username})")
         return result
+
+    def get_by_id(self, user_id: int) -> User | None:
+        row = self.conn.execute(
+            text("SELECT * FROM users WHERE id = :id"),
+            {"id": user_id},
+        ).mappings().fetchone()
+        if row is None:
+            return None
+        return self._row_to_user(row)
 
     def get_by_username(self, username: str) -> User | None:
         row = self.conn.execute(
@@ -341,26 +398,13 @@ class SQLAlchemyUserRepository(UserRepository):
         ).mappings().fetchone()
         if row is None:
             return None
-        return User(
-            id=row["id"],
-            username=row["username"],
-            password_hash=row["password_hash"],
-            created_at=row["created_at"],
-        )
+        return self._row_to_user(row)
 
     def list_all(self) -> list[User]:
         rows = self.conn.execute(
             text("SELECT * FROM users ORDER BY created_at DESC")
         ).mappings().fetchall()
-        return [
-            User(
-                id=row["id"],
-                username=row["username"],
-                password_hash=row["password_hash"],
-                created_at=row["created_at"],
-            )
-            for row in rows
-        ]
+        return [self._row_to_user(row) for row in rows]
 
     def update_password_hash(self, username: str, password_hash: str) -> None:
         self.conn.execute(
@@ -368,3 +412,297 @@ class SQLAlchemyUserRepository(UserRepository):
             {"password_hash": password_hash, "username": username},
         )
         self.conn.commit()
+
+
+class SQLAlchemyOrganizationRepository(OrganizationRepository):
+    def __init__(self, conn: Connection) -> None:
+        self.conn = conn
+
+    @staticmethod
+    def _row_to_org(row: RowMapping) -> Organization:
+        return Organization(
+            id=row["id"],
+            uuid=row["uuid"],
+            name=row["name"],
+            created_by=row["created_by"],
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+            deleted_at=row.get("deleted_at"),
+        )
+
+    @staticmethod
+    def _row_to_member(row: RowMapping) -> OrganizationMember:
+        return OrganizationMember(
+            id=row["id"],
+            organization_id=row["organization_id"],
+            user_id=row["user_id"],
+            role=row["role"],
+            created_at=row["created_at"],
+        )
+
+    def create(self, org: Organization) -> Organization:
+        org_uuid = str(ULID())
+        now = _now()
+        result = self.conn.execute(
+            text(
+                "INSERT INTO organizations (uuid, name, created_by, created_at, updated_at) "
+                "VALUES (:uuid, :name, :created_by, :created_at, :updated_at)"
+            ),
+            {"uuid": org_uuid, "name": org.name, "created_by": org.created_by,
+             "created_at": now, "updated_at": now},
+        )
+        org_id = result.lastrowid
+        self.conn.commit()
+        created = self.get_by_id(org_id)
+        if created is None:
+            raise RuntimeError(f"Failed to retrieve org after create (id={org_id})")
+        return created
+
+    def get_by_id(self, org_id: int) -> Organization | None:
+        row = self.conn.execute(
+            text("SELECT * FROM organizations WHERE id = :id AND deleted_at IS NULL"),
+            {"id": org_id},
+        ).mappings().fetchone()
+        if row is None:
+            return None
+        return self._row_to_org(row)
+
+    def get_by_uuid(self, uuid: str) -> Organization | None:
+        row = self.conn.execute(
+            text("SELECT * FROM organizations WHERE uuid = :uuid AND deleted_at IS NULL"),
+            {"uuid": uuid},
+        ).mappings().fetchone()
+        if row is None:
+            return None
+        return self._row_to_org(row)
+
+    def list_by_user(self, user_id: int) -> list[Organization]:
+        rows = self.conn.execute(
+            text(
+                "SELECT o.* FROM organizations o "
+                "JOIN organization_members om ON o.id = om.organization_id "
+                "WHERE om.user_id = :uid AND o.deleted_at IS NULL "
+                "ORDER BY o.name"
+            ),
+            {"uid": user_id},
+        ).mappings().fetchall()
+        return [self._row_to_org(row) for row in rows]
+
+    def update(self, org: Organization) -> Organization:
+        self.conn.execute(
+            text(
+                "UPDATE organizations SET name = :name, updated_at = :updated_at "
+                "WHERE id = :id"
+            ),
+            {"name": org.name, "updated_at": _now(), "id": org.id},
+        )
+        self.conn.commit()
+        if org.id is None:  # pragma: no cover
+            raise ValueError("Cannot update org without an id")
+        result = self.get_by_id(org.id)
+        if result is None:
+            raise RuntimeError(f"Failed to retrieve org after update (id={org.id})")
+        return result
+
+    def delete(self, org_id: int) -> None:
+        self.conn.execute(
+            text("UPDATE organizations SET deleted_at = :deleted_at WHERE id = :id"),
+            {"deleted_at": _now(), "id": org_id},
+        )
+        self.conn.commit()
+
+    def add_member(self, org_id: int, user_id: int, role: str) -> OrganizationMember:
+        now = _now()
+        self.conn.execute(
+            text(
+                "INSERT INTO organization_members (organization_id, user_id, role, created_at) "
+                "VALUES (:org_id, :user_id, :role, :created_at)"
+            ),
+            {"org_id": org_id, "user_id": user_id, "role": role, "created_at": now},
+        )
+        self.conn.commit()
+        member = self.get_member(org_id, user_id)
+        if member is None:
+            raise RuntimeError("Failed to retrieve member after create")
+        return member
+
+    def remove_member(self, org_id: int, user_id: int) -> None:
+        self.conn.execute(
+            text(
+                "DELETE FROM organization_members "
+                "WHERE organization_id = :org_id AND user_id = :user_id"
+            ),
+            {"org_id": org_id, "user_id": user_id},
+        )
+        self.conn.commit()
+
+    def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
+        row = self.conn.execute(
+            text(
+                "SELECT * FROM organization_members "
+                "WHERE organization_id = :org_id AND user_id = :user_id"
+            ),
+            {"org_id": org_id, "user_id": user_id},
+        ).mappings().fetchone()
+        if row is None:
+            return None
+        return self._row_to_member(row)
+
+    def list_members(self, org_id: int) -> list[OrganizationMember]:
+        rows = self.conn.execute(
+            text(
+                "SELECT om.*, u.username FROM organization_members om "
+                "JOIN users u ON om.user_id = u.id "
+                "WHERE om.organization_id = :org_id ORDER BY om.created_at"
+            ),
+            {"org_id": org_id},
+        ).mappings().fetchall()
+        return [
+            OrganizationMember(
+                id=row["id"],
+                organization_id=row["organization_id"],
+                user_id=row["user_id"],
+                username=row.get("username", ""),
+                role=row["role"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+    def update_member_role(self, org_id: int, user_id: int, role: str) -> None:
+        self.conn.execute(
+            text(
+                "UPDATE organization_members SET role = :role "
+                "WHERE organization_id = :org_id AND user_id = :user_id"
+            ),
+            {"role": role, "org_id": org_id, "user_id": user_id},
+        )
+        self.conn.commit()
+
+
+class SQLAlchemyInviteRepository(InviteRepository):
+    def __init__(self, conn: Connection) -> None:
+        self.conn = conn
+
+    @staticmethod
+    def _row_to_invite(row: RowMapping) -> Invite:
+        return Invite(
+            id=row["id"],
+            uuid=row["uuid"],
+            organization_id=row["organization_id"],
+            organization_name=row.get("org_name", ""),
+            invited_user_id=row["invited_user_id"],
+            invited_username=row.get("invited_username", ""),
+            invited_by_user_id=row["invited_by_user_id"],
+            invited_by_username=row.get("invited_by_username", ""),
+            role=row["role"],
+            status=row["status"],
+            created_at=row["created_at"],
+            responded_at=row.get("responded_at"),
+        )
+
+    def create(self, invite: Invite) -> Invite:
+        invite_uuid = str(ULID())
+        now = _now()
+        result = self.conn.execute(
+            text(
+                "INSERT INTO invites (uuid, organization_id, invited_user_id, "
+                "invited_by_user_id, role, status, created_at) "
+                "VALUES (:uuid, :org_id, :invited_user_id, :invited_by_user_id, "
+                ":role, :status, :created_at)"
+            ),
+            {
+                "uuid": invite_uuid,
+                "org_id": invite.organization_id,
+                "invited_user_id": invite.invited_user_id,
+                "invited_by_user_id": invite.invited_by_user_id,
+                "role": invite.role,
+                "status": invite.status,
+                "created_at": now,
+            },
+        )
+        self.conn.commit()
+        created = self.get_by_uuid(invite_uuid)
+        if created is None:
+            raise RuntimeError("Failed to retrieve invite after create")
+        return created
+
+    def get_by_uuid(self, uuid: str) -> Invite | None:
+        row = self.conn.execute(
+            text(
+                "SELECT i.*, o.name AS org_name, "
+                "u1.username AS invited_username, u2.username AS invited_by_username "
+                "FROM invites i "
+                "JOIN organizations o ON i.organization_id = o.id "
+                "JOIN users u1 ON i.invited_user_id = u1.id "
+                "JOIN users u2 ON i.invited_by_user_id = u2.id "
+                "WHERE i.uuid = :uuid"
+            ),
+            {"uuid": uuid},
+        ).mappings().fetchone()
+        if row is None:
+            return None
+        return self._row_to_invite(row)
+
+    def list_pending_for_user(self, user_id: int) -> list[Invite]:
+        rows = self.conn.execute(
+            text(
+                "SELECT i.*, o.name AS org_name, "
+                "u1.username AS invited_username, u2.username AS invited_by_username "
+                "FROM invites i "
+                "JOIN organizations o ON i.organization_id = o.id "
+                "JOIN users u1 ON i.invited_user_id = u1.id "
+                "JOIN users u2 ON i.invited_by_user_id = u2.id "
+                "WHERE i.invited_user_id = :uid AND i.status = 'pending' "
+                "ORDER BY i.created_at DESC"
+            ),
+            {"uid": user_id},
+        ).mappings().fetchall()
+        return [self._row_to_invite(row) for row in rows]
+
+    def list_by_organization(self, org_id: int) -> list[Invite]:
+        rows = self.conn.execute(
+            text(
+                "SELECT i.*, o.name AS org_name, "
+                "u1.username AS invited_username, u2.username AS invited_by_username "
+                "FROM invites i "
+                "JOIN organizations o ON i.organization_id = o.id "
+                "JOIN users u1 ON i.invited_user_id = u1.id "
+                "JOIN users u2 ON i.invited_by_user_id = u2.id "
+                "WHERE i.organization_id = :org_id "
+                "ORDER BY i.created_at DESC"
+            ),
+            {"org_id": org_id},
+        ).mappings().fetchall()
+        return [self._row_to_invite(row) for row in rows]
+
+    def update_status(self, invite_id: int, status: str) -> None:
+        self.conn.execute(
+            text(
+                "UPDATE invites SET status = :status, responded_at = :responded_at "
+                "WHERE id = :id"
+            ),
+            {"status": status, "responded_at": _now(), "id": invite_id},
+        )
+        self.conn.commit()
+
+    def count_pending_for_user(self, user_id: int) -> int:
+        result = self.conn.execute(
+            text(
+                "SELECT COUNT(*) AS cnt FROM invites "
+                "WHERE invited_user_id = :uid AND status = 'pending'"
+            ),
+            {"uid": user_id},
+        ).mappings().fetchone()
+        return result["cnt"] if result else 0
+
+    def has_pending_invite(self, org_id: int, user_id: int) -> bool:
+        result = self.conn.execute(
+            text(
+                "SELECT COUNT(*) AS cnt FROM invites "
+                "WHERE organization_id = :org_id AND invited_user_id = :uid "
+                "AND status = 'pending'"
+            ),
+            {"org_id": org_id, "uid": user_id},
+        ).mappings().fetchone()
+        return (result["cnt"] if result else 0) > 0

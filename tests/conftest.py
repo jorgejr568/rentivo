@@ -17,6 +17,8 @@ CREATE TABLE billings (
     description TEXT NOT NULL DEFAULT '',
     pix_key TEXT NOT NULL DEFAULT '',
     uuid VARCHAR(26) NOT NULL UNIQUE,
+    owner_type TEXT NOT NULL DEFAULT 'user',
+    owner_id INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     deleted_at DATETIME
@@ -57,8 +59,40 @@ CREATE TABLE bill_line_items (
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL DEFAULT '',
     password_hash TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE organizations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    created_by INTEGER NOT NULL REFERENCES users(id),
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    deleted_at DATETIME
+);
+
+CREATE TABLE organization_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    UNIQUE(organization_id, user_id)
+);
+
+CREATE TABLE invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    invited_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    invited_by_user_id INTEGER NOT NULL REFERENCES users(id),
+    role TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at DATETIME NOT NULL,
+    responded_at DATETIME
 );
 """
 

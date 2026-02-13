@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from landlord.models.billing import Billing, BillingItem, ItemType
@@ -76,3 +78,17 @@ class TestBillingRepoCRUD:
         created = billing_repo.create(sample_billing())
         billing_repo.delete(created.id)
         assert billing_repo.get_by_uuid(created.uuid) is None
+
+
+class TestBillingRepoEdgeCases:
+    def test_create_runtime_error(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
+        with patch.object(billing_repo, "get_by_id", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to retrieve billing after create"):
+                billing_repo.create(sample_billing())
+
+    def test_update_runtime_error(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
+        created = billing_repo.create(sample_billing())
+        created.name = "Updated"
+        with patch.object(billing_repo, "get_by_id", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to retrieve billing after update"):
+                billing_repo.update(created)

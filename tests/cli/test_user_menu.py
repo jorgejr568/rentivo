@@ -20,6 +20,39 @@ class TestUserManagementMenu:
         mock_service = MagicMock()
         user_management_menu(mock_service)
 
+    @patch("landlord.cli.user_menu._create_user")
+    @patch("landlord.cli.user_menu.questionary")
+    def test_route_criar_usuario(self, mock_q, mock_create):
+        """Cover line 26-27: route to Criar Usuário."""
+        from landlord.cli.user_menu import user_management_menu
+
+        mock_q.select.return_value.ask.side_effect = ["Criar Usuário", "Voltar"]
+        mock_service = MagicMock()
+        user_management_menu(mock_service)
+        mock_create.assert_called_once_with(mock_service)
+
+    @patch("landlord.cli.user_menu._change_password")
+    @patch("landlord.cli.user_menu.questionary")
+    def test_route_alterar_senha(self, mock_q, mock_change):
+        """Cover line 28-29: route to Alterar Senha."""
+        from landlord.cli.user_menu import user_management_menu
+
+        mock_q.select.return_value.ask.side_effect = ["Alterar Senha", "Voltar"]
+        mock_service = MagicMock()
+        user_management_menu(mock_service)
+        mock_change.assert_called_once_with(mock_service)
+
+    @patch("landlord.cli.user_menu._list_users")
+    @patch("landlord.cli.user_menu.questionary")
+    def test_route_listar_usuarios(self, mock_q, mock_list):
+        """Cover line 30-31: route to Listar Usuários."""
+        from landlord.cli.user_menu import user_management_menu
+
+        mock_q.select.return_value.ask.side_effect = ["Listar Usuários", "Voltar"]
+        mock_service = MagicMock()
+        user_management_menu(mock_service)
+        mock_list.assert_called_once_with(mock_service)
+
 
 class TestCreateUser:
     @patch("landlord.cli.user_menu.questionary")

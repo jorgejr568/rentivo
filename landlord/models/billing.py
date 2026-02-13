@@ -27,6 +27,8 @@ class Billing(BaseModel):
     name: str
     description: str = ""
     pix_key: str = ""
+    owner_type: str = "user"
+    owner_id: int = 0
     items: list[BillingItem] = []
     created_at: datetime | None = None
     updated_at: datetime | None = None

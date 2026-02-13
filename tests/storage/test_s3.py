@@ -1,4 +1,16 @@
+import pytest
 from unittest.mock import MagicMock, patch
+
+
+class TestS3StorageBoto3Missing:
+    def test_raises_import_error_when_boto3_is_none(self):
+        import landlord.storage.s3 as s3_module
+        with patch.object(s3_module, "boto3", None):
+            with pytest.raises(ImportError, match="boto3 is required"):
+                s3_module.S3Storage(
+                    bucket="b", region="r",
+                    access_key_id="k", secret_access_key="s",
+                )
 
 
 class TestS3Storage:

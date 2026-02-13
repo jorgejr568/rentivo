@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Criar Conta - Landlord{% endblock %}
+
+{% block content %}
+<div class="login-wrap">
+    <div class="panel login-panel">
+        <div class="panel-body" style="padding: 2rem;">
+            <h2 class="login-title">Land<span>lord</span></h2>
+
+            {% if error %}
+            <div class="toast toast--error" role="alert">{{ error }}</div>
+            {% endif %}
+
+            <form method="post" action="/signup">
+                <div class="field">
+                    <label for="username" class="field-label">Usuário</label>
+                    <input type="text" class="field-input" id="username" name="username" required autofocus>
+                </div>
+                <div class="field">
+                    <label for="email" class="field-label">E-mail</label>
+                    <input type="email" class="field-input" id="email" name="email" required>
+                </div>
+                <div class="field">
+                    <label for="password" class="field-label">Senha</label>
+                    <input type="password" class="field-input" id="password" name="password" required>
+                </div>
+                <div class="field">
+                    <label for="confirm_password" class="field-label">Confirmar Senha</label>
+                    <input type="password" class="field-input" id="confirm_password" name="confirm_password" required>
+                </div>
+                <button type="submit" class="btn btn--primary" style="width: 100%; margin-top: 0.5rem;">Criar Conta</button>
+            </form>
+            <p style="text-align: center; margin-top: 1rem;">
+                Já tem conta? <a href="/login">Entrar</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

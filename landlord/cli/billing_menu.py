@@ -112,7 +112,7 @@ def list_billings_menu(
         return
 
     billing = billing_choices[choice]
-    if not billing:
+    if not billing:  # pragma: no cover
         console.print("[red]Cobrança não encontrada.[/red]")
         return
 

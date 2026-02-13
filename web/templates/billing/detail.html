@@ -11,8 +11,12 @@
         {% endif %}
     </div>
     <div class="page-actions">
+        {% if role in ("owner", "admin", "manager") %}
         <a href="/billings/{{ billing.uuid }}/bills/generate" class="btn btn--primary">Gerar Fatura</a>
+        {% endif %}
+        {% if role in ("owner", "admin") %}
         <a href="/billings/{{ billing.uuid }}/edit" class="btn">Editar</a>
+        {% endif %}
     </div>
 </div>
 
@@ -108,6 +112,34 @@
     {% endif %}
 </div>
 
+{% if user_orgs %}
+<div class="panel">
+    <div class="panel-head">
+        <h5>Transferir para Organização</h5>
+    </div>
+    <div class="panel-body">
+        <form method="post" action="/billings/{{ billing.uuid }}/transfer">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="item-grid">
+                <div class="field mb-0">
+                    <select class="field-select" name="organization_id" required>
+                        <option value="">Selecione...</option>
+                        {% for org in user_orgs %}
+                        <option value="{{ org.id }}">{{ org.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn--primary"
+                            onclick="return confirm('Tem certeza? Esta ação não pode ser desfeita.')">Transferir</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+{% if role in ("owner", "admin") %}
 <div class="mt-2">
     <form method="post" action="/billings/{{ billing.uuid }}/delete"
           onsubmit="return confirm('Tem certeza que deseja excluir esta cobrança?')">
@@ -115,4 +147,5 @@
         <button type="submit" class="btn btn--sm btn--danger">Excluir Cobrança</button>
     </form>
 </div>
+{% endif %}
 {% endblock %}

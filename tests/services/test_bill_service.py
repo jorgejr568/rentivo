@@ -197,3 +197,42 @@ class TestGetPixData:
             png, key, payload = BillService._get_pix_data(billing, 10000)
 
         assert png is None
+
+
+class TestBillServiceValueErrors:
+    """Test ValueError checks for id=None on various methods."""
+
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_storage = MagicMock()
+        self.service = BillService(self.mock_repo, self.mock_storage)
+
+    def test_generate_and_store_pdf_bill_id_none(self):
+        import pytest
+        bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03", total_amount=100)
+        billing = Billing(id=1, uuid="bu", name="Apt")
+        with patch.object(self.service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF"
+            self.mock_storage.save.return_value = "/path.pdf"
+            with pytest.raises(ValueError, match="Cannot update pdf_path"):
+                self.service._generate_and_store_pdf(bill, billing)
+
+    def test_generate_bill_billing_id_none(self):
+        import pytest
+        billing = Billing(id=None, uuid="bu", name="Apt", items=[])
+        with pytest.raises(ValueError, match="Cannot generate bill for billing without an id"):
+            self.service.generate_bill(billing, "2025-03", {}, [])
+
+    def test_generate_bill_variable_item_id_none(self):
+        import pytest
+        billing = Billing(id=1, uuid="bu", name="Apt", items=[
+            BillingItem(id=None, description="Water", amount=0, item_type=ItemType.VARIABLE),
+        ])
+        with pytest.raises(ValueError, match="Variable billing item must have an id"):
+            self.service.generate_bill(billing, "2025-03", {}, [])
+
+    def test_toggle_paid_bill_id_none(self):
+        import pytest
+        bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03", paid_at=None)
+        with pytest.raises(ValueError, match="Cannot toggle paid"):
+            self.service.toggle_paid(bill)

@@ -44,3 +44,37 @@ class TestBillingService:
     def test_delete_billing(self):
         self.service.delete_billing(1)
         self.mock_repo.delete.assert_called_once_with(1)
+
+    def test_create_billing_with_ownership(self):
+        items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
+        self.mock_repo.create.return_value = Billing(
+            id=1, name="Apt 101", items=items, owner_type="organization", owner_id=5,
+        )
+        result = self.service.create_billing(
+            "Apt 101", "desc", items, owner_type="organization", owner_id=5,
+        )
+        assert result.owner_type == "organization"
+        assert result.owner_id == 5
+
+    def test_list_billings_for_user(self):
+        self.mock_repo.list_for_user.return_value = [Billing(name="A")]
+        result = self.service.list_billings_for_user(1)
+        assert len(result) == 1
+        self.mock_repo.list_for_user.assert_called_once_with(1)
+
+    def test_transfer_to_organization(self):
+        self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="user", owner_id=1)
+        self.service.transfer_to_organization(1, 5)
+        self.mock_repo.transfer_owner.assert_called_once_with(1, "organization", 5)
+
+    def test_transfer_not_found(self):
+        self.mock_repo.get_by_id.return_value = None
+        import pytest
+        with pytest.raises(ValueError, match="Billing not found"):
+            self.service.transfer_to_organization(1, 5)
+
+    def test_transfer_already_org_owned(self):
+        self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="organization", owner_id=3)
+        import pytest
+        with pytest.raises(ValueError, match="personal billings"):
+            self.service.transfer_to_organization(1, 5)

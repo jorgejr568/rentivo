@@ -44,3 +44,20 @@ class TestInitializeDb:
         mock_config.return_value = mock_cfg
         db_module.initialize_db()
         mock_command.upgrade.assert_called_once_with(mock_cfg, "head")
+
+
+class TestGetAlembicConfig:
+    def test_primary_path_exists(self):
+        """When alembic.ini exists at project root, use it."""
+        cfg = db_module._get_alembic_config()
+        assert cfg is not None
+
+    @patch("os.path.exists")
+    def test_fallback_to_cwd(self, mock_exists):
+        """When project root path doesn't have alembic.ini, fall back to CWD."""
+        # First call (project root) returns False, second call is not checked
+        mock_exists.return_value = False
+        cfg = db_module._get_alembic_config()
+        assert cfg is not None
+        # Verify it was called with the project root path
+        mock_exists.assert_called_once()

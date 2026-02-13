@@ -1,4 +1,7 @@
 from datetime import datetime
+from unittest.mock import patch
+
+import pytest
 
 from landlord.models.bill import SP_TZ, Bill, BillLineItem
 from landlord.models.billing import ItemType
@@ -103,3 +106,23 @@ class TestBillRepoCRUD:
         created = bill_repo.create(sample_bill(billing_id=billing.id))
         bill_repo.delete(created.id)
         assert bill_repo.get_by_uuid(created.uuid) is None
+
+
+class TestBillRepoEdgeCases:
+    def _create_billing(self, billing_repo, sample_billing):
+        return billing_repo.create(sample_billing())
+
+    def test_create_runtime_error(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        bill = sample_bill(billing_id=billing.id)
+        with patch.object(bill_repo, "get_by_id", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to retrieve bill after create"):
+                bill_repo.create(bill)
+
+    def test_update_runtime_error(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        created = bill_repo.create(sample_bill(billing_id=billing.id))
+        created.notes = "Updated"
+        with patch.object(bill_repo, "get_by_id", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to retrieve bill after update"):
+                bill_repo.update(created)

@@ -21,6 +21,7 @@
         {% if bill.pdf_path %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
         {% endif %}
+        {% if role in ("owner", "admin", "manager") %}
         <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/regenerate-pdf" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn">Regenerar PDF</button>
@@ -34,6 +35,7 @@
             {% endif %}
         </form>
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
+        {% endif %}
     </div>
 </div>
 
@@ -98,10 +100,12 @@
 
 <div class="btn-group">
     <a href="/billings/{{ billing.uuid }}" class="btn btn--ghost">Voltar</a>
+    {% if role in ("owner", "admin", "manager") %}
     <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/delete"
           onsubmit="return confirm('Tem certeza que deseja excluir esta fatura?')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn--danger">Excluir Fatura</button>
     </form>
+    {% endif %}
 </div>
 {% endblock %}

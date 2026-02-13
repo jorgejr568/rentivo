@@ -14,6 +14,8 @@
             <button class="topbar-toggle" type="button" aria-label="Menu">&#9776;</button>
             <div class="topbar-menu">
                 <span class="topbar-user">{{ user }}</span>
+                <a class="topbar-link" href="/organizations/">Organizações</a>
+                <a class="topbar-link" href="/invites/">Convites{% if pending_invite_count %} ({{ pending_invite_count }}){% endif %}</a>
                 <a class="topbar-link" href="/change-password">Alterar Senha</a>
                 <form action="/logout" method="post" class="inline-form">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

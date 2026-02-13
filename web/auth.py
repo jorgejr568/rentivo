@@ -43,9 +43,46 @@ def _clear_attempts(ip: str) -> None:
     _login_attempts.pop(ip, None)
 
 
+@router.get("/signup")
+async def signup_page(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=302)
+    return render(request, "signup.html")
+
+
+@router.post("/signup")
+async def signup(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/", status_code=302)
+
+    form = await request.form()
+    username = str(form.get("username", "")).strip()
+    email = str(form.get("email", "")).strip()
+    password = str(form.get("password", ""))
+    confirm_password = str(form.get("confirm_password", ""))
+
+    if not username or not email or not password:
+        return render(request, "signup.html", {"error": "Preencha todos os campos."})
+
+    if password != confirm_password:
+        return render(request, "signup.html", {"error": "As senhas não coincidem."})
+
+    user_service = get_user_service(request)
+    try:
+        user = user_service.register_user(username, email, password)
+    except ValueError:
+        return render(request, "signup.html", {"error": "Nome de usuário já existe."})
+
+    request.session.clear()
+    request.session["user_id"] = user.id
+    request.session["username"] = user.username
+    logger.info("User %s signed up", user.username)
+    return RedirectResponse("/", status_code=302)
+
+
 @router.get("/login")
 async def login_page(request: Request):
-    if request.session.get("user"):
+    if request.session.get("user_id"):
         return RedirectResponse("/", status_code=302)
     return render(request, "login.html")
 
@@ -74,7 +111,8 @@ async def login(request: Request):
 
     _clear_attempts(client_ip)
     request.session.clear()
-    request.session["user"] = user.username
+    request.session["user_id"] = user.id
+    request.session["username"] = user.username
     logger.info("User %s logged in", user.username)
     return RedirectResponse("/", status_code=302)
 
@@ -98,7 +136,7 @@ async def change_password(request: Request):
         return render(request, "change_password.html", {"error": "As senhas não coincidem."})
 
     user_service = get_user_service(request)
-    username = request.session.get("user", "")
+    username = request.session.get("username", "")
     user = user_service.authenticate(username, current_password)
 
     if user is None:

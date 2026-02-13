@@ -225,6 +225,110 @@ class TestBillingDetailMenu:
         _billing_detail_menu(billing, mock_billing_svc, MagicMock())
 
 
+class TestCreateBillingMenuEdgeCases:
+    @patch("landlord.settings.settings")
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_invalid_fixed_amount_then_valid(self, mock_q, mock_settings):
+        """Cover line 53: invalid amount retries in create billing."""
+        from landlord.cli.billing_menu import create_billing_menu
+
+        mock_settings.pix_key = ""
+        mock_q.text.return_value.ask.side_effect = [
+            "Apt 101",  # name
+            "desc",     # description
+            "Rent",     # item description
+            "abc",      # invalid amount -> retry
+            "2850.00",  # valid amount
+            "",         # pix key
+        ]
+        mock_q.confirm.return_value.ask.side_effect = [True, False]
+        mock_q.select.return_value.ask.return_value = "Fixo"
+
+        mock_service = MagicMock()
+        mock_service.create_billing.return_value = Billing(name="Apt 101")
+        create_billing_menu(mock_service)
+        mock_service.create_billing.assert_called_once()
+
+
+class TestBillingDetailMenuEdgeCases:
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_description_printed(self, mock_q):
+        """Cover line 129: billing.description is printed when present."""
+        from landlord.cli.billing_menu import _billing_detail_menu
+
+        billing = Billing(id=1, uuid="u", name="Apt 101", description="A nice apartment", items=[
+            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+        ])
+        mock_q.select.return_value.ask.return_value = "Voltar"
+        _billing_detail_menu(billing, MagicMock(), MagicMock())
+
+
+class TestEditBillingMenuEdgeCases:
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_edit_item_cancel_amount(self, mock_q):
+        """Cover line 249: cancel amount input returns billing."""
+        from landlord.cli.billing_menu import _edit_billing_menu
+
+        billing = Billing(id=1, name="Apt 101", items=[
+            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+        ])
+        mock_q.select.return_value.ask.side_effect = [
+            "Editar Item",
+            "Rent (R$ 1.000,00)",
+            "Fixo",
+            "Voltar",
+        ]
+        mock_q.text.return_value.ask.side_effect = ["Rent", None]  # desc ok, amount cancel
+
+        _edit_billing_menu(billing, MagicMock())
+
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_edit_item_invalid_amount_then_valid(self, mock_q):
+        """Cover line 254: invalid amount retries in edit item."""
+        from landlord.cli.billing_menu import _edit_billing_menu
+
+        billing = Billing(id=1, name="Apt 101", items=[
+            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+        ])
+        mock_q.select.return_value.ask.side_effect = [
+            "Editar Item",
+            "Rent (R$ 1.000,00)",
+            "Fixo",
+            "Voltar",
+        ]
+        mock_q.text.return_value.ask.side_effect = ["Rent", "abc", "2000.00"]
+
+        mock_svc = MagicMock()
+        mock_svc.update_billing.return_value = billing
+        _edit_billing_menu(billing, mock_svc)
+        mock_svc.update_billing.assert_called_once()
+
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_add_item_cancel_amount(self, mock_q):
+        """Cover line 281: cancel amount in add item."""
+        from landlord.cli.billing_menu import _edit_billing_menu
+
+        billing = Billing(id=1, name="Apt 101", items=[])
+        mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Fixo", "Voltar"]
+        mock_q.text.return_value.ask.side_effect = ["Water", None]  # desc ok, amount cancel
+
+        _edit_billing_menu(billing, MagicMock())
+
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_add_item_invalid_amount_then_valid(self, mock_q):
+        """Cover line 286: invalid amount retries in add item."""
+        from landlord.cli.billing_menu import _edit_billing_menu
+
+        billing = Billing(id=1, name="Apt 101", items=[])
+        mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Fixo", "Voltar"]
+        mock_q.text.return_value.ask.side_effect = ["Water", "abc", "50.00"]
+
+        mock_svc = MagicMock()
+        mock_svc.update_billing.return_value = billing
+        _edit_billing_menu(billing, mock_svc)
+        mock_svc.update_billing.assert_called_once()
+
+
 class TestEditBillingMenu:
     @patch("landlord.cli.billing_menu.questionary")
     def test_back_exits(self, mock_q):

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}Organizações - Landlord{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-info">
+        <h2 class="page-title">Organizações</h2>
+    </div>
+    <div class="page-actions">
+        <a href="/organizations/create" class="btn btn--primary">+ Nova Organização</a>
+    </div>
+</div>
+
+{% if organizations %}
+<div>
+    {% for org in organizations %}
+    <a href="/organizations/{{ org.uuid }}" class="billing-card">
+        <div class="billing-card-info">
+            <p class="billing-card-name">{{ org.name }}</p>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="panel">
+    <div class="empty-state">
+        <p>Você não faz parte de nenhuma organização.</p>
+        <a href="/organizations/create" class="btn btn--primary">Criar organização</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

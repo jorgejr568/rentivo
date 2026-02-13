@@ -266,6 +266,272 @@ class TestBillDetailMenu:
         mock_service.update_bill.assert_called_once()
 
 
+class TestShowBillDetail:
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_due_date_and_notes_printed(self, mock_q):
+        """Cover lines 39, 41: due_date and notes are printed when present."""
+        from landlord.cli.bill_menu import _show_bill_detail
+
+        bill = Bill(
+            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            due_date="10/04/2025", notes="Test notes", pdf_path="/f.pdf",
+            line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
+        )
+        mock_service = MagicMock()
+        mock_service.get_invoice_url.return_value = "/path"
+        _show_bill_detail(bill, mock_service)
+
+
+class TestGenerateBillMenuEdgeCases:
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_invalid_month_then_valid(self, mock_q):
+        """Cover lines 61-63: invalid month format retries."""
+        from landlord.cli.bill_menu import generate_bill_menu
+
+        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
+            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+        ])
+        mock_q.text.return_value.ask.side_effect = [
+            "abcd-ef",  # right format but non-numeric -> ValueError (lines 61-62)
+            "2025-03",  # valid month
+            "",         # due date
+            "",         # notes
+        ]
+        mock_q.confirm.return_value.ask.return_value = False
+
+        mock_service = MagicMock()
+        bill = Bill(id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u", pdf_path="/f.pdf")
+        mock_service.generate_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = "/path"
+
+        generate_bill_menu(billing, mock_service)
+
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_variable_item_id_none(self, mock_q):
+        """Cover line 80: variable item with id=None raises ValueError."""
+        from landlord.cli.bill_menu import generate_bill_menu
+
+        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
+            BillingItem(id=None, description="Water", amount=0, item_type=ItemType.VARIABLE),
+        ])
+        mock_q.text.return_value.ask.side_effect = [
+            "2025-03",  # valid month
+            "50.00",    # variable amount
+        ]
+        mock_q.confirm.return_value.ask.return_value = False
+
+        mock_service = MagicMock()
+        import pytest
+        with pytest.raises(ValueError, match="must have an id"):
+            generate_bill_menu(billing, mock_service)
+
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_invalid_variable_amount_then_valid(self, mock_q):
+        """Cover line 83: invalid variable amount retries."""
+        from landlord.cli.bill_menu import generate_bill_menu
+
+        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
+            BillingItem(id=2, description="Water", amount=0, item_type=ItemType.VARIABLE),
+        ])
+        mock_q.text.return_value.ask.side_effect = [
+            "2025-03",  # valid month
+            "abc",      # invalid amount -> retry
+            "50.00",    # valid amount
+            "",         # due date
+            "",         # notes
+        ]
+        mock_q.confirm.return_value.ask.return_value = False
+
+        mock_service = MagicMock()
+        bill = Bill(id=1, billing_id=1, reference_month="2025-03", total_amount=150000, uuid="u", pdf_path="/f.pdf")
+        mock_service.generate_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = "/path"
+
+        generate_bill_menu(billing, mock_service)
+
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_invalid_extra_amount_then_valid(self, mock_q):
+        """Cover line 104: invalid extra amount retries."""
+        from landlord.cli.bill_menu import generate_bill_menu
+
+        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
+            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+        ])
+        mock_q.text.return_value.ask.side_effect = [
+            "2025-03",    # valid month
+            "Repair",     # extra desc
+            "abc",        # invalid extra amount -> retry
+            "150.00",     # valid extra amount
+            "",           # due date
+            "",           # notes
+        ]
+        mock_q.confirm.return_value.ask.side_effect = [True, False]
+
+        mock_service = MagicMock()
+        bill = Bill(id=1, billing_id=1, reference_month="2025-03", total_amount=115000, uuid="u", pdf_path="/f.pdf")
+        mock_service.generate_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = "/path"
+
+        generate_bill_menu(billing, mock_service)
+
+
+class TestEditBillMenuEdgeCases:
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_invalid_fixed_amount_then_valid(self, mock_q):
+        """Cover line 164: invalid amount in edit retries."""
+        from landlord.cli.bill_menu import edit_bill_menu
+
+        bill = Bill(
+            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
+        )
+        billing = Billing(id=1, name="Apt 101")
+        mock_q.text.return_value.ask.side_effect = [
+            "abc",      # invalid amount -> retry
+            "100000",   # valid amount
+            "",         # due date
+            "",         # notes
+        ]
+        mock_q.confirm.return_value.ask.return_value = False
+
+        mock_service = MagicMock()
+        mock_service.update_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = ""
+
+        edit_bill_menu(bill, billing, mock_service)
+
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_invalid_edit_extra_amount_then_valid(self, mock_q):
+        """Cover line 207: invalid extra amount in edit retries."""
+        from landlord.cli.bill_menu import edit_bill_menu
+
+        bill = Bill(
+            id=1, billing_id=1, reference_month="2025-03", total_amount=115000, uuid="u",
+            line_items=[
+                BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
+                BillLineItem(description="Repair", amount=15000, item_type=ItemType.EXTRA, sort_order=1),
+            ],
+        )
+        billing = Billing(id=1, name="Apt 101")
+        mock_q.text.return_value.ask.side_effect = [
+            "100000",  # fixed amount
+            "abc",     # invalid extra amount -> retry
+            "200.00",  # valid extra amount
+            "",        # due date
+            "",        # notes
+        ]
+        mock_q.select.return_value.ask.return_value = "Editar valor"
+        mock_q.confirm.return_value.ask.return_value = False
+
+        mock_service = MagicMock()
+        mock_service.update_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = ""
+
+        edit_bill_menu(bill, billing, mock_service)
+
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_empty_new_extra_desc_skipped(self, mock_q):
+        """Cover line 219: empty desc for new extra skips."""
+        from landlord.cli.bill_menu import edit_bill_menu
+
+        bill = Bill(
+            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
+        )
+        billing = Billing(id=1, name="Apt 101")
+        mock_q.text.return_value.ask.side_effect = [
+            "100000",  # fixed amount
+            "",        # empty extra desc -> skip
+            "",        # due date
+            "",        # notes
+        ]
+        mock_q.confirm.return_value.ask.side_effect = [True, False]
+
+        mock_service = MagicMock()
+        mock_service.update_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = ""
+
+        edit_bill_menu(bill, billing, mock_service)
+
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_invalid_new_extra_amount_then_valid(self, mock_q):
+        """Cover line 236: invalid new extra amount in edit retries."""
+        from landlord.cli.bill_menu import edit_bill_menu
+
+        bill = Bill(
+            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
+        )
+        billing = Billing(id=1, name="Apt 101")
+        mock_q.text.return_value.ask.side_effect = [
+            "100000",    # fixed amount
+            "Cleaning",  # new extra desc
+            "abc",       # invalid amount -> retry
+            "50.00",     # valid amount
+            "",          # due date
+            "",          # notes
+        ]
+        mock_q.confirm.return_value.ask.side_effect = [True, False]
+
+        mock_service = MagicMock()
+        mock_service.update_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = ""
+
+        edit_bill_menu(bill, billing, mock_service)
+
+
+class TestListBillsMenuEdgeCases:
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_billing_id_none(self, mock_q):
+        """Cover lines 270-271: billing.id is None."""
+        from landlord.cli.bill_menu import list_bills_menu
+
+        billing = Billing(id=None, name="Apt 101")
+        mock_service = MagicMock()
+        list_bills_menu(billing, mock_service)
+        mock_service.list_bills.assert_not_called()
+
+
+class TestBillDetailMenuEdgeCases:
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_toggle_unpaid(self, mock_q):
+        """Cover line 348: toggle to unpaid shows 'desmarcado' message."""
+        from datetime import datetime
+
+        from landlord.cli.bill_menu import _bill_detail_menu
+        from landlord.models.bill import SP_TZ
+
+        bill = Bill(
+            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            paid_at=datetime.now(SP_TZ),
+        )
+        billing = Billing(id=1, name="Apt 101")
+        mock_q.select.return_value.ask.side_effect = ["Desmarcar Pagamento", "Voltar"]
+
+        mock_service = MagicMock()
+        mock_service.toggle_paid.return_value = Bill(
+            id=1, billing_id=1, reference_month="2025-03", total_amount=100000,
+            uuid="u", paid_at=None,
+        )
+        mock_service.get_invoice_url.return_value = ""
+        _bill_detail_menu(bill, billing, mock_service)
+
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_delete_bill_id_none(self, mock_q):
+        """Cover lines 360-361: bill.id is None during delete."""
+        from landlord.cli.bill_menu import _bill_detail_menu
+
+        bill = Bill(id=None, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u")
+        billing = Billing(id=1, name="Apt 101")
+        mock_q.select.return_value.ask.return_value = "Excluir Fatura"
+        mock_q.confirm.return_value.ask.return_value = True
+
+        mock_service = MagicMock()
+        mock_service.get_invoice_url.return_value = ""
+        _bill_detail_menu(bill, billing, mock_service)
+        mock_service.delete_bill.assert_not_called()
+
+
 class TestEditBillMenu:
     @patch("landlord.cli.bill_menu.questionary")
     def test_edit_with_extras(self, mock_q):

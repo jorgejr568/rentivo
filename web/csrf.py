@@ -21,7 +21,7 @@ from web.flash import flash
 logger = logging.getLogger(__name__)
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
-EXEMPT_PATHS = {"/login", "/static"}
+EXEMPT_PATHS = {"/login", "/signup", "/static"}
 
 
 def get_csrf_token(request: Request) -> str:

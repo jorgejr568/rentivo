@@ -22,7 +22,12 @@
             <p class="billing-card-desc">{{ billing.description }}</p>
             {% endif %}
         </div>
-        <span class="billing-card-count">{{ billing.items | length }} itens</span>
+        <span class="billing-card-count">
+            {% if billing.owner_type == "organization" %}
+            <span class="tag tag--variable">Org</span>
+            {% endif %}
+            {{ billing.items | length }} itens
+        </span>
     </a>
     {% endfor %}
 </div>

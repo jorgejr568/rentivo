@@ -11,6 +11,8 @@ from landlord.models.billing import Billing, BillingItem, ItemType
 from landlord.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
+    SQLAlchemyOrganizationRepository,
+    SQLAlchemyUserRepository,
 )
 from landlord.services.bill_service import BillService
 from landlord.storage.local import LocalStorage
@@ -41,8 +43,20 @@ def _make_test_engine():
     return engine
 
 
+def get_test_user_id(engine):
+    """Get the ID of the test user."""
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT id FROM users WHERE username = 'testuser'")
+        ).fetchone()
+        return row[0] if row else 1
+
+
 def create_billing_in_db(engine, **overrides):
     """Create a billing in the test DB. Shared helper for web route tests."""
+    if "owner_id" not in overrides:
+        overrides.setdefault("owner_id", get_test_user_id(engine))
+    overrides.setdefault("owner_type", "user")
     defaults = dict(
         name="Apt 101",
         description="",
@@ -74,6 +88,16 @@ def generate_bill_in_db(engine, billing, tmp_path):
             due_date="10/04/2025",
         )
     return bill
+
+
+def create_org_in_db(engine, name, created_by_user_id):
+    """Create an organization in the test DB."""
+    from landlord.services.organization_service import OrganizationService
+    with engine.connect() as conn:
+        repo = SQLAlchemyOrganizationRepository(conn)
+        service = OrganizationService(repo)
+        org = service.create_organization(name, created_by_user_id)
+    return org
 
 
 def get_csrf_token(client) -> str:
@@ -117,11 +141,9 @@ def client():
 @pytest.fixture()
 def auth_client(client, test_engine):
     """Client that is already logged in."""
-    from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
-    from landlord.services.user_service import UserService
-
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
+        from landlord.services.user_service import UserService
         user_service = UserService(user_repo)
         user_service.create_user("testuser", "testpass")
 

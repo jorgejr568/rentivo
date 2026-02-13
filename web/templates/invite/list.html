@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Convites - Landlord{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-info">
+        <h2 class="page-title">Convites Pendentes</h2>
+    </div>
+</div>
+
+{% if invites %}
+<div class="panel">
+    <div class="data-table-wrap">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Organização</th>
+                    <th class="text-center">Papel</th>
+                    <th>Convidado por</th>
+                    <th class="text-right">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for invite in invites %}
+                <tr>
+                    <td>{{ invite.organization_name }}</td>
+                    <td class="text-center">{{ invite.role }}</td>
+                    <td>{{ invite.invited_by_username }}</td>
+                    <td class="text-right">
+                        <form method="post" action="/invites/{{ invite.uuid }}/accept" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn--sm btn--primary">Aceitar</button>
+                        </form>
+                        <form method="post" action="/invites/{{ invite.uuid }}/decline" class="inline-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="btn btn--sm btn--danger">Recusar</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="panel">
+    <div class="empty-state">
+        <p>Nenhum convite pendente.</p>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
