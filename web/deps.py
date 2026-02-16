@@ -29,7 +29,8 @@ from web.flash import get_flashed_messages
 
 logger = logging.getLogger(__name__)
 
-PUBLIC_PATHS = {"/login", "/signup", "/static"}
+PUBLIC_PREFIX_PATHS = {"/login", "/signup", "/static"}
+PUBLIC_EXACT_PATHS = {"/"}
 
 
 class AuthMiddleware:
@@ -45,7 +46,9 @@ class AuthMiddleware:
 
         request = Request(scope, receive)
         path = request.url.path
-        if any(path.startswith(p) for p in PUBLIC_PATHS):
+        if path in PUBLIC_EXACT_PATHS or any(
+            path.startswith(p) for p in PUBLIC_PREFIX_PATHS
+        ):
             await self.app(scope, receive, send)
             return
         if not request.session.get("user_id"):

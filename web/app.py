@@ -8,7 +8,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -88,4 +87,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 async def home(request: Request):
-    return RedirectResponse("/billings/", status_code=302)
+    return templates.TemplateResponse(
+        request,
+        "landing.html",
+        {
+            "asset_version": ASSET_VERSION,
+            "user": request.session.get("username"),
+        },
+    )

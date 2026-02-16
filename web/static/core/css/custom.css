@@ -110,21 +110,14 @@ body::before {
 }
 
 .topbar-brand {
-    font-family: var(--font-mono);
-    font-weight: 800;
-    font-size: 1.2rem;
+    font-family: "Space Grotesk", var(--font);
+    font-weight: 700;
+    font-size: 1.3rem;
     color: var(--emerald);
     text-decoration: none;
-    letter-spacing: -0.03em;
+    letter-spacing: -0.04em;
     margin-right: auto;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.topbar-brand::before {
-    content: "⌂";
-    font-size: 1.3em;
+    text-transform: lowercase;
 }
 
 .topbar-brand:hover {
@@ -647,11 +640,12 @@ body::before {
 }
 
 .login-title {
-    font-family: var(--font-mono);
-    font-size: 1.8rem;
+    font-family: "Space Grotesk", var(--font);
+    font-size: 2rem;
     text-align: center;
     margin-bottom: 1.5rem;
     letter-spacing: -0.04em;
+    text-transform: lowercase;
 }
 
 .login-title span {
