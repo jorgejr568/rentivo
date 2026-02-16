@@ -428,6 +428,10 @@
     border-top: var(--border);
 }
 
+.more-features .section-title {
+    margin-bottom: 2rem;
+}
+
 .more-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

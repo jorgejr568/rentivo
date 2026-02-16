@@ -48,14 +48,14 @@ def _clear_attempts(ip: str) -> None:
 @router.get("/signup")
 async def signup_page(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/billings/", status_code=302)
     return render(request, "signup.html")
 
 
 @router.post("/signup")
 async def signup(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/billings/", status_code=302)
 
     form = await request.form()
     username = str(form.get("username", "")).strip()
@@ -94,13 +94,13 @@ async def signup(request: Request):
         new_state=serialize_user(user),
     )
 
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse("/billings/", status_code=302)
 
 
 @router.get("/login")
 async def login_page(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/", status_code=302)
+        return RedirectResponse("/billings/", status_code=302)
     return render(request, "login.html")
 
 
@@ -158,7 +158,7 @@ async def login(request: Request):
         metadata={"ip": client_ip},
     )
 
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse("/billings/", status_code=302)
 
 
 @router.get("/change-password")
@@ -218,7 +218,7 @@ async def change_password(request: Request):
     )
 
     flash(request, "Senha alterada com sucesso!", "success")
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse("/billings/", status_code=302)
 
 
 @router.post("/logout")
