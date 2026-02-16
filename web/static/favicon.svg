@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Neobrutalist hard shadow -->
+  <circle cx="34" cy="34" r="28" fill="#1a1a2e"/>
+  <!-- Main circle -->
+  <circle cx="30" cy="30" r="28" fill="#27ae60" stroke="#1a1a2e" stroke-width="3"/>
+  <!-- Bold geometric L -->
+  <path d="M21 14 L31 14 L31 38 L43 38 L43 48 L21 48 Z" fill="#ffffff"/>
+</svg>
