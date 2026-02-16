@@ -1,6 +1,26 @@
-# Landlord
+<h1 align="center">Landlord</h1>
 
-Apartment billing management with PDF invoice generation — **CLI + Web UI**. Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with **BRL (R$)** currency and **PIX QR codes** on invoices.
+<p align="center">
+  Apartment billing management with PDF invoice generation — <strong>CLI + Web UI</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/jorgejr568/landlord-cli/actions/workflows/deploy.yml"><img src="https://github.com/jorgejr568/landlord-cli/actions/workflows/deploy.yml/badge.svg" alt="Tests"></a>
+  <a href="https://codecov.io/gh/jorgejr568/landlord-cli"><img src="https://codecov.io/gh/jorgejr568/landlord-cli/branch/main/graph/badge.svg" alt="codecov"></a>
+  <a href="https://github.com/jorgejr568/landlord-cli/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="GPL-3.0"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/MariaDB-11-003545?logo=mariadb&logoColor=white" alt="MariaDB">
+  <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker">
+  <img src="https://img.shields.io/badge/SQLAlchemy-Core-D71F00?logo=sqlalchemy&logoColor=white" alt="SQLAlchemy">
+</p>
+
+---
+
+Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with **BRL (R$)** currency and **PIX QR codes** on invoices.
 
 ## Features
 
@@ -45,13 +65,17 @@ make compose-createuser   # create a login user
 
 Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 
-### Database
+<details>
+<summary><strong>Database</strong></summary>
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LANDLORD_DB_URL` | `mysql://landlord:landlord@db:3306/landlord` | SQLAlchemy database URL (MariaDB) |
 
-### Storage
+</details>
+
+<details>
+<summary><strong>Storage</strong></summary>
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -64,7 +88,10 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 | `LANDLORD_S3_ENDPOINT_URL` | | Custom S3 endpoint (MinIO, etc.) |
 | `LANDLORD_S3_PRESIGNED_EXPIRY` | `604800` | Presigned URL expiry in seconds (default 7 days) |
 
-### PIX
+</details>
+
+<details>
+<summary><strong>PIX</strong></summary>
 
 | Variable | Description |
 |----------|-------------|
@@ -72,15 +99,21 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 | `LANDLORD_PIX_MERCHANT_NAME` | Merchant name for QR code |
 | `LANDLORD_PIX_MERCHANT_CITY` | Merchant city for QR code |
 
-### Web
+</details>
+
+<details>
+<summary><strong>Web</strong></summary>
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `LANDLORD_SECRET_KEY` | `change-me-in-production` | Secret key for session signing |
 
+</details>
+
 ## Makefile Reference
 
-### Local
+<details>
+<summary><strong>Local</strong></summary>
 
 | Command | Description |
 |---------|-------------|
@@ -89,10 +122,15 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 | `make migrate` | Run pending Alembic migrations |
 | `make web-run` | Start the web UI (uvicorn, port 8000) |
 | `make web-createuser` | Create a web login user |
+| `make test` | Run tests |
+| `make test-cov` | Run tests with coverage report |
 | `make regenerate-pdfs` | Regenerate all invoice PDFs |
 | `make regenerate-pdfs-dry` | Preview regeneration (dry run) |
 
-### Docker (Web)
+</details>
+
+<details>
+<summary><strong>Docker (Web)</strong></summary>
 
 | Command | Description |
 |---------|-------------|
@@ -104,7 +142,10 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 | `make logs` | Tail container logs |
 | `make health` | Check the health endpoint |
 
-### Docker (CLI)
+</details>
+
+<details>
+<summary><strong>Docker (CLI)</strong></summary>
 
 | Command | Description |
 |---------|-------------|
@@ -113,7 +154,10 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 | `make landlord` | Run the CLI in the container |
 | `make shell-cli` | Open a bash shell in the CLI container |
 
-### Docker Compose
+</details>
+
+<details>
+<summary><strong>Docker Compose</strong></summary>
 
 | Command | Description |
 |---------|-------------|
@@ -121,6 +165,8 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 | `make compose-landlord` | Run the CLI via Compose |
 | `make compose-createuser` | Create a login user via Compose |
 | `make compose-migrate` | Run migrations via Compose |
+
+</details>
 
 ## Architecture
 
@@ -140,10 +186,28 @@ web/
   auth.py              # Login, logout, change password routes
   deps.py              # Auth middleware, service factories
   routes/              # Billing + bill CRUD routes
-  templates/           # Jinja2 + Bootstrap 5
+  templates/           # Jinja2 templates
   static/              # CSS + JS
 ```
 
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Python 3.10+ |
+| Web Framework | FastAPI + Uvicorn |
+| Templates | Jinja2 + custom CSS |
+| Database | MariaDB 11 (SQLAlchemy Core) |
+| Migrations | Alembic |
+| PDF Generation | fpdf2 + pypdf |
+| QR Codes | qrcode (PIX) |
+| Auth | bcrypt + session cookies |
+| Storage | Local filesystem / AWS S3 |
+| CLI | questionary + rich |
+| Containers | Docker + Docker Compose |
+| CI/CD | GitHub Actions |
+| Coverage | Codecov (95%+ threshold) |
+
 ## License
 
-MIT
+[GPL-3.0](LICENSE)
