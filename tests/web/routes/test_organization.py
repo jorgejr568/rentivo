@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from landlord.models.user import User
 from landlord.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
-from tests.web.conftest import create_billing_in_db, create_org_in_db, get_audit_logs, get_test_user_id
+from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
 
 
 def _create_org_as_other_user(test_engine, org_name="Other Org"):
@@ -119,8 +119,8 @@ class TestOrganizationDelete:
 
 class TestMemberManagement:
     def test_change_role(self, auth_client, test_engine, csrf_token):
-        from landlord.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
         from landlord.models.user import User
+        from landlord.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
 
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "My Org", user_id)
@@ -140,8 +140,8 @@ class TestMemberManagement:
         assert response.status_code == 302
 
     def test_remove_member(self, auth_client, test_engine, csrf_token):
-        from landlord.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
         from landlord.models.user import User
+        from landlord.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
 
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "My Org", user_id)
@@ -172,8 +172,8 @@ class TestMemberManagement:
 
 class TestOrganizationInvite:
     def test_invite_member(self, auth_client, test_engine, csrf_token):
-        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
         from landlord.models.user import User
+        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
 
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "My Org", user_id)
@@ -429,8 +429,10 @@ class TestInviteReturnsNone:
         org = create_org_in_db(test_engine, "Org4", user_id)
         # Create billing already owned by an org
         billing = create_billing_in_db(
-            test_engine, name="Org Billing",
-            owner_type="organization", owner_id=org.id,
+            test_engine,
+            name="Org Billing",
+            owner_type="organization",
+            owner_id=org.id,
         )
         response = auth_client.post(
             f"/organizations/{org.uuid}/transfer-billing",
@@ -449,9 +451,13 @@ class TestInviteReturnsNone:
         ) as mock_svc_fn:
             mock_svc = MagicMock()
             from landlord.models.billing import Billing
+
             mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=billing.id, uuid=billing.uuid, name="A",
-                owner_type="user", owner_id=user_id,
+                id=billing.id,
+                uuid=billing.uuid,
+                name="A",
+                owner_type="user",
+                owner_id=user_id,
             )
             mock_svc.transfer_to_organization.side_effect = ValueError("Transfer failed")
             mock_svc_fn.return_value = mock_svc

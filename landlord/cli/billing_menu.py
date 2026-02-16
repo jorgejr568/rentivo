@@ -40,9 +40,7 @@ def create_billing_menu(billing_service: BillingService, audit_service: AuditSer
         if not desc:
             continue
 
-        item_type_str = questionary.select(
-            "  Tipo:", choices=["Fixo", "Variável"]
-        ).ask()
+        item_type_str = questionary.select("  Tipo:", choices=["Fixo", "Variável"]).ask()
         item_type = ItemType.FIXED if item_type_str == "Fixo" else ItemType.VARIABLE
 
         amount = 0
@@ -55,9 +53,7 @@ def create_billing_menu(billing_service: BillingService, audit_service: AuditSer
                     break
                 console.print("[red]Valor inválido. Tente novamente.[/red]")
 
-        items.append(
-            BillingItem(description=desc, amount=amount, item_type=item_type)
-        )
+        items.append(BillingItem(description=desc, amount=amount, item_type=item_type))
         console.print(f"  [green]Item adicionado: {desc}[/green]")
 
     if not items:
@@ -70,15 +66,11 @@ def create_billing_menu(billing_service: BillingService, audit_service: AuditSer
     pix_key = ""
     if app_settings.pix_key:
         console.print(f"\n  [dim]Chave PIX padrão: {app_settings.pix_key}[/dim]")
-        override = questionary.confirm(
-            "Usar uma chave PIX diferente para esta cobrança?", default=False
-        ).ask()
+        override = questionary.confirm("Usar uma chave PIX diferente para esta cobrança?", default=False).ask()
         if override:
             pix_key = questionary.text("  Chave PIX:").ask() or ""
     else:
-        pix_key = questionary.text(
-            "Chave PIX para esta cobrança (opcional):"
-        ).ask() or ""
+        pix_key = questionary.text("Chave PIX para esta cobrança (opcional):").ask() or ""
 
     billing = billing_service.create_billing(name, description, items, pix_key=pix_key)
 
@@ -95,9 +87,7 @@ def create_billing_menu(billing_service: BillingService, audit_service: AuditSer
     console.print(f"[green bold]Cobrança '{billing.name}' criada com sucesso![/green bold]")
 
 
-def list_billings_menu(
-    billing_service: BillingService, bill_service: BillService, audit_service: AuditService
-) -> None:
+def list_billings_menu(billing_service: BillingService, bill_service: BillService, audit_service: AuditService) -> None:
     billings = billing_service.list_billings()
 
     if not billings:
@@ -174,9 +164,7 @@ def _billing_detail_menu(
         elif choice == "Editar Cobrança":
             billing = _edit_billing_menu(billing, billing_service, audit_service)
         elif choice == "Excluir Cobrança":
-            confirm = questionary.confirm(
-                f"Tem certeza que deseja excluir '{billing.name}'?", default=False
-            ).ask()
+            confirm = questionary.confirm(f"Tem certeza que deseja excluir '{billing.name}'?", default=False).ask()
             if confirm:
                 previous_state = serialize_billing(billing)
                 billing_service.delete_billing(billing.id)
@@ -314,9 +302,7 @@ def _add_item(billing, billing_service: BillingService, audit_service: AuditServ
         console.print("[yellow]Operação cancelada.[/yellow]")
         return billing
 
-    item_type_str = questionary.select(
-        "  Tipo:", choices=["Fixo", "Variável"]
-    ).ask()
+    item_type_str = questionary.select("  Tipo:", choices=["Fixo", "Variável"]).ask()
     if item_type_str is None:
         return billing
     item_type = ItemType.FIXED if item_type_str == "Fixo" else ItemType.VARIABLE
@@ -334,9 +320,7 @@ def _add_item(billing, billing_service: BillingService, audit_service: AuditServ
             console.print("[red]Valor inválido. Tente novamente.[/red]")
 
     previous_state = serialize_billing(billing)
-    billing.items.append(
-        BillingItem(description=desc, amount=amount, item_type=item_type)
-    )
+    billing.items.append(BillingItem(description=desc, amount=amount, item_type=item_type))
     billing = billing_service.update_billing(billing)
 
     audit_service.safe_log(
@@ -377,9 +361,7 @@ def _remove_item(billing, billing_service: BillingService, audit_service: AuditS
         billing.items.insert(idx, removed)
         return billing
 
-    confirm = questionary.confirm(
-        f"Remover '{removed.description}'?", default=False
-    ).ask()
+    confirm = questionary.confirm(f"Remover '{removed.description}'?", default=False).ask()
     if not confirm:
         billing.items.insert(idx, removed)
         return billing

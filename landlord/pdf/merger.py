@@ -1,4 +1,5 @@
 """Merge receipt attachments into the invoice PDF."""
+
 from __future__ import annotations
 
 import logging

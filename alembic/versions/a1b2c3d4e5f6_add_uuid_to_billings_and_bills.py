@@ -4,10 +4,12 @@ Revision ID: a1b2c3d4e5f6
 Revises: d0263f759784
 Create Date: 2026-02-07
 """
+
 from typing import Sequence, Union
 from uuid import uuid4
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "a1b2c3d4e5f6"

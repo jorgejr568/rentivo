@@ -40,10 +40,10 @@ class TestCreateBillingMenu:
         mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",  # name
-            "desc",     # description
-            "Rent",     # item description
+            "desc",  # description
+            "Rent",  # item description
             "2850.00",  # item amount
-            "",         # pix key
+            "",  # pix key
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]  # add item? yes, add more? no
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -60,7 +60,10 @@ class TestCreateBillingMenu:
 
         mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
-            "Apt 101", "desc", "Water", "",
+            "Apt 101",
+            "desc",
+            "Water",
+            "",
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
         mock_q.select.return_value.ask.return_value = "Variável"
@@ -77,7 +80,11 @@ class TestCreateBillingMenu:
 
         mock_settings.pix_key = "global@pix.com"
         mock_q.text.return_value.ask.side_effect = [
-            "Apt 101", "desc", "Rent", "1000", "custom@pix.com",
+            "Apt 101",
+            "desc",
+            "Rent",
+            "1000",
+            "custom@pix.com",
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False, True]  # add item, stop, override pix
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -95,11 +102,12 @@ class TestCreateBillingMenu:
         mock_settings.pix_key = ""
         # First item has empty desc, second has valid desc
         mock_q.text.return_value.ask.side_effect = [
-            "Apt 101", "desc",
-            "",         # empty item desc -> skip
-            "Rent",     # valid item desc
-            "1000",     # amount
-            "",         # pix key
+            "Apt 101",
+            "desc",
+            "",  # empty item desc -> skip
+            "Rent",  # valid item desc
+            "1000",  # amount
+            "",  # pix key
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, True, False]  # add, add again, stop
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -124,9 +132,13 @@ class TestListBillingsMenu:
     def test_select_back(self, mock_q):
         from landlord.cli.billing_menu import list_billings_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_billing_svc = MagicMock()
         mock_billing_svc.list_billings.return_value = [billing]
         mock_q.select.return_value.ask.return_value = "Voltar"
@@ -138,9 +150,13 @@ class TestListBillingsMenu:
     def test_select_none(self, mock_q):
         from landlord.cli.billing_menu import list_billings_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_billing_svc = MagicMock()
         mock_billing_svc.list_billings.return_value = [billing]
         mock_q.select.return_value.ask.return_value = None
@@ -150,19 +166,22 @@ class TestListBillingsMenu:
     def test_select_billing(self, mock_q):
         from landlord.cli.billing_menu import list_billings_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_billing_svc = MagicMock()
         mock_billing_svc.list_billings.return_value = [billing]
         mock_billing_svc.get_billing.return_value = billing
         # First select billing, then from detail menu select Voltar
         mock_q.select.return_value.ask.side_effect = [
             "1 - Apt 101",  # select billing
-            "Voltar",       # detail menu -> back
+            "Voltar",  # detail menu -> back
         ]
         list_billings_menu(mock_billing_svc, MagicMock(), MagicMock())
-
 
 
 class TestBillingDetailMenu:
@@ -170,9 +189,14 @@ class TestBillingDetailMenu:
     def test_generate_bill(self, mock_q):
         from landlord.cli.billing_menu import _billing_detail_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = ["Gerar Nova Fatura", "Voltar"]
 
         with patch("landlord.cli.billing_menu.generate_bill_menu") as mock_gen:
@@ -235,11 +259,11 @@ class TestCreateBillingMenuEdgeCases:
         mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",  # name
-            "desc",     # description
-            "Rent",     # item description
-            "abc",      # invalid amount -> retry
+            "desc",  # description
+            "Rent",  # item description
+            "abc",  # invalid amount -> retry
             "2850.00",  # valid amount
-            "",         # pix key
+            "",  # pix key
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -256,9 +280,15 @@ class TestBillingDetailMenuEdgeCases:
         """Cover line 129: billing.description is printed when present."""
         from landlord.cli.billing_menu import _billing_detail_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", description="A nice apartment", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            description="A nice apartment",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.return_value = "Voltar"
         _billing_detail_menu(billing, MagicMock(), MagicMock(), MagicMock())
 
@@ -272,7 +302,10 @@ class TestCreateBillingPixNoOverride:
 
         mock_settings.pix_key = "global@pix.com"
         mock_q.text.return_value.ask.side_effect = [
-            "Apt 101", "desc", "Rent", "1000",
+            "Apt 101",
+            "desc",
+            "Rent",
+            "1000",
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False, False]  # add item, stop, no override
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -314,9 +347,13 @@ class TestAddVariableItem:
         """Cover branch 325->336: add variable item skips amount prompt."""
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Variável", "Voltar"]
         mock_q.text.return_value.ask.return_value = "Water"
 
@@ -332,9 +369,13 @@ class TestEditBillingMenuEdgeCases:
         """Cover line 249: cancel amount input returns billing."""
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Editar Item",
             "Rent (R$ 1.000,00)",
@@ -350,9 +391,13 @@ class TestEditBillingMenuEdgeCases:
         """Cover line 254: invalid amount retries in edit item."""
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Editar Item",
             "Rent (R$ 1.000,00)",
@@ -440,9 +485,13 @@ class TestEditBillingMenu:
     def test_add_item(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Fixo", "Voltar"]
         mock_q.text.return_value.ask.side_effect = ["Water", "50.00"]
 
@@ -467,10 +516,14 @@ class TestEditBillingMenu:
     def test_remove_item(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-            BillingItem(description="Water", amount=0, item_type=ItemType.VARIABLE),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+                BillingItem(description="Water", amount=0, item_type=ItemType.VARIABLE),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Remover Item",
             "Rent (R$ 1.000,00)",  # select item
@@ -495,9 +548,13 @@ class TestEditBillingMenu:
     def test_remove_last_item_blocked(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Remover Item",
             "Rent (R$ 1.000,00)",
@@ -512,10 +569,14 @@ class TestEditBillingMenu:
     def test_remove_item_cancel(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-            BillingItem(description="Water", amount=0, item_type=ItemType.VARIABLE),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+                BillingItem(description="Water", amount=0, item_type=ItemType.VARIABLE),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Remover Item",
             "Rent (R$ 1.000,00)",
@@ -531,9 +592,13 @@ class TestEditBillingMenu:
     def test_edit_item_back(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Editar Item",
             "Voltar",  # select item -> back
@@ -545,14 +610,18 @@ class TestEditBillingMenu:
     def test_edit_item_success(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Editar Item",
             "Rent (R$ 1.000,00)",  # select item
-            "Fixo",               # type
-            "Voltar",             # back to edit menu
+            "Fixo",  # type
+            "Voltar",  # back to edit menu
         ]
         mock_q.text.return_value.ask.side_effect = ["Updated Rent", "2000.00"]
 
@@ -565,9 +634,13 @@ class TestEditBillingMenu:
     def test_edit_item_to_variable(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Editar Item",
             "Rent (R$ 1.000,00)",
@@ -585,9 +658,13 @@ class TestEditBillingMenu:
     def test_edit_item_cancel_desc(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Editar Item",
             "Rent (R$ 1.000,00)",
@@ -611,9 +688,13 @@ class TestEditBillingMenu:
     def test_remove_item_select_back(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Remover Item",
             "Voltar",
@@ -625,9 +706,13 @@ class TestEditBillingMenu:
     def test_edit_item_cancel_type(self, mock_q):
         from landlord.cli.billing_menu import _edit_billing_menu
 
-        billing = Billing(id=1, name="Apt 101", items=[
-            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            items=[
+                BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.select.return_value.ask.side_effect = [
             "Editar Item",
             "Rent (R$ 1.000,00)",

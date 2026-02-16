@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from landlord.models.billing import Billing, BillingItem, ItemType
+from landlord.models.billing import BillingItem, ItemType
 from landlord.repositories.sqlalchemy import SQLAlchemyBillingRepository
 
 
@@ -72,9 +72,7 @@ class TestBillingRepoCRUD:
         assert billing_repo.get_by_id(created.id) is None
         assert billing_repo.list_all() == []
 
-    def test_soft_delete_hides_from_uuid_lookup(
-        self, billing_repo: SQLAlchemyBillingRepository, sample_billing
-    ):
+    def test_soft_delete_hides_from_uuid_lookup(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
         created = billing_repo.create(sample_billing())
         billing_repo.delete(created.id)
         assert billing_repo.get_by_uuid(created.uuid) is None

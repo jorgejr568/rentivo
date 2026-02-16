@@ -19,7 +19,9 @@ class TestBuildServices:
     @patch("landlord.cli.app.get_bill_repository")
     @patch("landlord.cli.app.get_billing_repository")
     @patch("landlord.cli.app.get_audit_log_repository")
-    def test_returns_correct_types(self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_storage):
+    def test_returns_correct_types(
+        self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_storage
+    ):
         from landlord.cli.app import _build_services
         from landlord.services.audit_service import AuditService
         from landlord.services.bill_service import BillService

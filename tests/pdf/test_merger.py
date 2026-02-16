@@ -1,9 +1,9 @@
 """Tests for landlord.pdf.merger — PDF/image receipt merging."""
+
 from __future__ import annotations
 
 from io import BytesIO
 
-import pytest
 from fpdf import FPDF
 from PIL import Image
 from pypdf import PdfReader
@@ -95,9 +95,7 @@ class TestMergeReceipts:
         invoice = _make_pdf(2)
         receipt_pdf = _make_pdf(3)
         jpeg = _make_jpeg()
-        result = merge_receipts(
-            invoice, [(receipt_pdf, "application/pdf"), (jpeg, "image/jpeg")]
-        )
+        result = merge_receipts(invoice, [(receipt_pdf, "application/pdf"), (jpeg, "image/jpeg")])
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 6  # 2 + 3 + 1
 

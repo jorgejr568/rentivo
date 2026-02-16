@@ -3,12 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from landlord.models.bill import SP_TZ, Bill, BillLineItem
+from landlord.models.bill import SP_TZ, BillLineItem
 from landlord.models.billing import ItemType
-from landlord.repositories.sqlalchemy import (
-    SQLAlchemyBillingRepository,
-    SQLAlchemyBillRepository,
-)
 
 
 class TestBillRepoCRUD:

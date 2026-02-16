@@ -70,13 +70,8 @@ class CSRFMiddleware:
             return
 
         content_type = request.headers.get("content-type", "")
-        if (
-            "multipart/form-data" not in content_type
-            and "application/x-www-form-urlencoded" not in content_type
-        ):
-            logger.debug(
-                "CSRF bypass: non-form content type for %s %s", request.method, path
-            )
+        if "multipart/form-data" not in content_type and "application/x-www-form-urlencoded" not in content_type:
+            logger.debug("CSRF bypass: non-form content type for %s %s", request.method, path)
             await self.app(scope, receive, send)
             return
         body = await request.body()

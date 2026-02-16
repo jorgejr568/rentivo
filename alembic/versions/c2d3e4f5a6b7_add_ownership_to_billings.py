@@ -4,9 +4,11 @@ Revision ID: c2d3e4f5a6b7
 Revises: b1c2d3e4f5a6
 Create Date: 2026-02-11
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "c2d3e4f5a6b7"
@@ -27,9 +29,7 @@ def upgrade() -> None:
 
     # Backfill: assign all existing billings to the first user
     conn = op.get_bind()
-    first_user = conn.execute(
-        sa.text("SELECT id FROM users ORDER BY id LIMIT 1")
-    ).fetchone()
+    first_user = conn.execute(sa.text("SELECT id FROM users ORDER BY id LIMIT 1")).fetchone()
     if first_user:
         conn.execute(
             sa.text("UPDATE billings SET owner_id = :uid WHERE owner_id = 0"),

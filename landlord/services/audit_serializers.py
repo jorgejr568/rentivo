@@ -3,6 +3,7 @@
 Sensitive fields like password_hash are explicitly excluded.
 Datetime fields are converted to ISO 8601 strings for JSON compatibility.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -36,9 +37,7 @@ def serialize_billing(billing: Billing) -> dict:
                 "id": item.id,
                 "description": item.description,
                 "amount": item.amount,
-                "item_type": item.item_type.value
-                if hasattr(item.item_type, "value")
-                else str(item.item_type),
+                "item_type": item.item_type.value if hasattr(item.item_type, "value") else str(item.item_type),
                 "sort_order": item.sort_order,
             }
             for item in billing.items
@@ -61,9 +60,7 @@ def serialize_bill(bill: Bill) -> dict:
                 "id": item.id,
                 "description": item.description,
                 "amount": item.amount,
-                "item_type": item.item_type.value
-                if hasattr(item.item_type, "value")
-                else str(item.item_type),
+                "item_type": item.item_type.value if hasattr(item.item_type, "value") else str(item.item_type),
                 "sort_order": item.sort_order,
             }
             for item in bill.line_items

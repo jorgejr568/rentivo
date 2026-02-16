@@ -6,6 +6,7 @@ CONTAINER_CLI  := landlord-cli
 PYTHON  := $(shell [ -d .venv ] && echo .venv/bin/python || echo python)
 PIP     := $(shell [ -d .venv ] && echo .venv/bin/pip || echo pip)
 UVICORN := $(shell [ -d .venv ] && echo .venv/bin/uvicorn || echo uvicorn)
+RUFF    := $(shell [ -d .venv ] && echo .venv/bin/ruff || echo ruff)
 
 # --- Local development ---
 
@@ -33,6 +34,18 @@ regenerate-pdfs-dry:
 .PHONY: seed
 seed:
 	$(PYTHON) -m landlord.scripts.seed
+
+# --- Lint & Format ---
+
+.PHONY: fmt
+fmt:
+	$(RUFF) format .
+	$(RUFF) check --fix .
+
+.PHONY: lint
+lint:
+	$(RUFF) check .
+	$(RUFF) format --check .
 
 # --- Tests ---
 

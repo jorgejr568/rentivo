@@ -17,7 +17,7 @@ class TestLocalStorage:
 
     def test_creates_base_dir(self, tmp_path):
         new_dir = tmp_path / "new_dir"
-        storage = LocalStorage(str(new_dir))
+        LocalStorage(str(new_dir))
         assert new_dir.exists()
 
     def test_save_nested_path(self, tmp_path):
@@ -34,6 +34,6 @@ class TestLocalStorage:
     def test_save_with_content_type(self, tmp_path):
         """content_type param is accepted but ignored for local storage."""
         storage = LocalStorage(str(tmp_path))
-        path = storage.save("test/img.jpg", b"jpeg-data", content_type="image/jpeg")
+        storage.save("test/img.jpg", b"jpeg-data", content_type="image/jpeg")
         assert (tmp_path / "test" / "img.jpg").exists()
         assert (tmp_path / "test" / "img.jpg").read_bytes() == b"jpeg-data"

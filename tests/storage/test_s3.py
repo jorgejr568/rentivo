@@ -1,15 +1,19 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestS3StorageBoto3Missing:
     def test_raises_import_error_when_boto3_is_none(self):
         import landlord.storage.s3 as s3_module
+
         with patch.object(s3_module, "boto3", None):
             with pytest.raises(ImportError, match="boto3 is required"):
                 s3_module.S3Storage(
-                    bucket="b", region="r",
-                    access_key_id="k", secret_access_key="s",
+                    bucket="b",
+                    region="r",
+                    access_key_id="k",
+                    secret_access_key="s",
                 )
 
 
@@ -83,9 +87,7 @@ class TestS3Storage:
 
         from landlord.storage.s3 import S3Storage
 
-        S3Storage(
-            bucket="b", region="r", access_key_id="k", secret_access_key="s"
-        )
+        S3Storage(bucket="b", region="r", access_key_id="k", secret_access_key="s")
         call_kwargs = mock_boto3.client.call_args[1]
         assert "endpoint_url" not in call_kwargs
 
@@ -107,9 +109,7 @@ class TestS3Storage:
         )
         data = storage.get("path/to/file.pdf")
 
-        mock_client.get_object.assert_called_once_with(
-            Bucket="my-bucket", Key="path/to/file.pdf"
-        )
+        mock_client.get_object.assert_called_once_with(Bucket="my-bucket", Key="path/to/file.pdf")
         assert data == b"file-contents"
 
     @patch("landlord.storage.s3.boto3")

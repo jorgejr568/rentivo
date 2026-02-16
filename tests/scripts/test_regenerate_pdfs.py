@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from landlord.models.bill import Bill, BillLineItem
 from landlord.models.billing import Billing, BillingItem, ItemType
@@ -7,14 +7,19 @@ from landlord.models.billing import Billing, BillingItem, ItemType
 class TestRegeneratePdfs:
     def _make_billing(self):
         return Billing(
-            id=1, uuid="billing-uuid", name="Apt 101",
+            id=1,
+            uuid="billing-uuid",
+            name="Apt 101",
             items=[BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)],
         )
 
     def _make_bill(self):
         return Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
             pdf_path="bills/billing-uuid/bill-uuid.pdf",
             line_items=[
                 BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),

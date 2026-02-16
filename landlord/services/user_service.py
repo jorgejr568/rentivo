@@ -39,9 +39,7 @@ class UserService:
     def authenticate(self, username: str, password: str) -> User | None:
         user = self.repo.get_by_username(username)
         if user is None:
-            logger.warning(
-                "Authentication failed: user not found username=%s", username
-            )
+            logger.warning("Authentication failed: user not found username=%s", username)
             return None
         if bcrypt.checkpw(password.encode(), user.password_hash.encode()):
             logger.info("User authenticated: %s", username)

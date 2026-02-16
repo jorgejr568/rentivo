@@ -8,9 +8,7 @@ from landlord.models.billing import ItemType
 
 class TestBillLineItem:
     def test_construction(self):
-        item = BillLineItem(
-            description="Water", amount=5000, item_type=ItemType.VARIABLE
-        )
+        item = BillLineItem(description="Water", amount=5000, item_type=ItemType.VARIABLE)
         assert item.id is None
         assert item.bill_id is None
         assert item.sort_order == 0
@@ -62,9 +60,7 @@ class TestIsOverdue:
         assert bill.is_overdue is False
 
     def test_not_overdue_invalid_date(self):
-        bill = Bill(
-            billing_id=1, reference_month="2025-03", due_date="invalid"
-        )
+        bill = Bill(billing_id=1, reference_month="2025-03", due_date="invalid")
         assert bill.is_overdue is False
 
 

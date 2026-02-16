@@ -14,12 +14,16 @@ class TestInvoicePDF:
             total_amount=295000,
             line_items=[
                 BillLineItem(
-                    description="Aluguel", amount=285000,
-                    item_type=ItemType.FIXED, sort_order=0,
+                    description="Aluguel",
+                    amount=285000,
+                    item_type=ItemType.FIXED,
+                    sort_order=0,
                 ),
                 BillLineItem(
-                    description="Água", amount=10000,
-                    item_type=ItemType.VARIABLE, sort_order=1,
+                    description="Água",
+                    amount=10000,
+                    item_type=ItemType.VARIABLE,
+                    sort_order=1,
                 ),
             ],
             notes="",
@@ -58,7 +62,8 @@ class TestInvoicePDF:
             amount=2950.00,
         )
         result = pdf_gen.generate(
-            bill, "Apt 101",
+            bill,
+            "Apt 101",
             pix_qrcode_png=pix_png,
             pix_key="test@pix.com",
             pix_payload="00020126...",
@@ -84,7 +89,8 @@ class TestInvoicePDF:
             amount=2950.00,
         )
         result = pdf_gen.generate(
-            bill, "Apt 101",
+            bill,
+            "Apt 101",
             pix_qrcode_png=pix_png,
             pix_key="",
             pix_payload="",

@@ -32,9 +32,7 @@ async def invite_accept(request: Request, invite_uuid: str):
     try:
         service.accept_invite(invite_uuid, user_id)
     except ValueError as e:
-        logger.warning(
-            "Invite accept failed: uuid=%s user=%s error=%s", invite_uuid, user_id, e
-        )
+        logger.warning("Invite accept failed: uuid=%s user=%s error=%s", invite_uuid, user_id, e)
         flash(request, str(e), "danger")
         return RedirectResponse("/invites/", status_code=302)
     logger.info("Invite accepted: uuid=%s user=%s", invite_uuid, user_id)
@@ -63,9 +61,7 @@ async def invite_decline(request: Request, invite_uuid: str):
     try:
         service.decline_invite(invite_uuid, user_id)
     except ValueError as e:
-        logger.warning(
-            "Invite decline failed: uuid=%s user=%s error=%s", invite_uuid, user_id, e
-        )
+        logger.warning("Invite decline failed: uuid=%s user=%s error=%s", invite_uuid, user_id, e)
         flash(request, str(e), "danger")
         return RedirectResponse("/invites/", status_code=302)
     logger.info("Invite declined: uuid=%s user=%s", invite_uuid, user_id)

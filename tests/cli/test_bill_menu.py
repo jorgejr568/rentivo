@@ -67,7 +67,7 @@ class TestListBillsMenu:
         mock_service.get_invoice_url.return_value = "/path"
         mock_q.select.return_value.ask.side_effect = [
             "1 - Março/2025",  # select bill
-            "Voltar",          # detail -> back
+            "Voltar",  # detail -> back
         ]
 
         list_bills_menu(billing, mock_service, MagicMock())
@@ -92,13 +92,18 @@ class TestGenerateBillMenu:
     def test_generate_fixed_only(self, mock_q):
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
-            "2025-03",   # reference month
-            "",          # due date
-            "",          # notes
+            "2025-03",  # reference month
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.return_value = False  # no extras
 
@@ -114,15 +119,20 @@ class TestGenerateBillMenu:
     def test_generate_with_variable(self, mock_q):
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-            BillingItem(id=2, description="Water", amount=0, item_type=ItemType.VARIABLE),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+                BillingItem(id=2, description="Water", amount=0, item_type=ItemType.VARIABLE),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
             "2025-03",  # reference month
-            "50.00",    # variable amount
-            "",         # due date
-            "",         # notes
+            "50.00",  # variable amount
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.return_value = False
 
@@ -138,15 +148,20 @@ class TestGenerateBillMenu:
     def test_generate_with_extras(self, mock_q):
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
-            "2025-03",    # reference month
-            "Repair",     # extra desc
-            "150.00",     # extra amount
-            "",           # due date
-            "",           # notes
+            "2025-03",  # reference month
+            "Repair",  # extra desc
+            "150.00",  # extra amount
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]  # add extra, stop
 
@@ -162,14 +177,19 @@ class TestGenerateBillMenu:
     def test_generate_extra_empty_desc_skipped(self, mock_q):
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
             "2025-03",  # reference month
-            "",         # empty extra desc -> skip
-            "",         # due date
-            "",         # notes
+            "",  # empty extra desc -> skip
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
 
@@ -192,10 +212,16 @@ class TestBillDetailMenu:
 
         mock_service = MagicMock()
         from datetime import datetime
+
         from landlord.models.bill import SP_TZ
+
         mock_service.toggle_paid.return_value = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000,
-            uuid="u", paid_at=datetime.now(SP_TZ),
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
+            paid_at=datetime.now(SP_TZ),
         )
         mock_service.get_invoice_url.return_value = ""
         _bill_detail_menu(bill, billing, mock_service, MagicMock())
@@ -247,15 +273,19 @@ class TestBillDetailMenu:
         from landlord.cli.bill_menu import _bill_detail_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
             line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
         )
         billing = Billing(id=1, name="Apt 101")
         mock_q.select.return_value.ask.side_effect = ["Editar Fatura", "Voltar"]
         mock_q.text.return_value.ask.side_effect = [
             "100000",  # update amount
-            "",        # due date
-            "",        # notes
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.return_value = False
 
@@ -273,8 +303,14 @@ class TestShowBillDetail:
         from landlord.cli.bill_menu import _show_bill_detail
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
-            due_date="10/04/2025", notes="Test notes", pdf_path="/f.pdf",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
+            due_date="10/04/2025",
+            notes="Test notes",
+            pdf_path="/f.pdf",
             line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
         )
         mock_service = MagicMock()
@@ -288,14 +324,19 @@ class TestGenerateBillMenuEdgeCases:
         """Cover lines 61-63: invalid month format retries."""
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
             "abcd-ef",  # right format but non-numeric -> ValueError (lines 61-62)
             "2025-03",  # valid month
-            "",         # due date
-            "",         # notes
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.return_value = False
 
@@ -311,17 +352,23 @@ class TestGenerateBillMenuEdgeCases:
         """Cover line 80: variable item with id=None raises ValueError."""
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=None, description="Water", amount=0, item_type=ItemType.VARIABLE),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=None, description="Water", amount=0, item_type=ItemType.VARIABLE),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
             "2025-03",  # valid month
-            "50.00",    # variable amount
+            "50.00",  # variable amount
         ]
         mock_q.confirm.return_value.ask.return_value = False
 
         mock_service = MagicMock()
         import pytest
+
         with pytest.raises(ValueError, match="must have an id"):
             generate_bill_menu(billing, mock_service, MagicMock())
 
@@ -330,15 +377,20 @@ class TestGenerateBillMenuEdgeCases:
         """Cover line 83: invalid variable amount retries."""
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=2, description="Water", amount=0, item_type=ItemType.VARIABLE),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=2, description="Water", amount=0, item_type=ItemType.VARIABLE),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
             "2025-03",  # valid month
-            "abc",      # invalid amount -> retry
-            "50.00",    # valid amount
-            "",         # due date
-            "",         # notes
+            "abc",  # invalid amount -> retry
+            "50.00",  # valid amount
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.return_value = False
 
@@ -354,16 +406,21 @@ class TestGenerateBillMenuEdgeCases:
         """Cover line 104: invalid extra amount retries."""
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
-            "2025-03",    # valid month
-            "Repair",     # extra desc
-            "abc",        # invalid extra amount -> retry
-            "150.00",     # valid extra amount
-            "",           # due date
-            "",           # notes
+            "2025-03",  # valid month
+            "Repair",  # extra desc
+            "abc",  # invalid extra amount -> retry
+            "150.00",  # valid extra amount
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
 
@@ -382,15 +439,19 @@ class TestEditBillMenuEdgeCases:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
             line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
         )
         billing = Billing(id=1, name="Apt 101")
         mock_q.text.return_value.ask.side_effect = [
-            "abc",      # invalid amount -> retry
-            "100000",   # valid amount
-            "",         # due date
-            "",         # notes
+            "abc",  # invalid amount -> retry
+            "100000",  # valid amount
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.return_value = False
 
@@ -406,7 +467,11 @@ class TestEditBillMenuEdgeCases:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=115000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=115000,
+            uuid="u",
             line_items=[
                 BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
                 BillLineItem(description="Repair", amount=15000, item_type=ItemType.EXTRA, sort_order=1),
@@ -415,10 +480,10 @@ class TestEditBillMenuEdgeCases:
         billing = Billing(id=1, name="Apt 101")
         mock_q.text.return_value.ask.side_effect = [
             "100000",  # fixed amount
-            "abc",     # invalid extra amount -> retry
+            "abc",  # invalid extra amount -> retry
             "200.00",  # valid extra amount
-            "",        # due date
-            "",        # notes
+            "",  # due date
+            "",  # notes
         ]
         mock_q.select.return_value.ask.return_value = "Editar valor"
         mock_q.confirm.return_value.ask.return_value = False
@@ -435,15 +500,19 @@ class TestEditBillMenuEdgeCases:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
             line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
         )
         billing = Billing(id=1, name="Apt 101")
         mock_q.text.return_value.ask.side_effect = [
             "100000",  # fixed amount
-            "",        # empty extra desc -> skip
-            "",        # due date
-            "",        # notes
+            "",  # empty extra desc -> skip
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
 
@@ -459,17 +528,21 @@ class TestEditBillMenuEdgeCases:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
             line_items=[BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0)],
         )
         billing = Billing(id=1, name="Apt 101")
         mock_q.text.return_value.ask.side_effect = [
-            "100000",    # fixed amount
+            "100000",  # fixed amount
             "Cleaning",  # new extra desc
-            "abc",       # invalid amount -> retry
-            "50.00",     # valid amount
-            "",          # due date
-            "",          # notes
+            "abc",  # invalid amount -> retry
+            "50.00",  # valid amount
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
 
@@ -502,7 +575,11 @@ class TestBillDetailMenuEdgeCases:
         from landlord.models.bill import SP_TZ
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
             paid_at=datetime.now(SP_TZ),
         )
         billing = Billing(id=1, name="Apt 101")
@@ -510,8 +587,12 @@ class TestBillDetailMenuEdgeCases:
 
         mock_service = MagicMock()
         mock_service.toggle_paid.return_value = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000,
-            uuid="u", paid_at=None,
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
+            paid_at=None,
         )
         mock_service.get_invoice_url.return_value = ""
         _bill_detail_menu(bill, billing, mock_service, MagicMock())
@@ -553,14 +634,19 @@ class TestGenerateShortMonthInput:
         """Cover branch 59->66: month with wrong length fails validation."""
         from landlord.cli.bill_menu import generate_bill_menu
 
-        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
-            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
-        ])
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[
+                BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+            ],
+        )
         mock_q.text.return_value.ask.side_effect = [
-            "abc",      # too short (len != 7) -> line 59 False -> line 66
+            "abc",  # too short (len != 7) -> line 59 False -> line 66
             "2025-03",  # valid
-            "",         # due date
-            "",         # notes
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.return_value = False
 
@@ -578,7 +664,11 @@ class TestEditBillMenu:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=115000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=115000,
+            uuid="u",
             line_items=[
                 BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
                 BillLineItem(description="Repair", amount=15000, item_type=ItemType.EXTRA, sort_order=1),
@@ -587,8 +677,8 @@ class TestEditBillMenu:
         billing = Billing(id=1, name="Apt 101")
         mock_q.text.return_value.ask.side_effect = [
             "100000",  # update fixed amount
-            "",        # due date
-            "",        # notes
+            "",  # due date
+            "",  # notes
         ]
         mock_q.select.return_value.ask.return_value = "Manter"  # keep extra
         mock_q.confirm.return_value.ask.return_value = False  # no new extras
@@ -605,7 +695,11 @@ class TestEditBillMenu:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=115000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=115000,
+            uuid="u",
             line_items=[
                 BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
                 BillLineItem(description="Repair", amount=15000, item_type=ItemType.EXTRA, sort_order=1),
@@ -614,8 +708,8 @@ class TestEditBillMenu:
         billing = Billing(id=1, name="Apt 101")
         mock_q.text.return_value.ask.side_effect = [
             "100000",  # update fixed
-            "",        # due date
-            "",        # notes
+            "",  # due date
+            "",  # notes
         ]
         mock_q.select.return_value.ask.return_value = "Remover"  # remove extra
         mock_q.confirm.return_value.ask.return_value = False
@@ -632,7 +726,11 @@ class TestEditBillMenu:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=115000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=115000,
+            uuid="u",
             line_items=[
                 BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
                 BillLineItem(description="Repair", amount=15000, item_type=ItemType.EXTRA, sort_order=1),
@@ -642,8 +740,8 @@ class TestEditBillMenu:
         mock_q.text.return_value.ask.side_effect = [
             "100000",  # update fixed
             "200.00",  # edit extra amount
-            "",        # due date
-            "",        # notes
+            "",  # due date
+            "",  # notes
         ]
         mock_q.select.return_value.ask.return_value = "Editar valor"
         mock_q.confirm.return_value.ask.return_value = False
@@ -660,18 +758,22 @@ class TestEditBillMenu:
         from landlord.cli.bill_menu import edit_bill_menu
 
         bill = Bill(
-            id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u",
+            id=1,
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            uuid="u",
             line_items=[
                 BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
             ],
         )
         billing = Billing(id=1, name="Apt 101")
         mock_q.text.return_value.ask.side_effect = [
-            "100000",   # update fixed
+            "100000",  # update fixed
             "Cleaning",  # new extra desc
-            "50.00",     # new extra amount
-            "",          # due date
-            "",          # notes
+            "50.00",  # new extra amount
+            "",  # due date
+            "",  # notes
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
 

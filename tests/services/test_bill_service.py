@@ -29,15 +29,20 @@ class TestBillService:
 
     def test_generate_bill(self):
         billing = Billing(
-            id=1, uuid="billing-uuid", name="Apt 101",
+            id=1,
+            uuid="billing-uuid",
+            name="Apt 101",
             items=[
                 BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
                 BillingItem(id=2, description="Water", amount=0, item_type=ItemType.VARIABLE),
             ],
         )
         self.mock_repo.create.return_value = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=110000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=110000,
             line_items=[
                 BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
                 BillLineItem(description="Water", amount=10000, item_type=ItemType.VARIABLE, sort_order=1),
@@ -62,31 +67,40 @@ class TestBillService:
 
     def test_update_bill(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
         line_items = [
             BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
         ]
         self.mock_repo.update.return_value = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
             line_items=line_items,
         )
         self.mock_storage.save.return_value = "/new/path.pdf"
 
         with patch.object(self.service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF-fake"
-            result = self.service.update_bill(bill, billing, line_items, "notes", "10/04/2025")
+            self.service.update_bill(bill, billing, line_items, "notes", "10/04/2025")
 
         self.mock_repo.update.assert_called_once()
         self.mock_storage.save.assert_called_once()
 
     def test_regenerate_pdf(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
         self.mock_storage.save.return_value = "/regen/path.pdf"
@@ -100,8 +114,11 @@ class TestBillService:
 
     def test_toggle_paid_marks_as_paid(self):
         bill = Bill(
-            id=1, uuid="u", billing_id=1,
-            reference_month="2025-03", paid_at=None,
+            id=1,
+            uuid="u",
+            billing_id=1,
+            reference_month="2025-03",
+            paid_at=None,
         )
         result = self.service.toggle_paid(bill)
         self.mock_repo.update_paid_at.assert_called_once()
@@ -109,7 +126,9 @@ class TestBillService:
 
     def test_toggle_paid_unmarks(self):
         bill = Bill(
-            id=1, uuid="u", billing_id=1,
+            id=1,
+            uuid="u",
+            billing_id=1,
             reference_month="2025-03",
             paid_at=datetime.now(SP_TZ),
         )
@@ -129,17 +148,17 @@ class TestBillService:
 
     def test_list_bills(self):
         self.mock_repo.list_by_billing.return_value = []
-        result = self.service.list_bills(1)
+        self.service.list_bills(1)
         self.mock_repo.list_by_billing.assert_called_once_with(1)
 
     def test_get_bill(self):
         self.mock_repo.get_by_id.return_value = None
-        result = self.service.get_bill(1)
+        self.service.get_bill(1)
         self.mock_repo.get_by_id.assert_called_once_with(1)
 
     def test_get_bill_by_uuid(self):
         self.mock_repo.get_by_uuid.return_value = None
-        result = self.service.get_bill_by_uuid("uuid")
+        self.service.get_bill_by_uuid("uuid")
         self.mock_repo.get_by_uuid.assert_called_once_with("uuid")
 
     def test_delete_bill(self):
@@ -212,6 +231,7 @@ class TestBillServiceValueErrors:
 
     def test_generate_and_store_pdf_bill_id_none(self):
         import pytest
+
         bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03", total_amount=100)
         billing = Billing(id=1, uuid="bu", name="Apt")
         with patch.object(self.service, "pdf_generator") as mock_pdf:
@@ -222,20 +242,28 @@ class TestBillServiceValueErrors:
 
     def test_generate_bill_billing_id_none(self):
         import pytest
+
         billing = Billing(id=None, uuid="bu", name="Apt", items=[])
         with pytest.raises(ValueError, match="Cannot generate bill for billing without an id"):
             self.service.generate_bill(billing, "2025-03", {}, [])
 
     def test_generate_bill_variable_item_id_none(self):
         import pytest
-        billing = Billing(id=1, uuid="bu", name="Apt", items=[
-            BillingItem(id=None, description="Water", amount=0, item_type=ItemType.VARIABLE),
-        ])
+
+        billing = Billing(
+            id=1,
+            uuid="bu",
+            name="Apt",
+            items=[
+                BillingItem(id=None, description="Water", amount=0, item_type=ItemType.VARIABLE),
+            ],
+        )
         with pytest.raises(ValueError, match="Variable billing item must have an id"):
             self.service.generate_bill(billing, "2025-03", {}, [])
 
     def test_toggle_paid_bill_id_none(self):
         import pytest
+
         bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03", paid_at=None)
         with pytest.raises(ValueError, match="Cannot toggle paid"):
             self.service.toggle_paid(bill)
@@ -274,30 +302,33 @@ class TestReceiptMethods:
         self.mock_repo = MagicMock()
         self.mock_storage = MagicMock()
         self.mock_receipt_repo = MagicMock()
-        self.service = BillService(
-            self.mock_repo, self.mock_storage, self.mock_receipt_repo
-        )
+        self.service = BillService(self.mock_repo, self.mock_storage, self.mock_receipt_repo)
 
     def test_add_receipt(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
 
         self.mock_receipt_repo.list_by_bill.return_value = []
         self.mock_receipt_repo.create.return_value = Receipt(
-            id=1, uuid="receipt-uuid", bill_id=1,
-            filename="receipt.pdf", storage_key="key.pdf",
-            content_type="application/pdf", file_size=1024,
+            id=1,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="receipt.pdf",
+            storage_key="key.pdf",
+            content_type="application/pdf",
+            file_size=1024,
         )
         self.mock_storage.save.return_value = "/path/receipt.pdf"
 
         with patch.object(self.service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF-fake"
-            result = self.service.add_receipt(
-                bill, billing, "receipt.pdf", b"pdf-data", "application/pdf"
-            )
+            result = self.service.add_receipt(bill, billing, "receipt.pdf", b"pdf-data", "application/pdf")
 
         assert result.filename == "receipt.pdf"
         # Storage save called twice: once for receipt file, once for regenerated PDF
@@ -306,8 +337,11 @@ class TestReceiptMethods:
 
     def test_add_receipt_sort_order_increments(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
 
@@ -317,8 +351,14 @@ class TestReceiptMethods:
         ]
         self.mock_receipt_repo.list_by_bill.return_value = existing
         self.mock_receipt_repo.create.return_value = Receipt(
-            id=3, uuid="r3", bill_id=1, filename="c.pdf",
-            storage_key="k3", content_type="application/pdf", file_size=100, sort_order=2,
+            id=3,
+            uuid="r3",
+            bill_id=1,
+            filename="c.pdf",
+            storage_key="k3",
+            content_type="application/pdf",
+            file_size=100,
+            sort_order=2,
         )
         self.mock_storage.save.return_value = "/p"
         self.mock_storage.get.return_value = b"data"
@@ -365,14 +405,21 @@ class TestReceiptMethods:
 
     def test_delete_receipt(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
         receipt = Receipt(
-            id=5, uuid="receipt-uuid", bill_id=1,
-            filename="r.pdf", storage_key="k.pdf",
-            content_type="application/pdf", file_size=100,
+            id=5,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="r.pdf",
+            storage_key="k.pdf",
+            content_type="application/pdf",
+            file_size=100,
         )
         self.mock_storage.save.return_value = "/p"
 
@@ -411,9 +458,7 @@ class TestReceiptMethods:
         assert result == []
 
     def test_get_receipt_by_uuid(self):
-        self.mock_receipt_repo.get_by_uuid.return_value = Receipt(
-            id=1, bill_id=1, filename="r.pdf"
-        )
+        self.mock_receipt_repo.get_by_uuid.return_value = Receipt(id=1, bill_id=1, filename="r.pdf")
         result = self.service.get_receipt_by_uuid("uuid")
         assert result is not None
         self.mock_receipt_repo.get_by_uuid.assert_called_once_with("uuid")
@@ -431,20 +476,20 @@ class TestPdfGenerationWithReceipts:
         self.mock_repo = MagicMock()
         self.mock_storage = MagicMock()
         self.mock_receipt_repo = MagicMock()
-        self.service = BillService(
-            self.mock_repo, self.mock_storage, self.mock_receipt_repo
-        )
+        self.service = BillService(self.mock_repo, self.mock_storage, self.mock_receipt_repo)
 
     def test_pdf_generation_fetches_and_merges_receipts(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
 
         self.mock_receipt_repo.list_by_bill.return_value = [
-            Receipt(id=1, bill_id=1, filename="r.pdf",
-                    storage_key="key/r.pdf", content_type="application/pdf"),
+            Receipt(id=1, bill_id=1, filename="r.pdf", storage_key="key/r.pdf", content_type="application/pdf"),
         ]
         self.mock_storage.get.return_value = b"%PDF-receipt"
         self.mock_storage.save.return_value = "/out.pdf"
@@ -460,8 +505,11 @@ class TestPdfGenerationWithReceipts:
 
     def test_pdf_generation_no_receipts_skips_merge(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
 
@@ -477,12 +525,14 @@ class TestPdfGenerationWithReceipts:
 
     def test_fetch_receipt_data_handles_storage_error(self):
         bill = Bill(
-            id=1, uuid="bill-uuid", billing_id=1,
-            reference_month="2025-03", total_amount=100000,
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
         )
         self.mock_receipt_repo.list_by_bill.return_value = [
-            Receipt(id=1, bill_id=1, filename="r.pdf",
-                    storage_key="key/r.pdf", content_type="application/pdf"),
+            Receipt(id=1, bill_id=1, filename="r.pdf", storage_key="key/r.pdf", content_type="application/pdf"),
         ]
         self.mock_storage.get.side_effect = Exception("download failed")
 

@@ -4,11 +4,13 @@ Revision ID: a7b8c9d0e1f2
 Revises: f6a7b8c9d0e1
 Create Date: 2026-02-08
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
-from alembic import op
 from ulid import ULID
+
+from alembic import op
 
 revision: str = "a7b8c9d0e1f2"
 down_revision: Union[str, Sequence[str], None] = "f6a7b8c9d0e1"
@@ -48,9 +50,7 @@ def upgrade() -> None:
         if pdf_path:
             new_pdf_path = pdf_path.replace(old_bill_uuid, new_bill_ulid)
             if old_billing_uuid in billing_uuid_map:
-                new_pdf_path = new_pdf_path.replace(
-                    old_billing_uuid, billing_uuid_map[old_billing_uuid]
-                )
+                new_pdf_path = new_pdf_path.replace(old_billing_uuid, billing_uuid_map[old_billing_uuid])
 
         bill_updates.append((bill_id, new_bill_ulid, new_pdf_path))
 

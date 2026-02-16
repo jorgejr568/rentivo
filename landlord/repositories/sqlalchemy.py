@@ -7,13 +7,13 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from landlord.constants import SP_TZ
+from landlord.models.audit_log import AuditLog
 from landlord.models.bill import Bill, BillLineItem
 from landlord.models.billing import Billing, BillingItem, ItemType
 from landlord.models.invite import Invite
 from landlord.models.organization import Organization, OrganizationMember
-from landlord.models.user import User
-from landlord.models.audit_log import AuditLog
 from landlord.models.receipt import Receipt
+from landlord.models.user import User
 from landlord.repositories.base import (
     AuditLogRepository,
     BillingRepository,
@@ -41,10 +41,16 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "INSERT INTO billings (name, description, pix_key, uuid, owner_type, owner_id, created_at, updated_at) "
                 "VALUES (:name, :description, :pix_key, :uuid, :owner_type, :owner_id, :created_at, :updated_at)"
             ),
-            {"name": billing.name, "description": billing.description,
-             "pix_key": billing.pix_key, "uuid": billing_uuid,
-             "owner_type": billing.owner_type, "owner_id": billing.owner_id,
-             "created_at": now, "updated_at": now},
+            {
+                "name": billing.name,
+                "description": billing.description,
+                "pix_key": billing.pix_key,
+                "uuid": billing_uuid,
+                "owner_type": billing.owner_type,
+                "owner_id": billing.owner_id,
+                "created_at": now,
+                "updated_at": now,
+            },
         )
         billing_id = result.lastrowid
         for i, item in enumerate(billing.items):
@@ -53,8 +59,13 @@ class SQLAlchemyBillingRepository(BillingRepository):
                     "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
                     "VALUES (:billing_id, :description, :amount, :item_type, :sort_order)"
                 ),
-                {"billing_id": billing_id, "description": item.description,
-                 "amount": item.amount, "item_type": item.item_type.value, "sort_order": i},
+                {
+                    "billing_id": billing_id,
+                    "description": item.description,
+                    "amount": item.amount,
+                    "item_type": item.item_type.value,
+                    "sort_order": i,
+                },
             )
         self.conn.commit()
         result = self.get_by_id(billing_id)
@@ -89,47 +100,65 @@ class SQLAlchemyBillingRepository(BillingRepository):
         )
 
     def _row_to_billing(self, row: RowMapping) -> Billing:
-        items = self.conn.execute(
-            text("SELECT * FROM billing_items WHERE billing_id = :billing_id ORDER BY sort_order"),
-            {"billing_id": row["id"]},
-        ).mappings().fetchall()
+        items = (
+            self.conn.execute(
+                text("SELECT * FROM billing_items WHERE billing_id = :billing_id ORDER BY sort_order"),
+                {"billing_id": row["id"]},
+            )
+            .mappings()
+            .fetchall()
+        )
         return self._build_billing(row, list(items))
 
     def get_by_id(self, billing_id: int) -> Billing | None:
-        row = self.conn.execute(
-            text("SELECT * FROM billings WHERE id = :id AND deleted_at IS NULL"),
-            {"id": billing_id},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM billings WHERE id = :id AND deleted_at IS NULL"),
+                {"id": billing_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_billing(row)
 
     def get_by_uuid(self, uuid: str) -> Billing | None:
-        row = self.conn.execute(
-            text("SELECT * FROM billings WHERE uuid = :uuid AND deleted_at IS NULL"),
-            {"uuid": uuid},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM billings WHERE uuid = :uuid AND deleted_at IS NULL"),
+                {"uuid": uuid},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_billing(row)
 
     def list_all(self) -> list[Billing]:
-        rows = self.conn.execute(
-            text("SELECT * FROM billings WHERE deleted_at IS NULL ORDER BY created_at DESC")
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(text("SELECT * FROM billings WHERE deleted_at IS NULL ORDER BY created_at DESC"))
+            .mappings()
+            .fetchall()
+        )
         return self._build_billings_from_rows(rows)
 
     def list_for_user(self, user_id: int) -> list[Billing]:
-        rows = self.conn.execute(
-            text(
-                "SELECT * FROM billings WHERE deleted_at IS NULL AND ("
-                "(owner_type = 'user' AND owner_id = :uid) OR "
-                "(owner_type = 'organization' AND owner_id IN "
-                "(SELECT organization_id FROM organization_members WHERE user_id = :uid))"
-                ") ORDER BY created_at DESC"
-            ),
-            {"uid": user_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT * FROM billings WHERE deleted_at IS NULL AND ("
+                    "(owner_type = 'user' AND owner_id = :uid) OR "
+                    "(owner_type = 'organization' AND owner_id IN "
+                    "(SELECT organization_id FROM organization_members WHERE user_id = :uid))"
+                    ") ORDER BY created_at DESC"
+                ),
+                {"uid": user_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         return self._build_billings_from_rows(rows)
 
     def _build_billings_from_rows(self, rows: list[RowMapping]) -> list[Billing]:
@@ -138,17 +167,18 @@ class SQLAlchemyBillingRepository(BillingRepository):
         billing_ids = [row["id"] for row in rows]
         placeholders = ", ".join(f":id{i}" for i in range(len(billing_ids)))
         params = {f"id{i}": bid for i, bid in enumerate(billing_ids)}
-        all_items = self.conn.execute(
-            text(f"SELECT * FROM billing_items WHERE billing_id IN ({placeholders}) ORDER BY sort_order"),
-            params,
-        ).mappings().fetchall()
+        all_items = (
+            self.conn.execute(
+                text(f"SELECT * FROM billing_items WHERE billing_id IN ({placeholders}) ORDER BY sort_order"),
+                params,
+            )
+            .mappings()
+            .fetchall()
+        )
         items_by_billing: dict[int, list[RowMapping]] = {}
         for item_row in all_items:
             items_by_billing.setdefault(item_row["billing_id"], []).append(item_row)
-        return [
-            self._build_billing(row, items_by_billing.get(row["id"], []))
-            for row in rows
-        ]
+        return [self._build_billing(row, items_by_billing.get(row["id"], [])) for row in rows]
 
     def update(self, billing: Billing) -> Billing:
         self.conn.execute(
@@ -156,8 +186,13 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "UPDATE billings SET name = :name, description = :description, "
                 "pix_key = :pix_key, updated_at = :updated_at WHERE id = :id"
             ),
-            {"name": billing.name, "description": billing.description,
-             "pix_key": billing.pix_key, "updated_at": _now(), "id": billing.id},
+            {
+                "name": billing.name,
+                "description": billing.description,
+                "pix_key": billing.pix_key,
+                "updated_at": _now(),
+                "id": billing.id,
+            },
         )
         self.conn.execute(
             text("DELETE FROM billing_items WHERE billing_id = :billing_id"),
@@ -169,8 +204,13 @@ class SQLAlchemyBillingRepository(BillingRepository):
                     "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
                     "VALUES (:billing_id, :description, :amount, :item_type, :sort_order)"
                 ),
-                {"billing_id": billing.id, "description": item.description,
-                 "amount": item.amount, "item_type": item.item_type.value, "sort_order": i},
+                {
+                    "billing_id": billing.id,
+                    "description": item.description,
+                    "amount": item.amount,
+                    "item_type": item.item_type.value,
+                    "sort_order": i,
+                },
             )
         self.conn.commit()
         if billing.id is None:  # pragma: no cover
@@ -193,8 +233,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "UPDATE billings SET owner_type = :owner_type, owner_id = :owner_id, "
                 "updated_at = :updated_at WHERE id = :id"
             ),
-            {"owner_type": owner_type, "owner_id": owner_id,
-             "updated_at": _now(), "id": billing_id},
+            {"owner_type": owner_type, "owner_id": owner_id, "updated_at": _now(), "id": billing_id},
         )
         self.conn.commit()
 
@@ -207,13 +246,21 @@ class SQLAlchemyBillRepository(BillRepository):
         bill_uuid = str(ULID())
         result = self.conn.execute(
             text(
-                "INSERT INTO bills (billing_id, reference_month, total_amount, pdf_path, notes, uuid, due_date, created_at) "
-                "VALUES (:billing_id, :reference_month, :total_amount, :pdf_path, :notes, :uuid, :due_date, :created_at)"
+                "INSERT INTO bills (billing_id, reference_month, total_amount, "
+                "pdf_path, notes, uuid, due_date, created_at) "
+                "VALUES (:billing_id, :reference_month, :total_amount, "
+                ":pdf_path, :notes, :uuid, :due_date, :created_at)"
             ),
-            {"billing_id": bill.billing_id, "reference_month": bill.reference_month,
-             "total_amount": bill.total_amount, "pdf_path": bill.pdf_path,
-             "notes": bill.notes, "uuid": bill_uuid, "due_date": bill.due_date,
-             "created_at": _now()},
+            {
+                "billing_id": bill.billing_id,
+                "reference_month": bill.reference_month,
+                "total_amount": bill.total_amount,
+                "pdf_path": bill.pdf_path,
+                "notes": bill.notes,
+                "uuid": bill_uuid,
+                "due_date": bill.due_date,
+                "created_at": _now(),
+            },
         )
         bill_id = result.lastrowid
         for i, item in enumerate(bill.line_items):
@@ -222,8 +269,13 @@ class SQLAlchemyBillRepository(BillRepository):
                     "INSERT INTO bill_line_items (bill_id, description, amount, item_type, sort_order) "
                     "VALUES (:bill_id, :description, :amount, :item_type, :sort_order)"
                 ),
-                {"bill_id": bill_id, "description": item.description,
-                 "amount": item.amount, "item_type": item.item_type.value, "sort_order": i},
+                {
+                    "bill_id": bill_id,
+                    "description": item.description,
+                    "amount": item.amount,
+                    "item_type": item.item_type.value,
+                    "sort_order": i,
+                },
             )
         self.conn.commit()
         result = self.get_by_id(bill_id)
@@ -259,51 +311,71 @@ class SQLAlchemyBillRepository(BillRepository):
         )
 
     def _row_to_bill(self, row: RowMapping) -> Bill:
-        items = self.conn.execute(
-            text("SELECT * FROM bill_line_items WHERE bill_id = :bill_id ORDER BY sort_order"),
-            {"bill_id": row["id"]},
-        ).mappings().fetchall()
+        items = (
+            self.conn.execute(
+                text("SELECT * FROM bill_line_items WHERE bill_id = :bill_id ORDER BY sort_order"),
+                {"bill_id": row["id"]},
+            )
+            .mappings()
+            .fetchall()
+        )
         return self._build_bill(row, list(items))
 
     def get_by_id(self, bill_id: int) -> Bill | None:
-        row = self.conn.execute(
-            text("SELECT * FROM bills WHERE id = :id AND deleted_at IS NULL"),
-            {"id": bill_id},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM bills WHERE id = :id AND deleted_at IS NULL"),
+                {"id": bill_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_bill(row)
 
     def get_by_uuid(self, uuid: str) -> Bill | None:
-        row = self.conn.execute(
-            text("SELECT * FROM bills WHERE uuid = :uuid AND deleted_at IS NULL"),
-            {"uuid": uuid},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM bills WHERE uuid = :uuid AND deleted_at IS NULL"),
+                {"uuid": uuid},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_bill(row)
 
     def list_by_billing(self, billing_id: int) -> list[Bill]:
-        rows = self.conn.execute(
-            text("SELECT * FROM bills WHERE billing_id = :billing_id AND deleted_at IS NULL ORDER BY reference_month DESC"),
-            {"billing_id": billing_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT * FROM bills WHERE billing_id = :billing_id "
+                    "AND deleted_at IS NULL ORDER BY reference_month DESC"
+                ),
+                {"billing_id": billing_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         if not rows:
             return []
         bill_ids = [row["id"] for row in rows]
         placeholders = ", ".join(f":id{i}" for i in range(len(bill_ids)))
         params = {f"id{i}": bid for i, bid in enumerate(bill_ids)}
-        all_items = self.conn.execute(
-            text(f"SELECT * FROM bill_line_items WHERE bill_id IN ({placeholders}) ORDER BY sort_order"),
-            params,
-        ).mappings().fetchall()
+        all_items = (
+            self.conn.execute(
+                text(f"SELECT * FROM bill_line_items WHERE bill_id IN ({placeholders}) ORDER BY sort_order"),
+                params,
+            )
+            .mappings()
+            .fetchall()
+        )
         items_by_bill: dict[int, list[RowMapping]] = {}
         for item_row in all_items:
             items_by_bill.setdefault(item_row["bill_id"], []).append(item_row)
-        return [
-            self._build_bill(row, items_by_bill.get(row["id"], []))
-            for row in rows
-        ]
+        return [self._build_bill(row, items_by_bill.get(row["id"], [])) for row in rows]
 
     def update(self, bill: Bill) -> Bill:
         self.conn.execute(
@@ -311,8 +383,13 @@ class SQLAlchemyBillRepository(BillRepository):
                 "UPDATE bills SET reference_month = :reference_month, "
                 "total_amount = :total_amount, notes = :notes, due_date = :due_date WHERE id = :id"
             ),
-            {"reference_month": bill.reference_month, "total_amount": bill.total_amount,
-             "notes": bill.notes, "due_date": bill.due_date, "id": bill.id},
+            {
+                "reference_month": bill.reference_month,
+                "total_amount": bill.total_amount,
+                "notes": bill.notes,
+                "due_date": bill.due_date,
+                "id": bill.id,
+            },
         )
         self.conn.execute(
             text("DELETE FROM bill_line_items WHERE bill_id = :bill_id"),
@@ -324,8 +401,13 @@ class SQLAlchemyBillRepository(BillRepository):
                     "INSERT INTO bill_line_items (bill_id, description, amount, item_type, sort_order) "
                     "VALUES (:bill_id, :description, :amount, :item_type, :sort_order)"
                 ),
-                {"bill_id": bill.id, "description": item.description,
-                 "amount": item.amount, "item_type": item.item_type.value, "sort_order": i},
+                {
+                    "bill_id": bill.id,
+                    "description": item.description,
+                    "amount": item.amount,
+                    "item_type": item.item_type.value,
+                    "sort_order": i,
+                },
             )
         self.conn.commit()
         if bill.id is None:  # pragma: no cover
@@ -377,8 +459,7 @@ class SQLAlchemyUserRepository(UserRepository):
                 "INSERT INTO users (username, email, password_hash, created_at) "
                 "VALUES (:username, :email, :password_hash, :created_at)"
             ),
-            {"username": user.username, "email": user.email,
-             "password_hash": user.password_hash, "created_at": _now()},
+            {"username": user.username, "email": user.email, "password_hash": user.password_hash, "created_at": _now()},
         )
         self.conn.commit()
         result = self.get_by_username(user.username)
@@ -387,27 +468,33 @@ class SQLAlchemyUserRepository(UserRepository):
         return result
 
     def get_by_id(self, user_id: int) -> User | None:
-        row = self.conn.execute(
-            text("SELECT * FROM users WHERE id = :id"),
-            {"id": user_id},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM users WHERE id = :id"),
+                {"id": user_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_user(row)
 
     def get_by_username(self, username: str) -> User | None:
-        row = self.conn.execute(
-            text("SELECT * FROM users WHERE username = :username"),
-            {"username": username},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM users WHERE username = :username"),
+                {"username": username},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_user(row)
 
     def list_all(self) -> list[User]:
-        rows = self.conn.execute(
-            text("SELECT * FROM users ORDER BY created_at DESC")
-        ).mappings().fetchall()
+        rows = self.conn.execute(text("SELECT * FROM users ORDER BY created_at DESC")).mappings().fetchall()
         return [self._row_to_user(row) for row in rows]
 
     def update_password_hash(self, username: str, password_hash: str) -> None:
@@ -452,8 +539,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
                 "INSERT INTO organizations (uuid, name, created_by, created_at, updated_at) "
                 "VALUES (:uuid, :name, :created_by, :created_at, :updated_at)"
             ),
-            {"uuid": org_uuid, "name": org.name, "created_by": org.created_by,
-             "created_at": now, "updated_at": now},
+            {"uuid": org_uuid, "name": org.name, "created_by": org.created_by, "created_at": now, "updated_at": now},
         )
         org_id = result.lastrowid
         self.conn.commit()
@@ -463,41 +549,50 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         return created
 
     def get_by_id(self, org_id: int) -> Organization | None:
-        row = self.conn.execute(
-            text("SELECT * FROM organizations WHERE id = :id AND deleted_at IS NULL"),
-            {"id": org_id},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM organizations WHERE id = :id AND deleted_at IS NULL"),
+                {"id": org_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_org(row)
 
     def get_by_uuid(self, uuid: str) -> Organization | None:
-        row = self.conn.execute(
-            text("SELECT * FROM organizations WHERE uuid = :uuid AND deleted_at IS NULL"),
-            {"uuid": uuid},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM organizations WHERE uuid = :uuid AND deleted_at IS NULL"),
+                {"uuid": uuid},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_org(row)
 
     def list_by_user(self, user_id: int) -> list[Organization]:
-        rows = self.conn.execute(
-            text(
-                "SELECT o.* FROM organizations o "
-                "JOIN organization_members om ON o.id = om.organization_id "
-                "WHERE om.user_id = :uid AND o.deleted_at IS NULL "
-                "ORDER BY o.name"
-            ),
-            {"uid": user_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT o.* FROM organizations o "
+                    "JOIN organization_members om ON o.id = om.organization_id "
+                    "WHERE om.user_id = :uid AND o.deleted_at IS NULL "
+                    "ORDER BY o.name"
+                ),
+                {"uid": user_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [self._row_to_org(row) for row in rows]
 
     def update(self, org: Organization) -> Organization:
         self.conn.execute(
-            text(
-                "UPDATE organizations SET name = :name, updated_at = :updated_at "
-                "WHERE id = :id"
-            ),
+            text("UPDATE organizations SET name = :name, updated_at = :updated_at WHERE id = :id"),
             {"name": org.name, "updated_at": _now(), "id": org.id},
         )
         self.conn.commit()
@@ -532,35 +627,37 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
 
     def remove_member(self, org_id: int, user_id: int) -> None:
         self.conn.execute(
-            text(
-                "DELETE FROM organization_members "
-                "WHERE organization_id = :org_id AND user_id = :user_id"
-            ),
+            text("DELETE FROM organization_members WHERE organization_id = :org_id AND user_id = :user_id"),
             {"org_id": org_id, "user_id": user_id},
         )
         self.conn.commit()
 
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
-        row = self.conn.execute(
-            text(
-                "SELECT * FROM organization_members "
-                "WHERE organization_id = :org_id AND user_id = :user_id"
-            ),
-            {"org_id": org_id, "user_id": user_id},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM organization_members WHERE organization_id = :org_id AND user_id = :user_id"),
+                {"org_id": org_id, "user_id": user_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_member(row)
 
     def list_members(self, org_id: int) -> list[OrganizationMember]:
-        rows = self.conn.execute(
-            text(
-                "SELECT om.*, u.username FROM organization_members om "
-                "JOIN users u ON om.user_id = u.id "
-                "WHERE om.organization_id = :org_id ORDER BY om.created_at"
-            ),
-            {"org_id": org_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT om.*, u.username FROM organization_members om "
+                    "JOIN users u ON om.user_id = u.id "
+                    "WHERE om.organization_id = :org_id ORDER BY om.created_at"
+                ),
+                {"org_id": org_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [
             OrganizationMember(
                 id=row["id"],
@@ -575,10 +672,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
 
     def update_member_role(self, org_id: int, user_id: int, role: str) -> None:
         self.conn.execute(
-            text(
-                "UPDATE organization_members SET role = :role "
-                "WHERE organization_id = :org_id AND user_id = :user_id"
-            ),
+            text("UPDATE organization_members SET role = :role WHERE organization_id = :org_id AND user_id = :user_id"),
             {"role": role, "org_id": org_id, "user_id": user_id},
         )
         self.conn.commit()
@@ -608,7 +702,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
     def create(self, invite: Invite) -> Invite:
         invite_uuid = str(ULID())
         now = _now()
-        result = self.conn.execute(
+        self.conn.execute(
             text(
                 "INSERT INTO invites (uuid, organization_id, invited_user_id, "
                 "invited_by_user_id, role, status, created_at) "
@@ -632,83 +726,97 @@ class SQLAlchemyInviteRepository(InviteRepository):
         return created
 
     def get_by_uuid(self, uuid: str) -> Invite | None:
-        row = self.conn.execute(
-            text(
-                "SELECT i.*, o.name AS org_name, "
-                "u1.username AS invited_username, u2.username AS invited_by_username "
-                "FROM invites i "
-                "JOIN organizations o ON i.organization_id = o.id "
-                "JOIN users u1 ON i.invited_user_id = u1.id "
-                "JOIN users u2 ON i.invited_by_user_id = u2.id "
-                "WHERE i.uuid = :uuid"
-            ),
-            {"uuid": uuid},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text(
+                    "SELECT i.*, o.name AS org_name, "
+                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "FROM invites i "
+                    "JOIN organizations o ON i.organization_id = o.id "
+                    "JOIN users u1 ON i.invited_user_id = u1.id "
+                    "JOIN users u2 ON i.invited_by_user_id = u2.id "
+                    "WHERE i.uuid = :uuid"
+                ),
+                {"uuid": uuid},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_invite(row)
 
     def list_pending_for_user(self, user_id: int) -> list[Invite]:
-        rows = self.conn.execute(
-            text(
-                "SELECT i.*, o.name AS org_name, "
-                "u1.username AS invited_username, u2.username AS invited_by_username "
-                "FROM invites i "
-                "JOIN organizations o ON i.organization_id = o.id "
-                "JOIN users u1 ON i.invited_user_id = u1.id "
-                "JOIN users u2 ON i.invited_by_user_id = u2.id "
-                "WHERE i.invited_user_id = :uid AND i.status = 'pending' "
-                "ORDER BY i.created_at DESC"
-            ),
-            {"uid": user_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT i.*, o.name AS org_name, "
+                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "FROM invites i "
+                    "JOIN organizations o ON i.organization_id = o.id "
+                    "JOIN users u1 ON i.invited_user_id = u1.id "
+                    "JOIN users u2 ON i.invited_by_user_id = u2.id "
+                    "WHERE i.invited_user_id = :uid AND i.status = 'pending' "
+                    "ORDER BY i.created_at DESC"
+                ),
+                {"uid": user_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [self._row_to_invite(row) for row in rows]
 
     def list_by_organization(self, org_id: int) -> list[Invite]:
-        rows = self.conn.execute(
-            text(
-                "SELECT i.*, o.name AS org_name, "
-                "u1.username AS invited_username, u2.username AS invited_by_username "
-                "FROM invites i "
-                "JOIN organizations o ON i.organization_id = o.id "
-                "JOIN users u1 ON i.invited_user_id = u1.id "
-                "JOIN users u2 ON i.invited_by_user_id = u2.id "
-                "WHERE i.organization_id = :org_id "
-                "ORDER BY i.created_at DESC"
-            ),
-            {"org_id": org_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT i.*, o.name AS org_name, "
+                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "FROM invites i "
+                    "JOIN organizations o ON i.organization_id = o.id "
+                    "JOIN users u1 ON i.invited_user_id = u1.id "
+                    "JOIN users u2 ON i.invited_by_user_id = u2.id "
+                    "WHERE i.organization_id = :org_id "
+                    "ORDER BY i.created_at DESC"
+                ),
+                {"org_id": org_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [self._row_to_invite(row) for row in rows]
 
     def update_status(self, invite_id: int, status: str) -> None:
         self.conn.execute(
-            text(
-                "UPDATE invites SET status = :status, responded_at = :responded_at "
-                "WHERE id = :id"
-            ),
+            text("UPDATE invites SET status = :status, responded_at = :responded_at WHERE id = :id"),
             {"status": status, "responded_at": _now(), "id": invite_id},
         )
         self.conn.commit()
 
     def count_pending_for_user(self, user_id: int) -> int:
-        result = self.conn.execute(
-            text(
-                "SELECT COUNT(*) AS cnt FROM invites "
-                "WHERE invited_user_id = :uid AND status = 'pending'"
-            ),
-            {"uid": user_id},
-        ).mappings().fetchone()
+        result = (
+            self.conn.execute(
+                text("SELECT COUNT(*) AS cnt FROM invites WHERE invited_user_id = :uid AND status = 'pending'"),
+                {"uid": user_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         return result["cnt"] if result else 0
 
     def has_pending_invite(self, org_id: int, user_id: int) -> bool:
-        result = self.conn.execute(
-            text(
-                "SELECT COUNT(*) AS cnt FROM invites "
-                "WHERE organization_id = :org_id AND invited_user_id = :uid "
-                "AND status = 'pending'"
-            ),
-            {"org_id": org_id, "uid": user_id},
-        ).mappings().fetchone()
+        result = (
+            self.conn.execute(
+                text(
+                    "SELECT COUNT(*) AS cnt FROM invites "
+                    "WHERE organization_id = :org_id AND invited_user_id = :uid "
+                    "AND status = 'pending'"
+                ),
+                {"org_id": org_id, "uid": user_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         return (result["cnt"] if result else 0) > 0
 
 
@@ -733,7 +841,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
     def create(self, receipt: Receipt) -> Receipt:
         receipt_uuid = str(ULID())
         now = _now()
-        result = self.conn.execute(
+        self.conn.execute(
             text(
                 "INSERT INTO receipts (uuid, bill_id, filename, storage_key, content_type, "
                 "file_size, sort_order, created_at) "
@@ -758,28 +866,40 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
         return created
 
     def get_by_id(self, receipt_id: int) -> Receipt | None:
-        row = self.conn.execute(
-            text("SELECT * FROM receipts WHERE id = :id"),
-            {"id": receipt_id},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM receipts WHERE id = :id"),
+                {"id": receipt_id},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_receipt(row)
 
     def get_by_uuid(self, uuid: str) -> Receipt | None:
-        row = self.conn.execute(
-            text("SELECT * FROM receipts WHERE uuid = :uuid"),
-            {"uuid": uuid},
-        ).mappings().fetchone()
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM receipts WHERE uuid = :uuid"),
+                {"uuid": uuid},
+            )
+            .mappings()
+            .fetchone()
+        )
         if row is None:
             return None
         return self._row_to_receipt(row)
 
     def list_by_bill(self, bill_id: int) -> list[Receipt]:
-        rows = self.conn.execute(
-            text("SELECT * FROM receipts WHERE bill_id = :bill_id ORDER BY sort_order, id"),
-            {"bill_id": bill_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text("SELECT * FROM receipts WHERE bill_id = :bill_id ORDER BY sort_order, id"),
+                {"bill_id": bill_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [self._row_to_receipt(row) for row in rows]
 
     def delete(self, receipt_id: int) -> None:
@@ -850,55 +970,58 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
                 "previous_state": json.dumps(audit_log.previous_state)
                 if audit_log.previous_state is not None
                 else None,
-                "new_state": json.dumps(audit_log.new_state)
-                if audit_log.new_state is not None
-                else None,
+                "new_state": json.dumps(audit_log.new_state) if audit_log.new_state is not None else None,
                 "metadata": json.dumps(audit_log.metadata),
                 "created_at": now,
             },
         )
         self.conn.commit()
 
-        row = self.conn.execute(
-            text("SELECT * FROM audit_logs WHERE uuid = :uuid"),
-            {"uuid": audit_uuid},
-        ).mappings().fetchone()
-        if row is None:
-            raise RuntimeError(
-                f"Failed to retrieve audit log after create (uuid={audit_uuid})"
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM audit_logs WHERE uuid = :uuid"),
+                {"uuid": audit_uuid},
             )
+            .mappings()
+            .fetchone()
+        )
+        if row is None:
+            raise RuntimeError(f"Failed to retrieve audit log after create (uuid={audit_uuid})")
         return self._row_to_audit_log(row)
 
     def list_by_entity(self, entity_type: str, entity_id: int) -> list[AuditLog]:
-        rows = self.conn.execute(
-            text(
-                "SELECT * FROM audit_logs "
-                "WHERE entity_type = :entity_type AND entity_id = :entity_id "
-                "ORDER BY created_at DESC"
-            ),
-            {"entity_type": entity_type, "entity_id": entity_id},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT * FROM audit_logs "
+                    "WHERE entity_type = :entity_type AND entity_id = :entity_id "
+                    "ORDER BY created_at DESC"
+                ),
+                {"entity_type": entity_type, "entity_id": entity_id},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [self._row_to_audit_log(row) for row in rows]
 
     def list_by_actor(self, actor_id: int, limit: int = 50) -> list[AuditLog]:
-        rows = self.conn.execute(
-            text(
-                "SELECT * FROM audit_logs "
-                "WHERE actor_id = :actor_id "
-                "ORDER BY created_at DESC "
-                "LIMIT :limit"
-            ),
-            {"actor_id": actor_id, "limit": limit},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text("SELECT * FROM audit_logs WHERE actor_id = :actor_id ORDER BY created_at DESC LIMIT :limit"),
+                {"actor_id": actor_id, "limit": limit},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [self._row_to_audit_log(row) for row in rows]
 
     def list_recent(self, limit: int = 50) -> list[AuditLog]:
-        rows = self.conn.execute(
-            text(
-                "SELECT * FROM audit_logs "
-                "ORDER BY created_at DESC "
-                "LIMIT :limit"
-            ),
-            {"limit": limit},
-        ).mappings().fetchall()
+        rows = (
+            self.conn.execute(
+                text("SELECT * FROM audit_logs ORDER BY created_at DESC LIMIT :limit"),
+                {"limit": limit},
+            )
+            .mappings()
+            .fetchall()
+        )
         return [self._row_to_audit_log(row) for row in rows]

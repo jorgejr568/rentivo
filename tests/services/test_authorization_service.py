@@ -21,9 +21,7 @@ class TestAuthorizationService:
 
     def test_org_member_can_view(self):
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
-        self.mock_org_repo.get_member.return_value = OrganizationMember(
-            organization_id=10, user_id=2, role="viewer"
-        )
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="viewer")
         assert self.service.can_view_billing(2, billing) is True
 
     def test_owner_can_edit(self):
@@ -32,23 +30,17 @@ class TestAuthorizationService:
 
     def test_org_admin_can_edit(self):
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
-        self.mock_org_repo.get_member.return_value = OrganizationMember(
-            organization_id=10, user_id=2, role="admin"
-        )
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="admin")
         assert self.service.can_edit_billing(2, billing) is True
 
     def test_org_viewer_cannot_edit(self):
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
-        self.mock_org_repo.get_member.return_value = OrganizationMember(
-            organization_id=10, user_id=2, role="viewer"
-        )
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="viewer")
         assert self.service.can_edit_billing(2, billing) is False
 
     def test_org_manager_cannot_edit(self):
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
-        self.mock_org_repo.get_member.return_value = OrganizationMember(
-            organization_id=10, user_id=2, role="manager"
-        )
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="manager")
         assert self.service.can_edit_billing(2, billing) is False
 
     def test_owner_can_delete(self):
@@ -61,16 +53,12 @@ class TestAuthorizationService:
 
     def test_org_manager_can_manage_bills(self):
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
-        self.mock_org_repo.get_member.return_value = OrganizationMember(
-            organization_id=10, user_id=2, role="manager"
-        )
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="manager")
         assert self.service.can_manage_bills(2, billing) is True
 
     def test_org_viewer_cannot_manage_bills(self):
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
-        self.mock_org_repo.get_member.return_value = OrganizationMember(
-            organization_id=10, user_id=2, role="viewer"
-        )
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="viewer")
         assert self.service.can_manage_bills(2, billing) is False
 
     def test_owner_can_transfer(self):
@@ -91,9 +79,7 @@ class TestAuthorizationService:
 
     def test_get_role_org_member(self):
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
-        self.mock_org_repo.get_member.return_value = OrganizationMember(
-            organization_id=10, user_id=2, role="manager"
-        )
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="manager")
         assert self.service.get_role_for_billing(2, billing) == "manager"
 
     def test_get_role_none(self):

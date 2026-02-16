@@ -1,6 +1,7 @@
-import pytest
-from sqlalchemy import Connection, text
 from unittest.mock import patch
+
+import pytest
+from sqlalchemy import Connection
 
 from landlord.models.receipt import Receipt
 from landlord.repositories.sqlalchemy import (
@@ -85,16 +86,26 @@ class TestReceiptRepoCRUD:
 
     def test_list_by_bill_ordered(self, receipt_repo, billing_with_bill):
         _, bill = billing_with_bill
-        r1 = receipt_repo.create(Receipt(
-            bill_id=bill.id, filename="second.pdf",
-            storage_key="k2.pdf", content_type="application/pdf",
-            file_size=100, sort_order=1,
-        ))
-        r0 = receipt_repo.create(Receipt(
-            bill_id=bill.id, filename="first.pdf",
-            storage_key="k1.pdf", content_type="application/pdf",
-            file_size=200, sort_order=0,
-        ))
+        receipt_repo.create(
+            Receipt(
+                bill_id=bill.id,
+                filename="second.pdf",
+                storage_key="k2.pdf",
+                content_type="application/pdf",
+                file_size=100,
+                sort_order=1,
+            )
+        )
+        receipt_repo.create(
+            Receipt(
+                bill_id=bill.id,
+                filename="first.pdf",
+                storage_key="k1.pdf",
+                content_type="application/pdf",
+                file_size=200,
+                sort_order=0,
+            )
+        )
         results = receipt_repo.list_by_bill(bill.id)
         assert len(results) == 2
         assert results[0].sort_order == 0
@@ -108,19 +119,25 @@ class TestReceiptRepoCRUD:
 
     def test_delete(self, receipt_repo, billing_with_bill):
         _, bill = billing_with_bill
-        created = receipt_repo.create(Receipt(
-            bill_id=bill.id, filename="del.pdf",
-            storage_key="k.pdf", content_type="application/pdf",
-            file_size=50,
-        ))
+        created = receipt_repo.create(
+            Receipt(
+                bill_id=bill.id,
+                filename="del.pdf",
+                storage_key="k.pdf",
+                content_type="application/pdf",
+                file_size=50,
+            )
+        )
         receipt_repo.delete(created.id)
         assert receipt_repo.get_by_id(created.id) is None
 
     def test_create_runtime_error(self, receipt_repo, billing_with_bill):
         _, bill = billing_with_bill
         receipt = Receipt(
-            bill_id=bill.id, filename="fail.pdf",
-            storage_key="k.pdf", content_type="application/pdf",
+            bill_id=bill.id,
+            filename="fail.pdf",
+            storage_key="k.pdf",
+            content_type="application/pdf",
             file_size=10,
         )
         with patch.object(receipt_repo, "get_by_uuid", return_value=None):

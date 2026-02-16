@@ -4,9 +4,11 @@ Revision ID: f7b8c9d0e1f2
 Revises: e4f5a6b7c8d9
 Create Date: 2026-02-16
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "f7b8c9d0e1f2"
@@ -52,16 +54,10 @@ def upgrade() -> None:
         ),
         sa.Column("created_at", sa.DateTime, nullable=False),
     )
-    op.create_index(
-        "ix_audit_logs_event_type", "audit_logs", ["event_type"]
-    )
+    op.create_index("ix_audit_logs_event_type", "audit_logs", ["event_type"])
     op.create_index("ix_audit_logs_actor_id", "audit_logs", ["actor_id"])
-    op.create_index(
-        "ix_audit_logs_entity", "audit_logs", ["entity_type", "entity_id"]
-    )
-    op.create_index(
-        "ix_audit_logs_created_at", "audit_logs", ["created_at"]
-    )
+    op.create_index("ix_audit_logs_entity", "audit_logs", ["entity_type", "entity_id"])
+    op.create_index("ix_audit_logs_created_at", "audit_logs", ["created_at"])
 
 
 def downgrade() -> None:

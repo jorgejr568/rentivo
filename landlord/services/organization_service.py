@@ -50,9 +50,7 @@ class OrganizationService:
 
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
         result = self.repo.get_member(org_id, user_id)
-        logger.debug(
-            "get_member org=%s user=%s found=%s", org_id, user_id, result is not None
-        )
+        logger.debug("get_member org=%s user=%s found=%s", org_id, user_id, result is not None)
         return result
 
     def list_members(self, org_id: int) -> list[OrganizationMember]:

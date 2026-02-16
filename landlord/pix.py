@@ -2,6 +2,7 @@
 
 Generates the payload string for a static PIX QR code and renders it as a PNG image.
 """
+
 from __future__ import annotations
 
 from io import BytesIO
@@ -59,20 +60,20 @@ def generate_pix_payload(
     adft = _tlv("05", txid)
 
     payload = (
-        _tlv("00", "01")        # Payload Format Indicator
-        + _tlv("26", mai)       # Merchant Account Information
-        + _tlv("52", "0000")    # Merchant Category Code
-        + _tlv("53", "986")     # Transaction Currency (BRL)
+        _tlv("00", "01")  # Payload Format Indicator
+        + _tlv("26", mai)  # Merchant Account Information
+        + _tlv("52", "0000")  # Merchant Category Code
+        + _tlv("53", "986")  # Transaction Currency (BRL)
     )
 
     if amount is not None and amount > 0:
         payload += _tlv("54", f"{amount:.2f}")
 
     payload += (
-        _tlv("58", "BR")        # Country Code
-        + _tlv("59", name)      # Merchant Name
-        + _tlv("60", city)      # Merchant City
-        + _tlv("62", adft)      # Additional Data
+        _tlv("58", "BR")  # Country Code
+        + _tlv("59", name)  # Merchant Name
+        + _tlv("60", city)  # Merchant City
+        + _tlv("62", adft)  # Additional Data
     )
 
     # CRC16 placeholder: tag "63" + length "04" + actual CRC

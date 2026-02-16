@@ -85,7 +85,11 @@ async def bill_generate(request: Request, billing_uuid: str):
 
     logger.info(
         "Generating bill: billing=%s month=%s due=%s variable_amounts=%s extras=%d",
-        billing_uuid, reference_month, due_date, variable_amounts, len(extras),
+        billing_uuid,
+        reference_month,
+        due_date,
+        variable_amounts,
+        len(extras),
     )
 
     bill = bill_service.generate_bill(
@@ -141,9 +145,13 @@ async def bill_generate(request: Request, billing_uuid: str):
             entity_type="receipt",
             entity_id=receipt.id,
             entity_uuid=receipt.uuid,
-            new_state={"filename": receipt.filename, "content_type": receipt.content_type,
-                       "file_size": receipt.file_size, "bill_uuid": bill.uuid,
-                       "billing_uuid": billing_uuid},
+            new_state={
+                "filename": receipt.filename,
+                "content_type": receipt.content_type,
+                "file_size": receipt.file_size,
+                "bill_uuid": bill.uuid,
+                "billing_uuid": billing_uuid,
+            },
         )
 
     flash(request, "Fatura gerada com sucesso!", "success")
@@ -177,12 +185,16 @@ async def bill_detail(request: Request, billing_uuid: str, bill_uuid: str):
     role = auth_service.get_role_for_billing(user_id, billing)
     receipts = bill_service.list_receipts(bill.id) if bill.id else []
     logger.info("Rendering bill/detail.html for bill uuid=%s", bill_uuid)
-    return render(request, "bill/detail.html", {
-        "bill": bill,
-        "billing": billing,
-        "role": role,
-        "receipts": receipts,
-    })
+    return render(
+        request,
+        "bill/detail.html",
+        {
+            "bill": bill,
+            "billing": billing,
+            "role": role,
+            "receipts": receipts,
+        },
+    )
 
 
 @router.get("/{bill_uuid}/edit")
@@ -506,9 +518,13 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         entity_type="receipt",
         entity_id=receipt.id,
         entity_uuid=receipt.uuid,
-        new_state={"filename": receipt.filename, "content_type": receipt.content_type,
-                   "file_size": receipt.file_size, "bill_uuid": bill_uuid,
-                   "billing_uuid": billing_uuid},
+        new_state={
+            "filename": receipt.filename,
+            "content_type": receipt.content_type,
+            "file_size": receipt.file_size,
+            "bill_uuid": bill_uuid,
+            "billing_uuid": billing_uuid,
+        },
     )
 
     flash(request, "Comprovante anexado com sucesso!", "success")
@@ -542,9 +558,13 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
         flash(request, "Comprovante não encontrado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
 
-    previous_state = {"filename": receipt.filename, "content_type": receipt.content_type,
-                      "file_size": receipt.file_size, "bill_uuid": bill_uuid,
-                      "billing_uuid": billing_uuid}
+    previous_state = {
+        "filename": receipt.filename,
+        "content_type": receipt.content_type,
+        "file_size": receipt.file_size,
+        "bill_uuid": bill_uuid,
+        "billing_uuid": billing_uuid,
+    }
     bill_service.delete_receipt(receipt, bill, billing)
     logger.info("Receipt deleted: uuid=%s", receipt_uuid)
 

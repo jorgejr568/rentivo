@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
 import bcrypt
 
@@ -12,9 +12,7 @@ class TestUserService:
         self.service = UserService(self.mock_repo)
 
     def test_create_user_hashes_password(self):
-        self.mock_repo.create.return_value = User(
-            id=1, username="admin", password_hash="hashed"
-        )
+        self.mock_repo.create.return_value = User(id=1, username="admin", password_hash="hashed")
         result = self.service.create_user("admin", "secret")
         call_args = self.mock_repo.create.call_args[0][0]
         assert call_args.username == "admin"
@@ -25,18 +23,14 @@ class TestUserService:
     def test_authenticate_success(self):
         password = "secret"
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        self.mock_repo.get_by_username.return_value = User(
-            id=1, username="admin", password_hash=hashed
-        )
+        self.mock_repo.get_by_username.return_value = User(id=1, username="admin", password_hash=hashed)
         result = self.service.authenticate("admin", "secret")
         assert result is not None
         assert result.username == "admin"
 
     def test_authenticate_wrong_password(self):
         hashed = bcrypt.hashpw(b"secret", bcrypt.gensalt()).decode()
-        self.mock_repo.get_by_username.return_value = User(
-            id=1, username="admin", password_hash=hashed
-        )
+        self.mock_repo.get_by_username.return_value = User(id=1, username="admin", password_hash=hashed)
         result = self.service.authenticate("admin", "wrong")
         assert result is None
 
@@ -71,6 +65,7 @@ class TestUserService:
 
     def test_register_user_duplicate(self):
         import pytest
+
         self.mock_repo.get_by_username.return_value = User(username="existing")
         with pytest.raises(ValueError, match="already exists"):
             self.service.register_user("existing", "e@t.com", "pass")

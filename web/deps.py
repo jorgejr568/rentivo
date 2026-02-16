@@ -46,9 +46,7 @@ class AuthMiddleware:
 
         request = Request(scope, receive)
         path = request.url.path
-        if path in PUBLIC_EXACT_PATHS or any(
-            path.startswith(p) for p in PUBLIC_PREFIX_PATHS
-        ):
+        if path in PUBLIC_EXACT_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIX_PATHS):
             await self.app(scope, receive, send)
             return
         if not request.session.get("user_id"):
@@ -78,17 +76,13 @@ class DBConnectionMiddleware:
             conn = getattr(request.state, "db_conn", None)
             if conn is not None:
                 conn.close()
-                logger.debug(
-                    "DB connection closed for %s %s", request.method, request.url.path
-                )
+                logger.debug("DB connection closed for %s %s", request.method, request.url.path)
 
 
 def _get_conn(request: Request):
     """Lazy per-request connection — created on first use, closed by middleware."""
     if request.state.db_conn is None:
-        logger.debug(
-            "Creating DB connection for %s %s", request.method, request.url.path
-        )
+        logger.debug("Creating DB connection for %s %s", request.method, request.url.path)
         request.state.db_conn = get_engine().connect()
     return request.state.db_conn
 
@@ -131,9 +125,7 @@ def get_audit_service(request: Request) -> AuditService:
     return AuditService(SQLAlchemyAuditLogRepository(_get_conn(request)))
 
 
-def render(
-    request: Request, template_name: str, context: dict | None = None
-) -> Response:
+def render(request: Request, template_name: str, context: dict | None = None) -> Response:
     from web.app import templates
     from web.csrf import get_csrf_token
 

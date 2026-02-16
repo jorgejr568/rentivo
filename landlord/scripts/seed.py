@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.table import Table
 from sqlalchemy import text
 
-from landlord.db import get_connection, get_engine, initialize_db
+from landlord.db import get_connection, initialize_db
 from landlord.models import format_brl
 from landlord.models.billing import Billing, BillingItem, ItemType
 from landlord.models.organization import OrgRole
@@ -180,9 +180,7 @@ def _create_users(user_service: UserService) -> list:
     console.print("[cyan]Creating users...[/cyan]")
 
     main_user = user_service.create_user(MAIN_USERNAME, PASSWORD)
-    console.print(
-        f"  [bold green]Main user:[/bold green] {main_user.username} (id={main_user.id})"
-    )
+    console.print(f"  [bold green]Main user:[/bold green] {main_user.username} (id={main_user.id})")
 
     users = [main_user]
     usernames_seen = {MAIN_USERNAME}
@@ -233,7 +231,6 @@ def _create_invites(invite_service: InviteService, org, users: list) -> None:
 
     # The invite service checks membership, so we'll create invite records
     # directly via the repository for historical records.
-    from landlord.constants import SP_TZ
     from landlord.models.invite import Invite, InviteStatus
     from landlord.repositories.factory import get_invite_repository
 
@@ -316,9 +313,7 @@ def _create_billings(billing_service: BillingService, main_user, org) -> list[Bi
         )
         billings.append(billing)
         owner_label = "user" if owner_type == "user" else f"org ({org.name})"
-        console.print(
-            f"  [bold]{billing.name}[/bold] — {len(items)} items, owner: {owner_label}"
-        )
+        console.print(f"  [bold]{billing.name}[/bold] — {len(items)} items, owner: {owner_label}")
 
     console.print(f"[green]{len(billings)} billings created.[/green]\n")
     return billings
@@ -446,9 +441,7 @@ def main() -> None:
     console.print(f"  Organization: 1 ({org.name})")
     console.print(f"  Billings:     {len(billings)}")
     console.print(f"  Bills:        {total_bills}")
-    console.print(
-        f"\n  Login with: [bold]{MAIN_USERNAME}[/bold] / [bold]{PASSWORD}[/bold]"
-    )
+    console.print(f"\n  Login with: [bold]{MAIN_USERNAME}[/bold] / [bold]{PASSWORD}[/bold]")
 
 
 if __name__ == "__main__":  # pragma: no cover

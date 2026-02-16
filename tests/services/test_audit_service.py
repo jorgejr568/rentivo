@@ -1,7 +1,5 @@
 from unittest.mock import MagicMock
 
-import pytest
-
 from landlord.models.audit_log import AuditEventType, AuditLog
 from landlord.services.audit_service import AuditService
 
@@ -49,9 +47,7 @@ class TestAuditServiceLog:
         assert created_log.metadata == {}
 
     def test_log_with_metadata(self):
-        self.mock_repo.create.return_value = AuditLog(
-            id=1, event_type="test", metadata={"ip": "1.2.3.4"}
-        )
+        self.mock_repo.create.return_value = AuditLog(id=1, event_type="test", metadata={"ip": "1.2.3.4"})
         self.service.log(
             "test",
             metadata={"ip": "1.2.3.4"},
@@ -91,9 +87,7 @@ class TestAuditServiceSafeLog:
         self.service = AuditService(self.mock_repo)
 
     def test_safe_log_success(self):
-        self.mock_repo.create.return_value = AuditLog(
-            id=1, event_type="test"
-        )
+        self.mock_repo.create.return_value = AuditLog(id=1, event_type="test")
         result = self.service.safe_log("test")
         assert result is not None
         assert result.event_type == "test"
@@ -104,9 +98,7 @@ class TestAuditServiceSafeLog:
         assert result is None
 
     def test_safe_log_passes_args(self):
-        self.mock_repo.create.return_value = AuditLog(
-            id=1, event_type="billing.create"
-        )
+        self.mock_repo.create.return_value = AuditLog(id=1, event_type="billing.create")
         self.service.safe_log(
             AuditEventType.BILLING_CREATE,
             actor_id=5,

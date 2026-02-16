@@ -46,9 +46,7 @@ class InvoicePDF:
 
         page_w = pdf.w - pdf.l_margin - pdf.r_margin
 
-        self._draw_header(
-            pdf, page_w, billing_name, bill.reference_month, bill.due_date
-        )
+        self._draw_header(pdf, page_w, billing_name, bill.reference_month, bill.due_date)
         self._draw_table(pdf, page_w, bill)
         self._draw_total(pdf, page_w, bill.total_amount)
 
@@ -59,9 +57,7 @@ class InvoicePDF:
 
         if pix_qrcode_png:
             pdf.add_page()
-            self._draw_pix_page(
-                pdf, page_w, pix_qrcode_png, bill.total_amount, pix_key, pix_payload
-            )
+            self._draw_pix_page(pdf, page_w, pix_qrcode_png, bill.total_amount, pix_key, pix_payload)
             self._draw_footer(pdf, page_w)
 
         output = pdf.output()
@@ -140,9 +136,7 @@ class InvoicePDF:
 
         if due_date:
             # Row 1 — full-width COBRANÇA card
-            self._draw_info_card(
-                pdf, x, card_y, page_w, card_h, "COBRAN\u00c7A", billing_name
-            )
+            self._draw_info_card(pdf, x, card_y, page_w, card_h, "COBRAN\u00c7A", billing_name)
 
             # Row 2 — REFERÊNCIA (left) + VENCIMENTO (right)
             row2_y = card_y + card_h + 6
@@ -156,15 +150,11 @@ class InvoicePDF:
                 "REFER\u00caNCIA",
                 format_month(reference_month),
             )
-            self._draw_info_card(
-                pdf, x + card_w + 6, row2_y, card_w, card_h, "VENCIMENTO", due_date
-            )
+            self._draw_info_card(pdf, x + card_w + 6, row2_y, card_w, card_h, "VENCIMENTO", due_date)
             card_y = row2_y
         else:
             card_w = page_w / 2 - 3
-            self._draw_info_card(
-                pdf, x, card_y, card_w, card_h, "COBRAN\u00c7A", billing_name
-            )
+            self._draw_info_card(pdf, x, card_y, card_w, card_h, "COBRAN\u00c7A", billing_name)
             self._draw_info_card(
                 pdf,
                 x + card_w + 6,
@@ -391,9 +381,7 @@ class InvoicePDF:
 
             # Measure text height with dry_run
             pdf.set_font("Montserrat", "", 7)
-            result = pdf.multi_cell(
-                payload_cell_w, 4, pix_payload, dry_run=True, output="LINES"
-            )
+            result = pdf.multi_cell(payload_cell_w, 4, pix_payload, dry_run=True, output="LINES")
             text_h = len(result) * 4
             payload_h = text_h + 8  # 4px padding top + bottom
 

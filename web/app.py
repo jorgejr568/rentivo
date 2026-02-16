@@ -19,7 +19,7 @@ from landlord.logging import configure_logging, reconfigure
 from landlord.models import format_brl
 from landlord.settings import settings
 from web.auth import router as auth_router
-from web.csrf import CSRFMiddleware, get_csrf_token
+from web.csrf import CSRFMiddleware
 from web.deps import AuthMiddleware, DBConnectionMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router

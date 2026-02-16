@@ -52,9 +52,7 @@ async def organization_create(request: Request):
     user_id = request.session.get("user_id")
     service = get_organization_service(request)
     org = service.create_organization(name, user_id)
-    logger.info(
-        "Organization created: uuid=%s name=%s by user=%s", org.uuid, org.name, user_id
-    )
+    logger.info("Organization created: uuid=%s name=%s by user=%s", org.uuid, org.name, user_id)
     audit = get_audit_service(request)
     audit.safe_log(
         AuditEventType.ORGANIZATION_CREATE,
@@ -92,18 +90,10 @@ async def organization_detail(request: Request, org_uuid: str):
     billing_service = get_billing_service(request)
     # Get billings owned by this org
     all_billings = billing_service.list_billings_for_user(user_id)
-    org_billings = [
-        b
-        for b in all_billings
-        if b.owner_type == "organization" and b.owner_id == org.id
-    ]
+    org_billings = [b for b in all_billings if b.owner_type == "organization" and b.owner_id == org.id]
 
     invite_service = get_invite_service(request)
-    invites = (
-        invite_service.list_org_invites(org.id)
-        if member.role == OrgRole.ADMIN.value
-        else []
-    )
+    invites = invite_service.list_org_invites(org.id) if member.role == OrgRole.ADMIN.value else []
 
     logger.info(
         "Organization detail loaded: uuid=%s members=%d billings=%d",
@@ -138,9 +128,7 @@ async def organization_edit_form(request: Request, org_uuid: str):
     user_id = request.session.get("user_id")
     member = service.get_member(org.id, user_id)
     if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning(
-            "Organization edit access denied: uuid=%s user=%s", org_uuid, user_id
-        )
+        logger.warning("Organization edit access denied: uuid=%s user=%s", org_uuid, user_id)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -160,9 +148,7 @@ async def organization_edit(request: Request, org_uuid: str):
     user_id = request.session.get("user_id")
     member = service.get_member(org.id, user_id)
     if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning(
-            "Organization edit access denied: uuid=%s user=%s", org_uuid, user_id
-        )
+        logger.warning("Organization edit access denied: uuid=%s user=%s", org_uuid, user_id)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -208,9 +194,7 @@ async def organization_delete(request: Request, org_uuid: str):
     user_id = request.session.get("user_id")
     member = service.get_member(org.id, user_id)
     if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning(
-            "Organization delete access denied: uuid=%s user=%s", org_uuid, user_id
-        )
+        logger.warning("Organization delete access denied: uuid=%s user=%s", org_uuid, user_id)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -251,18 +235,14 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
     user_id = request.session.get("user_id")
     member = service.get_member(org.id, user_id)
     if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning(
-            "Member role change access denied: org=%s user=%s", org_uuid, user_id
-        )
+        logger.warning("Member role change access denied: org=%s user=%s", org_uuid, user_id)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     form = await request.form()
     new_role = str(form.get("role", "")).strip()
     if new_role not in [r.value for r in OrgRole]:
-        logger.warning(
-            "Invalid role %s for org=%s member=%s", new_role, org_uuid, member_user_id
-        )
+        logger.warning("Invalid role %s for org=%s member=%s", new_role, org_uuid, member_user_id)
         flash(request, "Papel inválido.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -366,9 +346,7 @@ async def organization_invite(request: Request, org_uuid: str):
     try:
         invite = invite_service.send_invite(org.id, username, role, user_id)
     except ValueError as e:
-        logger.warning(
-            "Invite failed: org=%s username=%s error=%s", org_uuid, username, e
-        )
+        logger.warning("Invite failed: org=%s username=%s error=%s", org_uuid, username, e)
         flash(request, str(e), "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -404,18 +382,14 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
     user_id = request.session.get("user_id")
     member = org_service.get_member(org.id, user_id)
     if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning(
-            "Transfer billing access denied: org=%s user=%s", org_uuid, user_id
-        )
+        logger.warning("Transfer billing access denied: org=%s user=%s", org_uuid, user_id)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     form = await request.form()
     billing_uuid = str(form.get("billing_uuid", "")).strip()
     if not billing_uuid:
-        logger.warning(
-            "Transfer billing rejected: no billing selected for org=%s", org_uuid
-        )
+        logger.warning("Transfer billing rejected: no billing selected for org=%s", org_uuid)
         flash(request, "Selecione uma cobrança.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -423,16 +397,12 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
     auth_service = get_authorization_service(request)
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
-        logger.warning(
-            "Billing not found for transfer: billing=%s org=%s", billing_uuid, org_uuid
-        )
+        logger.warning("Billing not found for transfer: billing=%s org=%s", billing_uuid, org_uuid)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     if not auth_service.can_transfer_billing(user_id, billing):
-        logger.warning(
-            "Transfer billing denied: billing=%s user=%s", billing_uuid, user_id
-        )
+        logger.warning("Transfer billing denied: billing=%s user=%s", billing_uuid, user_id)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 

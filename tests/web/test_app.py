@@ -17,6 +17,7 @@ class TestLifespan:
     def test_lifespan_runs_initialize_db(self, test_engine):
         """Test that the lifespan function calls initialize_db on startup."""
         from starlette.testclient import TestClient
+
         from web.app import app
 
         # The web_test_db fixture patches initialize_db to a no-op,
@@ -30,10 +31,10 @@ class TestExceptionHandler:
     def test_unhandled_exception_returns_500(self, test_engine):
         """Unhandled exceptions in routes should return 500."""
         from starlette.testclient import TestClient
-        from web.app import app
 
         from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
         from landlord.services.user_service import UserService
+        from web.app import app
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)

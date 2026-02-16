@@ -12,9 +12,7 @@ class TestFlash:
     def test_flash_adds_message(self):
         request = self._mock_request()
         flash(request, "Hello", "info")
-        assert request.session["_messages"] == [
-            {"message": "Hello", "category": "info"}
-        ]
+        assert request.session["_messages"] == [{"message": "Hello", "category": "info"}]
 
     def test_flash_appends_multiple(self):
         request = self._mock_request()

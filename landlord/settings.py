@@ -9,9 +9,7 @@ _INSECURE_DEFAULT_KEY = "change-me-in-production"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env", env_prefix="LANDLORD_", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="LANDLORD_", extra="ignore")
 
     db_url: str = "mysql://landlord:landlord@db:3306/landlord"
 

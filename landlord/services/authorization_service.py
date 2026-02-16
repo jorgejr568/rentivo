@@ -19,9 +19,7 @@ class AuthorizationService:
         if billing.owner_type == "organization" and self.org_repo is not None:
             member = self.org_repo.get_member(billing.owner_id, user_id)
             if member is not None:
-                logger.debug(
-                    "user=%s billing=%s role=%s", user_id, billing.id, member.role
-                )
+                logger.debug("user=%s billing=%s role=%s", user_id, billing.id, member.role)
                 return member.role
         logger.debug("user=%s billing=%s role=None", user_id, billing.id)
         return None
@@ -45,9 +43,7 @@ class AuthorizationService:
     def can_manage_bills(self, user_id: int, billing: Billing) -> bool:
         role = self.get_role_for_billing(user_id, billing)
         result = role in ("owner", "admin", "manager")
-        logger.debug(
-            "user=%s billing=%s can_manage_bills=%s", user_id, billing.id, result
-        )
+        logger.debug("user=%s billing=%s can_manage_bills=%s", user_id, billing.id, result)
         return result
 
     def can_transfer_billing(self, user_id: int, billing: Billing) -> bool:

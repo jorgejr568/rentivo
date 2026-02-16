@@ -1,4 +1,5 @@
 """Web test fixtures — TestClient with shared in-memory SQLite."""
+
 from __future__ import annotations
 
 import re
@@ -46,9 +47,7 @@ def _make_test_engine():
 def get_test_user_id(engine):
     """Get the ID of the test user."""
     with engine.connect() as conn:
-        row = conn.execute(
-            text("SELECT id FROM users WHERE username = 'testuser'")
-        ).fetchone()
+        row = conn.execute(text("SELECT id FROM users WHERE username = 'testuser'")).fetchone()
         return row[0] if row else 1
 
 
@@ -93,6 +92,7 @@ def generate_bill_in_db(engine, billing, tmp_path):
 def create_org_in_db(engine, name, created_by_user_id):
     """Create an organization in the test DB."""
     from landlord.services.organization_service import OrganizationService
+
     with engine.connect() as conn:
         repo = SQLAlchemyOrganizationRepository(conn)
         service = OrganizationService(repo)
@@ -103,11 +103,12 @@ def create_org_in_db(engine, name, created_by_user_id):
 def get_audit_logs(engine, event_type=None):
     """Query audit_logs from the test DB. Optionally filter by event_type."""
     from landlord.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
+
     with engine.connect() as conn:
         repo = SQLAlchemyAuditLogRepository(conn)
         logs = repo.list_recent(limit=100)
         if event_type:
-            logs = [l for l in logs if l.event_type == event_type]
+            logs = [log for log in logs if log.event_type == event_type]
         return logs
 
 
@@ -126,9 +127,11 @@ def web_test_db(monkeypatch):
     engine = _make_test_engine()
 
     import web.deps as deps_module
+
     monkeypatch.setattr(deps_module, "get_engine", lambda: engine)
 
     import web.app as app_module
+
     monkeypatch.setattr(app_module, "initialize_db", lambda: None)
 
     yield engine
@@ -145,7 +148,9 @@ def test_engine(web_test_db):
 @pytest.fixture()
 def client():
     from starlette.testclient import TestClient
+
     from web.app import app
+
     return TestClient(app)
 
 
@@ -155,6 +160,7 @@ def auth_client(client, test_engine):
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
         from landlord.services.user_service import UserService
+
         user_service = UserService(user_repo)
         user_service.create_user("testuser", "testpass")
 

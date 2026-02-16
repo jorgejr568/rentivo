@@ -4,9 +4,11 @@ Revision ID: b1c2d3e4f5a6
 Revises: a7b8c9d0e1f2
 Create Date: 2026-02-11
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "b1c2d3e4f5a6"

@@ -37,9 +37,7 @@ class InviteService:
 
         existing_member = self.org_repo.get_member(org_id, user.id)
         if existing_member is not None:
-            logger.warning(
-                "Invite failed: user '%s' already a member of org=%s", username, org_id
-            )
+            logger.warning("Invite failed: user '%s' already a member of org=%s", username, org_id)
             raise ValueError(f"User '{username}' is already a member")
 
         if self.invite_repo.has_pending_invite(org_id, user.id):
@@ -74,14 +72,10 @@ class InviteService:
             )
             raise ValueError("Not authorized to accept this invite")
         if invite.status != InviteStatus.PENDING.value:
-            logger.warning(
-                "Accept invite failed: uuid=%s status=%s", invite_uuid, invite.status
-            )
+            logger.warning("Accept invite failed: uuid=%s status=%s", invite_uuid, invite.status)
             raise ValueError("Invite is no longer pending")
 
-        self.org_repo.add_member(
-            invite.organization_id, invite.invited_user_id, invite.role
-        )
+        self.org_repo.add_member(invite.organization_id, invite.invited_user_id, invite.role)
         self.invite_repo.update_status(invite.id, InviteStatus.ACCEPTED.value)
         logger.info("Invite accepted: uuid=%s user=%s", invite_uuid, user_id)
 
@@ -98,9 +92,7 @@ class InviteService:
             )
             raise ValueError("Not authorized to decline this invite")
         if invite.status != InviteStatus.PENDING.value:
-            logger.warning(
-                "Decline invite failed: uuid=%s status=%s", invite_uuid, invite.status
-            )
+            logger.warning("Decline invite failed: uuid=%s status=%s", invite_uuid, invite.status)
             raise ValueError("Invite is no longer pending")
 
         self.invite_repo.update_status(invite.id, InviteStatus.DECLINED.value)

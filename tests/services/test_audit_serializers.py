@@ -114,9 +114,7 @@ class TestSerializeBill:
         assert result["created_at"] == now.isoformat()
 
     def test_bill_none_paid_at(self):
-        bill = Bill(
-            billing_id=1, reference_month="2026-01", total_amount=0
-        )
+        bill = Bill(billing_id=1, reference_month="2026-01", total_amount=0)
         result = serialize_bill(bill)
         assert result["paid_at"] is None
         assert result["created_at"] is None

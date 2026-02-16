@@ -69,8 +69,6 @@ class BillingService:
             raise ValueError("Billing not found")
         if billing.owner_type != "user":
             logger.warning("Transfer failed: billing %s is not user-owned", billing_id)
-            raise ValueError(
-                "Only personal billings can be transferred to organizations"
-            )
+            raise ValueError("Only personal billings can be transferred to organizations")
         self.repo.transfer_owner(billing_id, "organization", org_id)
         logger.info("Billing %s transferred to organization %s", billing_id, org_id)

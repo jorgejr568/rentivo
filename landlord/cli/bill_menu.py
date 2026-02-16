@@ -53,9 +53,7 @@ def generate_bill_menu(billing: Billing, bill_service: BillService, audit_servic
 
     # Reference month
     while True:
-        month = questionary.text(
-            "M\u00eas de refer\u00eancia (AAAA-MM, ex: 2025-03):"
-        ).ask()
+        month = questionary.text("M\u00eas de refer\u00eancia (AAAA-MM, ex: 2025-03):").ask()
         if month and len(month) == 7 and month[4] == "-":
             try:
                 int(month[:4])
@@ -74,9 +72,7 @@ def generate_bill_menu(billing: Billing, bill_service: BillService, audit_servic
             console.print(f"  [dim]Fixo:[/dim] {item.description} \u2192 {format_brl(item.amount)}")
         else:
             while True:
-                val = questionary.text(
-                    f"  Valor para '{item.description}' (ex: 85.50):"
-                ).ask()
+                val = questionary.text(f"  Valor para '{item.description}' (ex: 85.50):").ask()
                 parsed = parse_brl(val or "")
                 if parsed is not None and parsed >= 0:
                     if item.id is None:
@@ -138,14 +134,10 @@ def generate_bill_menu(billing: Billing, bill_service: BillService, audit_servic
     console.print(f"  Link: {url}")
 
 
-def edit_bill_menu(
-    bill: Bill, billing: Billing, bill_service: BillService, audit_service: AuditService
-) -> Bill:
+def edit_bill_menu(bill: Bill, billing: Billing, bill_service: BillService, audit_service: AuditService) -> Bill:
     console.print()
     console.print("[bold]Editar Fatura[/bold]", style="cyan")
-    console.print(
-        f"  Refer\u00eancia: {format_month(bill.reference_month)}"
-    )
+    console.print(f"  Refer\u00eancia: {format_month(bill.reference_month)}")
     console.print()
 
     previous_state = serialize_bill(bill)
@@ -250,16 +242,22 @@ def edit_bill_menu(
             console.print("[red]Valor inv\u00e1lido. Tente novamente.[/red]")
 
     # Due date
-    due_date = questionary.text(
-        "Vencimento (ex: 10/03/2025, opcional):",
-        default=bill.due_date or "",
-    ).ask() or ""
+    due_date = (
+        questionary.text(
+            "Vencimento (ex: 10/03/2025, opcional):",
+            default=bill.due_date or "",
+        ).ask()
+        or ""
+    )
 
     # Notes
-    notes = questionary.text(
-        "Observa\u00e7\u00f5es:",
-        default=bill.notes,
-    ).ask() or ""
+    notes = (
+        questionary.text(
+            "Observa\u00e7\u00f5es:",
+            default=bill.notes,
+        ).ask()
+        or ""
+    )
 
     # Update
     updated = bill_service.update_bill(
@@ -317,9 +315,7 @@ def list_bills_menu(billing: Billing, bill_service: BillService, audit_service: 
     console.print()
     console.print(table)
 
-    bill_choices = {
-        f"{b.id} - {format_month(b.reference_month)}": b for b in bills
-    }
+    bill_choices = {f"{b.id} - {format_month(b.reference_month)}": b for b in bills}
     choices = list(bill_choices.keys()) + ["Voltar"]
     choice = questionary.select("Selecione uma fatura:", choices=choices).ask()
 
@@ -335,14 +331,10 @@ def list_bills_menu(billing: Billing, bill_service: BillService, audit_service: 
     _bill_detail_menu(bill, billing, bill_service, audit_service)
 
 
-def _bill_detail_menu(
-    bill: Bill, billing: Billing, bill_service: BillService, audit_service: AuditService
-) -> None:
+def _bill_detail_menu(bill: Bill, billing: Billing, bill_service: BillService, audit_service: AuditService) -> None:
     while True:
         console.print()
-        console.print(
-            f"[bold cyan]Fatura {format_month(bill.reference_month)}[/bold cyan]"
-        )
+        console.print(f"[bold cyan]Fatura {format_month(bill.reference_month)}[/bold cyan]")
         _show_bill_detail(bill, bill_service)
         if bill.paid_at:
             console.print(f"  [green]Pago em: {bill.paid_at.strftime('%d/%m/%Y %H:%M')}[/green]")
@@ -397,12 +389,10 @@ def _bill_detail_menu(
             )
 
             url = bill_service.get_invoice_url(bill.pdf_path)
-            console.print(f"[green]PDF regenerado![/green]")
+            console.print("[green]PDF regenerado![/green]")
             console.print(f"  Link: {url}")
         elif action == "Excluir Fatura":
-            confirm = questionary.confirm(
-                "Tem certeza que deseja excluir esta fatura?", default=False
-            ).ask()
+            confirm = questionary.confirm("Tem certeza que deseja excluir esta fatura?", default=False).ask()
             if confirm:
                 if bill.id is None:
                     console.print("[red]Fatura inválida.[/red]")

@@ -22,7 +22,7 @@ def parse_formset(form_data: dict, prefix: str) -> list[dict[str, str]]:
         row_prefix = f"{prefix}-{i}-"
         for key, value in form_data.items():
             if key.startswith(row_prefix):
-                field = key[len(row_prefix):]
+                field = key[len(row_prefix) :]
                 row[field] = value
         if row:
             rows.append(row)

@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
 import pytest
-from sqlalchemy import Connection, text
+from sqlalchemy import Connection
 
 from landlord.models.audit_log import AuditLog
 from landlord.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
@@ -72,17 +72,21 @@ class TestAuditLogRepoCRUD:
     def test_create_runtime_error(self, audit_repo):
         log = _sample_audit_log()
         # Save original before patching
-        original_execute = audit_repo.conn.execute.__wrapped__ if hasattr(audit_repo.conn.execute, "__wrapped__") else audit_repo.conn.execute
+        original_execute = (
+            audit_repo.conn.execute.__wrapped__
+            if hasattr(audit_repo.conn.execute, "__wrapped__")
+            else audit_repo.conn.execute
+        )
         call_count = [0]
 
         def side_effect(*args, **kwargs):
             call_count[0] += 1
             if call_count[0] == 2:  # The SELECT after INSERT
-                return type("FakeResult", (), {
-                    "mappings": lambda self: type("FakeMappings", (), {
-                        "fetchone": lambda self: None
-                    })()
-                })()
+                return type(
+                    "FakeResult",
+                    (),
+                    {"mappings": lambda self: type("FakeMappings", (), {"fetchone": lambda self: None})()},
+                )()
             return original_execute(*args, **kwargs)
 
         with patch.object(audit_repo, "conn") as mock_conn:

@@ -4,9 +4,11 @@ Revision ID: d3e4f5a6b7c8
 Revises: c2d3e4f5a6b7
 Create Date: 2026-02-11
 """
+
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision: str = "d3e4f5a6b7c8"
@@ -64,13 +66,9 @@ def upgrade() -> None:
             nullable=False,
             server_default=sa.func.current_timestamp(),
         ),
-        sa.UniqueConstraint(
-            "organization_id", "user_id", name="uq_org_member"
-        ),
+        sa.UniqueConstraint("organization_id", "user_id", name="uq_org_member"),
     )
-    op.create_index(
-        "ix_org_members_user", "organization_members", ["user_id"]
-    )
+    op.create_index("ix_org_members_user", "organization_members", ["user_id"])
 
 
 def downgrade() -> None:

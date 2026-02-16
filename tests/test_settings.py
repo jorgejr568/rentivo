@@ -1,10 +1,11 @@
-from landlord.settings import Settings, _INSECURE_DEFAULT_KEY
+from landlord.settings import _INSECURE_DEFAULT_KEY, Settings
 
 
 class TestSettings:
     def test_defaults(self, monkeypatch):
         # Clear any LANDLORD_ env vars that might interfere
         import os
+
         for key in list(os.environ):
             if key.startswith("LANDLORD_"):
                 monkeypatch.delenv(key, raising=False)
@@ -24,6 +25,7 @@ class TestSettings:
 
     def test_get_secret_key_generates_random_when_default(self, monkeypatch):
         import os
+
         for key in list(os.environ):
             if key.startswith("LANDLORD_"):
                 monkeypatch.delenv(key, raising=False)

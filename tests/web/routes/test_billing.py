@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from landlord.models.billing import Billing
 from landlord.models.user import User
-from landlord.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
+from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
 
 
@@ -136,7 +136,14 @@ class TestBillingEdit:
     def test_edit_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
             "/billings/nonexistent/edit",
-            data={"csrf_token": csrf_token, "name": "x", "items-TOTAL_FORMS": "1", "items-0-description": "y", "items-0-item_type": "fixed", "items-0-amount": "1"},
+            data={
+                "csrf_token": csrf_token,
+                "name": "x",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "y",
+                "items-0-item_type": "fixed",
+                "items-0-amount": "1",
+            },
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -201,9 +208,12 @@ class TestBillingAccessDenied:
         response = auth_client.post(
             f"/billings/{billing.uuid}/edit",
             data={
-                "csrf_token": csrf_token, "name": "x",
-                "items-TOTAL_FORMS": "1", "items-0-description": "y",
-                "items-0-item_type": "fixed", "items-0-amount": "1",
+                "csrf_token": csrf_token,
+                "name": "x",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "y",
+                "items-0-item_type": "fixed",
+                "items-0-amount": "1",
             },
             follow_redirects=False,
         )
@@ -379,8 +389,11 @@ class TestBillingTransfer:
         ) as mock_svc_fn:
             mock_svc = MagicMock()
             mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=billing.id, uuid=billing.uuid, name="A",
-                owner_type="user", owner_id=1,
+                id=billing.id,
+                uuid=billing.uuid,
+                name="A",
+                owner_type="user",
+                owner_id=1,
             )
             mock_svc.transfer_to_organization.side_effect = ValueError("Only personal billings")
             mock_svc_fn.return_value = mock_svc
@@ -401,8 +414,11 @@ class TestBillingDetailIdNone:
         ) as mock_svc_fn:
             mock_svc = MagicMock()
             mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=None, uuid=billing.uuid, name="A",
-                owner_type="user", owner_id=get_test_user_id(test_engine),
+                id=None,
+                uuid=billing.uuid,
+                name="A",
+                owner_type="user",
+                owner_id=get_test_user_id(test_engine),
             )
             mock_svc_fn.return_value = mock_svc
             response = auth_client.get(
@@ -421,8 +437,11 @@ class TestBillingDeleteIdNone:
         ) as mock_svc_fn:
             mock_svc = MagicMock()
             mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=None, uuid=billing.uuid, name="A",
-                owner_type="user", owner_id=get_test_user_id(test_engine),
+                id=None,
+                uuid=billing.uuid,
+                name="A",
+                owner_type="user",
+                owner_id=get_test_user_id(test_engine),
             )
             mock_svc_fn.return_value = mock_svc
             response = auth_client.post(

@@ -4,10 +4,6 @@ import pytest
 
 from landlord.models.organization import Organization
 from landlord.models.user import User
-from landlord.repositories.sqlalchemy import (
-    SQLAlchemyOrganizationRepository,
-    SQLAlchemyUserRepository,
-)
 
 
 def _create_user(user_repo, username="admin"):

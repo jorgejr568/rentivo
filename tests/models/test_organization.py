@@ -1,4 +1,4 @@
-from landlord.models.organization import OrgRole, Organization, OrganizationMember
+from landlord.models.organization import Organization, OrganizationMember, OrgRole
 
 
 class TestOrgRole:

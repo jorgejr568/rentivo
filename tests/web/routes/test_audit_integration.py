@@ -1,4 +1,5 @@
 """Integration tests verifying audit log entries are created for web operations."""
+
 from __future__ import annotations
 
 from landlord.models.audit_log import AuditEventType
@@ -149,6 +150,7 @@ class TestBillAuditLogs:
 
         with patch("web.deps.get_storage") as mock_storage:
             from landlord.storage.local import LocalStorage
+
             mock_storage.return_value = LocalStorage(str(tmp_path))
 
             auth_client.post(
@@ -177,6 +179,7 @@ class TestBillAuditLogs:
 
         with patch("web.deps.get_storage") as mock_storage:
             from landlord.storage.local import LocalStorage
+
             mock_storage.return_value = LocalStorage(str(tmp_path))
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
 
@@ -202,6 +205,7 @@ class TestBillAuditLogs:
 
         with patch("web.deps.get_storage") as mock_storage:
             from landlord.storage.local import LocalStorage
+
             mock_storage.return_value = LocalStorage(str(tmp_path))
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
 

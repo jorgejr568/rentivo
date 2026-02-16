@@ -8,7 +8,14 @@ from fastapi.responses import RedirectResponse
 from landlord.models.audit_log import AuditEventType
 from landlord.models.billing import BillingItem, ItemType
 from landlord.services.audit_serializers import serialize_billing
-from web.deps import get_audit_service, get_authorization_service, get_bill_service, get_billing_service, get_organization_service, render
+from web.deps import (
+    get_audit_service,
+    get_authorization_service,
+    get_bill_service,
+    get_billing_service,
+    get_organization_service,
+    render,
+)
 from web.flash import flash
 from web.forms import parse_brl, parse_formset
 
@@ -76,8 +83,12 @@ async def billing_create(request: Request):
         owner_type = "user"
         owner_id = user_id
     billing = service.create_billing(
-        name, description, items, pix_key=pix_key,
-        owner_type=owner_type, owner_id=owner_id,
+        name,
+        description,
+        items,
+        pix_key=pix_key,
+        owner_type=owner_type,
+        owner_id=owner_id,
     )
     logger.info("Billing created: uuid=%s name=%s items=%d", billing.uuid, billing.name, len(items))
 
@@ -128,12 +139,21 @@ async def billing_detail(request: Request, billing_uuid: str):
 
     # Load user's orgs for transfer dropdown
     org_service = get_organization_service(request)
-    user_orgs = org_service.list_user_organizations(user_id) if auth_service.can_transfer_billing(user_id, billing) else []
+    user_orgs = (
+        org_service.list_user_organizations(user_id) if auth_service.can_transfer_billing(user_id, billing) else []
+    )
 
     logger.info("Rendering billing/detail.html")
-    return render(request, "billing/detail.html", {
-        "billing": billing, "bills": bills, "role": role, "user_orgs": user_orgs,
-    })
+    return render(
+        request,
+        "billing/detail.html",
+        {
+            "billing": billing,
+            "bills": bills,
+            "role": role,
+            "user_orgs": user_orgs,
+        },
+    )
 
 
 @router.get("/{billing_uuid}/edit")

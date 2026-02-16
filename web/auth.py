@@ -127,9 +127,7 @@ async def login(request: Request):
 
     if user is None:
         _record_failed_attempt(client_ip)
-        logger.warning(
-            "Failed login attempt for username=%s from %s", username, client_ip
-        )
+        logger.warning("Failed login attempt for username=%s from %s", username, client_ip)
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.USER_LOGIN_FAILED,
@@ -178,30 +176,22 @@ async def change_password(request: Request):
             "Change password rejected: empty fields for user=%s",
             request.session.get("username"),
         )
-        return render(
-            request, "change_password.html", {"error": "Preencha todos os campos."}
-        )
+        return render(request, "change_password.html", {"error": "Preencha todos os campos."})
 
     if new_password != confirm_password:
         logger.warning(
             "Change password rejected: password mismatch for user=%s",
             request.session.get("username"),
         )
-        return render(
-            request, "change_password.html", {"error": "As senhas não coincidem."}
-        )
+        return render(request, "change_password.html", {"error": "As senhas não coincidem."})
 
     user_service = get_user_service(request)
     username = request.session.get("username", "")
     user = user_service.authenticate(username, current_password)
 
     if user is None:
-        logger.warning(
-            "Change password failed: incorrect current password for user=%s", username
-        )
-        return render(
-            request, "change_password.html", {"error": "Senha atual incorreta."}
-        )
+        logger.warning("Change password failed: incorrect current password for user=%s", username)
+        return render(request, "change_password.html", {"error": "Senha atual incorreta."})
 
     user_service.change_password(username, new_password)
     logger.info("Password changed for user=%s", username)

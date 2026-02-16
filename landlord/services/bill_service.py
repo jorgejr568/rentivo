@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime
 
 from landlord.constants import SP_TZ
@@ -32,9 +31,7 @@ def _storage_key(billing_uuid: str, bill_uuid: str) -> str:
     return f"{billing_uuid}/{bill_uuid}.pdf"
 
 
-def _receipt_storage_key(
-    billing_uuid: str, bill_uuid: str, receipt_uuid: str, content_type: str
-) -> str:
+def _receipt_storage_key(billing_uuid: str, bill_uuid: str, receipt_uuid: str, content_type: str) -> str:
     ext = CONTENT_TYPE_EXTENSIONS.get(content_type, "")
     prefix = settings.storage_prefix
     if prefix:
@@ -55,9 +52,7 @@ class BillService:
         self.pdf_generator = InvoicePDF()
 
     @staticmethod
-    def _get_pix_data(
-        billing: Billing, total_centavos: int
-    ) -> tuple[bytes | None, str, str]:
+    def _get_pix_data(billing: Billing, total_centavos: int) -> tuple[bytes | None, str, str]:
         """Resolve PIX config and return (qrcode_png, pix_key, pix_payload)."""
         pix_key = billing.pix_key or settings.pix_key
         if not pix_key:
@@ -282,9 +277,7 @@ class BillService:
         from ulid import ULID
 
         receipt_uuid = str(ULID())
-        storage_key = _receipt_storage_key(
-            billing.uuid, bill.uuid, receipt_uuid, content_type
-        )
+        storage_key = _receipt_storage_key(billing.uuid, bill.uuid, receipt_uuid, content_type)
 
         # Determine sort_order
         existing = self.receipt_repo.list_by_bill(bill.id)

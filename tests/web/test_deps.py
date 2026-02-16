@@ -1,6 +1,7 @@
 """Tests for web middleware and deps edge cases."""
+
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from web.deps import AuthMiddleware, DBConnectionMiddleware
 
@@ -16,9 +17,7 @@ class TestAuthMiddlewareNonHTTP:
         middleware = AuthMiddleware(inner_app)
         scope = {"type": "websocket"}
 
-        asyncio.get_event_loop().run_until_complete(
-            middleware(scope, None, None)
-        )
+        asyncio.get_event_loop().run_until_complete(middleware(scope, None, None))
         assert called
 
 
@@ -33,9 +32,7 @@ class TestDBConnectionMiddlewareNonHTTP:
         middleware = DBConnectionMiddleware(inner_app)
         scope = {"type": "websocket"}
 
-        asyncio.get_event_loop().run_until_complete(
-            middleware(scope, None, None)
-        )
+        asyncio.get_event_loop().run_until_complete(middleware(scope, None, None))
         assert called
 
 

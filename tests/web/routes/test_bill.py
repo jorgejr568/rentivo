@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock, patch
 
+from landlord.models.audit_log import AuditEventType
 from landlord.models.bill import Bill
 from landlord.models.user import User
 from landlord.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
 from landlord.storage.local import LocalStorage
-from landlord.models.audit_log import AuditEventType
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs
 
 
@@ -400,12 +400,13 @@ class TestBillDeleteIdNone:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Mock get_bill_by_uuid to return a bill with id=None
         mock_bill = Bill(
-            id=None, uuid=bill.uuid, billing_id=billing.id,
-            reference_month="2025-03", total_amount=0,
+            id=None,
+            uuid=bill.uuid,
+            billing_id=billing.id,
+            reference_month="2025-03",
+            total_amount=0,
         )
-        with patch(
-            "web.routes.bill.get_bill_service"
-        ) as mock_svc_fn:
+        with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
             mock_svc = MagicMock()
             mock_svc.get_bill_by_uuid.return_value = mock_bill
             mock_svc_fn.return_value = mock_svc
@@ -426,19 +427,21 @@ class TestBillInvoiceS3Redirect:
         # Set pdf_path to a non-local path (simulating S3)
         with test_engine.connect() as conn:
             from sqlalchemy import text
+
             conn.execute(
                 text("UPDATE bills SET pdf_path = :path WHERE id = :id"),
                 {"path": "s3-bucket/key.pdf", "id": bill.id},
             )
             conn.commit()
         # Mock get_invoice_url to return a URL
-        with patch(
-            "web.routes.bill.get_bill_service"
-        ) as mock_svc_fn:
+        with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
             mock_svc = MagicMock()
             mock_bill = Bill(
-                id=bill.id, uuid=bill.uuid, billing_id=billing.id,
-                reference_month="2025-03", total_amount=0,
+                id=bill.id,
+                uuid=bill.uuid,
+                billing_id=billing.id,
+                reference_month="2025-03",
+                total_amount=0,
                 pdf_path="s3-bucket/key.pdf",
             )
             mock_svc.get_bill_by_uuid.return_value = mock_bill
@@ -470,7 +473,9 @@ class TestReceiptUpload:
 
     def test_upload_image(self, auth_client, test_engine, tmp_path, csrf_token):
         from io import BytesIO
+
         from PIL import Image
+
         img = Image.new("RGB", (100, 100), color="red")
         buf = BytesIO()
         img.save(buf, format="JPEG")
@@ -563,6 +568,7 @@ class TestReceiptDelete:
             )
             # Get receipts to find the UUID
             from landlord.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
             with test_engine.connect() as conn:
                 receipt_repo = SQLAlchemyReceiptRepository(conn)
                 receipts = receipt_repo.list_by_bill(bill.id)
@@ -646,6 +652,7 @@ class TestReceiptView:
                 follow_redirects=False,
             )
             from landlord.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
             with test_engine.connect() as conn:
                 receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
             assert len(receipts) == 1
@@ -713,6 +720,7 @@ class TestBillGenerateWithReceipts:
         """Cover lines 111-112: receipt exceeding MAX_RECEIPT_SIZE is skipped."""
         billing = create_billing_in_db(test_engine)
         from landlord.models.receipt import MAX_RECEIPT_SIZE
+
         oversized = b"%PDF-" + b"x" * (MAX_RECEIPT_SIZE + 1)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             response = auth_client.post(
@@ -762,6 +770,7 @@ class TestReceiptViewS3Redirect:
                 follow_redirects=False,
             )
             from landlord.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
             with test_engine.connect() as conn:
                 receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
             assert len(receipts) == 1
@@ -786,6 +795,7 @@ class TestReceiptUploadOversized:
     def test_upload_oversized_file(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         from landlord.models.receipt import MAX_RECEIPT_SIZE
+
         oversized = b"%PDF-" + b"x" * (MAX_RECEIPT_SIZE + 1)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
@@ -859,20 +869,28 @@ class TestBillGenerateVariableIdNone:
         billing = create_billing_in_db(test_engine)
         # Create a billing with a variable item that has id=None
         mock_billing = Billing(
-            id=billing.id, uuid=billing.uuid, name=billing.name,
-            owner_type=billing.owner_type, owner_id=billing.owner_id,
+            id=billing.id,
+            uuid=billing.uuid,
+            name=billing.name,
+            owner_type=billing.owner_type,
+            owner_id=billing.owner_id,
             items=[
                 BillingItem(id=None, description="NoIdWater", amount=0, item_type=ItemType.VARIABLE),
                 BillingItem(id=1, description="Aluguel", amount=285000, item_type=ItemType.FIXED),
             ],
         )
         mock_bill = Bill(
-            id=1, uuid="gen-uuid", billing_id=billing.id,
-            reference_month="2025-10", total_amount=285000,
+            id=1,
+            uuid="gen-uuid",
+            billing_id=billing.id,
+            reference_month="2025-10",
+            total_amount=285000,
         )
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
-            with patch("web.routes.bill.get_billing_service") as mock_billing_svc, \
-                 patch("web.routes.bill.get_bill_service") as mock_bill_svc:
+            with (
+                patch("web.routes.bill.get_billing_service") as mock_billing_svc,
+                patch("web.routes.bill.get_bill_service") as mock_bill_svc,
+            ):
                 mock_billing_svc.return_value.get_billing_by_uuid.return_value = mock_billing
                 mock_bill_svc.return_value.generate_bill.return_value = mock_bill
                 response = auth_client.post(

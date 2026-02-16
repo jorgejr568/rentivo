@@ -4,6 +4,7 @@ Usage:
     python -m landlord.scripts.regenerate_pdfs
     python -m landlord.scripts.regenerate_pdfs --dry-run
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,13 +16,12 @@ from landlord.db import initialize_db
 from landlord.models import format_brl
 from landlord.models.bill import Bill
 from landlord.models.billing import Billing
-from landlord.pdf.invoice import InvoicePDF
 from landlord.repositories.factory import (
     get_bill_repository,
     get_billing_repository,
     get_receipt_repository,
 )
-from landlord.services.bill_service import BillService, _storage_key
+from landlord.services.bill_service import BillService
 from landlord.storage.factory import get_storage
 
 console = Console()

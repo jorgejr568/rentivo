@@ -35,10 +35,7 @@ class S3Storage(StorageBackend):
             client_kwargs["endpoint_url"] = endpoint_url
 
         if boto3 is None:
-            raise ImportError(
-                "boto3 is required for S3 storage. "
-                "Install it with: pip install landlord-cli[s3]"
-            )
+            raise ImportError("boto3 is required for S3 storage. Install it with: pip install landlord-cli[s3]")
         self.client = boto3.client(**client_kwargs)
 
     def save(self, key: str, data: bytes, content_type: str = "application/pdf") -> str:

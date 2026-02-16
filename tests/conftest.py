@@ -1,4 +1,5 @@
 """Root conftest — in-memory SQLite engine and fixtures for the full schema."""
+
 from __future__ import annotations
 
 import pytest
@@ -7,7 +8,6 @@ from sqlalchemy.engine import Engine
 
 from landlord.models.bill import Bill, BillLineItem
 from landlord.models.billing import Billing, BillingItem, ItemType
-
 
 # Matches Alembic head: a7b8c9d0e1f2 (replace UUID4 with ULID)
 SCHEMA_DDL = """

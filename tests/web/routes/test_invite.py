@@ -2,7 +2,6 @@ from landlord.models.invite import Invite
 from landlord.models.user import User
 from landlord.repositories.sqlalchemy import (
     SQLAlchemyInviteRepository,
-    SQLAlchemyOrganizationRepository,
     SQLAlchemyUserRepository,
 )
 from tests.web.conftest import create_org_in_db, get_test_user_id
@@ -21,13 +20,15 @@ def _setup_invite(test_engine):
 
     with test_engine.connect() as conn:
         invite_repo = SQLAlchemyInviteRepository(conn)
-        invite = invite_repo.create(Invite(
-            organization_id=org.id,
-            invited_user_id=user_id,  # invite the logged-in user
-            invited_by_user_id=user2.id,
-            role="viewer",
-            status="pending",
-        ))
+        invite = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user_id,  # invite the logged-in user
+                invited_by_user_id=user2.id,
+                role="viewer",
+                status="pending",
+            )
+        )
     return org, invite
 
 
