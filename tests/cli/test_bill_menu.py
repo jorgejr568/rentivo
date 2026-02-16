@@ -532,6 +532,46 @@ class TestBillDetailMenuEdgeCases:
         mock_service.delete_bill.assert_not_called()
 
 
+class TestBillDetailMenuUnrecognized:
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_unrecognized_action_loops(self, mock_q):
+        """Cover branch 402->341: unrecognized action loops back to menu."""
+        from landlord.cli.bill_menu import _bill_detail_menu
+
+        bill = Bill(id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u")
+        billing = Billing(id=1, name="Apt 101")
+        mock_q.select.return_value.ask.side_effect = ["Unknown Action", "Voltar"]
+
+        mock_service = MagicMock()
+        mock_service.get_invoice_url.return_value = ""
+        _bill_detail_menu(bill, billing, mock_service, MagicMock())
+
+
+class TestGenerateShortMonthInput:
+    @patch("landlord.cli.bill_menu.questionary")
+    def test_short_month_retries(self, mock_q):
+        """Cover branch 59->66: month with wrong length fails validation."""
+        from landlord.cli.bill_menu import generate_bill_menu
+
+        billing = Billing(id=1, uuid="u", name="Apt 101", items=[
+            BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED),
+        ])
+        mock_q.text.return_value.ask.side_effect = [
+            "abc",      # too short (len != 7) -> line 59 False -> line 66
+            "2025-03",  # valid
+            "",         # due date
+            "",         # notes
+        ]
+        mock_q.confirm.return_value.ask.return_value = False
+
+        mock_service = MagicMock()
+        bill = Bill(id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u", pdf_path="/f.pdf")
+        mock_service.generate_bill.return_value = bill
+        mock_service.get_invoice_url.return_value = "/path"
+
+        generate_bill_menu(billing, mock_service, MagicMock())
+
+
 class TestEditBillMenu:
     @patch("landlord.cli.bill_menu.questionary")
     def test_edit_with_extras(self, mock_q):

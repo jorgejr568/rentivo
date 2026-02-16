@@ -667,6 +667,251 @@ class TestReceiptView:
         assert response.status_code == 302
 
 
+class TestBillGenerateWithReceipts:
+    """Cover lines 105-120, 122, 136: receipt attachment during bill generation."""
+
+    def test_generate_with_receipt_files(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-05",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                files={"receipt_files": ("receipt.pdf", b"%PDF-test-receipt", "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        logs = get_audit_logs(test_engine, AuditEventType.RECEIPT_UPLOAD)
+        assert len(logs) >= 1
+
+    def test_generate_skips_invalid_receipt_type(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Cover line 109-110: receipt with disallowed content_type is skipped."""
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-06",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                files={"receipt_files": ("file.gif", b"GIF89a", "image/gif")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        logs = get_audit_logs(test_engine, AuditEventType.RECEIPT_UPLOAD)
+        assert len(logs) == 0
+
+    def test_generate_skips_oversized_receipt(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Cover lines 111-112: receipt exceeding MAX_RECEIPT_SIZE is skipped."""
+        billing = create_billing_in_db(test_engine)
+        from landlord.models.receipt import MAX_RECEIPT_SIZE
+        oversized = b"%PDF-" + b"x" * (MAX_RECEIPT_SIZE + 1)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-07",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                files={"receipt_files": ("big.pdf", oversized, "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_generate_skips_empty_receipt(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Cover line 109: empty file_bytes is skipped."""
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-08",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                files={"receipt_files": ("empty.pdf", b"", "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+
+class TestReceiptViewS3Redirect:
+    """Cover line 445: receipt view redirects to presigned URL for S3."""
+
+    def test_receipt_view_s3_redirect(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_file": ("proof.pdf", b"%PDF-test-data", "application/pdf")},
+                follow_redirects=False,
+            )
+            from landlord.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+            with test_engine.connect() as conn:
+                receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
+            assert len(receipts) == 1
+
+        # Mock bill_service to return a non-local URL
+        with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
+            mock_svc = MagicMock()
+            mock_svc.get_receipt_by_uuid.return_value = receipts[0]
+            mock_svc.storage.get_url.return_value = "https://s3.example.com/receipt.pdf"
+            mock_svc_fn.return_value = mock_svc
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipts[0].uuid}",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert "s3.example.com" in response.headers.get("location", "")
+
+
+class TestReceiptUploadOversized:
+    """Cover lines 488-489: file exceeding MAX_RECEIPT_SIZE."""
+
+    def test_upload_oversized_file(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        from landlord.models.receipt import MAX_RECEIPT_SIZE
+        oversized = b"%PDF-" + b"x" * (MAX_RECEIPT_SIZE + 1)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_file": ("big.pdf", oversized, "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+
+class TestBillGenerateExtrasValidation:
+    """Cover branch 83->80: extras row that fails validation."""
+
+    def test_generate_with_invalid_extras_skipped(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-09",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "2",
+                    "extras-0-description": "",
+                    "extras-0-amount": "50,00",
+                    "extras-1-description": "Valid extra",
+                    "extras-1-amount": "0",
+                },
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+
+class TestBillEditExtrasValidation:
+    """Cover branch 258->255: extras row with invalid amount in edit."""
+
+    def test_edit_with_invalid_extras_skipped(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/edit",
+                data={
+                    "csrf_token": csrf_token,
+                    "due_date": "",
+                    "notes": "",
+                    "items-TOTAL_FORMS": "1",
+                    "items-0-description": "Rent",
+                    "items-0-amount": "285000",
+                    "items-0-item_type": "fixed",
+                    "extras-TOTAL_FORMS": "2",
+                    "extras-0-description": "",
+                    "extras-0-amount": "50,00",
+                    "extras-1-description": "Valid",
+                    "extras-1-amount": "0",
+                },
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+
+class TestBillGenerateVariableIdNone:
+    """Cover branch 74->71: variable item with id=None is skipped."""
+
+    def test_generate_variable_item_id_none(self, auth_client, test_engine, tmp_path, csrf_token):
+        from landlord.models.billing import Billing, BillingItem, ItemType
+
+        billing = create_billing_in_db(test_engine)
+        # Create a billing with a variable item that has id=None
+        mock_billing = Billing(
+            id=billing.id, uuid=billing.uuid, name=billing.name,
+            owner_type=billing.owner_type, owner_id=billing.owner_id,
+            items=[
+                BillingItem(id=None, description="NoIdWater", amount=0, item_type=ItemType.VARIABLE),
+                BillingItem(id=1, description="Aluguel", amount=285000, item_type=ItemType.FIXED),
+            ],
+        )
+        mock_bill = Bill(
+            id=1, uuid="gen-uuid", billing_id=billing.id,
+            reference_month="2025-10", total_amount=285000,
+        )
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            with patch("web.routes.bill.get_billing_service") as mock_billing_svc, \
+                 patch("web.routes.bill.get_bill_service") as mock_bill_svc:
+                mock_billing_svc.return_value.get_billing_by_uuid.return_value = mock_billing
+                mock_bill_svc.return_value.generate_bill.return_value = mock_bill
+                response = auth_client.post(
+                    f"/billings/{billing.uuid}/bills/generate",
+                    data={
+                        "csrf_token": csrf_token,
+                        "reference_month": "2025-10",
+                        "due_date": "",
+                        "notes": "",
+                        "variable_None": "50,00",
+                        "extras-TOTAL_FORMS": "0",
+                    },
+                    follow_redirects=False,
+                )
+        assert response.status_code == 302
+
+
+class TestBillGenerateNonFileUpload:
+    """Cover line 106: receipt_files entry that is not an UploadFile."""
+
+    def test_generate_with_non_file_receipt(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            # Send receipt_files as a regular form field (string), not a file
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-11",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                    "receipt_files": "not_a_file",
+                },
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+
 class TestDetailShowsReceipts:
     def test_detail_shows_receipts(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)

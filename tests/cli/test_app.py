@@ -90,3 +90,14 @@ class TestMainMenu:
 
         main_menu()
         mock_user.assert_called_once()
+
+    @patch("landlord.cli.app._build_services")
+    @patch("landlord.cli.app.questionary")
+    def test_unrecognized_choice_loops(self, mock_q, mock_build):
+        """Cover branch 60->42: unrecognized choice loops back to menu."""
+        from landlord.cli.app import main_menu
+
+        mock_build.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
+        mock_q.select.return_value.ask.side_effect = ["Unknown Option", "Sair"]
+
+        main_menu()

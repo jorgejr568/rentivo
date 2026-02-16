@@ -291,6 +291,25 @@ class TestBillingEditEdgeCases:
         )
         assert response.status_code == 302
 
+    def test_edit_with_variable_item(self, auth_client, test_engine, csrf_token):
+        """Cover branch 189->191: variable item skips amount parsing."""
+        billing = create_billing_in_db(test_engine)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/edit",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Updated",
+                "description": "",
+                "pix_key": "",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Water",
+                "items-0-amount": "",
+                "items-0-item_type": "variable",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
 
 class TestBillingCreateWithOrg:
     def test_create_for_organization(self, auth_client, test_engine, csrf_token):

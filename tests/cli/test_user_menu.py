@@ -131,6 +131,17 @@ class TestListUsers:
         _list_users(mock_service)
 
 
+class TestUserMenuUnrecognized:
+    @patch("landlord.cli.user_menu.questionary")
+    def test_unrecognized_choice_loops(self, mock_q):
+        """Cover branch 33->16: unrecognized choice loops back to menu."""
+        from landlord.cli.user_menu import user_management_menu
+
+        mock_q.select.return_value.ask.side_effect = ["Unknown", "Voltar"]
+        mock_service = MagicMock()
+        user_management_menu(mock_service, MagicMock())
+
+
 class TestChangePassword:
     @patch("landlord.cli.user_menu.questionary")
     def test_no_users(self, mock_q):
@@ -183,3 +194,18 @@ class TestChangePassword:
         mock_q.password.return_value.ask.side_effect = ["newpass", "newpass"]
         _change_password(mock_service, MagicMock())
         mock_service.change_password.assert_called_once_with("admin", "newpass")
+
+    @patch("landlord.cli.user_menu.questionary")
+    def test_target_user_not_found_skips_audit(self, mock_q):
+        """Cover branch 101->110: target_user is None, audit log is skipped."""
+        from landlord.cli.user_menu import _change_password
+
+        mock_service = MagicMock()
+        # list_users returns users but the selected username doesn't match
+        mock_service.list_users.return_value = [User(username="admin")]
+        mock_q.select.return_value.ask.return_value = "other_user"
+        mock_q.password.return_value.ask.side_effect = ["newpass", "newpass"]
+        mock_audit = MagicMock()
+        _change_password(mock_service, mock_audit)
+        mock_service.change_password.assert_called_once_with("other_user", "newpass")
+        mock_audit.safe_log.assert_not_called()

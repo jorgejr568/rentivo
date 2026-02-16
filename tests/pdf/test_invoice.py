@@ -72,3 +72,21 @@ class TestInvoicePDF:
         bill = self._make_bill()
         result = pdf_gen.generate(bill, "Apt 101")
         assert result[:5] == b"%PDF-"
+
+    def test_generate_pix_no_key_no_payload(self):
+        """Cover branches 362->383 and 383->exit: pix page without key or payload."""
+        pdf_gen = InvoicePDF()
+        bill = self._make_bill()
+        pix_png = generate_pix_qrcode_png(
+            pix_key="test@pix.com",
+            merchant_name="Test",
+            merchant_city="City",
+            amount=2950.00,
+        )
+        result = pdf_gen.generate(
+            bill, "Apt 101",
+            pix_qrcode_png=pix_png,
+            pix_key="",
+            pix_payload="",
+        )
+        assert result[:5] == b"%PDF-"

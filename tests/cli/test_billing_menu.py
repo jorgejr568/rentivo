@@ -263,6 +263,69 @@ class TestBillingDetailMenuEdgeCases:
         _billing_detail_menu(billing, MagicMock(), MagicMock(), MagicMock())
 
 
+class TestCreateBillingPixNoOverride:
+    @patch("landlord.settings.settings")
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_global_pix_no_override(self, mock_q, mock_settings):
+        """Cover branch 76->83: user has global pix but declines override."""
+        from landlord.cli.billing_menu import create_billing_menu
+
+        mock_settings.pix_key = "global@pix.com"
+        mock_q.text.return_value.ask.side_effect = [
+            "Apt 101", "desc", "Rent", "1000",
+        ]
+        mock_q.confirm.return_value.ask.side_effect = [True, False, False]  # add item, stop, no override
+        mock_q.select.return_value.ask.return_value = "Fixo"
+
+        mock_service = MagicMock()
+        mock_service.create_billing.return_value = Billing(name="Apt 101")
+        create_billing_menu(mock_service, MagicMock())
+        mock_service.create_billing.assert_called_once()
+        # pix_key should be "" since user declined override
+        call_kwargs = mock_service.create_billing.call_args
+        assert call_kwargs[1]["pix_key"] == ""
+
+
+class TestBillingDetailMenuUnrecognized:
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_unrecognized_choice_loops(self, mock_q):
+        """Cover branch 176->138: unrecognized choice loops back to menu."""
+        from landlord.cli.billing_menu import _billing_detail_menu
+
+        billing = Billing(id=1, uuid="u", name="Apt 101", items=[])
+        mock_q.select.return_value.ask.side_effect = ["Unknown Action", "Voltar"]
+        _billing_detail_menu(billing, MagicMock(), MagicMock(), MagicMock())
+
+
+class TestEditBillingMenuUnrecognized:
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_unrecognized_choice_loops(self, mock_q):
+        """Cover branch 219->199: unrecognized choice in edit menu loops."""
+        from landlord.cli.billing_menu import _edit_billing_menu
+
+        billing = Billing(id=1, name="Apt 101", items=[])
+        mock_q.select.return_value.ask.side_effect = ["Unknown", "Voltar"]
+        _edit_billing_menu(billing, MagicMock(), MagicMock())
+
+
+class TestAddVariableItem:
+    @patch("landlord.cli.billing_menu.questionary")
+    def test_add_variable_item(self, mock_q):
+        """Cover branch 325->336: add variable item skips amount prompt."""
+        from landlord.cli.billing_menu import _edit_billing_menu
+
+        billing = Billing(id=1, name="Apt 101", items=[
+            BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED),
+        ])
+        mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Variável", "Voltar"]
+        mock_q.text.return_value.ask.return_value = "Water"
+
+        mock_svc = MagicMock()
+        mock_svc.update_billing.return_value = billing
+        _edit_billing_menu(billing, mock_svc, MagicMock())
+        mock_svc.update_billing.assert_called_once()
+
+
 class TestEditBillingMenuEdgeCases:
     @patch("landlord.cli.billing_menu.questionary")
     def test_edit_item_cancel_amount(self, mock_q):

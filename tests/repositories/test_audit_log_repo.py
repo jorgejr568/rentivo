@@ -153,3 +153,25 @@ class TestAuditLogRepoQueries:
         # Most recent first
         assert results[0].event_type == "second"
         assert results[1].event_type == "first"
+
+
+class TestAuditLogRowParsing:
+    def test_metadata_already_dict(self):
+        """Cover branch 808->811: metadata is already a dict (not a string)."""
+        mock_row = {
+            "id": 1,
+            "uuid": "abc123",
+            "event_type": "test",
+            "actor_id": 1,
+            "actor_username": "admin",
+            "source": "web",
+            "entity_type": "billing",
+            "entity_id": 10,
+            "entity_uuid": "xyz",
+            "previous_state": None,
+            "new_state": None,
+            "metadata": {"already": "parsed"},
+            "created_at": None,
+        }
+        result = SQLAlchemyAuditLogRepository._row_to_audit_log(mock_row)
+        assert result.metadata == {"already": "parsed"}

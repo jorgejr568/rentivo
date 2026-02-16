@@ -104,3 +104,9 @@ class TestAuthorizationService:
         service = AuthorizationService(None)
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
         assert service.can_view_billing(2, billing) is False
+
+    def test_org_member_not_found(self):
+        """Cover branch 21->26: org billing, org_repo present, but member is None."""
+        billing = Billing(name="Test", owner_type="organization", owner_id=10)
+        self.mock_org_repo.get_member.return_value = None
+        assert self.service.get_role_for_billing(2, billing) is None

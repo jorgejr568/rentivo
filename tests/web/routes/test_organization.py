@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from landlord.models.user import User
 from landlord.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
-from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
+from tests.web.conftest import create_billing_in_db, create_org_in_db, get_audit_logs, get_test_user_id
 
 
 def _create_org_as_other_user(test_engine, org_name="Other Org"):
@@ -398,6 +398,29 @@ class TestOrganizationTransferBilling:
             data={"csrf_token": csrf_token, "billing_uuid": other_billing.uuid},
             follow_redirects=False,
         )
+        assert response.status_code == 302
+
+
+class TestInviteReturnsNone:
+    """Cover branch 378->390: invite_service.send_invite returns None."""
+
+    def test_invite_returns_none_skips_audit(self, auth_client, test_engine, csrf_token):
+        user_id = get_test_user_id(test_engine)
+        org = create_org_in_db(test_engine, "InviteNoneOrg", user_id)
+
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo.create(User(username="invite_target", password_hash="h"))
+
+        with patch("web.routes.organization.get_invite_service") as mock_invite_svc_fn:
+            mock_invite_svc = MagicMock()
+            mock_invite_svc.send_invite.return_value = None
+            mock_invite_svc_fn.return_value = mock_invite_svc
+            response = auth_client.post(
+                f"/organizations/{org.uuid}/invite",
+                data={"csrf_token": csrf_token, "username": "invite_target", "role": "viewer"},
+                follow_redirects=False,
+            )
         assert response.status_code == 302
 
     def test_transfer_billing_already_org_owned(self, auth_client, test_engine, csrf_token):
