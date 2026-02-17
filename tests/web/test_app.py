@@ -2,10 +2,10 @@ from unittest.mock import patch
 
 
 class TestApp:
-    def test_home_shows_landing_page(self, auth_client):
+    def test_home_redirects_authenticated_user_to_billings(self, auth_client):
         response = auth_client.get("/", follow_redirects=False)
-        assert response.status_code == 200
-        assert "Rentivo" in response.text
+        assert response.status_code == 302
+        assert response.headers["location"] == "/billings/"
 
     def test_unauthenticated_sees_landing_page(self, client):
         response = client.get("/", follow_redirects=False)

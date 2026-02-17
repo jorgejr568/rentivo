@@ -149,3 +149,4 @@ make web-run             # start uvicorn at http://localhost:8000
 - Do not use floats for monetary values — always centavos (int)
 - Keep repository and storage abstractions — they exist so backends can be swapped (S3, etc.)
 - Always use `.venv/bin/` commands (e.g. `.venv/bin/python`, `.venv/bin/pip`, `.venv/bin/pytest`) instead of bare `python`/`pip`/`pytest`
+- Always run tests in parallel: `.venv/bin/python -m pytest -n auto` (or `make test`)
