@@ -16,7 +16,6 @@ from rentivo.db import initialize_db
 from rentivo.models import format_brl
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
-from rentivo.pdf.invoice import InvoicePDF
 from rentivo.repositories.factory import (
     get_bill_repository,
     get_billing_repository,
