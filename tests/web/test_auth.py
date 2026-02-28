@@ -1,3 +1,23 @@
+class TestUnknownRoutes:
+    def test_unknown_route_returns_404_not_login_redirect(self, client):
+        """Accessing a non-existent URL should return 404, not redirect to login."""
+        response = client.get("/abdkjabjkdas", follow_redirects=False)
+        assert response.status_code != 302
+        assert response.status_code == 404
+
+    def test_known_protected_route_redirects_to_login(self, client):
+        """Accessing an existing protected URL should redirect to login."""
+        response = client.get("/billings/", follow_redirects=False)
+        assert response.status_code == 302
+        assert "/login" in response.headers["location"]
+
+    def test_path_matches_route_without_app_in_scope(self):
+        """_path_matches_route returns True when scope has no app."""
+        from web.deps import _path_matches_route
+
+        assert _path_matches_route({}) is True
+
+
 class TestLoginPage:
     def test_login_page_renders(self, client):
         response = client.get("/login")

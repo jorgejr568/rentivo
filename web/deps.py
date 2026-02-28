@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from functools import cache
 
 from fastapi import Request
 from fastapi.responses import RedirectResponse
@@ -41,6 +42,25 @@ MFA_EXEMPT_PREFIXES = {"/security", "/logout", "/login", "/signup", "/static", "
 MFA_EXEMPT_EXACT = {"/"}
 
 
+@cache
+def _get_route_prefixes(app: ASGIApp) -> frozenset[str]:
+    """Extract first path segments from registered routes (cached at startup)."""
+    return frozenset(
+        segment
+        for route in getattr(app, "routes", ())
+        if (segment := getattr(route, "path", "").strip("/").split("/")[0])
+    )
+
+
+def _path_matches_route(scope: Scope) -> bool:
+    """O(1) check whether the request path could match a registered route."""
+    app = scope.get("app")
+    if not app:
+        return True
+    first_segment = scope.get("path", "").strip("/").split("/")[0]
+    return first_segment in _get_route_prefixes(app)
+
+
 class AuthMiddleware:
     """Pure ASGI middleware for authentication checks."""
 
@@ -58,6 +78,10 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
         if not request.session.get("user_id"):
+            if not _path_matches_route(scope):
+                await self.app(scope, receive, send)
+                return
+
             logger.info("Auth redirect: %s %s — no session", request.method, path)
             response = RedirectResponse("/login", status_code=302)
             await response(scope, receive, send)
