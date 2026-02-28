@@ -8,15 +8,15 @@ import pytest
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import StaticPool
 
-from landlord.models.billing import Billing, BillingItem, ItemType
-from landlord.repositories.sqlalchemy import (
+from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyUserRepository,
 )
-from landlord.services.bill_service import BillService
-from landlord.storage.local import LocalStorage
+from rentivo.services.bill_service import BillService
+from rentivo.storage.local import LocalStorage
 from tests.conftest import SCHEMA_DDL
 
 
@@ -91,7 +91,7 @@ def generate_bill_in_db(engine, billing, tmp_path):
 
 def create_org_in_db(engine, name, created_by_user_id):
     """Create an organization in the test DB."""
-    from landlord.services.organization_service import OrganizationService
+    from rentivo.services.organization_service import OrganizationService
 
     with engine.connect() as conn:
         repo = SQLAlchemyOrganizationRepository(conn)
@@ -102,7 +102,7 @@ def create_org_in_db(engine, name, created_by_user_id):
 
 def get_audit_logs(engine, event_type=None):
     """Query audit_logs from the test DB. Optionally filter by event_type."""
-    from landlord.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
+    from rentivo.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
 
     with engine.connect() as conn:
         repo = SQLAlchemyAuditLogRepository(conn)
@@ -159,7 +159,7 @@ def auth_client(client, test_engine):
     """Client that is already logged in."""
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
-        from landlord.services.user_service import UserService
+        from rentivo.services.user_service import UserService
 
         user_service = UserService(user_repo)
         user_service.create_user("testuser", "testpass")

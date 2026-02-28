@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from landlord.models.billing import BillingItem, ItemType
-from landlord.repositories.sqlalchemy import SQLAlchemyBillingRepository
+from rentivo.models.billing import BillingItem, ItemType
+from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
 
 
 class TestBillingRepoCRUD:

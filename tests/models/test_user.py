@@ -1,4 +1,4 @@
-from landlord.models.user import User
+from rentivo.models.user import User
 
 
 class TestUser:

@@ -1,4 +1,4 @@
-from landlord.pix import (
+from rentivo.pix import (
     _crc16_ccitt,
     _strip_accents,
     _tlv,

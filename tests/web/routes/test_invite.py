@@ -1,6 +1,6 @@
-from landlord.models.invite import Invite
-from landlord.models.user import User
-from landlord.repositories.sqlalchemy import (
+from rentivo.models.invite import Invite
+from rentivo.models.user import User
+from rentivo.repositories.sqlalchemy import (
     SQLAlchemyInviteRepository,
     SQLAlchemyUserRepository,
 )

@@ -1,4 +1,4 @@
-from landlord.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.billing import Billing, BillingItem, ItemType
 
 
 class TestItemType:

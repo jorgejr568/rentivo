@@ -12,7 +12,7 @@ services:
       timeout: 5s
       retries: 5
 
-  landlord:
+  rentivo:
     build:
       context: .
       dockerfile: Dockerfile

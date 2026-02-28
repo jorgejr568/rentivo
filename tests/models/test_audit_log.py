@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from landlord.models.audit_log import AuditEventType, AuditLog
+from rentivo.models.audit_log import AuditEventType, AuditLog
 
 
 class TestAuditLogModel:

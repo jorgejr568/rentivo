@@ -15,9 +15,9 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from landlord.models.audit_log import AuditEventType
-from landlord.models.mfa import UserPasskey
-from landlord.settings import settings
+from rentivo.models.audit_log import AuditEventType
+from rentivo.models.mfa import UserPasskey
+from rentivo.settings import settings
 from web.deps import get_audit_service, get_mfa_service, get_user_service, render
 from web.flash import flash
 

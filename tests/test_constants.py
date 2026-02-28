@@ -1,4 +1,4 @@
-from landlord.constants import MONTHS_PT, TYPE_LABELS, format_month
+from rentivo.constants import MONTHS_PT, TYPE_LABELS, format_month
 
 
 class TestMonthsPt:

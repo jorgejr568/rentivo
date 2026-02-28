@@ -1,30 +1,30 @@
 from unittest.mock import MagicMock, patch
 
-from landlord.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.billing import Billing, BillingItem, ItemType
 
 
 class TestCreateBillingMenu:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_cancel_on_empty_name(self, mock_q):
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_q.text.return_value.ask.return_value = ""
         mock_service = MagicMock()
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_not_called()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_cancel_on_none_name(self, mock_q):
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_q.text.return_value.ask.return_value = None
         mock_service = MagicMock()
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_not_called()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_no_items_doesnt_create(self, mock_q):
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_q.text.return_value.ask.side_effect = ["Apt 101", "desc", ""]
         mock_q.confirm.return_value.ask.return_value = False
@@ -32,10 +32,10 @@ class TestCreateBillingMenu:
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_not_called()
 
-    @patch("landlord.settings.settings")
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.settings.settings")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_create_with_fixed_item(self, mock_q, mock_settings):
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
@@ -53,10 +53,10 @@ class TestCreateBillingMenu:
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_called_once()
 
-    @patch("landlord.settings.settings")
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.settings.settings")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_create_with_variable_item(self, mock_q, mock_settings):
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
@@ -73,10 +73,10 @@ class TestCreateBillingMenu:
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_called_once()
 
-    @patch("landlord.settings.settings")
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.settings.settings")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_create_with_global_pix_override(self, mock_q, mock_settings):
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_settings.pix_key = "global@pix.com"
         mock_q.text.return_value.ask.side_effect = [
@@ -94,10 +94,10 @@ class TestCreateBillingMenu:
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_called_once()
 
-    @patch("landlord.settings.settings")
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.settings.settings")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_create_skip_empty_item_desc(self, mock_q, mock_settings):
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_settings.pix_key = ""
         # First item has empty desc, second has valid desc
@@ -119,18 +119,18 @@ class TestCreateBillingMenu:
 
 
 class TestListBillingsMenu:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_empty_list(self, mock_q):
-        from landlord.cli.billing_menu import list_billings_menu
+        from rentivo.cli.billing_menu import list_billings_menu
 
         mock_billing_svc = MagicMock()
         mock_billing_svc.list_billings.return_value = []
         mock_bill_svc = MagicMock()
         list_billings_menu(mock_billing_svc, mock_bill_svc, MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_select_back(self, mock_q):
-        from landlord.cli.billing_menu import list_billings_menu
+        from rentivo.cli.billing_menu import list_billings_menu
 
         billing = Billing(
             id=1,
@@ -146,9 +146,9 @@ class TestListBillingsMenu:
 
         list_billings_menu(mock_billing_svc, mock_bill_svc, MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_select_none(self, mock_q):
-        from landlord.cli.billing_menu import list_billings_menu
+        from rentivo.cli.billing_menu import list_billings_menu
 
         billing = Billing(
             id=1,
@@ -162,9 +162,9 @@ class TestListBillingsMenu:
         mock_q.select.return_value.ask.return_value = None
         list_billings_menu(mock_billing_svc, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_select_billing(self, mock_q):
-        from landlord.cli.billing_menu import list_billings_menu
+        from rentivo.cli.billing_menu import list_billings_menu
 
         billing = Billing(
             id=1,
@@ -185,9 +185,9 @@ class TestListBillingsMenu:
 
 
 class TestBillingDetailMenu:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_generate_bill(self, mock_q):
-        from landlord.cli.billing_menu import _billing_detail_menu
+        from rentivo.cli.billing_menu import _billing_detail_menu
 
         billing = Billing(
             id=1,
@@ -199,24 +199,24 @@ class TestBillingDetailMenu:
         )
         mock_q.select.return_value.ask.side_effect = ["Gerar Nova Fatura", "Voltar"]
 
-        with patch("landlord.cli.billing_menu.generate_bill_menu") as mock_gen:
+        with patch("rentivo.cli.billing_menu.generate_bill_menu") as mock_gen:
             _billing_detail_menu(billing, MagicMock(), MagicMock(), MagicMock())
             mock_gen.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_view_bills(self, mock_q):
-        from landlord.cli.billing_menu import _billing_detail_menu
+        from rentivo.cli.billing_menu import _billing_detail_menu
 
         billing = Billing(id=1, uuid="u", name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Ver Faturas Anteriores", "Voltar"]
 
-        with patch("landlord.cli.billing_menu.list_bills_menu") as mock_list:
+        with patch("rentivo.cli.billing_menu.list_bills_menu") as mock_list:
             _billing_detail_menu(billing, MagicMock(), MagicMock(), MagicMock())
             mock_list.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_delete_billing(self, mock_q):
-        from landlord.cli.billing_menu import _billing_detail_menu
+        from rentivo.cli.billing_menu import _billing_detail_menu
 
         billing = Billing(id=1, uuid="u", name="Apt 101", items=[])
         mock_q.select.return_value.ask.return_value = "Excluir Cobrança"
@@ -226,9 +226,9 @@ class TestBillingDetailMenu:
         _billing_detail_menu(billing, mock_billing_svc, MagicMock(), MagicMock())
         mock_billing_svc.delete_billing.assert_called_once_with(1)
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_delete_billing_cancel(self, mock_q):
-        from landlord.cli.billing_menu import _billing_detail_menu
+        from rentivo.cli.billing_menu import _billing_detail_menu
 
         billing = Billing(id=1, uuid="u", name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Excluir Cobrança", "Voltar"]
@@ -238,9 +238,9 @@ class TestBillingDetailMenu:
         _billing_detail_menu(billing, mock_billing_svc, MagicMock(), MagicMock())
         mock_billing_svc.delete_billing.assert_not_called()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_billing(self, mock_q):
-        from landlord.cli.billing_menu import _billing_detail_menu
+        from rentivo.cli.billing_menu import _billing_detail_menu
 
         billing = Billing(id=1, uuid="u", name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Editar Cobrança", "Voltar", "Voltar"]
@@ -250,11 +250,11 @@ class TestBillingDetailMenu:
 
 
 class TestCreateBillingMenuEdgeCases:
-    @patch("landlord.settings.settings")
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.settings.settings")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_invalid_fixed_amount_then_valid(self, mock_q, mock_settings):
         """Cover line 53: invalid amount retries in create billing."""
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
@@ -275,10 +275,10 @@ class TestCreateBillingMenuEdgeCases:
 
 
 class TestBillingDetailMenuEdgeCases:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_description_printed(self, mock_q):
         """Cover line 129: billing.description is printed when present."""
-        from landlord.cli.billing_menu import _billing_detail_menu
+        from rentivo.cli.billing_menu import _billing_detail_menu
 
         billing = Billing(
             id=1,
@@ -294,11 +294,11 @@ class TestBillingDetailMenuEdgeCases:
 
 
 class TestCreateBillingPixNoOverride:
-    @patch("landlord.settings.settings")
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.settings.settings")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_global_pix_no_override(self, mock_q, mock_settings):
         """Cover branch 76->83: user has global pix but declines override."""
-        from landlord.cli.billing_menu import create_billing_menu
+        from rentivo.cli.billing_menu import create_billing_menu
 
         mock_settings.pix_key = "global@pix.com"
         mock_q.text.return_value.ask.side_effect = [
@@ -320,10 +320,10 @@ class TestCreateBillingPixNoOverride:
 
 
 class TestBillingDetailMenuUnrecognized:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_unrecognized_choice_loops(self, mock_q):
         """Cover branch 176->138: unrecognized choice loops back to menu."""
-        from landlord.cli.billing_menu import _billing_detail_menu
+        from rentivo.cli.billing_menu import _billing_detail_menu
 
         billing = Billing(id=1, uuid="u", name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Unknown Action", "Voltar"]
@@ -331,10 +331,10 @@ class TestBillingDetailMenuUnrecognized:
 
 
 class TestEditBillingMenuUnrecognized:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_unrecognized_choice_loops(self, mock_q):
         """Cover branch 219->199: unrecognized choice in edit menu loops."""
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Unknown", "Voltar"]
@@ -342,10 +342,10 @@ class TestEditBillingMenuUnrecognized:
 
 
 class TestAddVariableItem:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_add_variable_item(self, mock_q):
         """Cover branch 325->336: add variable item skips amount prompt."""
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -364,10 +364,10 @@ class TestAddVariableItem:
 
 
 class TestEditBillingMenuEdgeCases:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_cancel_amount(self, mock_q):
         """Cover line 249: cancel amount input returns billing."""
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -386,10 +386,10 @@ class TestEditBillingMenuEdgeCases:
 
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_invalid_amount_then_valid(self, mock_q):
         """Cover line 254: invalid amount retries in edit item."""
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -411,10 +411,10 @@ class TestEditBillingMenuEdgeCases:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_add_item_cancel_amount(self, mock_q):
         """Cover line 281: cancel amount in add item."""
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Fixo", "Voltar"]
@@ -422,10 +422,10 @@ class TestEditBillingMenuEdgeCases:
 
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_add_item_invalid_amount_then_valid(self, mock_q):
         """Cover line 286: invalid amount retries in add item."""
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Fixo", "Voltar"]
@@ -438,18 +438,18 @@ class TestEditBillingMenuEdgeCases:
 
 
 class TestEditBillingMenu:
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_back_exits(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.return_value = "Voltar"
         result = _edit_billing_menu(billing, MagicMock(), MagicMock())
         assert result is billing
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_pix_key(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", pix_key="old@pix", items=[])
         mock_q.select.return_value.ask.side_effect = ["Editar Chave PIX", "Voltar"]
@@ -461,9 +461,9 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_pix_key_cancel(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", pix_key="old", items=[])
         mock_q.select.return_value.ask.side_effect = ["Editar Chave PIX", "Voltar"]
@@ -473,17 +473,17 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_not_called()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_no_items(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Editar Item", "Voltar"]
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_add_item(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -500,9 +500,9 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_add_item_cancel_empty_desc(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Adicionar Item", "Voltar"]
@@ -512,9 +512,9 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_not_called()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_remove_item(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -536,17 +536,17 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_remove_item_no_items(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Remover Item", "Voltar"]
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_remove_last_item_blocked(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -565,9 +565,9 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_not_called()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_remove_item_cancel(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -588,9 +588,9 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_not_called()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_back(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -606,9 +606,9 @@ class TestEditBillingMenu:
         ]
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_success(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -630,9 +630,9 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_to_variable(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -654,9 +654,9 @@ class TestEditBillingMenu:
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_called_once()
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_cancel_desc(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -674,9 +674,9 @@ class TestEditBillingMenu:
 
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_add_item_cancel_type(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(id=1, name="Apt 101", items=[])
         mock_q.select.return_value.ask.side_effect = ["Adicionar Item", None, "Voltar"]
@@ -684,9 +684,9 @@ class TestEditBillingMenu:
 
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_remove_item_select_back(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,
@@ -702,9 +702,9 @@ class TestEditBillingMenu:
         ]
         _edit_billing_menu(billing, MagicMock(), MagicMock())
 
-    @patch("landlord.cli.billing_menu.questionary")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_cancel_type(self, mock_q):
-        from landlord.cli.billing_menu import _edit_billing_menu
+        from rentivo.cli.billing_menu import _edit_billing_menu
 
         billing = Billing(
             id=1,

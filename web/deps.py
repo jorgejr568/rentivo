@@ -7,8 +7,8 @@ from fastapi.responses import RedirectResponse
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from landlord.db import get_engine
-from landlord.repositories.sqlalchemy import (
+from rentivo.db import get_engine
+from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
@@ -20,15 +20,15 @@ from landlord.repositories.sqlalchemy import (
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyUserRepository,
 )
-from landlord.services.audit_service import AuditService
-from landlord.services.authorization_service import AuthorizationService
-from landlord.services.bill_service import BillService
-from landlord.services.billing_service import BillingService
-from landlord.services.invite_service import InviteService
-from landlord.services.mfa_service import MFAService
-from landlord.services.organization_service import OrganizationService
-from landlord.services.user_service import UserService
-from landlord.storage.factory import get_storage
+from rentivo.services.audit_service import AuditService
+from rentivo.services.authorization_service import AuthorizationService
+from rentivo.services.bill_service import BillService
+from rentivo.services.billing_service import BillingService
+from rentivo.services.invite_service import InviteService
+from rentivo.services.mfa_service import MFAService
+from rentivo.services.organization_service import OrganizationService
+from rentivo.services.user_service import UserService
+from rentivo.storage.factory import get_storage
 from web.flash import get_flashed_messages
 
 logger = logging.getLogger(__name__)

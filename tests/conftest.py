@@ -6,8 +6,8 @@ import pytest
 from sqlalchemy import Connection, create_engine, event, text
 from sqlalchemy.engine import Engine
 
-from landlord.models.bill import Bill, BillLineItem
-from landlord.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.billing import Billing, BillingItem, ItemType
 
 # Matches Alembic head: a7b8c9d0e1f2 (replace UUID4 with ULID)
 SCHEMA_DDL = """

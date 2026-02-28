@@ -2,6 +2,6 @@
 __pycache__
 *.pyc
 .env
-landlord.db
+rentivo.db
 invoices/
 .git

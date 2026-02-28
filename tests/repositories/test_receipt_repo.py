@@ -3,8 +3,8 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import Connection
 
-from landlord.models.receipt import Receipt
-from landlord.repositories.sqlalchemy import (
+from rentivo.models.receipt import Receipt
+from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyReceiptRepository,

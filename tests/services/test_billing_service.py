@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
-from landlord.models.billing import Billing, BillingItem, ItemType
-from landlord.services.billing_service import BillingService
+from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.services.billing_service import BillingService
 
 
 class TestBillingService:

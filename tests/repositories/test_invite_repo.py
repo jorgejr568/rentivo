@@ -2,9 +2,9 @@ from unittest.mock import patch
 
 import pytest
 
-from landlord.models.invite import Invite
-from landlord.models.organization import Organization
-from landlord.models.user import User
+from rentivo.models.invite import Invite
+from rentivo.models.organization import Organization
+from rentivo.models.user import User
 
 
 def _setup(user_repo, org_repo):

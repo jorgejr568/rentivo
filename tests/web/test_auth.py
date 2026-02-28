@@ -8,8 +8,8 @@ class TestLoginPage:
         assert response.status_code == 302
 
     def test_login_success(self, client, test_engine):
-        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
-        from landlord.services.user_service import UserService
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
@@ -31,8 +31,8 @@ class TestLoginPage:
         assert response.status_code == 200
 
     def test_login_sets_session_keys(self, client, test_engine):
-        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
-        from landlord.services.user_service import UserService
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
@@ -168,8 +168,8 @@ class TestSignup:
         assert "coincidem" in response.text
 
     def test_signup_duplicate_username(self, client, test_engine):
-        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
-        from landlord.services.user_service import UserService
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
@@ -244,8 +244,8 @@ class TestAuthMiddleware:
 
     def test_old_session_key_rejected(self, client, test_engine):
         """Old-style session with only 'user' key should be rejected."""
-        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
-        from landlord.services.user_service import UserService
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)

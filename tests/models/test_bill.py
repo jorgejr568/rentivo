@@ -2,8 +2,8 @@ from datetime import datetime
 
 from freezegun import freeze_time
 
-from landlord.models.bill import SP_TZ, Bill, BillLineItem
-from landlord.models.billing import ItemType
+from rentivo.models.bill import SP_TZ, Bill, BillLineItem
+from rentivo.models.billing import ItemType
 
 
 class TestBillLineItem:

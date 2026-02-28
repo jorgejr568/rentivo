@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock, patch
 
-from landlord.models.audit_log import AuditEventType
-from landlord.models.bill import Bill
-from landlord.models.user import User
-from landlord.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
-from landlord.storage.local import LocalStorage
+from rentivo.models.audit_log import AuditEventType
+from rentivo.models.bill import Bill
+from rentivo.models.user import User
+from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
+from rentivo.storage.local import LocalStorage
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs
 
 
@@ -567,7 +567,7 @@ class TestReceiptDelete:
                 follow_redirects=False,
             )
             # Get receipts to find the UUID
-            from landlord.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+            from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
             with test_engine.connect() as conn:
                 receipt_repo = SQLAlchemyReceiptRepository(conn)
@@ -651,7 +651,7 @@ class TestReceiptView:
                 files={"receipt_file": ("proof.pdf", b"%PDF-test-data", "application/pdf")},
                 follow_redirects=False,
             )
-            from landlord.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+            from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
             with test_engine.connect() as conn:
                 receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
@@ -719,7 +719,7 @@ class TestBillGenerateWithReceipts:
     def test_generate_skips_oversized_receipt(self, auth_client, test_engine, tmp_path, csrf_token):
         """Cover lines 111-112: receipt exceeding MAX_RECEIPT_SIZE is skipped."""
         billing = create_billing_in_db(test_engine)
-        from landlord.models.receipt import MAX_RECEIPT_SIZE
+        from rentivo.models.receipt import MAX_RECEIPT_SIZE
 
         oversized = b"%PDF-" + b"x" * (MAX_RECEIPT_SIZE + 1)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
@@ -769,7 +769,7 @@ class TestReceiptViewS3Redirect:
                 files={"receipt_file": ("proof.pdf", b"%PDF-test-data", "application/pdf")},
                 follow_redirects=False,
             )
-            from landlord.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+            from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
             with test_engine.connect() as conn:
                 receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
@@ -794,7 +794,7 @@ class TestReceiptUploadOversized:
 
     def test_upload_oversized_file(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
-        from landlord.models.receipt import MAX_RECEIPT_SIZE
+        from rentivo.models.receipt import MAX_RECEIPT_SIZE
 
         oversized = b"%PDF-" + b"x" * (MAX_RECEIPT_SIZE + 1)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
@@ -864,7 +864,7 @@ class TestBillGenerateVariableIdNone:
     """Cover branch 74->71: variable item with id=None is skipped."""
 
     def test_generate_variable_item_id_none(self, auth_client, test_engine, tmp_path, csrf_token):
-        from landlord.models.billing import Billing, BillingItem, ItemType
+        from rentivo.models.billing import Billing, BillingItem, ItemType
 
         billing = create_billing_in_db(test_engine)
         # Create a billing with a variable item that has id=None

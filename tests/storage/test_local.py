@@ -1,4 +1,4 @@
-from landlord.storage.local import LocalStorage
+from rentivo.storage.local import LocalStorage
 
 
 class TestLocalStorage:

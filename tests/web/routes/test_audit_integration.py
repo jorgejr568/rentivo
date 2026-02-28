@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from landlord.models.audit_log import AuditEventType
+from rentivo.models.audit_log import AuditEventType
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs
 
 
 class TestAuthAuditLogs:
     def test_login_creates_audit_log(self, client, test_engine):
         """Successful login creates a user.login audit entry."""
-        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
-        from landlord.services.user_service import UserService
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
@@ -149,7 +149,7 @@ class TestBillAuditLogs:
         billing = create_billing_in_db(test_engine)
 
         with patch("web.deps.get_storage") as mock_storage:
-            from landlord.storage.local import LocalStorage
+            from rentivo.storage.local import LocalStorage
 
             mock_storage.return_value = LocalStorage(str(tmp_path))
 
@@ -178,7 +178,7 @@ class TestBillAuditLogs:
         billing = create_billing_in_db(test_engine)
 
         with patch("web.deps.get_storage") as mock_storage:
-            from landlord.storage.local import LocalStorage
+            from rentivo.storage.local import LocalStorage
 
             mock_storage.return_value = LocalStorage(str(tmp_path))
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
@@ -204,7 +204,7 @@ class TestBillAuditLogs:
         billing = create_billing_in_db(test_engine)
 
         with patch("web.deps.get_storage") as mock_storage:
-            from landlord.storage.local import LocalStorage
+            from rentivo.storage.local import LocalStorage
 
             mock_storage.return_value = LocalStorage(str(tmp_path))
             bill = generate_bill_in_db(test_engine, billing, tmp_path)

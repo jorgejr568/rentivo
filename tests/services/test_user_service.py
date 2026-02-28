@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import bcrypt
 
-from landlord.models.user import User
-from landlord.services.user_service import UserService
+from rentivo.models.user import User
+from rentivo.services.user_service import UserService
 
 
 class TestUserService:

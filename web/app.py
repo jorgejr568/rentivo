@@ -11,13 +11,13 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import HTMLResponse
+from starlette.responses import HTMLResponse, RedirectResponse
 
-from landlord.constants import format_month
-from landlord.db import initialize_db
-from landlord.logging import configure_logging, reconfigure
-from landlord.models import format_brl
-from landlord.settings import settings
+from rentivo.constants import format_month
+from rentivo.db import initialize_db
+from rentivo.logging import configure_logging, reconfigure
+from rentivo.models import format_brl
+from rentivo.settings import settings
 from web.auth import router as auth_router
 from web.csrf import CSRFMiddleware
 from web.deps import AuthMiddleware, DBConnectionMiddleware, MFAEnforcementMiddleware
@@ -90,6 +90,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 @app.get("/")
 async def home(request: Request):
+    if request.session.get("user_id"):
+        return RedirectResponse("/billings/", status_code=302)
     return templates.TemplateResponse(
         request,
         "landing.html",

@@ -1,4 +1,4 @@
-from landlord.models import format_brl, parse_brl
+from rentivo.models import format_brl, parse_brl
 
 
 class TestFormatBrl:

@@ -1,7 +1,7 @@
 from unittest.mock import patch
 
-from landlord.models.bill import Bill, BillLineItem
-from landlord.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.billing import Billing, BillingItem, ItemType
 
 
 class TestRegeneratePdfs:
@@ -26,13 +26,13 @@ class TestRegeneratePdfs:
             ],
         )
 
-    @patch("landlord.scripts.regenerate_pdfs.initialize_db")
-    @patch("landlord.scripts.regenerate_pdfs.get_billing_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_bill_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_receipt_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_storage")
+    @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
+    @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_bill_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_receipt_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     def test_dry_run(self, mock_storage, mock_receipt_repo, mock_bill_repo, mock_billing_repo, mock_init_db):
-        from landlord.scripts.regenerate_pdfs import main
+        from rentivo.scripts.regenerate_pdfs import main
 
         billing = self._make_billing()
         bill = self._make_bill()
@@ -45,17 +45,17 @@ class TestRegeneratePdfs:
 
         mock_storage.return_value.save.assert_not_called()
 
-    @patch("landlord.scripts.regenerate_pdfs.initialize_db")
-    @patch("landlord.scripts.regenerate_pdfs.get_billing_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_bill_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_receipt_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_storage")
-    @patch("landlord.scripts.regenerate_pdfs.BillService._get_pix_data")
-    @patch("landlord.scripts.regenerate_pdfs.InvoicePDF")
+    @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
+    @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_bill_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_receipt_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_storage")
+    @patch("rentivo.services.bill_service.BillService._get_pix_data")
+    @patch("rentivo.services.bill_service.InvoicePDF")
     def test_regeneration(
         self, mock_pdf_cls, mock_pix, mock_storage, mock_receipt_repo, mock_bill_repo, mock_billing_repo, mock_init_db
     ):
-        from landlord.scripts.regenerate_pdfs import main
+        from rentivo.scripts.regenerate_pdfs import main
 
         billing = self._make_billing()
         bill = self._make_bill()
@@ -72,26 +72,26 @@ class TestRegeneratePdfs:
         mock_storage.return_value.save.assert_called_once()
         mock_bill_repo.return_value.update_pdf_path.assert_called_once()
 
-    @patch("landlord.scripts.regenerate_pdfs.initialize_db")
-    @patch("landlord.scripts.regenerate_pdfs.get_billing_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_bill_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_receipt_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_storage")
+    @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
+    @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_bill_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_receipt_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     def test_no_billings(self, mock_storage, mock_receipt_repo, mock_bill_repo, mock_billing_repo, mock_init_db):
-        from landlord.scripts.regenerate_pdfs import main
+        from rentivo.scripts.regenerate_pdfs import main
 
         mock_billing_repo.return_value.list_all.return_value = []
 
         with patch("sys.argv", ["prog"]):
             main()
 
-    @patch("landlord.scripts.regenerate_pdfs.initialize_db")
-    @patch("landlord.scripts.regenerate_pdfs.get_billing_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_bill_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_receipt_repository")
-    @patch("landlord.scripts.regenerate_pdfs.get_storage")
+    @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
+    @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_bill_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_receipt_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     def test_no_bills(self, mock_storage, mock_receipt_repo, mock_bill_repo, mock_billing_repo, mock_init_db):
-        from landlord.scripts.regenerate_pdfs import main
+        from rentivo.scripts.regenerate_pdfs import main
 
         billing = self._make_billing()
         mock_billing_repo.return_value.list_all.return_value = [billing]

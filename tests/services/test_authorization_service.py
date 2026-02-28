@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 
-from landlord.models.billing import Billing
-from landlord.models.organization import OrganizationMember
-from landlord.services.authorization_service import AuthorizationService
+from rentivo.models.billing import Billing
+from rentivo.models.organization import OrganizationMember
+from rentivo.services.authorization_service import AuthorizationService
 
 
 class TestAuthorizationService:

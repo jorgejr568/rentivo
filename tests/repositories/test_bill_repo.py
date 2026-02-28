@@ -3,8 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from landlord.models.bill import SP_TZ, BillLineItem
-from landlord.models.billing import ItemType
+from rentivo.models.bill import SP_TZ, BillLineItem
+from rentivo.models.billing import ItemType
 
 
 class TestBillRepoCRUD:

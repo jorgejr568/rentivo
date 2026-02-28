@@ -2,10 +2,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from landlord.models.invite import Invite
-from landlord.models.organization import OrganizationMember
-from landlord.models.user import User
-from landlord.services.invite_service import InviteService
+from rentivo.models.invite import Invite
+from rentivo.models.organization import OrganizationMember
+from rentivo.models.user import User
+from rentivo.services.invite_service import InviteService
 
 
 class TestInviteService:

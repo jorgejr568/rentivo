@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy import Connection
 
-from landlord.repositories.sqlalchemy import (
+from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyInviteRepository,

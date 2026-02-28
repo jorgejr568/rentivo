@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
-from landlord.models.audit_log import AuditEventType, AuditLog
-from landlord.services.audit_service import AuditService
+from rentivo.models.audit_log import AuditEventType, AuditLog
+from rentivo.services.audit_service import AuditService
 
 
 class TestAuditServiceLog:

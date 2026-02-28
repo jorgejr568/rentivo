@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-import landlord.db as db_module
+import rentivo.db as db_module
 
 
 class TestGetEngine:
@@ -37,8 +37,8 @@ class TestGetConnection:
 
 
 class TestInitializeDb:
-    @patch("landlord.db.command")
-    @patch("landlord.db._get_alembic_config")
+    @patch("rentivo.db.command")
+    @patch("rentivo.db._get_alembic_config")
     def test_calls_alembic_upgrade(self, mock_config, mock_command):
         mock_cfg = MagicMock()
         mock_config.return_value = mock_cfg

@@ -3,6 +3,6 @@
   <circle cx="34" cy="34" r="28" fill="#1a1a2e"/>
   <!-- Main circle -->
   <circle cx="30" cy="30" r="28" fill="#27ae60" stroke="#1a1a2e" stroke-width="3"/>
-  <!-- Bold geometric L -->
-  <path d="M21 14 L31 14 L31 38 L43 38 L43 48 L21 48 Z" fill="#ffffff"/>
+  <!-- Bold geometric R -->
+  <path d="M22 14 H38 Q46 14 46 23 Q46 32 38 32 L44 48 H35 L32 36 V48 H22 Z M32 21 H36 Q39 21 39 23 Q39 25 36 25 H32 Z" fill="#ffffff" fill-rule="evenodd"/>
 </svg>

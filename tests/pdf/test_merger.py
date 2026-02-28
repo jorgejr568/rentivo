@@ -1,4 +1,4 @@
-"""Tests for landlord.pdf.merger — PDF/image receipt merging."""
+"""Tests for rentivo.pdf.merger — PDF/image receipt merging."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from fpdf import FPDF
 from PIL import Image
 from pypdf import PdfReader
 
-from landlord.pdf.merger import _image_to_pdf, merge_receipts
+from rentivo.pdf.merger import _image_to_pdf, merge_receipts
 
 
 def _make_pdf(num_pages: int = 1) -> bytes:

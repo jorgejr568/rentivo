@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from landlord.models.bill import Bill, BillLineItem
-from landlord.models.billing import Billing, BillingItem, ItemType
-from landlord.models.invite import Invite
-from landlord.models.organization import Organization
-from landlord.models.user import User
-from landlord.services.audit_serializers import (
+from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.invite import Invite
+from rentivo.models.organization import Organization
+from rentivo.models.user import User
+from rentivo.services.audit_serializers import (
     serialize_bill,
     serialize_billing,
     serialize_invite,

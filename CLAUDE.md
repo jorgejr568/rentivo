@@ -1,4 +1,4 @@
-# Landlord
+# Rentivo
 
 Apartment billing management with PDF invoice generation — CLI + FastAPI web UI.
 
@@ -47,25 +47,25 @@ make health      # curl http://localhost:8000
 make build-cli   # build CLI image
 make up-cli      # start CLI container (port 2019)
 make down-cli    # stop and remove
-make landlord    # run CLI interactively
+make rentivo    # run CLI interactively
 make shell-cli   # bash session
 
 # Docker Compose (both services)
 make compose-up            # start web + cli
 make compose-down          # stop all
-make compose-landlord      # run CLI in cli container
+make compose-rentivo      # run CLI in cli container
 make compose-createuser    # create web user
 ```
 
 ## Architecture
 
-- **Settings**: `landlord/settings.py` — Pydantic Settings, env prefix `LANDLORD_`, reads `.env`
-- **Database**: `landlord/db.py` — SQLAlchemy engine + connection to MariaDB. Schema managed by Alembic. Configured via `LANDLORD_DB_URL`
-- **Repositories**: `landlord/repositories/` — Abstract base classes in `base.py`, SQLAlchemy Core impl in `sqlalchemy.py`, factory in `factory.py`
-- **Storage**: `landlord/storage/` — Same pattern. `LocalStorage` writes to `./invoices/`, `S3Storage` uploads to a private bucket with presigned URLs. Configurable via `LANDLORD_STORAGE_BACKEND`
-- **PDF**: `landlord/pdf/invoice.py` — fpdf2-based invoice with navy/green color palette; `landlord/pdf/merger.py` — merges receipt attachments into invoices using pypdf
-- **Services**: `landlord/services/` — Business logic layer wiring repos + storage + PDF
-- **CLI**: `landlord/cli/` — Interactive menus using `questionary` + `rich`
+- **Settings**: `rentivo/settings.py` — Pydantic Settings, env prefix `RENTIVO_`, reads `.env`
+- **Database**: `rentivo/db.py` — SQLAlchemy engine + connection to MariaDB. Schema managed by Alembic. Configured via `RENTIVO_DB_URL`
+- **Repositories**: `rentivo/repositories/` — Abstract base classes in `base.py`, SQLAlchemy Core impl in `sqlalchemy.py`, factory in `factory.py`
+- **Storage**: `rentivo/storage/` — Same pattern. `LocalStorage` writes to `./invoices/`, `S3Storage` uploads to a private bucket with presigned URLs. Configurable via `RENTIVO_STORAGE_BACKEND`
+- **PDF**: `rentivo/pdf/invoice.py` — fpdf2-based invoice with navy/green color palette; `rentivo/pdf/merger.py` — merges receipt attachments into invoices using pypdf
+- **Services**: `rentivo/services/` — Business logic layer wiring repos + storage + PDF
+- **CLI**: `rentivo/cli/` — Interactive menus using `questionary` + `rich`
 - **Health check**: `healthcheck.py` — HTTP server on port 2019, returns 200 for all requests
 
 ## S3 Storage
@@ -74,12 +74,12 @@ make compose-createuser    # create web user
 - Receipt S3 key pattern: `{billing_uuid}/{bill_uuid}/receipts/{receipt_uuid}{ext}`
 - `pdf_path` column stores the S3 key, not a URL
 - Presigned URLs (7-day expiry) are generated on the fly via `get_invoice_url()` / `get_presigned_url()`
-- Set `LANDLORD_STORAGE_BACKEND=s3` and configure `LANDLORD_S3_*` env vars
+- Set `RENTIVO_STORAGE_BACKEND=s3` and configure `RENTIVO_S3_*` env vars
 
 ## Conventions
 
 - All customer-facing text (CLI prompts, PDF content) in **PT-BR**
-- Currency in **BRL** (R$), formatted via `landlord.models.format_brl()`
+- Currency in **BRL** (R$), formatted via `rentivo.models.format_brl()`
 - Money stored as **centavos (int)** in the database — never use floats for money
 - Code (variable names, comments) in English
 
@@ -130,14 +130,14 @@ make web-run             # start uvicorn at http://localhost:8000
 - Bills can have attached receipt files (PDF, JPEG, PNG, max 10 MB)
 - Receipt storage key pattern: `{billing_uuid}/{bill_uuid}/receipts/{receipt_uuid}{ext}`
 - Receipts are merged into the generated PDF invoice using pypdf (appended after invoice pages, in order of addition)
-- Model: `landlord/models/receipt.py`, Repository: `ReceiptRepository`, Service: integrated into `BillService`
+- Model: `rentivo/models/receipt.py`, Repository: `ReceiptRepository`, Service: integrated into `BillService`
 - Upload/delete via separate forms on the bill edit page
 
 ## Audit Logging
 
 - **AuditService** logs all state-changing operations across web and CLI
-- Event types defined in `landlord/models/audit_log.py` (`AuditEventType`)
-- Serializers in `landlord/services/audit_serializers.py` strip sensitive fields (`password_hash`)
+- Event types defined in `rentivo/models/audit_log.py` (`AuditEventType`)
+- Serializers in `rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`)
 - `safe_log()` swallows exceptions — audit failures never block business operations
 - Web routes: actor context comes from session (`user_id`, `username`)
 - CLI: uses `source="cli"`, `actor_id=None`, `actor_username=""`
@@ -148,3 +148,5 @@ make web-run             # start uvicorn at http://localhost:8000
 - **NEVER delete `invoices/`** without explicit user confirmation
 - Do not use floats for monetary values — always centavos (int)
 - Keep repository and storage abstractions — they exist so backends can be swapped (S3, etc.)
+- Always use `.venv/bin/` commands (e.g. `.venv/bin/python`, `.venv/bin/pip`, `.venv/bin/pytest`) instead of bare `python`/`pip`/`pytest`
+- Always run tests in parallel: `.venv/bin/python -m pytest -n auto` (or `make test`)

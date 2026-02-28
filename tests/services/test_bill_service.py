@@ -3,20 +3,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from landlord.models.bill import SP_TZ, Bill, BillLineItem
-from landlord.models.billing import Billing, BillingItem, ItemType
-from landlord.models.receipt import Receipt
-from landlord.services.bill_service import BillService, _receipt_storage_key, _storage_key
+from rentivo.models.bill import SP_TZ, Bill, BillLineItem
+from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.receipt import Receipt
+from rentivo.services.bill_service import BillService, _receipt_storage_key, _storage_key
 
 
 class TestStorageKey:
     def test_with_prefix(self):
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.storage_prefix = "bills"
             assert _storage_key("billing-uuid", "bill-uuid") == "bills/billing-uuid/bill-uuid.pdf"
 
     def test_without_prefix(self):
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.storage_prefix = ""
             assert _storage_key("billing-uuid", "bill-uuid") == "billing-uuid/bill-uuid.pdf"
 
@@ -169,9 +169,9 @@ class TestBillService:
 class TestGetPixData:
     def test_with_billing_pix_key(self):
         billing = Billing(name="Apt", pix_key="billing@pix.com")
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.pix_key = "global@pix.com"
-            mock_settings.pix_merchant_name = "Landlord"
+            mock_settings.pix_merchant_name = "Rentivo"
             mock_settings.pix_merchant_city = "Sao Paulo"
             png, key, payload = BillService._get_pix_data(billing, 10000)
 
@@ -181,9 +181,9 @@ class TestGetPixData:
 
     def test_falls_back_to_global_pix_key(self):
         billing = Billing(name="Apt", pix_key="")
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.pix_key = "global@pix.com"
-            mock_settings.pix_merchant_name = "Landlord"
+            mock_settings.pix_merchant_name = "Rentivo"
             mock_settings.pix_merchant_city = "Sao Paulo"
             png, key, payload = BillService._get_pix_data(billing, 10000)
 
@@ -192,7 +192,7 @@ class TestGetPixData:
 
     def test_no_pix_key(self):
         billing = Billing(name="Apt", pix_key="")
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.pix_key = ""
             png, key, payload = BillService._get_pix_data(billing, 10000)
 
@@ -202,7 +202,7 @@ class TestGetPixData:
 
     def test_no_merchant_name(self):
         billing = Billing(name="Apt", pix_key="key@pix")
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.pix_key = ""
             mock_settings.pix_merchant_name = ""
             mock_settings.pix_merchant_city = "City"
@@ -212,7 +212,7 @@ class TestGetPixData:
 
     def test_no_merchant_city(self):
         billing = Billing(name="Apt", pix_key="key@pix")
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.pix_key = ""
             mock_settings.pix_merchant_name = "Name"
             mock_settings.pix_merchant_city = ""
@@ -271,25 +271,25 @@ class TestBillServiceValueErrors:
 
 class TestReceiptStorageKey:
     def test_receipt_key_with_prefix(self):
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.storage_prefix = "bills"
             key = _receipt_storage_key("billing-uuid", "bill-uuid", "receipt-uuid", "application/pdf")
         assert key == "bills/billing-uuid/bill-uuid/receipts/receipt-uuid.pdf"
 
     def test_receipt_key_without_prefix(self):
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.storage_prefix = ""
             key = _receipt_storage_key("billing-uuid", "bill-uuid", "receipt-uuid", "image/jpeg")
         assert key == "billing-uuid/bill-uuid/receipts/receipt-uuid.jpg"
 
     def test_receipt_key_png(self):
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.storage_prefix = ""
             key = _receipt_storage_key("bu", "bi", "ru", "image/png")
         assert key == "bu/bi/receipts/ru.png"
 
     def test_receipt_key_unknown_type(self):
-        with patch("landlord.services.bill_service.settings") as mock_settings:
+        with patch("rentivo.services.bill_service.settings") as mock_settings:
             mock_settings.storage_prefix = ""
             key = _receipt_storage_key("bu", "bi", "ru", "text/plain")
         assert key == "bu/bi/receipts/ru"
@@ -496,7 +496,7 @@ class TestPdfGenerationWithReceipts:
 
         with patch.object(self.service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF-invoice"
-            with patch("landlord.services.bill_service.merge_receipts") as mock_merge:
+            with patch("rentivo.services.bill_service.merge_receipts") as mock_merge:
                 mock_merge.return_value = b"%PDF-merged"
                 self.service._generate_and_store_pdf(bill, billing)
 
@@ -518,7 +518,7 @@ class TestPdfGenerationWithReceipts:
 
         with patch.object(self.service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF-invoice"
-            with patch("landlord.services.bill_service.merge_receipts") as mock_merge:
+            with patch("rentivo.services.bill_service.merge_receipts") as mock_merge:
                 self.service._generate_and_store_pdf(bill, billing)
 
         mock_merge.assert_not_called()

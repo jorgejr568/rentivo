@@ -1,4 +1,4 @@
-from landlord.models.invite import Invite, InviteStatus
+from rentivo.models.invite import Invite, InviteStatus
 
 
 class TestInviteStatus:

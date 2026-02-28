@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from landlord.models.user import User
-from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
+from rentivo.models.user import User
+from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 
 
 class TestUserRepo:

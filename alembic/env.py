@@ -13,7 +13,7 @@ target_metadata = None
 
 
 def _get_url() -> str:
-    from landlord.settings import settings
+    from rentivo.settings import settings
 
     return settings.db_url
 

@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
-from landlord.models.organization import Organization, OrganizationMember
-from landlord.services.organization_service import OrganizationService
+from rentivo.models.organization import Organization, OrganizationMember
+from rentivo.services.organization_service import OrganizationService
 
 
 class TestOrganizationService:

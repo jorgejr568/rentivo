@@ -6,8 +6,8 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-from landlord.models.audit_log import AuditEventType
-from landlord.services.audit_serializers import serialize_user
+from rentivo.models.audit_log import AuditEventType
+from rentivo.services.audit_serializers import serialize_user
 from web.deps import get_audit_service, get_mfa_service, get_user_service, render
 
 logger = logging.getLogger(__name__)

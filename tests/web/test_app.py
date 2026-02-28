@@ -2,15 +2,15 @@ from unittest.mock import patch
 
 
 class TestApp:
-    def test_home_shows_landing_page(self, auth_client):
+    def test_home_redirects_authenticated_user_to_billings(self, auth_client):
         response = auth_client.get("/", follow_redirects=False)
-        assert response.status_code == 200
-        assert "Landlord" in response.text
+        assert response.status_code == 302
+        assert response.headers["location"] == "/billings/"
 
     def test_unauthenticated_sees_landing_page(self, client):
         response = client.get("/", follow_redirects=False)
         assert response.status_code == 200
-        assert "Landlord" in response.text
+        assert "Rentivo" in response.text
 
 
 class TestLifespan:
@@ -32,8 +32,8 @@ class TestExceptionHandler:
         """Unhandled exceptions in routes should return 500."""
         from starlette.testclient import TestClient
 
-        from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
-        from landlord.services.user_service import UserService
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.user_service import UserService
         from web.app import app
 
         with test_engine.connect() as conn:

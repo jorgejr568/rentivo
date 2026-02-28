@@ -3,8 +3,8 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy import Connection
 
-from landlord.models.audit_log import AuditLog
-from landlord.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
+from rentivo.models.audit_log import AuditLog
+from rentivo.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
 
 
 @pytest.fixture()

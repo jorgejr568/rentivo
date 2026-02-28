@@ -1,7 +1,7 @@
-from landlord.models.bill import Bill, BillLineItem
-from landlord.models.billing import ItemType
-from landlord.pdf.invoice import InvoicePDF
-from landlord.pix import generate_pix_qrcode_png
+from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.billing import ItemType
+from rentivo.pdf.invoice import InvoicePDF
+from rentivo.pix import generate_pix_qrcode_png
 
 
 class TestInvoicePDF:

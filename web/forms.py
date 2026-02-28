@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from landlord.models import parse_brl as parse_brl  # noqa: F401 — re-export
+from rentivo.models import parse_brl as parse_brl  # noqa: F401 — re-export
 
 
 def parse_formset(form_data: dict, prefix: str) -> list[dict[str, str]]:

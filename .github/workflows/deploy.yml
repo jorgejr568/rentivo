@@ -21,7 +21,7 @@ jobs:
         run: pip install -e ".[test]"
 
       - name: Run tests
-        run: python -m pytest tests/ -v --cov=landlord --cov=web --cov-report=term-missing --cov-report=xml
+        run: python -m pytest tests/ -n auto -v --cov=rentivo --cov=web --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

@@ -1,5 +1,5 @@
 [project]
-name = "landlord-cli"
+name = "rentivo"
 version = "0.1.0"
 description = "Apartment billing management and invoice generation"
 requires-python = ">=3.10"
@@ -27,16 +27,18 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["landlord*", "web*"]
+include = ["rentivo*", "web*"]
 
 [project.optional-dependencies]
 s3 = ["boto3>=1.35,<2"]
 dev = [
     "ruff>=0.9,<1",
+    "pre-commit>=4.0,<5",
 ]
 test = [
     "pytest>=8.0,<9",
     "pytest-cov>=6.0,<7",
+    "pytest-xdist>=3.0,<4",
     "httpx>=0.27,<1",
     "freezegun>=1.4,<2",
     "boto3>=1.35,<2",
@@ -44,15 +46,15 @@ test = [
 ]
 
 [project.scripts]
-landlord = "landlord.__main__:main"
+rentivo = "rentivo.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.coverage.run]
-source = ["landlord", "web"]
-omit = ["landlord/__main__.py", "landlord/scripts/seed.py"]
+source = ["rentivo", "web"]
+omit = ["rentivo/__main__.py", "rentivo/scripts/seed.py"]
 
 [tool.coverage.report]
 show_missing = true

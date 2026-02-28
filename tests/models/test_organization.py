@@ -1,4 +1,4 @@
-from landlord.models.organization import Organization, OrganizationMember, OrgRole
+from rentivo.models.organization import Organization, OrganizationMember, OrgRole
 
 
 class TestOrgRole:

@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from landlord.models.organization import Organization
-from landlord.models.user import User
+from rentivo.models.organization import Organization
+from rentivo.models.user import User
 
 
 def _create_user(user_repo, username="admin"):

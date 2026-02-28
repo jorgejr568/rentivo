@@ -1,13 +1,13 @@
-<h1 align="center">Landlord</h1>
+<h1 align="center">Rentivo</h1>
 
 <p align="center">
   Apartment billing management with PDF invoice generation — <strong>CLI + Web UI</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/jorgejr568/landlord-cli/actions/workflows/deploy.yml"><img src="https://github.com/jorgejr568/landlord-cli/actions/workflows/deploy.yml/badge.svg" alt="Tests"></a>
-  <a href="https://codecov.io/gh/jorgejr568/landlord-cli"><img src="https://codecov.io/gh/jorgejr568/landlord-cli/branch/main/graph/badge.svg" alt="codecov"></a>
-  <a href="https://github.com/jorgejr568/landlord-cli/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="GPL-3.0"></a>
+  <a href="https://github.com/jorgejr568/rentivo/actions/workflows/deploy.yml"><img src="https://github.com/jorgejr568/rentivo/actions/workflows/deploy.yml/badge.svg" alt="Tests"></a>
+  <a href="https://codecov.io/gh/jorgejr568/rentivo"><img src="https://codecov.io/gh/jorgejr568/rentivo/branch/main/graph/badge.svg" alt="codecov"></a>
+  <a href="https://github.com/jorgejr568/rentivo/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="GPL-3.0"></a>
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 
 ---
 
-Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with **BRL (R$)** currency and **PIX QR codes** on invoices.
+Built for Brazilian rentivos — all tenant-facing output is in **PT-BR** with **BRL (R$)** currency and **PIX QR codes** on invoices.
 
 ## Features
 
@@ -63,14 +63,14 @@ make compose-createuser   # create a login user
 
 ## Configuration
 
-Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
+Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
 
 <details>
 <summary><strong>Database</strong></summary>
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LANDLORD_DB_URL` | `mysql://landlord:landlord@db:3306/landlord` | SQLAlchemy database URL (MariaDB) |
+| `RENTIVO_DB_URL` | `mysql://rentivo:rentivo@db:3306/rentivo` | SQLAlchemy database URL (MariaDB) |
 
 </details>
 
@@ -79,14 +79,14 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LANDLORD_STORAGE_BACKEND` | `local` | `local` or `s3` |
-| `LANDLORD_STORAGE_LOCAL_PATH` | `./invoices` | Local directory for PDFs |
-| `LANDLORD_S3_BUCKET` | | S3 bucket name |
-| `LANDLORD_S3_REGION` | | AWS region |
-| `LANDLORD_S3_ACCESS_KEY_ID` | | AWS access key |
-| `LANDLORD_S3_SECRET_ACCESS_KEY` | | AWS secret key |
-| `LANDLORD_S3_ENDPOINT_URL` | | Custom S3 endpoint (MinIO, etc.) |
-| `LANDLORD_S3_PRESIGNED_EXPIRY` | `604800` | Presigned URL expiry in seconds (default 7 days) |
+| `RENTIVO_STORAGE_BACKEND` | `local` | `local` or `s3` |
+| `RENTIVO_STORAGE_LOCAL_PATH` | `./invoices` | Local directory for PDFs |
+| `RENTIVO_S3_BUCKET` | | S3 bucket name |
+| `RENTIVO_S3_REGION` | | AWS region |
+| `RENTIVO_S3_ACCESS_KEY_ID` | | AWS access key |
+| `RENTIVO_S3_SECRET_ACCESS_KEY` | | AWS secret key |
+| `RENTIVO_S3_ENDPOINT_URL` | | Custom S3 endpoint (MinIO, etc.) |
+| `RENTIVO_S3_PRESIGNED_EXPIRY` | `604800` | Presigned URL expiry in seconds (default 7 days) |
 
 </details>
 
@@ -95,9 +95,9 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 
 | Variable | Description |
 |----------|-------------|
-| `LANDLORD_PIX_KEY` | PIX key (CPF, email, phone, or random) |
-| `LANDLORD_PIX_MERCHANT_NAME` | Merchant name for QR code |
-| `LANDLORD_PIX_MERCHANT_CITY` | Merchant city for QR code |
+| `RENTIVO_PIX_KEY` | PIX key (CPF, email, phone, or random) |
+| `RENTIVO_PIX_MERCHANT_NAME` | Merchant name for QR code |
+| `RENTIVO_PIX_MERCHANT_CITY` | Merchant city for QR code |
 
 </details>
 
@@ -106,7 +106,7 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LANDLORD_SECRET_KEY` | `change-me-in-production` | Secret key for session signing |
+| `RENTIVO_SECRET_KEY` | `change-me-in-production` | Secret key for session signing |
 
 </details>
 
@@ -151,7 +151,7 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 |---------|-------------|
 | `make build-cli` | Build the CLI Docker image |
 | `make up-cli` / `make down-cli` | Start / stop the CLI container |
-| `make landlord` | Run the CLI in the container |
+| `make rentivo` | Run the CLI in the container |
 | `make shell-cli` | Open a bash shell in the CLI container |
 
 </details>
@@ -162,7 +162,7 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 | Command | Description |
 |---------|-------------|
 | `make compose-up` / `compose-down` | Start / stop with Compose |
-| `make compose-landlord` | Run the CLI via Compose |
+| `make compose-rentivo` | Run the CLI via Compose |
 | `make compose-createuser` | Create a login user via Compose |
 | `make compose-migrate` | Run migrations via Compose |
 
@@ -171,8 +171,8 @@ Copy `.env.example` to `.env`. All variables use the `LANDLORD_` prefix.
 ## Architecture
 
 ```
-landlord/
-  settings.py          # Pydantic Settings (env prefix LANDLORD_)
+rentivo/
+  settings.py          # Pydantic Settings (env prefix RENTIVO_)
   db.py                # SQLAlchemy engine + connection
   models/              # Pydantic models (Billing, Bill, User)
   repositories/        # Abstract base + SQLAlchemy Core implementation

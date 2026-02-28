@@ -2,31 +2,31 @@ from unittest.mock import MagicMock, patch
 
 
 class TestBuildServices:
-    @patch("landlord.cli.app.get_storage")
-    @patch("landlord.cli.app.get_user_repository")
-    @patch("landlord.cli.app.get_bill_repository")
-    @patch("landlord.cli.app.get_billing_repository")
-    @patch("landlord.cli.app.get_audit_log_repository")
+    @patch("rentivo.cli.app.get_storage")
+    @patch("rentivo.cli.app.get_user_repository")
+    @patch("rentivo.cli.app.get_bill_repository")
+    @patch("rentivo.cli.app.get_billing_repository")
+    @patch("rentivo.cli.app.get_audit_log_repository")
     def test_returns_tuple(self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_storage):
-        from landlord.cli.app import _build_services
+        from rentivo.cli.app import _build_services
 
         result = _build_services()
         assert isinstance(result, tuple)
         assert len(result) == 4
 
-    @patch("landlord.cli.app.get_storage")
-    @patch("landlord.cli.app.get_user_repository")
-    @patch("landlord.cli.app.get_bill_repository")
-    @patch("landlord.cli.app.get_billing_repository")
-    @patch("landlord.cli.app.get_audit_log_repository")
+    @patch("rentivo.cli.app.get_storage")
+    @patch("rentivo.cli.app.get_user_repository")
+    @patch("rentivo.cli.app.get_bill_repository")
+    @patch("rentivo.cli.app.get_billing_repository")
+    @patch("rentivo.cli.app.get_audit_log_repository")
     def test_returns_correct_types(
         self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_storage
     ):
-        from landlord.cli.app import _build_services
-        from landlord.services.audit_service import AuditService
-        from landlord.services.bill_service import BillService
-        from landlord.services.billing_service import BillingService
-        from landlord.services.user_service import UserService
+        from rentivo.cli.app import _build_services
+        from rentivo.services.audit_service import AuditService
+        from rentivo.services.bill_service import BillService
+        from rentivo.services.billing_service import BillingService
+        from rentivo.services.user_service import UserService
 
         billing_svc, bill_svc, user_svc, audit_svc = _build_services()
         assert isinstance(billing_svc, BillingService)
@@ -36,10 +36,10 @@ class TestBuildServices:
 
 
 class TestMainMenu:
-    @patch("landlord.cli.app._build_services")
-    @patch("landlord.cli.app.questionary")
+    @patch("rentivo.cli.app._build_services")
+    @patch("rentivo.cli.app.questionary")
     def test_exit_immediately(self, mock_q, mock_build):
-        from landlord.cli.app import main_menu
+        from rentivo.cli.app import main_menu
 
         mock_build.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
         mock_q.select.return_value.ask.return_value = "Sair"
@@ -47,21 +47,21 @@ class TestMainMenu:
         main_menu()
         mock_q.select.return_value.ask.assert_called()
 
-    @patch("landlord.cli.app._build_services")
-    @patch("landlord.cli.app.questionary")
+    @patch("rentivo.cli.app._build_services")
+    @patch("rentivo.cli.app.questionary")
     def test_none_exits(self, mock_q, mock_build):
-        from landlord.cli.app import main_menu
+        from rentivo.cli.app import main_menu
 
         mock_build.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
         mock_q.select.return_value.ask.return_value = None
 
         main_menu()
 
-    @patch("landlord.cli.app._build_services")
-    @patch("landlord.cli.app.questionary")
-    @patch("landlord.cli.app.list_billings_menu")
+    @patch("rentivo.cli.app._build_services")
+    @patch("rentivo.cli.app.questionary")
+    @patch("rentivo.cli.app.list_billings_menu")
     def test_list_billings(self, mock_list, mock_q, mock_build):
-        from landlord.cli.app import main_menu
+        from rentivo.cli.app import main_menu
 
         mock_build.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
         mock_q.select.return_value.ask.side_effect = ["Listar Cobranças", "Sair"]
@@ -69,11 +69,11 @@ class TestMainMenu:
         main_menu()
         mock_list.assert_called_once()
 
-    @patch("landlord.cli.app._build_services")
-    @patch("landlord.cli.app.questionary")
-    @patch("landlord.cli.app.create_billing_menu")
+    @patch("rentivo.cli.app._build_services")
+    @patch("rentivo.cli.app.questionary")
+    @patch("rentivo.cli.app.create_billing_menu")
     def test_create_billing(self, mock_create, mock_q, mock_build):
-        from landlord.cli.app import main_menu
+        from rentivo.cli.app import main_menu
 
         mock_build.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
         mock_q.select.return_value.ask.side_effect = ["Criar Nova Cobrança", "Sair"]
@@ -81,11 +81,11 @@ class TestMainMenu:
         main_menu()
         mock_create.assert_called_once()
 
-    @patch("landlord.cli.app._build_services")
-    @patch("landlord.cli.app.questionary")
-    @patch("landlord.cli.app.user_management_menu")
+    @patch("rentivo.cli.app._build_services")
+    @patch("rentivo.cli.app.questionary")
+    @patch("rentivo.cli.app.user_management_menu")
     def test_user_management(self, mock_user, mock_q, mock_build):
-        from landlord.cli.app import main_menu
+        from rentivo.cli.app import main_menu
 
         mock_build.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
         mock_q.select.return_value.ask.side_effect = ["Gerenciar Usuários", "Sair"]
@@ -93,11 +93,11 @@ class TestMainMenu:
         main_menu()
         mock_user.assert_called_once()
 
-    @patch("landlord.cli.app._build_services")
-    @patch("landlord.cli.app.questionary")
+    @patch("rentivo.cli.app._build_services")
+    @patch("rentivo.cli.app.questionary")
     def test_unrecognized_choice_loops(self, mock_q, mock_build):
         """Cover branch 60->42: unrecognized choice loops back to menu."""
-        from landlord.cli.app import main_menu
+        from rentivo.cli.app import main_menu
 
         mock_build.return_value = (MagicMock(), MagicMock(), MagicMock(), MagicMock())
         mock_q.select.return_value.ask.side_effect = ["Unknown Option", "Sair"]

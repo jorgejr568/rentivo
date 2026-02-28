@@ -5,9 +5,9 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-from landlord.models.audit_log import AuditEventType
-from landlord.models.billing import BillingItem, ItemType
-from landlord.services.audit_serializers import serialize_billing
+from rentivo.models.audit_log import AuditEventType
+from rentivo.models.billing import BillingItem, ItemType
+from rentivo.services.audit_serializers import serialize_billing
 from web.deps import (
     get_audit_service,
     get_authorization_service,

@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 COPY pyproject.toml .
-RUN mkdir -p landlord web && touch landlord/__init__.py web/__init__.py
+RUN mkdir -p rentivo web && touch rentivo/__init__.py web/__init__.py
 RUN pip install --no-cache-dir .
 
 COPY . .

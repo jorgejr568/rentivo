@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock, patch
 
-from landlord.models.billing import Billing
-from landlord.models.user import User
-from landlord.repositories.sqlalchemy import SQLAlchemyUserRepository
+from rentivo.models.billing import Billing
+from rentivo.models.user import User
+from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
 
 

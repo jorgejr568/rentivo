@@ -7,11 +7,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
-from landlord.models.audit_log import AuditEventType
-from landlord.models.bill import BillLineItem
-from landlord.models.billing import ItemType
-from landlord.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE
-from landlord.services.audit_serializers import serialize_bill
+from rentivo.models.audit_log import AuditEventType
+from rentivo.models.bill import BillLineItem
+from rentivo.models.billing import ItemType
+from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE
+from rentivo.services.audit_serializers import serialize_bill
 from web.deps import get_audit_service, get_authorization_service, get_bill_service, get_billing_service, render
 from web.flash import flash
 from web.forms import parse_brl, parse_formset
