@@ -26,7 +26,7 @@ class AuditEventType:
     BILL_CREATE = "bill.create"
     BILL_UPDATE = "bill.update"
     BILL_DELETE = "bill.delete"
-    BILL_TOGGLE_PAID = "bill.toggle_paid"
+    BILL_STATUS_CHANGE = "bill.status_change"
     BILL_REGENERATE_PDF = "bill.regenerate_pdf"
 
     # Receipt events
@@ -58,6 +58,11 @@ class AuditEventType:
     MFA_PASSKEY_DELETED = "mfa.passkey_deleted"
     MFA_PASSKEY_USED = "mfa.passkey_used"
     ORGANIZATION_UPDATE_MFA = "organization.update_mfa"
+
+    # Theme events
+    THEME_CREATE = "theme.create"
+    THEME_UPDATE = "theme.update"
+    THEME_DELETE = "theme.delete"
 
 
 class AuditLog(BaseModel):

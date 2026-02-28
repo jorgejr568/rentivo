@@ -4,10 +4,10 @@ import questionary
 from rich.console import Console
 from rich.table import Table
 
-from rentivo.constants import TYPE_LABELS, format_month
+from rentivo.constants import STATUS_LABELS, TYPE_LABELS, format_month
 from rentivo.models import format_brl, parse_brl
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.bill import Bill, BillLineItem, BillStatus
 from rentivo.models.billing import Billing, ItemType
 from rentivo.services.audit_serializers import serialize_bill
 from rentivo.services.audit_service import AuditService
@@ -336,16 +336,19 @@ def _bill_detail_menu(bill: Bill, billing: Billing, bill_service: BillService, a
         console.print()
         console.print(f"[bold cyan]Fatura {format_month(bill.reference_month)}[/bold cyan]")
         _show_bill_detail(bill, bill_service)
-        if bill.paid_at:
-            console.print(f"  [green]Pago em: {bill.paid_at.strftime('%d/%m/%Y %H:%M')}[/green]")
+        current_status = BillStatus(bill.status)
+        status_label = STATUS_LABELS.get(current_status, bill.status)
+        status_line = f"  Status: [bold]{status_label}[/bold]"
+        if bill.status_updated_at:
+            status_line += f" (atualizado em {bill.status_updated_at.strftime('%d/%m/%Y %H:%M')})"
+        console.print(status_line)
         console.print()
 
-        paid_label = "Desmarcar Pagamento" if bill.paid_at else "Marcar como Pago"
         action = questionary.select(
             "A\u00e7\u00f5es:",
             choices=[
                 "Editar Fatura",
-                paid_label,
+                "Alterar Status",
                 "Regenerar PDF",
                 "Excluir Fatura",
                 "Voltar",
@@ -356,24 +359,38 @@ def _bill_detail_menu(bill: Bill, billing: Billing, bill_service: BillService, a
             break
         elif action == "Editar Fatura":
             bill = edit_bill_menu(bill, billing, bill_service, audit_service)
-        elif action == paid_label:
-            previous_state = serialize_bill(bill)
-            bill = bill_service.toggle_paid(bill)
+        elif action == "Alterar Status":
+            current_status = BillStatus(bill.status)
+            status_choices = [
+                questionary.Choice(
+                    title=f"{label} (atual)" if s == current_status else label,
+                    value=s,
+                )
+                for s, label in STATUS_LABELS.items()
+            ]
+            new_status = questionary.select(
+                f"Status atual: {STATUS_LABELS[current_status]}. Selecione o novo status:",
+                choices=status_choices,
+            ).ask()
 
-            audit_service.safe_log(
-                AuditEventType.BILL_TOGGLE_PAID,
-                source="cli",
-                entity_type="bill",
-                entity_id=bill.id,
-                entity_uuid=bill.uuid,
-                previous_state=previous_state,
-                new_state=serialize_bill(bill),
-            )
-
-            if bill.paid_at:
-                console.print("[green]Fatura marcada como paga![/green]")
+            if new_status is None or new_status == current_status:
+                console.print("[dim]Status não alterado.[/dim]")
             else:
-                console.print("[yellow]Pagamento desmarcado.[/yellow]")
+                previous_state = serialize_bill(bill)
+                bill = bill_service.change_status(bill, new_status.value)
+
+                audit_service.safe_log(
+                    AuditEventType.BILL_STATUS_CHANGE,
+                    source="cli",
+                    entity_type="bill",
+                    entity_id=bill.id,
+                    entity_uuid=bill.uuid,
+                    previous_state=previous_state,
+                    new_state=serialize_bill(bill),
+                )
+
+                new_label = STATUS_LABELS.get(new_status, new_status.value)
+                console.print(f"[green]Status alterado para: {new_label}[/green]")
         elif action == "Regenerar PDF":
             previous_state = serialize_bill(bill)
             bill = bill_service.regenerate_pdf(bill, billing)

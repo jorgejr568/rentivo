@@ -8,6 +8,7 @@ from rentivo.repositories.base import (
     PasskeyRepository,
     ReceiptRepository,
     RecoveryCodeRepository,
+    ThemeRepository,
     UserRepository,
 )
 
@@ -80,3 +81,10 @@ def get_passkey_repository() -> PasskeyRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyPasskeyRepository
 
     return SQLAlchemyPasskeyRepository(get_connection())
+
+
+def get_theme_repository() -> ThemeRepository:
+    from rentivo.db import get_connection
+    from rentivo.repositories.sqlalchemy import SQLAlchemyThemeRepository
+
+    return SQLAlchemyThemeRepository(get_connection())

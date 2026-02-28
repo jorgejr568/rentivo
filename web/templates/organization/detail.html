@@ -9,6 +9,7 @@
     </div>
     {% if member_role == "admin" %}
     <div class="page-actions">
+        <a href="/themes/organization/{{ org.uuid }}" class="btn">Personalizar Tema</a>
         <a href="/organizations/{{ org.uuid }}/edit" class="btn">Editar</a>
     </div>
     {% endif %}

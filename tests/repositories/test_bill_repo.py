@@ -3,7 +3,8 @@ from unittest.mock import patch
 
 import pytest
 
-from rentivo.models.bill import SP_TZ, BillLineItem
+from rentivo.constants import SP_TZ
+from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
 
 
@@ -70,24 +71,25 @@ class TestBillRepoCRUD:
         fetched = bill_repo.get_by_id(created.id)
         assert fetched.pdf_path == "/new/path.pdf"
 
-    def test_update_paid_at(self, bill_repo, billing_repo, sample_billing, sample_bill):
+    def test_update_status(self, bill_repo, billing_repo, sample_billing, sample_bill):
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
         now = datetime.now(SP_TZ)
-        bill_repo.update_paid_at(created.id, now)
+        bill_repo.update_status(created.id, "paid", now)
 
         fetched = bill_repo.get_by_id(created.id)
-        assert fetched.paid_at is not None
+        assert fetched.status == "paid"
+        assert fetched.status_updated_at is not None
 
-    def test_update_paid_at_to_none(self, bill_repo, billing_repo, sample_billing, sample_bill):
+    def test_update_status_back_to_draft(self, bill_repo, billing_repo, sample_billing, sample_bill):
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
         now = datetime.now(SP_TZ)
-        bill_repo.update_paid_at(created.id, now)
-        bill_repo.update_paid_at(created.id, None)
+        bill_repo.update_status(created.id, "paid", now)
+        bill_repo.update_status(created.id, "draft", now)
 
         fetched = bill_repo.get_by_id(created.id)
-        assert fetched.paid_at is None
+        assert fetched.status == "draft"
 
     def test_soft_delete(self, bill_repo, billing_repo, sample_billing, sample_bill):
         billing = self._create_billing(billing_repo, sample_billing)

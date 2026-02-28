@@ -345,39 +345,55 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
-@router.post("/{bill_uuid}/toggle-paid")
-async def bill_toggle_paid(request: Request, billing_uuid: str, bill_uuid: str):
-    logger.info("POST /bills/%s/toggle-paid", bill_uuid)
+@router.post("/{bill_uuid}/change-status")
+async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str):
+    logger.info("POST /bills/%s/change-status", bill_uuid)
     bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
+
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
         logger.warning("Bill not found: uuid=%s", bill_uuid)
         flash(request, "Fatura não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    old_paid_at = bill.paid_at.isoformat() if bill.paid_at else None
-    bill_service.toggle_paid(bill)
-    new_paid_at = bill.paid_at.isoformat() if bill.paid_at else None
-    logger.info("Bill uuid=%s toggled paid: paid_at=%s", bill_uuid, bill.paid_at)
+    billing = billing_service.get_billing(bill.billing_id)
+    if not billing:
+        flash(request, "Cobrança não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
 
     user_id = request.session.get("user_id")
+    if not auth_service.can_manage_bills(user_id, billing):
+        flash(request, "Acesso negado.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
+    form = await request.form()
+    new_status = str(form.get("status", "")).strip()
+    previous_status = bill.status
+
+    try:
+        bill_service.change_status(bill, new_status)
+    except ValueError:
+        flash(request, "Status inválido.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill_uuid}", status_code=302)
+
+    logger.info("Bill uuid=%s status changed: %s -> %s", bill_uuid, previous_status, new_status)
+
     audit = get_audit_service(request)
     audit.safe_log(
-        AuditEventType.BILL_TOGGLE_PAID,
+        AuditEventType.BILL_STATUS_CHANGE,
         actor_id=user_id,
         actor_username=request.session.get("username", ""),
         source="web",
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
-        previous_state={"paid_at": old_paid_at},
-        new_state={"paid_at": new_paid_at},
+        previous_state={"status": previous_status},
+        new_state={"status": bill.status},
     )
 
-    if bill.paid_at:
-        flash(request, "Fatura marcada como paga!", "success")
-    else:
-        flash(request, "Pagamento desmarcado.", "info")
+    flash(request, "Status atualizado!", "success")
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 

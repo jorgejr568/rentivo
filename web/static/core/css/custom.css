@@ -531,6 +531,32 @@ body::before {
     color: #fff;
 }
 
+.tag--draft {
+    background: var(--muted);
+    color: #fff;
+}
+
+.tag--published {
+    background: var(--charcoal);
+    color: #fff;
+}
+
+.tag--sent {
+    background: #3498db;
+    color: #fff;
+}
+
+.tag--cancelled {
+    background: var(--danger);
+    color: #fff;
+    text-decoration: line-through;
+}
+
+.tag--delayed {
+    background: var(--warning);
+    color: var(--ink);
+}
+
 /* --- Toasts (flash messages) --- */
 .toast {
     padding: 0.85rem 1.25rem;
@@ -861,4 +887,29 @@ body::before {
     color: var(--muted);
     font-size: 1.05rem;
     margin-bottom: 2rem;
+}
+
+/* ── Theme Editor ───────────────────────────────────────── */
+
+.theme-editor {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.theme-editor-form {
+    min-width: 0;
+}
+
+.theme-editor-preview {
+    min-width: 0;
+    position: sticky;
+    top: 1rem;
+}
+
+@media (max-width: 768px) {
+    .theme-editor {
+        grid-template-columns: 1fr;
+    }
 }

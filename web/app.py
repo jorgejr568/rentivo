@@ -27,6 +27,7 @@ from web.routes.billing import router as billing_router
 from web.routes.invite import router as invite_router
 from web.routes.organization import router as organization_router
 from web.routes.security import router as security_router
+from web.routes.theme import router as theme_router
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ app.include_router(bill_router)
 app.include_router(organization_router)
 app.include_router(invite_router)
 app.include_router(security_router)
+app.include_router(theme_router)
 
 
 @app.exception_handler(StarletteHTTPException)

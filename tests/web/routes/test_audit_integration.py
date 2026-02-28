@@ -171,8 +171,8 @@ class TestBillAuditLogs:
         assert log.entity_type == "bill"
         assert log.new_state is not None
 
-    def test_toggle_paid_creates_audit_log(self, auth_client, test_engine, csrf_token, tmp_path):
-        """Toggling paid creates a bill.toggle_paid audit entry."""
+    def test_change_status_creates_audit_log(self, auth_client, test_engine, csrf_token, tmp_path):
+        """Changing status creates a bill.status_change audit entry."""
         from unittest.mock import patch
 
         billing = create_billing_in_db(test_engine)
@@ -184,12 +184,12 @@ class TestBillAuditLogs:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
 
             auth_client.post(
-                f"/billings/{billing.uuid}/bills/{bill.uuid}/toggle-paid",
-                data={"csrf_token": csrf_token},
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "paid"},
                 follow_redirects=False,
             )
 
-        logs = get_audit_logs(test_engine, AuditEventType.BILL_TOGGLE_PAID)
+        logs = get_audit_logs(test_engine, AuditEventType.BILL_STATUS_CHANGE)
         assert len(logs) >= 1
         log = logs[0]
         assert log.source == "web"

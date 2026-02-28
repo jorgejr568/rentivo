@@ -8,6 +8,7 @@ from rentivo.models.invite import Invite
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.models.receipt import Receipt
+from rentivo.models.theme import Theme
 from rentivo.models.user import User
 
 
@@ -57,7 +58,7 @@ class BillRepository(ABC):
     def update_pdf_path(self, bill_id: int, pdf_path: str) -> None: ...
 
     @abstractmethod
-    def update_paid_at(self, bill_id: int, paid_at: datetime | None) -> None: ...
+    def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None: ...
 
     @abstractmethod
     def delete(self, bill_id: int) -> None: ...
@@ -221,3 +222,23 @@ class PasskeyRepository(ABC):
 
     @abstractmethod
     def delete(self, passkey_id: int) -> None: ...
+
+
+class ThemeRepository(ABC):
+    @abstractmethod
+    def create(self, theme: Theme) -> Theme: ...
+
+    @abstractmethod
+    def get_by_id(self, theme_id: int) -> Theme | None: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> Theme | None: ...
+
+    @abstractmethod
+    def get_by_owner(self, owner_type: str, owner_id: int) -> Theme | None: ...
+
+    @abstractmethod
+    def update(self, theme: Theme) -> Theme: ...
+
+    @abstractmethod
+    def delete(self, theme_id: int) -> None: ...

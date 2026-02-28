@@ -19,6 +19,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyPasskeyRepository,
     SQLAlchemyReceiptRepository,
     SQLAlchemyRecoveryCodeRepository,
+    SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
 from rentivo.services.audit_service import AuditService
@@ -28,6 +29,7 @@ from rentivo.services.billing_service import BillingService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
+from rentivo.services.theme_service import ThemeService
 from rentivo.services.user_service import UserService
 from rentivo.storage.factory import get_storage
 from web.flash import get_flashed_messages
@@ -162,7 +164,12 @@ def get_bill_service(request: Request) -> BillService:
         SQLAlchemyBillRepository(conn),
         get_storage(),
         SQLAlchemyReceiptRepository(conn),
+        theme_service=get_theme_service(request),
     )
+
+
+def get_theme_service(request: Request) -> ThemeService:
+    return ThemeService(SQLAlchemyThemeRepository(_get_conn(request)))
 
 
 def get_user_service(request: Request) -> UserService:

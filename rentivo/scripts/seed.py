@@ -42,6 +42,7 @@ NUM_EXTRA_USERS = 9
 ORG_NAME = "Imobiliaria Horizonte"
 
 TABLES_TO_TRUNCATE = [
+    "themes",
     "audit_logs",
     "receipts",
     "bill_line_items",
@@ -375,18 +376,23 @@ def _create_bills(bill_service: BillService, billings: list[Billing]) -> int:
                 due_date=due_date,
             )
 
-            # Mark some bills as paid (older ones more likely)
+            # Set bill status based on age
             if month_offset > 2 and random.random() > 0.2:
-                bill_service.toggle_paid(bill)
+                bill_service.change_status(bill, "paid")
                 status = "[green]paid[/green]"
             elif month_offset <= 1:
-                status = "[yellow]pending[/yellow]"
+                bill_service.change_status(bill, "published")
+                status = "[yellow]published[/yellow]"
             else:
-                # Some overdue
-                if random.random() > 0.5:
-                    status = "[red]overdue[/red]"
+                r = random.random()
+                if r > 0.6:
+                    bill_service.change_status(bill, "delayed_payment")
+                    status = "[red]delayed[/red]"
+                elif r > 0.3:
+                    bill_service.change_status(bill, "sent")
+                    status = "[blue]sent[/blue]"
                 else:
-                    bill_service.toggle_paid(bill)
+                    bill_service.change_status(bill, "paid")
                     status = "[green]paid[/green]"
 
             table.add_row(

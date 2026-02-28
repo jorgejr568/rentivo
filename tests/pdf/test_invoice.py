@@ -78,6 +78,32 @@ class TestInvoicePDF:
         result = pdf_gen.generate(bill, "Apt 101")
         assert result[:5] == b"%PDF-"
 
+    def test_generate_with_custom_theme(self):
+        from rentivo.models.theme import Theme
+
+        theme = Theme(
+            header_font="Roboto",
+            text_font="Open Sans",
+            primary="#FF5733",
+            primary_light="#FFD1C1",
+            secondary="#33FF57",
+            secondary_dark="#1E8C35",
+            text_color="#111111",
+            text_contrast="#FEFEFE",
+        )
+        pdf_gen = InvoicePDF()
+        bill = self._make_bill()
+        result = pdf_gen.generate(bill, "Apt 101", theme=theme)
+        assert result[:5] == b"%PDF-"
+
+    def test_generate_with_default_theme(self):
+        from rentivo.models.theme import DEFAULT_THEME
+
+        pdf_gen = InvoicePDF()
+        bill = self._make_bill()
+        result = pdf_gen.generate(bill, "Apt 101", theme=DEFAULT_THEME)
+        assert result[:5] == b"%PDF-"
+
     def test_generate_pix_no_key_no_payload(self):
         """Cover branches 362->383 and 383->exit: pix page without key or payload."""
         pdf_gen = InvoicePDF()

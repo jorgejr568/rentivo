@@ -7,12 +7,18 @@
     <div class="page-header-info">
         <h2 class="page-title">
             Fatura — {{ format_month(bill.reference_month) }}
-            {% if bill.payment_status == "paid" %}
+            {% if bill.status == "draft" %}
+            <span class="tag tag--draft">Rascunho</span>
+            {% elif bill.status == "published" %}
+            <span class="tag tag--published">Publicado</span>
+            {% elif bill.status == "sent" %}
+            <span class="tag tag--sent">Enviado</span>
+            {% elif bill.status == "paid" %}
             <span class="tag tag--paid">Pago</span>
-            {% elif bill.payment_status == "overdue" %}
-            <span class="tag tag--overdue">Vencido</span>
-            {% else %}
-            <span class="tag tag--pending">Pendente</span>
+            {% elif bill.status == "cancelled" %}
+            <span class="tag tag--cancelled">Cancelado</span>
+            {% elif bill.status == "delayed_payment" %}
+            <span class="tag tag--delayed">Pag. Atrasado</span>
             {% endif %}
         </h2>
         <p class="page-subtitle">Cobrança: {{ billing.name }}</p>
@@ -26,13 +32,16 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn">Regenerar PDF</button>
         </form>
-        <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/toggle-paid" class="inline-form">
+        <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/change-status" class="inline-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% if bill.paid_at %}
-            <button type="submit" class="btn">Desmarcar Pagamento</button>
-            {% else %}
-            <button type="submit" class="btn btn--primary">Marcar como Pago</button>
-            {% endif %}
+            <select name="status" class="field-select" style="width:auto;display:inline-block;" onchange="this.form.submit()">
+                <option value="draft" {% if bill.status == "draft" %}selected{% endif %}>Rascunho</option>
+                <option value="published" {% if bill.status == "published" %}selected{% endif %}>Publicado</option>
+                <option value="sent" {% if bill.status == "sent" %}selected{% endif %}>Enviado</option>
+                <option value="paid" {% if bill.status == "paid" %}selected{% endif %}>Pago</option>
+                <option value="cancelled" {% if bill.status == "cancelled" %}selected{% endif %}>Cancelado</option>
+                <option value="delayed_payment" {% if bill.status == "delayed_payment" %}selected{% endif %}>Pag. Atrasado</option>
+            </select>
         </form>
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
         {% endif %}
@@ -76,16 +85,16 @@
     </div>
 </div>
 
-{% if bill.due_date or bill.paid_at %}
+{% if bill.due_date or bill.status_updated_at %}
 <div class="detail-meta">
     {% if bill.due_date %}
     <div class="detail-meta-item">
         <strong>Vencimento:</strong> {{ bill.due_date }}
     </div>
     {% endif %}
-    {% if bill.paid_at %}
+    {% if bill.status_updated_at %}
     <div class="detail-meta-item">
-        <strong>Pago em:</strong> {{ bill.paid_at.strftime("%d/%m/%Y %H:%M") }}
+        <strong>Status atualizado em:</strong> {{ bill.status_updated_at.strftime("%d/%m/%Y %H:%M") }}
     </div>
     {% endif %}
 </div>

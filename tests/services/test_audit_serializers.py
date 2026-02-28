@@ -94,7 +94,8 @@ class TestSerializeBill:
             pdf_path="abc/def.pdf",
             notes="Test note",
             due_date="10/03/2026",
-            paid_at=now,
+            status="paid",
+            status_updated_at=now,
             created_at=now,
         )
         result = serialize_bill(bill)
@@ -110,13 +111,15 @@ class TestSerializeBill:
         assert result["pdf_path"] == "abc/def.pdf"
         assert result["notes"] == "Test note"
         assert result["due_date"] == "10/03/2026"
-        assert result["paid_at"] == now.isoformat()
+        assert result["status"] == "paid"
+        assert result["status_updated_at"] == now.isoformat()
         assert result["created_at"] == now.isoformat()
 
-    def test_bill_none_paid_at(self):
+    def test_bill_none_status_updated_at(self):
         bill = Bill(billing_id=1, reference_month="2026-01", total_amount=0)
         result = serialize_bill(bill)
-        assert result["paid_at"] is None
+        assert result["status"] == "draft"
+        assert result["status_updated_at"] is None
         assert result["created_at"] is None
 
 

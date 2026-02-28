@@ -3,7 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from rentivo.models.bill import SP_TZ, Bill, BillLineItem
+from rentivo.constants import SP_TZ
+from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.receipt import Receipt
 from rentivo.services.bill_service import BillService, _receipt_storage_key, _storage_key
@@ -112,30 +113,31 @@ class TestBillService:
         self.mock_repo.update_pdf_path.assert_called_once()
         assert result.pdf_path == "/regen/path.pdf"
 
-    def test_toggle_paid_marks_as_paid(self):
+    def test_change_status_to_paid(self):
         bill = Bill(
             id=1,
             uuid="u",
             billing_id=1,
             reference_month="2025-03",
-            paid_at=None,
         )
-        result = self.service.toggle_paid(bill)
-        self.mock_repo.update_paid_at.assert_called_once()
-        assert result.paid_at is not None
+        result = self.service.change_status(bill, "paid")
+        self.mock_repo.update_status.assert_called_once()
+        assert result.status == "paid"
+        assert result.status_updated_at is not None
 
-    def test_toggle_paid_unmarks(self):
+    def test_change_status_to_draft(self):
         bill = Bill(
             id=1,
             uuid="u",
             billing_id=1,
             reference_month="2025-03",
-            paid_at=datetime.now(SP_TZ),
+            status="paid",
+            status_updated_at=datetime.now(SP_TZ),
         )
-        result = self.service.toggle_paid(bill)
-        call_args = self.mock_repo.update_paid_at.call_args[0]
-        assert call_args[1] is None
-        assert result.paid_at is None
+        result = self.service.change_status(bill, "draft")
+        self.mock_repo.update_status.assert_called_once()
+        assert result.status == "draft"
+        assert result.status_updated_at is not None
 
     def test_get_invoice_url(self):
         self.mock_storage.get_url.return_value = "https://example.com/file.pdf"
@@ -261,12 +263,12 @@ class TestBillServiceValueErrors:
         with pytest.raises(ValueError, match="Variable billing item must have an id"):
             self.service.generate_bill(billing, "2025-03", {}, [])
 
-    def test_toggle_paid_bill_id_none(self):
+    def test_change_status_bill_id_none(self):
         import pytest
 
-        bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03", paid_at=None)
-        with pytest.raises(ValueError, match="Cannot toggle paid"):
-            self.service.toggle_paid(bill)
+        bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03")
+        with pytest.raises(ValueError, match="Cannot change status"):
+            self.service.change_status(bill, "paid")
 
 
 class TestReceiptStorageKey:

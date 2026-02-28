@@ -139,25 +139,69 @@ class TestBillRegeneratePdf:
         assert response.status_code == 302
 
 
-class TestBillTogglePaid:
-    def test_toggle_paid(self, auth_client, test_engine, tmp_path, csrf_token):
+class TestBillChangeStatus:
+    def test_change_status(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
             response = auth_client.post(
-                f"/billings/{billing.uuid}/bills/{bill.uuid}/toggle-paid",
-                data={"csrf_token": csrf_token},
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "paid"},
                 follow_redirects=False,
             )
         assert response.status_code == 302
 
-    def test_toggle_paid_not_found(self, auth_client, csrf_token):
+    def test_change_status_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
-            "/billings/x/bills/nonexistent/toggle-paid",
-            data={"csrf_token": csrf_token},
+            "/billings/x/bills/nonexistent/change-status",
+            data={"csrf_token": csrf_token, "status": "paid"},
             follow_redirects=False,
         )
         assert response.status_code == 302
+
+
+class TestBillChangeStatusEdgeCases:
+    def test_change_status_billing_not_found(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Cover lines 363-364: bill found but billing soft-deleted."""
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        # Soft-delete the billing
+        with test_engine.connect() as conn:
+            repo = SQLAlchemyBillingRepository(conn)
+            repo.delete(billing.id)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+            data={"csrf_token": csrf_token, "status": "paid"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+    def test_change_status_access_denied(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Cover lines 368-369: user lacks permission to manage bills."""
+        billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+            data={"csrf_token": csrf_token, "status": "paid"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
+    def test_change_status_invalid_status(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Cover lines 377-379: invalid status value raises ValueError."""
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "totally_invalid"},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert f"/bills/{bill.uuid}" in response.headers["location"]
 
 
 class TestBillDelete:
@@ -221,21 +265,21 @@ class TestBillGenerateExtras:
         assert response.status_code == 302
 
 
-class TestBillTogglePaidTwice:
-    def test_toggle_paid_then_unpaid(self, auth_client, test_engine, tmp_path, csrf_token):
+class TestBillChangeStatusMultiple:
+    def test_change_status_multiple_transitions(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
-            # First toggle: unpaid → paid
+            # First change: draft → paid
             auth_client.post(
-                f"/billings/{billing.uuid}/bills/{bill.uuid}/toggle-paid",
-                data={"csrf_token": csrf_token},
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "paid"},
                 follow_redirects=False,
             )
-            # Second toggle: paid → unpaid
+            # Second change: paid → draft
             response = auth_client.post(
-                f"/billings/{billing.uuid}/bills/{bill.uuid}/toggle-paid",
-                data={"csrf_token": csrf_token},
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "draft"},
                 follow_redirects=False,
             )
         assert response.status_code == 302

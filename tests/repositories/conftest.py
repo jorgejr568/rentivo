@@ -6,6 +6,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillRepository,
     SQLAlchemyInviteRepository,
     SQLAlchemyOrganizationRepository,
+    SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
 
@@ -33,3 +34,8 @@ def org_repo(db_connection: Connection) -> SQLAlchemyOrganizationRepository:
 @pytest.fixture()
 def invite_repo(db_connection: Connection) -> SQLAlchemyInviteRepository:
     return SQLAlchemyInviteRepository(db_connection)
+
+
+@pytest.fixture()
+def theme_repo(db_connection: Connection) -> SQLAlchemyThemeRepository:
+    return SQLAlchemyThemeRepository(db_connection)

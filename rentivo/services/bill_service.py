@@ -45,10 +45,12 @@ class BillService:
         bill_repo: BillRepository,
         storage: StorageBackend,
         receipt_repo: ReceiptRepository | None = None,
+        theme_service: object | None = None,
     ) -> None:
         self.bill_repo = bill_repo
         self.storage = storage
         self.receipt_repo = receipt_repo
+        self.theme_service = theme_service
         self.pdf_generator = InvoicePDF()
 
     @staticmethod
@@ -99,6 +101,10 @@ class BillService:
 
     def _generate_and_store_pdf(self, bill: Bill, billing: Billing) -> str:
         """Generate PDF, save to storage, and update bill's pdf_path. Returns the storage path."""
+        theme = None
+        if self.theme_service is not None:
+            theme = self.theme_service.resolve_theme_for_billing(billing)
+
         pix_png, pix_key, pix_payload = self._get_pix_data(billing, bill.total_amount)
         pdf_bytes = self.pdf_generator.generate(
             bill,
@@ -106,6 +112,7 @@ class BillService:
             pix_qrcode_png=pix_png,
             pix_key=pix_key,
             pix_payload=pix_payload,
+            theme=theme,
         )
 
         # Merge receipts if available
@@ -225,16 +232,17 @@ class BillService:
         logger.debug("Listed %d bills for billing=%s", len(result), billing_id)
         return result
 
-    def toggle_paid(self, bill: Bill) -> Bill:
-        if bill.paid_at is None:
-            paid_at = datetime.now(SP_TZ)
-        else:
-            paid_at = None
+    def change_status(self, bill: Bill, new_status: str) -> Bill:
+        from rentivo.models.bill import BillStatus
+
+        BillStatus(new_status)  # raises ValueError if invalid
         if bill.id is None:
-            raise ValueError("Cannot toggle paid for bill without an id")
-        self.bill_repo.update_paid_at(bill.id, paid_at)
-        bill.paid_at = paid_at
-        logger.info("Bill %s marked as %s", bill.id, "paid" if paid_at else "unpaid")
+            raise ValueError("Cannot change status for bill without an id")
+        now = datetime.now(SP_TZ)
+        self.bill_repo.update_status(bill.id, new_status, now)
+        bill.status = new_status
+        bill.status_updated_at = now
+        logger.info("Bill %s status changed to %s", bill.id, new_status)
         return bill
 
     def get_bill(self, bill_id: int) -> Bill | None:

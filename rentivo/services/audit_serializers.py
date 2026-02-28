@@ -68,7 +68,8 @@ def serialize_bill(bill: Bill) -> dict:
         "pdf_path": bill.pdf_path,
         "notes": bill.notes,
         "due_date": bill.due_date,
-        "paid_at": _dt(bill.paid_at),
+        "status": bill.status,
+        "status_updated_at": _dt(bill.status_updated_at),
         "created_at": _dt(bill.created_at),
     }
 

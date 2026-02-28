@@ -15,6 +15,7 @@
         <a href="/billings/{{ billing.uuid }}/bills/generate" class="btn btn--primary">Gerar Fatura</a>
         {% endif %}
         {% if role in ("owner", "admin") %}
+        <a href="/themes/billing/{{ billing.uuid }}" class="btn">Tema</a>
         <a href="/billings/{{ billing.uuid }}/edit" class="btn">Editar</a>
         {% endif %}
     </div>
@@ -89,12 +90,18 @@
                     <td class="text-right text-mono">{{ format_brl(bill.total_amount) }}</td>
                     <td class="text-center">{{ bill.due_date or "—" }}</td>
                     <td class="text-center">
-                        {% if bill.payment_status == "paid" %}
+                        {% if bill.status == "draft" %}
+                        <span class="tag tag--draft">Rascunho</span>
+                        {% elif bill.status == "published" %}
+                        <span class="tag tag--published">Publicado</span>
+                        {% elif bill.status == "sent" %}
+                        <span class="tag tag--sent">Enviado</span>
+                        {% elif bill.status == "paid" %}
                         <span class="tag tag--paid">Pago</span>
-                        {% elif bill.payment_status == "overdue" %}
-                        <span class="tag tag--overdue">Vencido</span>
-                        {% else %}
-                        <span class="tag tag--pending">Pendente</span>
+                        {% elif bill.status == "cancelled" %}
+                        <span class="tag tag--cancelled">Cancelado</span>
+                        {% elif bill.status == "delayed_payment" %}
+                        <span class="tag tag--delayed">Pag. Atrasado</span>
                         {% endif %}
                     </td>
                     <td class="text-right">

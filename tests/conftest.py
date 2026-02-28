@@ -42,8 +42,9 @@ CREATE TABLE bills (
     notes TEXT NOT NULL DEFAULT '',
     uuid VARCHAR(26) NOT NULL UNIQUE,
     due_date TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    status_updated_at DATETIME,
     created_at DATETIME NOT NULL,
-    paid_at DATETIME,
     deleted_at DATETIME
 );
 
@@ -152,6 +153,24 @@ CREATE TABLE user_passkeys (
     transports TEXT,
     created_at DATETIME NOT NULL,
     last_used_at DATETIME
+);
+
+CREATE TABLE themes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    owner_type TEXT NOT NULL DEFAULT 'user',
+    owner_id INTEGER NOT NULL DEFAULT 0,
+    name TEXT NOT NULL DEFAULT '',
+    header_font TEXT NOT NULL DEFAULT 'Montserrat',
+    text_font TEXT NOT NULL DEFAULT 'Montserrat',
+    primary_color TEXT NOT NULL DEFAULT '#8A4C94',
+    primary_light TEXT NOT NULL DEFAULT '#EEE4F1',
+    secondary TEXT NOT NULL DEFAULT '#6EAFAE',
+    secondary_dark TEXT NOT NULL DEFAULT '#357B7C',
+    text_color TEXT NOT NULL DEFAULT '#282830',
+    text_contrast TEXT NOT NULL DEFAULT '#FFFFFF',
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
 );
 """
 

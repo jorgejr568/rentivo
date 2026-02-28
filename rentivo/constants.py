@@ -1,5 +1,6 @@
 from zoneinfo import ZoneInfo
 
+from rentivo.models.bill import BillStatus
 from rentivo.models.billing import ItemType
 
 SP_TZ = ZoneInfo("America/Sao_Paulo")
@@ -20,6 +21,15 @@ MONTHS_PT = {
 }
 
 TYPE_LABELS = {ItemType.FIXED: "Fixo", ItemType.VARIABLE: "Variável", ItemType.EXTRA: "Extra"}
+
+STATUS_LABELS = {
+    BillStatus.DRAFT: "Rascunho",
+    BillStatus.PUBLISHED: "Publicado",
+    BillStatus.SENT: "Enviado",
+    BillStatus.PAID: "Pago",
+    BillStatus.CANCELLED: "Cancelado",
+    BillStatus.DELAYED_PAYMENT: "Pag. Atrasado",
+}
 
 
 def format_month(ref: str) -> str:

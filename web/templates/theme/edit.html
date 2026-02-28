@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}{{ owner_label }} - Rentivo{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="page-header-info">
+        <h2 class="page-title">{{ owner_label }}</h2>
+    </div>
+    <div class="page-actions">
+        <a href="{{ back_url }}" class="btn btn--ghost">Voltar</a>
+    </div>
+</div>
+
+{% if effective_source %}
+<div class="toast toast--success" style="border-left-color: var(--charcoal); background: var(--paper);">
+    Tema efetivo atual:
+    <strong>
+    {% if effective_source == "billing" %}desta cobrança
+    {% elif effective_source == "organization" %}da organização
+    {% elif effective_source == "user" %}do usuário
+    {% else %}padrão do sistema{% endif %}
+    </strong>
+</div>
+{% endif %}
+
+<div class="theme-editor">
+    <div class="theme-editor-form">
+        <form method="post" action="{{ form_action }}" id="theme-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h5>Fontes</h5>
+                </div>
+                <div class="panel-body">
+                    <div class="dates-grid">
+                        <div class="field mb-0">
+                            <label for="header_font" class="field-label">Fonte do Cabeçalho</label>
+                            <select class="field-select" id="header_font" name="header_font">
+                                {% for font_name in available_fonts %}
+                                <option value="{{ font_name }}" {% if theme.header_font == font_name %}selected{% endif %}>{{ font_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="field mb-0">
+                            <label for="text_font" class="field-label">Fonte do Texto</label>
+                            <select class="field-select" id="text_font" name="text_font">
+                                {% for font_name in available_fonts %}
+                                <option value="{{ font_name }}" {% if theme.text_font == font_name %}selected{% endif %}>{{ font_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h5>Cores</h5>
+                </div>
+                <div class="panel-body">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                        <div class="field mb-0">
+                            <label for="primary" class="field-label">Primária</label>
+                            <input type="color" class="field-input" id="primary" name="primary"
+                                   value="{{ theme.primary }}" style="height: 42px; padding: 4px;">
+                        </div>
+                        <div class="field mb-0">
+                            <label for="primary_light" class="field-label">Primária Clara</label>
+                            <input type="color" class="field-input" id="primary_light" name="primary_light"
+                                   value="{{ theme.primary_light }}" style="height: 42px; padding: 4px;">
+                        </div>
+                        <div class="field mb-0">
+                            <label for="secondary" class="field-label">Secundária</label>
+                            <input type="color" class="field-input" id="secondary" name="secondary"
+                                   value="{{ theme.secondary }}" style="height: 42px; padding: 4px;">
+                        </div>
+                        <div class="field mb-0">
+                            <label for="secondary_dark" class="field-label">Secundária Escura</label>
+                            <input type="color" class="field-input" id="secondary_dark" name="secondary_dark"
+                                   value="{{ theme.secondary_dark }}" style="height: 42px; padding: 4px;">
+                        </div>
+                        <div class="field mb-0">
+                            <label for="text_color" class="field-label">Texto</label>
+                            <input type="color" class="field-input" id="text_color" name="text_color"
+                                   value="{{ theme.text_color }}" style="height: 42px; padding: 4px;">
+                        </div>
+                        <div class="field mb-0">
+                            <label for="text_contrast" class="field-label">Contraste</label>
+                            <input type="color" class="field-input" id="text_contrast" name="text_contrast"
+                                   value="{{ theme.text_contrast }}" style="height: 42px; padding: 4px;">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="btn-group">
+                <button type="submit" class="btn btn--primary">Salvar</button>
+                <button type="button" class="btn" id="btn-preview">Visualizar</button>
+            </div>
+        </form>
+
+        {% if has_custom %}
+        <div class="mt-2">
+            <form method="post" action="{{ delete_action }}"
+                  onsubmit="return confirm('Tem certeza que deseja restaurar o tema padrão?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn--sm btn--danger">Usar Padrão</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="theme-editor-preview">
+        <div class="panel" style="height: 100%;">
+            <div class="panel-head">
+                <h5>Pré-visualização</h5>
+            </div>
+            <div class="panel-body" style="padding: 0; flex: 1; display: flex;">
+                <iframe id="preview-frame" style="width: 100%; border: none; min-height: 600px; flex: 1;"></iframe>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var fields = ['header_font', 'text_font', 'primary', 'primary_light',
+                  'secondary', 'secondary_dark', 'text_color', 'text_contrast'];
+    var form = document.getElementById('theme-form');
+    var iframe = document.getElementById('preview-frame');
+    var debounceTimer = null;
+
+    function buildPreviewUrl() {
+        var params = new URLSearchParams();
+        for (var i = 0; i < fields.length; i++) {
+            var el = form.querySelector('[name="' + fields[i] + '"]');
+            if (el) params.set(fields[i], el.value);
+        }
+        return '/themes/preview?' + params.toString();
+    }
+
+    function updatePreview() {
+        iframe.src = buildPreviewUrl();
+    }
+
+    function debouncedUpdate() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(updatePreview, 300);
+    }
+
+    // Listen for changes on all theme fields
+    for (var i = 0; i < fields.length; i++) {
+        var el = form.querySelector('[name="' + fields[i] + '"]');
+        if (el) {
+            el.addEventListener('change', debouncedUpdate);
+            el.addEventListener('input', debouncedUpdate);
+        }
+    }
+
+    // Manual preview button
+    document.getElementById('btn-preview').addEventListener('click', updatePreview);
+
+    // Load initial preview
+    updatePreview();
+})();
+</script>
+{% endblock %}

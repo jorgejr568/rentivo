@@ -1,8 +1,4 @@
-from datetime import datetime
-
-from freezegun import freeze_time
-
-from rentivo.models.bill import SP_TZ, Bill, BillLineItem
+from rentivo.models.bill import Bill, BillLineItem, BillStatus
 from rentivo.models.billing import ItemType
 
 
@@ -24,69 +20,20 @@ class TestBill:
         assert bill.pdf_path is None
         assert bill.notes == ""
         assert bill.due_date is None
-        assert bill.paid_at is None
+        assert bill.status == BillStatus.DRAFT.value
+        assert bill.status_updated_at is None
 
 
-class TestIsOverdue:
-    @freeze_time("2025-04-15 12:00:00", tz_offset=-3)
-    def test_overdue_when_past_due(self):
-        bill = Bill(
-            billing_id=1,
-            reference_month="2025-03",
-            due_date="10/04/2025",
-        )
-        assert bill.is_overdue is True
-
-    @freeze_time("2025-04-05 12:00:00", tz_offset=-3)
-    def test_not_overdue_before_due(self):
-        bill = Bill(
-            billing_id=1,
-            reference_month="2025-03",
-            due_date="10/04/2025",
-        )
-        assert bill.is_overdue is False
-
-    def test_not_overdue_when_paid(self):
-        bill = Bill(
-            billing_id=1,
-            reference_month="2025-03",
-            due_date="01/01/2020",
-            paid_at=datetime(2025, 1, 15, tzinfo=SP_TZ),
-        )
-        assert bill.is_overdue is False
-
-    def test_not_overdue_no_due_date(self):
+class TestBillStatus:
+    def test_default_status_is_draft(self):
         bill = Bill(billing_id=1, reference_month="2025-03")
-        assert bill.is_overdue is False
+        assert bill.status == "draft"
 
-    def test_not_overdue_invalid_date(self):
-        bill = Bill(billing_id=1, reference_month="2025-03", due_date="invalid")
-        assert bill.is_overdue is False
+    def test_status_can_be_set(self):
+        bill = Bill(billing_id=1, reference_month="2025-03", status="paid")
+        assert bill.status == "paid"
 
-
-class TestPaymentStatus:
-    def test_paid(self):
-        bill = Bill(
-            billing_id=1,
-            reference_month="2025-03",
-            paid_at=datetime(2025, 3, 15, tzinfo=SP_TZ),
-        )
-        assert bill.payment_status == "paid"
-
-    @freeze_time("2025-04-15 12:00:00", tz_offset=-3)
-    def test_overdue(self):
-        bill = Bill(
-            billing_id=1,
-            reference_month="2025-03",
-            due_date="10/04/2025",
-        )
-        assert bill.payment_status == "overdue"
-
-    @freeze_time("2025-04-05 12:00:00", tz_offset=-3)
-    def test_pending(self):
-        bill = Bill(
-            billing_id=1,
-            reference_month="2025-03",
-            due_date="10/04/2025",
-        )
-        assert bill.payment_status == "pending"
+    def test_all_status_values(self):
+        for s in BillStatus:
+            bill = Bill(billing_id=1, reference_month="2025-03", status=s.value)
+            assert bill.status == s.value

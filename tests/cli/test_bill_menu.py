@@ -203,25 +203,31 @@ class TestGenerateBillMenu:
 
 class TestBillDetailMenu:
     @patch("rentivo.cli.bill_menu.questionary")
-    def test_toggle_paid(self, mock_q):
+    def test_change_status(self, mock_q):
+        from datetime import datetime
+
         from rentivo.cli.bill_menu import _bill_detail_menu
+        from rentivo.constants import SP_TZ
+        from rentivo.models.bill import BillStatus
 
         bill = Bill(id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u")
         billing = Billing(id=1, name="Apt 101")
-        mock_q.select.return_value.ask.side_effect = ["Marcar como Pago", "Voltar"]
+        # Select "Alterar Status", then pick a new status, then "Voltar"
+        mock_q.select.return_value.ask.side_effect = [
+            "Alterar Status",
+            BillStatus.PAID,
+            "Voltar",
+        ]
 
         mock_service = MagicMock()
-        from datetime import datetime
-
-        from rentivo.models.bill import SP_TZ
-
-        mock_service.toggle_paid.return_value = Bill(
+        mock_service.change_status.return_value = Bill(
             id=1,
             billing_id=1,
             reference_month="2025-03",
             total_amount=100000,
             uuid="u",
-            paid_at=datetime.now(SP_TZ),
+            status="paid",
+            status_updated_at=datetime.now(SP_TZ),
         )
         mock_service.get_invoice_url.return_value = ""
         _bill_detail_menu(bill, billing, mock_service, MagicMock())
@@ -567,12 +573,13 @@ class TestListBillsMenuEdgeCases:
 
 class TestBillDetailMenuEdgeCases:
     @patch("rentivo.cli.bill_menu.questionary")
-    def test_toggle_unpaid(self, mock_q):
-        """Cover line 348: toggle to unpaid shows 'desmarcado' message."""
+    def test_change_status_to_draft(self, mock_q):
+        """Cover status change back to draft."""
         from datetime import datetime
 
         from rentivo.cli.bill_menu import _bill_detail_menu
-        from rentivo.models.bill import SP_TZ
+        from rentivo.constants import SP_TZ
+        from rentivo.models.bill import BillStatus
 
         bill = Bill(
             id=1,
@@ -580,22 +587,48 @@ class TestBillDetailMenuEdgeCases:
             reference_month="2025-03",
             total_amount=100000,
             uuid="u",
-            paid_at=datetime.now(SP_TZ),
+            status="paid",
+            status_updated_at=datetime.now(SP_TZ),
         )
         billing = Billing(id=1, name="Apt 101")
-        mock_q.select.return_value.ask.side_effect = ["Desmarcar Pagamento", "Voltar"]
+        mock_q.select.return_value.ask.side_effect = [
+            "Alterar Status",
+            BillStatus.DRAFT,
+            "Voltar",
+        ]
 
         mock_service = MagicMock()
-        mock_service.toggle_paid.return_value = Bill(
+        mock_service.change_status.return_value = Bill(
             id=1,
             billing_id=1,
             reference_month="2025-03",
             total_amount=100000,
             uuid="u",
-            paid_at=None,
+            status="draft",
+            status_updated_at=datetime.now(SP_TZ),
         )
         mock_service.get_invoice_url.return_value = ""
         _bill_detail_menu(bill, billing, mock_service, MagicMock())
+
+    @patch("rentivo.cli.bill_menu.questionary")
+    def test_change_status_cancelled(self, mock_q):
+        """Cover line 377: user selects same status or cancels (None)."""
+        from rentivo.cli.bill_menu import _bill_detail_menu
+        from rentivo.models.bill import BillStatus
+
+        bill = Bill(id=1, billing_id=1, reference_month="2025-03", total_amount=100000, uuid="u")
+        billing = Billing(id=1, name="Apt 101")
+        # Select "Alterar Status", then pick the same status (draft), then "Voltar"
+        mock_q.select.return_value.ask.side_effect = [
+            "Alterar Status",
+            BillStatus.DRAFT,  # same as current status
+            "Voltar",
+        ]
+
+        mock_service = MagicMock()
+        mock_service.get_invoice_url.return_value = ""
+        _bill_detail_menu(bill, billing, mock_service, MagicMock())
+        mock_service.change_status.assert_not_called()
 
     @patch("rentivo.cli.bill_menu.questionary")
     def test_delete_bill_id_none(self, mock_q):
