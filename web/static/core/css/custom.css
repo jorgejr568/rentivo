@@ -834,3 +834,31 @@ body::before {
     background: var(--charcoal);
     color: #fff;
 }
+
+/* --- Error Pages --- */
+.error-page {
+    text-align: center;
+    padding: 4rem 1.5rem;
+}
+
+.error-code {
+    font-family: "Space Grotesk", var(--font);
+    font-size: 8rem;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.06em;
+    color: var(--ink);
+    text-shadow: 6px 6px 0 var(--emerald);
+    margin-bottom: 0.5rem;
+}
+
+.error-title {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.error-message {
+    color: var(--muted);
+    font-size: 1.05rem;
+    margin-bottom: 2rem;
+}

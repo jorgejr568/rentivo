@@ -1,9 +1,9 @@
 class TestUnknownRoutes:
     def test_unknown_route_returns_404_not_login_redirect(self, client):
-        """Accessing a non-existent URL should return 404, not redirect to login."""
+        """Accessing a non-existent URL should return 404 with styled page."""
         response = client.get("/abdkjabjkdas", follow_redirects=False)
-        assert response.status_code != 302
         assert response.status_code == 404
+        assert "Página não encontrada" in response.text
 
     def test_known_protected_route_redirects_to_login(self, client):
         """Accessing an existing protected URL should redirect to login."""

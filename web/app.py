@@ -10,6 +10,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import HTMLResponse, RedirectResponse
 
@@ -75,6 +76,27 @@ app.include_router(bill_router)
 app.include_router(organization_router)
 app.include_router(invite_router)
 app.include_router(security_router)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        from web.csrf import get_csrf_token
+        from web.flash import get_flashed_messages
+
+        return templates.TemplateResponse(
+            request,
+            "404.html",
+            {
+                "user": request.session.get("username"),
+                "user_id": request.session.get("user_id"),
+                "messages": get_flashed_messages(request),
+                "csrf_token": get_csrf_token(request),
+                "pending_invite_count": 0,
+            },
+            status_code=404,
+        )
+    return HTMLResponse(exc.detail or "Error", status_code=exc.status_code)
 
 
 @app.exception_handler(Exception)
