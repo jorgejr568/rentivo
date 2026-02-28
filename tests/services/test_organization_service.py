@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.services.organization_service import OrganizationService
 
@@ -63,3 +65,16 @@ class TestOrganizationService:
     def test_update_member_role(self):
         self.service.update_member_role(1, 2, "manager")
         self.mock_repo.update_member_role.assert_called_once_with(1, 2, "manager")
+
+    def test_set_enforce_mfa_success(self):
+        org = Organization(id=1, name="Test")
+        self.mock_repo.get_by_id.return_value = org
+        self.mock_repo.update.return_value = Organization(id=1, name="Test", enforce_mfa=True)
+        result = self.service.set_enforce_mfa(1, True)
+        assert result.enforce_mfa is True
+        self.mock_repo.update.assert_called_once()
+
+    def test_set_enforce_mfa_not_found(self):
+        self.mock_repo.get_by_id.return_value = None
+        with pytest.raises(ValueError, match="Organização não encontrada"):
+            self.service.set_enforce_mfa(999, True)

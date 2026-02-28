@@ -1143,11 +1143,7 @@ class SQLAlchemyRecoveryCodeRepository(RecoveryCodeRepository):
     def list_unused_by_user(self, user_id: int) -> list[RecoveryCode]:
         rows = (
             self.conn.execute(
-                text(
-                    "SELECT * FROM user_recovery_codes "
-                    "WHERE user_id = :user_id AND used_at IS NULL "
-                    "ORDER BY id"
-                ),
+                text("SELECT * FROM user_recovery_codes WHERE user_id = :user_id AND used_at IS NULL ORDER BY id"),
                 {"user_id": user_id},
             )
             .mappings()

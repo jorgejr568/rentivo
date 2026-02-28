@@ -17,8 +17,7 @@ install:
 		python -m venv .venv; \
 	fi
 	.venv/bin/python -m pip install -e ".[dev,test]"
-	.venv/bin/python -m pip install pre-commit
-	.venv/bin/python -m pre-commit install
+	.venv/bin/pre-commit install
 
 .PHONY: run
 run:

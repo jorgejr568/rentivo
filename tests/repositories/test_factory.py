@@ -5,8 +5,11 @@ from rentivo.repositories.factory import (
     get_bill_repository,
     get_billing_repository,
     get_invite_repository,
+    get_mfa_totp_repository,
     get_organization_repository,
+    get_passkey_repository,
     get_receipt_repository,
+    get_recovery_code_repository,
     get_user_repository,
 )
 from rentivo.repositories.sqlalchemy import (
@@ -14,8 +17,11 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyInviteRepository,
+    SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
+    SQLAlchemyPasskeyRepository,
     SQLAlchemyReceiptRepository,
+    SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyUserRepository,
 )
 
@@ -62,3 +68,21 @@ class TestRepoFactory:
         mock_conn.return_value = MagicMock()
         repo = get_audit_log_repository()
         assert isinstance(repo, SQLAlchemyAuditLogRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_mfa_totp_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_mfa_totp_repository()
+        assert isinstance(repo, SQLAlchemyMFATOTPRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_recovery_code_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_recovery_code_repository()
+        assert isinstance(repo, SQLAlchemyRecoveryCodeRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_passkey_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_passkey_repository()
+        assert isinstance(repo, SQLAlchemyPasskeyRepository)

@@ -2,6 +2,7 @@ from rentivo.models.invite import Invite
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyInviteRepository,
+    SQLAlchemyOrganizationRepository,
     SQLAlchemyUserRepository,
 )
 from tests.web.conftest import create_org_in_db, get_test_user_id
@@ -80,3 +81,45 @@ class TestInviteDecline:
             follow_redirects=False,
         )
         assert response.status_code == 302
+
+
+class TestInviteAcceptMFAEnforcement:
+    def test_accept_from_enforcing_org_sets_mfa_flag(self, auth_client, test_engine, csrf_token):
+        """Accepting invite from MFA-enforcing org sets mfa_setup_required."""
+        user_id = get_test_user_id(test_engine)
+
+        # Create another user who owns an MFA-enforcing org
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            user2 = user_repo.create(User(username="orgowner", email="o@t.com", password_hash="h"))
+
+        org = create_org_in_db(test_engine, "Enforcing Org", user2.id)
+        with test_engine.connect() as conn:
+            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org.enforce_mfa = True
+            org_repo.update(org)
+
+        # Create invite for the logged-in user
+        with test_engine.connect() as conn:
+            invite_repo = SQLAlchemyInviteRepository(conn)
+            invite = invite_repo.create(
+                Invite(
+                    organization_id=org.id,
+                    invited_user_id=user_id,
+                    invited_by_user_id=user2.id,
+                    role="viewer",
+                    status="pending",
+                )
+            )
+
+        response = auth_client.post(
+            f"/invites/{invite.uuid}/accept",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
+        # MFA enforcement should redirect to TOTP setup
+        response = auth_client.get("/billings/", follow_redirects=False)
+        assert response.status_code == 302
+        assert "/security/totp/setup" in response.headers["location"]

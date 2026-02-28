@@ -114,7 +114,7 @@ def get_audit_logs(engine, event_type=None):
 
 def get_csrf_token(client) -> str:
     """Extract the CSRF token from a page that renders a form."""
-    response = client.get("/change-password")
+    response = client.get("/security")
     match = re.search(r'name="csrf_token" value="([^"]+)"', response.text)
     if match:
         return match.group(1)

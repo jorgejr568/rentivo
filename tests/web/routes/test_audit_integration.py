@@ -40,7 +40,7 @@ class TestAuthAuditLogs:
     def test_change_password_creates_audit_log(self, auth_client, test_engine, csrf_token):
         """Password change creates a user.change_password audit entry."""
         auth_client.post(
-            "/change-password",
+            "/security/change-password",
             data={
                 "csrf_token": csrf_token,
                 "current_password": "testpass",

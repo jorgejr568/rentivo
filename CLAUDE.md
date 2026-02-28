@@ -143,6 +143,12 @@ make web-run             # start uvicorn at http://localhost:8000
 - CLI: uses `source="cli"`, `actor_id=None`, `actor_username=""`
 - States stored as JSON TEXT in `previous_state` / `new_state` columns
 
+## Alembic Migrations
+
+- **NEVER invent revision IDs manually** — always generate them with `alembic.util.rev_id()` or by running `alembic revision -m "description"` and using the generated file
+- Revision IDs must be proper hex strings (e.g. `268d02b96390`), not made-up patterns like `g1h2i3j4k5l6`
+- Migration file naming: `{revision_id}_{slug}.py` (e.g. `268d02b96390_add_mfa_tables.py`)
+
 ## Key Rules
 
 - **NEVER delete `invoices/`** without explicit user confirmation

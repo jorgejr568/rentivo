@@ -224,9 +224,13 @@ async def mfa_verify_page(request: Request):
     mfa_service = get_mfa_service(request)
     has_passkeys = len(mfa_service.list_passkeys(user_id)) > 0
 
-    return render(request, "mfa_verify.html", {
-        "has_passkeys": has_passkeys,
-    })
+    return render(
+        request,
+        "mfa_verify.html",
+        {
+            "has_passkeys": has_passkeys,
+        },
+    )
 
 
 @router.post("/mfa-verify")
@@ -240,10 +244,14 @@ async def mfa_verify(request: Request):
 
     if _is_mfa_rate_limited(client_ip):
         logger.warning("MFA rate-limited from %s", client_ip)
-        return render(request, "mfa_verify.html", {
-            "error": "Muitas tentativas. Aguarde alguns minutos.",
-            "has_passkeys": False,
-        })
+        return render(
+            request,
+            "mfa_verify.html",
+            {
+                "error": "Muitas tentativas. Aguarde alguns minutos.",
+                "has_passkeys": False,
+            },
+        )
 
     form = await request.form()
     code = str(form.get("code", "")).strip()
@@ -270,10 +278,14 @@ async def mfa_verify(request: Request):
         )
 
         has_passkeys = len(mfa_service.list_passkeys(user_id)) > 0
-        return render(request, "mfa_verify.html", {
-            "error": "Código inválido. Tente novamente.",
-            "has_passkeys": has_passkeys,
-        })
+        return render(
+            request,
+            "mfa_verify.html",
+            {
+                "error": "Código inválido. Tente novamente.",
+                "has_passkeys": has_passkeys,
+            },
+        )
 
     # MFA verified — complete login
     _clear_mfa_attempts(client_ip)

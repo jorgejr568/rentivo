@@ -38,11 +38,15 @@ async def security_settings(request: Request):
     passkeys = mfa_service.list_passkeys(user_id)
     recovery_count = mfa_service.count_unused_recovery_codes(user_id) if has_totp else 0
 
-    return render(request, "security/index.html", {
-        "has_totp": has_totp,
-        "passkeys": passkeys,
-        "recovery_count": recovery_count,
-    })
+    return render(
+        request,
+        "security/index.html",
+        {
+            "has_totp": has_totp,
+            "passkeys": passkeys,
+            "recovery_count": recovery_count,
+        },
+    )
 
 
 @router.post("/change-password")
@@ -106,11 +110,15 @@ async def totp_setup_page(request: Request):
 
     totp_record, provisioning_uri, qr_base64 = mfa_service.setup_totp(user_id, username)
 
-    return render(request, "security/totp_setup.html", {
-        "qr_base64": qr_base64,
-        "secret": totp_record.secret,
-        "mfa_setup_required": request.session.get("mfa_setup_required", False),
-    })
+    return render(
+        request,
+        "security/totp_setup.html",
+        {
+            "qr_base64": qr_base64,
+            "secret": totp_record.secret,
+            "mfa_setup_required": request.session.get("mfa_setup_required", False),
+        },
+    )
 
 
 @router.post("/totp/confirm")
@@ -139,9 +147,13 @@ async def totp_confirm(request: Request):
         entity_id=user_id,
     )
 
-    return render(request, "security/recovery_codes.html", {
-        "recovery_codes": recovery_codes,
-    })
+    return render(
+        request,
+        "security/recovery_codes.html",
+        {
+            "recovery_codes": recovery_codes,
+        },
+    )
 
 
 @router.post("/totp/disable")
@@ -200,9 +212,13 @@ async def regenerate_recovery_codes(request: Request):
         entity_id=user_id,
     )
 
-    return render(request, "security/recovery_codes.html", {
-        "recovery_codes": codes,
-    })
+    return render(
+        request,
+        "security/recovery_codes.html",
+        {
+            "recovery_codes": codes,
+        },
+    )
 
 
 # --- Passkey routes ---

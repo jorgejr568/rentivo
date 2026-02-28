@@ -1,6 +1,6 @@
 """add mfa tables
 
-Revision ID: g1h2i3j4k5l6
+Revision ID: 268d02b96390
 Revises: f5a6b7c8d9e0
 Create Date: 2026-02-27
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision: str = "g1h2i3j4k5l6"
+revision: str = "268d02b96390"
 down_revision: Union[str, Sequence[str], None] = "f5a6b7c8d9e0"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None

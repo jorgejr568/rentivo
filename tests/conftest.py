@@ -69,6 +69,7 @@ CREATE TABLE organizations (
     uuid VARCHAR(26) NOT NULL UNIQUE,
     name TEXT NOT NULL,
     created_by INTEGER NOT NULL REFERENCES users(id),
+    enforce_mfa TINYINT NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     deleted_at DATETIME
@@ -121,6 +122,36 @@ CREATE TABLE receipts (
     file_size INTEGER NOT NULL DEFAULT 0,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL
+);
+
+CREATE TABLE user_totp (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    secret TEXT NOT NULL,
+    confirmed TINYINT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL,
+    confirmed_at DATETIME
+);
+
+CREATE TABLE user_recovery_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash TEXT NOT NULL,
+    used_at DATETIME,
+    created_at DATETIME NOT NULL
+);
+
+CREATE TABLE user_passkeys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    credential_id TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    sign_count INTEGER NOT NULL DEFAULT 0,
+    name VARCHAR(255) NOT NULL DEFAULT '',
+    transports TEXT,
+    created_at DATETIME NOT NULL,
+    last_used_at DATETIME
 );
 """
 
