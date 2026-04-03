@@ -8,6 +8,29 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     }
 
+    /* Account dropdown toggle */
+    document.querySelectorAll(".topbar-dropdown-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var dropdown = btn.closest(".topbar-dropdown");
+            var isOpen = dropdown.classList.contains("open");
+            document.querySelectorAll(".topbar-dropdown.open").forEach(function (d) {
+                d.classList.remove("open");
+            });
+            if (!isOpen) dropdown.classList.add("open");
+            btn.setAttribute("aria-expanded", !isOpen);
+        });
+    });
+
+    /* Close dropdown on outside click */
+    document.addEventListener("click", function () {
+        document.querySelectorAll(".topbar-dropdown.open").forEach(function (d) {
+            d.classList.remove("open");
+            var btn = d.querySelector(".topbar-dropdown-toggle");
+            if (btn) btn.setAttribute("aria-expanded", "false");
+        });
+    });
+
     /* Toast dismiss */
     document.querySelectorAll(".toast[data-dismissible] .toast-close").forEach(function (btn) {
         btn.addEventListener("click", function () {
