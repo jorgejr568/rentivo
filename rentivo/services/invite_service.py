@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import Connection
+
 from rentivo.models.invite import Invite, InviteStatus
 from rentivo.repositories.base import (
     InviteRepository,
     OrganizationRepository,
     UserRepository,
 )
+from rentivo.services._transaction import validate_transaction_binding
 
 logger = logging.getLogger(__name__)
 
@@ -18,10 +21,25 @@ class InviteService:
         invite_repo: InviteRepository,
         org_repo: OrganizationRepository,
         user_repo: UserRepository,
+        db_conn: Connection | None = None,
     ) -> None:
         self.invite_repo = invite_repo
         self.org_repo = org_repo
         self.user_repo = user_repo
+        self.db_conn = db_conn
+        validate_transaction_binding(self.db_conn, self.invite_repo, self.org_repo, self.user_repo)
+
+    @property
+    def transactional(self) -> bool:
+        return self.db_conn is not None
+
+    def _commit_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.commit()
+
+    def _rollback_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.rollback()
 
     def send_invite(
         self,
@@ -55,7 +73,14 @@ class InviteService:
             role=role,
             status=InviteStatus.PENDING.value,
         )
-        created = self.invite_repo.create(invite)
+        try:
+            created = self.invite_repo.create(invite)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Invite sent: org=%s user=%s role=%s", org_id, username, role)
         return created
 
@@ -75,8 +100,15 @@ class InviteService:
             logger.warning("Accept invite failed: uuid=%s status=%s", invite_uuid, invite.status)
             raise ValueError("Invite is no longer pending")
 
-        self.org_repo.add_member(invite.organization_id, invite.invited_user_id, invite.role)
-        self.invite_repo.update_status(invite.id, InviteStatus.ACCEPTED.value)
+        try:
+            self.org_repo.add_member(invite.organization_id, invite.invited_user_id, invite.role)
+            self.invite_repo.update_status(invite.id, InviteStatus.ACCEPTED.value)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Invite accepted: uuid=%s user=%s", invite_uuid, user_id)
 
     def decline_invite(self, invite_uuid: str, user_id: int) -> None:
@@ -95,7 +127,14 @@ class InviteService:
             logger.warning("Decline invite failed: uuid=%s status=%s", invite_uuid, invite.status)
             raise ValueError("Invite is no longer pending")
 
-        self.invite_repo.update_status(invite.id, InviteStatus.DECLINED.value)
+        try:
+            self.invite_repo.update_status(invite.id, InviteStatus.DECLINED.value)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Invite declined: uuid=%s user=%s", invite_uuid, user_id)
 
     def list_pending(self, user_id: int) -> list[Invite]:

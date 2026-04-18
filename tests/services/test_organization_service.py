@@ -78,3 +78,39 @@ class TestOrganizationService:
         self.mock_repo.get_by_id.return_value = None
         with pytest.raises(ValueError, match="Organização não encontrada"):
             self.service.set_enforce_mfa(999, True)
+
+
+class TestTransactionalOrganizationService:
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = OrganizationService(self.mock_repo, db_conn=self.mock_conn)
+
+    def test_create_organization_commits_once(self):
+        self.mock_repo.create.return_value = Organization(id=1, name="Test Org", created_by=5)
+
+        org = self.service.create_organization("Test Org", 5)
+
+        assert org.name == "Test Org"
+        self.mock_repo.add_member.assert_called_once_with(1, 5, "admin")
+        self.mock_conn.commit.assert_called_once()
+        self.mock_conn.rollback.assert_not_called()
+
+    def test_create_organization_rolls_back_when_add_member_fails(self):
+        self.mock_repo.create.return_value = Organization(id=1, name="Test Org", created_by=5)
+        self.mock_repo.add_member.side_effect = RuntimeError("member failed")
+
+        with pytest.raises(RuntimeError, match="member failed"):
+            self.service.create_organization("Test Org", 5)
+
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()
+
+    def test_update_organization_commits_once(self):
+        org = Organization(id=1, name="Updated")
+        self.mock_repo.update.return_value = org
+
+        result = self.service.update_organization(org)
+
+        assert result.name == "Updated"
+        self.mock_conn.commit.assert_called_once()

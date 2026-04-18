@@ -1,5 +1,7 @@
 import logging
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 from alembic.config import Config
 from sqlalchemy import Connection, create_engine
@@ -11,7 +13,6 @@ from rentivo.settings import settings
 logger = logging.getLogger(__name__)
 
 _engine: Engine | None = None
-_connection: Connection | None = None
 
 
 def get_engine() -> Engine:
@@ -26,16 +27,16 @@ def get_engine() -> Engine:
     return _engine
 
 
-def get_connection() -> Connection:
-    """Return a global singleton connection — CLI use only.
-
-    The web app uses per-request connections via DBConnectionMiddleware instead.
-    """
-    global _connection
-    if _connection is None:
-        _connection = get_engine().connect()
-        logger.debug("Singleton DB connection created")
-    return _connection
+@contextmanager
+def open_connection() -> Iterator[Connection]:
+    """Open a fresh database connection and close it when the scope exits."""
+    conn = get_engine().connect()
+    logger.debug("Managed DB connection created")
+    try:
+        yield conn
+    finally:
+        conn.close()
+        logger.debug("Managed DB connection closed")
 
 
 def _get_alembic_config() -> Config:

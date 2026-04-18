@@ -102,3 +102,62 @@ class TestInviteService:
     def test_count_pending(self):
         self.mock_invite_repo.count_pending_for_user.return_value = 3
         assert self.service.count_pending(1) == 3
+
+
+class TestTransactionalInviteService:
+    def setup_method(self):
+        self.mock_invite_repo = MagicMock()
+        self.mock_org_repo = MagicMock()
+        self.mock_user_repo = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = InviteService(
+            self.mock_invite_repo,
+            self.mock_org_repo,
+            self.mock_user_repo,
+            db_conn=self.mock_conn,
+        )
+
+    def test_send_invite_commits_once(self):
+        self.mock_user_repo.get_by_username.return_value = User(id=2, username="bob")
+        self.mock_org_repo.get_member.return_value = None
+        self.mock_invite_repo.has_pending_invite.return_value = False
+        self.mock_invite_repo.create.return_value = Invite(id=1, organization_id=1, invited_user_id=2, role="viewer")
+
+        result = self.service.send_invite(1, "bob", "viewer", 1)
+
+        assert result.invited_user_id == 2
+        self.mock_conn.commit.assert_called_once()
+        self.mock_conn.rollback.assert_not_called()
+
+    def test_accept_invite_rolls_back_when_status_update_fails(self):
+        self.mock_invite_repo.get_by_uuid.return_value = Invite(
+            id=1,
+            uuid="abc",
+            organization_id=1,
+            invited_user_id=2,
+            role="viewer",
+            status="pending",
+        )
+        self.mock_invite_repo.update_status.side_effect = RuntimeError("status failed")
+
+        with pytest.raises(RuntimeError, match="status failed"):
+            self.service.accept_invite("abc", 2)
+
+        self.mock_org_repo.add_member.assert_called_once_with(1, 2, "viewer")
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()
+
+    def test_decline_invite_commits_once(self):
+        self.mock_invite_repo.get_by_uuid.return_value = Invite(
+            id=1,
+            uuid="abc",
+            organization_id=1,
+            invited_user_id=2,
+            role="viewer",
+            status="pending",
+        )
+
+        self.service.decline_invite("abc", 2)
+
+        self.mock_invite_repo.update_status.assert_called_once_with(1, "declined")
+        self.mock_conn.commit.assert_called_once()

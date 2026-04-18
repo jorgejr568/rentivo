@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from rentivo.models.audit_log import AuditEventType, AuditLog
 from rentivo.services.audit_service import AuditService
 
@@ -144,3 +146,28 @@ class TestAuditServiceQueries:
         self.mock_repo.list_recent.return_value = []
         self.service.list_recent()
         self.mock_repo.list_recent.assert_called_once_with(50)
+
+
+class TestTransactionalAuditService:
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = AuditService(self.mock_repo, db_conn=self.mock_conn)
+
+    def test_log_commits_once(self):
+        self.mock_repo.create.return_value = AuditLog(id=1, event_type="test")
+
+        result = self.service.log("test")
+
+        assert result.event_type == "test"
+        self.mock_conn.commit.assert_called_once()
+        self.mock_conn.rollback.assert_not_called()
+
+    def test_log_rolls_back_when_repo_fails(self):
+        self.mock_repo.create.side_effect = RuntimeError("audit failed")
+
+        with pytest.raises(RuntimeError, match="audit failed"):
+            self.service.log("test")
+
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()

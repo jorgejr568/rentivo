@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.billing import BillingItem, ItemType
+from rentivo.models.organization import OrgRole
 from rentivo.services.audit_serializers import serialize_billing
 from web.deps import (
     get_audit_service,
@@ -22,6 +23,18 @@ from web.forms import parse_brl, parse_formset
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/billings")
+
+MANAGEABLE_ORG_ROLES = {OrgRole.ADMIN.value, OrgRole.MANAGER.value}
+
+
+def _manageable_organizations_for_user(request: Request, user_id: int) -> list:
+    org_service = get_organization_service(request)
+    manageable_orgs = []
+    for org in org_service.list_user_organizations(user_id):
+        member = org_service.get_member(org.id, user_id)
+        if member is not None and member.role in MANAGEABLE_ORG_ROLES:
+            manageable_orgs.append(org)
+    return manageable_orgs
 
 
 @router.get("/")
@@ -76,20 +89,31 @@ async def billing_create(request: Request):
     service = get_billing_service(request)
     user_id = request.session.get("user_id", 0)
     organization_id = str(form.get("organization_id", "")).strip()
-    if organization_id:
-        owner_type = "organization"
-        owner_id = int(organization_id)
-    else:
-        owner_type = "user"
-        owner_id = user_id
-    billing = service.create_billing(
-        name,
-        description,
-        items,
-        pix_key=pix_key,
-        owner_type=owner_type,
-        owner_id=owner_id,
-    )
+    try:
+        if organization_id:
+            owner_type = "organization"
+            owner_id = int(organization_id)
+        else:
+            owner_type = "user"
+            owner_id = user_id
+    except ValueError:
+        flash(request, "Organização inválida.", "danger")
+        return RedirectResponse("/billings/create", status_code=302)
+
+    try:
+        billing = service.create_billing(
+            name,
+            description,
+            items,
+            pix_key=pix_key,
+            owner_type=owner_type,
+            owner_id=owner_id,
+            actor_user_id=user_id,
+        )
+    except ValueError as e:
+        logger.warning("Billing create rejected: owner validation failed user=%s error=%s", user_id, e)
+        flash(request, str(e), "danger")
+        return RedirectResponse("/billings/create", status_code=302)
     logger.info("Billing created: uuid=%s name=%s items=%d", billing.uuid, billing.name, len(items))
 
     audit = get_audit_service(request)
@@ -138,10 +162,10 @@ async def billing_detail(request: Request, billing_uuid: str):
     logger.info("Found %d bills for billing id=%s", len(bills), billing.id)
 
     # Load user's orgs for transfer dropdown
-    org_service = get_organization_service(request)
-    user_orgs = (
-        org_service.list_user_organizations(user_id) if auth_service.can_transfer_billing(user_id, billing) else []
-    )
+    if auth_service.can_transfer_billing(user_id, billing):
+        user_orgs = _manageable_organizations_for_user(request, user_id)
+    else:
+        user_orgs = []
 
     logger.info("Rendering billing/detail.html")
     return render(
@@ -254,9 +278,19 @@ async def billing_transfer(request: Request, billing_uuid: str):
     if not org_id:
         flash(request, "Selecione uma organização.", "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+    if billing.id is None:
+        flash(request, "Cobrança inválida.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    try:
+        target_org_id = int(org_id)
+    except ValueError:
+        flash(request, "Organização inválida.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
     previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
-        billing_service.transfer_to_organization(billing.id, int(org_id))
+        billing_service.transfer_to_organization(billing.id, target_org_id, actor_user_id=user_id)
     except ValueError as e:
         flash(request, str(e), "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
@@ -271,7 +305,7 @@ async def billing_transfer(request: Request, billing_uuid: str):
         entity_id=billing.id,
         entity_uuid=billing.uuid,
         previous_state=previous_owner,
-        new_state={"owner_type": "organization", "owner_id": int(org_id)},
+        new_state={"owner_type": "organization", "owner_id": target_org_id},
     )
 
     flash(request, "Cobrança transferida com sucesso!", "success")

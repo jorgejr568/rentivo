@@ -19,21 +19,31 @@ class TestGetEngine:
         assert engine is sentinel
 
 
-class TestGetConnection:
-    def test_creates_connection(self, monkeypatch):
-        monkeypatch.setattr(db_module, "_connection", None)
+class TestOpenConnection:
+    def test_opens_and_closes_connection(self):
         mock_engine = MagicMock()
         mock_conn = MagicMock()
         mock_engine.connect.return_value = mock_conn
-        with patch.object(db_module, "get_engine", return_value=mock_engine):
-            conn = db_module.get_connection()
-            assert conn is mock_conn
 
-    def test_returns_cached_connection(self, monkeypatch):
-        sentinel = MagicMock()
-        monkeypatch.setattr(db_module, "_connection", sentinel)
-        conn = db_module.get_connection()
-        assert conn is sentinel
+        with patch.object(db_module, "get_engine", return_value=mock_engine):
+            with db_module.open_connection() as conn:
+                assert conn is mock_conn
+
+        mock_conn.close.assert_called_once()
+
+    def test_opens_fresh_connection_each_time(self):
+        first_conn = MagicMock()
+        second_conn = MagicMock()
+        mock_engine = MagicMock()
+        mock_engine.connect.side_effect = [first_conn, second_conn]
+
+        with patch.object(db_module, "get_engine", return_value=mock_engine):
+            with db_module.open_connection() as conn:
+                assert conn is first_conn
+            with db_module.open_connection() as conn:
+                assert conn is second_conn
+
+        assert mock_engine.connect.call_count == 2
 
 
 class TestInitializeDb:

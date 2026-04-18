@@ -1,8 +1,10 @@
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
 from sqlalchemy import Connection
 
+from rentivo.constants import SP_TZ
 from rentivo.models.receipt import Receipt
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
@@ -183,3 +185,21 @@ class TestReceiptRepoCRUD:
         assert results[0].filename == "c.pdf"
         assert results[1].filename == "b.pdf"
         assert results[2].filename == "a.pdf"
+
+    def test_create_preserves_provided_uuid_and_created_at(self, receipt_repo, billing_with_bill):
+        _, bill = billing_with_bill
+        created_at = datetime(2025, 3, 10, 15, 30, tzinfo=SP_TZ)
+        created = receipt_repo.create(
+            Receipt(
+                uuid="01JQPRESETUUIDFORRECEIPT01",
+                bill_id=bill.id,
+                filename="restored.pdf",
+                storage_key="restore.pdf",
+                content_type="application/pdf",
+                file_size=123,
+                created_at=created_at,
+            )
+        )
+
+        assert created.uuid == "01JQPRESETUUIDFORRECEIPT01"
+        assert created.created_at == created_at

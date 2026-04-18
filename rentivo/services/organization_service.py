@@ -2,20 +2,44 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import Connection
+
 from rentivo.models.organization import Organization, OrganizationMember, OrgRole
 from rentivo.repositories.base import OrganizationRepository
+from rentivo.services._transaction import validate_transaction_binding
 
 logger = logging.getLogger(__name__)
 
 
 class OrganizationService:
-    def __init__(self, repo: OrganizationRepository) -> None:
+    def __init__(self, repo: OrganizationRepository, db_conn: Connection | None = None) -> None:
         self.repo = repo
+        self.db_conn = db_conn
+        validate_transaction_binding(self.db_conn, self.repo)
+
+    @property
+    def transactional(self) -> bool:
+        return self.db_conn is not None
+
+    def _commit_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.commit()
+
+    def _rollback_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.rollback()
 
     def create_organization(self, name: str, created_by: int) -> Organization:
         org = Organization(name=name, created_by=created_by)
-        created = self.repo.create(org)
-        self.repo.add_member(created.id, created_by, OrgRole.ADMIN.value)
+        try:
+            created = self.repo.create(org)
+            self.repo.add_member(created.id, created_by, OrgRole.ADMIN.value)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info(
             "Organization created: id=%s name=%s by user=%s",
             created.id,
@@ -40,12 +64,26 @@ class OrganizationService:
         return result
 
     def update_organization(self, org: Organization) -> Organization:
-        result = self.repo.update(org)
+        try:
+            result = self.repo.update(org)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Organization updated: id=%s name=%s", result.id, result.name)
         return result
 
     def delete_organization(self, org_id: int) -> None:
-        self.repo.delete(org_id)
+        try:
+            self.repo.delete(org_id)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Organization %s soft-deleted", org_id)
 
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
@@ -59,14 +97,36 @@ class OrganizationService:
         return result
 
     def add_member(self, org_id: int, user_id: int, role: str) -> OrganizationMember:
-        return self.repo.add_member(org_id, user_id, role)
+        try:
+            result = self.repo.add_member(org_id, user_id, role)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
+        return result
 
     def remove_member(self, org_id: int, user_id: int) -> None:
-        self.repo.remove_member(org_id, user_id)
+        try:
+            self.repo.remove_member(org_id, user_id)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Removed user %s from org %s", user_id, org_id)
 
     def update_member_role(self, org_id: int, user_id: int, role: str) -> None:
-        self.repo.update_member_role(org_id, user_id, role)
+        try:
+            self.repo.update_member_role(org_id, user_id, role)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Updated role for user %s in org %s to %s", user_id, org_id, role)
 
     def set_enforce_mfa(self, org_id: int, enforce: bool) -> Organization:
@@ -74,6 +134,13 @@ class OrganizationService:
         if org is None:
             raise ValueError("Organização não encontrada")
         org.enforce_mfa = enforce
-        updated = self.repo.update(org)
+        try:
+            updated = self.repo.update(org)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Organization %s enforce_mfa set to %s", org_id, enforce)
         return updated

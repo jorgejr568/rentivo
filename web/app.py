@@ -49,7 +49,11 @@ ASSET_VERSION = _build_asset_version()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    initialize_db()
+    if settings.web_run_migrations_on_startup:
+        logger.info("Running startup migrations before serving requests")
+        initialize_db()
+    else:
+        logger.info("Skipping startup migrations")
     # Re-apply logging config — Alembic's fileConfig may have overridden it
     reconfigure()
     logger.info("Application started")

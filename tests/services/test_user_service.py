@@ -69,3 +69,31 @@ class TestUserService:
         self.mock_repo.get_by_username.return_value = User(username="existing")
         with pytest.raises(ValueError, match="already exists"):
             self.service.register_user("existing", "e@t.com", "pass")
+
+
+class TestTransactionalUserService:
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = UserService(self.mock_repo, db_conn=self.mock_conn)
+
+    def test_register_user_commits_once(self):
+        self.mock_repo.get_by_username.return_value = None
+        self.mock_repo.create.return_value = User(id=1, username="new", email="n@t.com")
+
+        result = self.service.register_user("new", "n@t.com", "pass")
+
+        assert result.username == "new"
+        self.mock_conn.commit.assert_called_once()
+        self.mock_conn.rollback.assert_not_called()
+
+    def test_change_password_rolls_back_when_repo_fails(self):
+        self.mock_repo.update_password_hash.side_effect = RuntimeError("update failed")
+
+        import pytest
+
+        with pytest.raises(RuntimeError, match="update failed"):
+            self.service.change_password("admin", "newpass")
+
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()

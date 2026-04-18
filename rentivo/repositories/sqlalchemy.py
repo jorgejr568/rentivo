@@ -35,9 +35,19 @@ def _now() -> datetime:
     return datetime.now(SP_TZ)
 
 
-class SQLAlchemyBillingRepository(BillingRepository):
-    def __init__(self, conn: Connection) -> None:
+class _AutocommitRepository:
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
         self.conn = conn
+        self.autocommit = autocommit
+
+    def _commit_if_needed(self) -> None:
+        if self.autocommit:
+            self.conn.commit()
+
+
+class SQLAlchemyBillingRepository(_AutocommitRepository, BillingRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     def create(self, billing: Billing) -> Billing:
         billing_uuid = str(ULID())
@@ -73,7 +83,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                     "sort_order": i,
                 },
             )
-        self.conn.commit()
+        self._commit_if_needed()
         result = self.get_by_id(billing_id)
         if result is None:
             raise RuntimeError(f"Failed to retrieve billing after create (id={billing_id})")
@@ -218,7 +228,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                     "sort_order": i,
                 },
             )
-        self.conn.commit()
+        self._commit_if_needed()
         if billing.id is None:  # pragma: no cover
             raise ValueError("Cannot update billing without an id")
         result = self.get_by_id(billing.id)
@@ -231,7 +241,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             text("UPDATE billings SET deleted_at = :deleted_at WHERE id = :id"),
             {"deleted_at": _now(), "id": billing_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def transfer_owner(self, billing_id: int, owner_type: str, owner_id: int) -> None:
         self.conn.execute(
@@ -241,12 +251,12 @@ class SQLAlchemyBillingRepository(BillingRepository):
             ),
             {"owner_type": owner_type, "owner_id": owner_id, "updated_at": _now(), "id": billing_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
 
-class SQLAlchemyBillRepository(BillRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyBillRepository(_AutocommitRepository, BillRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     def create(self, bill: Bill) -> Bill:
         bill_uuid = str(ULID())
@@ -286,7 +296,7 @@ class SQLAlchemyBillRepository(BillRepository):
                     "sort_order": i,
                 },
             )
-        self.conn.commit()
+        self._commit_if_needed()
         result = self.get_by_id(bill_id)
         if result is None:
             raise RuntimeError(f"Failed to retrieve bill after create (id={bill_id})")
@@ -419,7 +429,7 @@ class SQLAlchemyBillRepository(BillRepository):
                     "sort_order": i,
                 },
             )
-        self.conn.commit()
+        self._commit_if_needed()
         if bill.id is None:  # pragma: no cover
             raise ValueError("Cannot update bill without an id")
         result = self.get_by_id(bill.id)
@@ -432,26 +442,26 @@ class SQLAlchemyBillRepository(BillRepository):
             text("UPDATE bills SET pdf_path = :pdf_path WHERE id = :id"),
             {"pdf_path": pdf_path, "id": bill_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None:
         self.conn.execute(
             text("UPDATE bills SET status = :status, status_updated_at = :status_updated_at WHERE id = :id"),
             {"status": status, "status_updated_at": status_updated_at, "id": bill_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def delete(self, bill_id: int) -> None:
         self.conn.execute(
             text("UPDATE bills SET deleted_at = :deleted_at WHERE id = :id"),
             {"deleted_at": _now(), "id": bill_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
 
-class SQLAlchemyUserRepository(UserRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyUserRepository(_AutocommitRepository, UserRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_user(row: RowMapping) -> User:
@@ -471,7 +481,7 @@ class SQLAlchemyUserRepository(UserRepository):
             ),
             {"username": user.username, "email": user.email, "password_hash": user.password_hash, "created_at": _now()},
         )
-        self.conn.commit()
+        self._commit_if_needed()
         result = self.get_by_username(user.username)
         if result is None:
             raise RuntimeError(f"Failed to retrieve user after create (username={user.username})")
@@ -512,12 +522,12 @@ class SQLAlchemyUserRepository(UserRepository):
             text("UPDATE users SET password_hash = :password_hash WHERE username = :username"),
             {"password_hash": password_hash, "username": username},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
 
-class SQLAlchemyOrganizationRepository(OrganizationRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyOrganizationRepository(_AutocommitRepository, OrganizationRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_org(row: RowMapping) -> Organization:
@@ -553,7 +563,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             {"uuid": org_uuid, "name": org.name, "created_by": org.created_by, "created_at": now, "updated_at": now},
         )
         org_id = result.lastrowid
-        self.conn.commit()
+        self._commit_if_needed()
         created = self.get_by_id(org_id)
         if created is None:
             raise RuntimeError(f"Failed to retrieve org after create (id={org_id})")
@@ -609,7 +619,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             ),
             {"name": org.name, "enforce_mfa": org.enforce_mfa, "updated_at": _now(), "id": org.id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
         if org.id is None:  # pragma: no cover
             raise ValueError("Cannot update org without an id")
         result = self.get_by_id(org.id)
@@ -622,7 +632,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             text("UPDATE organizations SET deleted_at = :deleted_at WHERE id = :id"),
             {"deleted_at": _now(), "id": org_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def add_member(self, org_id: int, user_id: int, role: str) -> OrganizationMember:
         now = _now()
@@ -633,7 +643,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             ),
             {"org_id": org_id, "user_id": user_id, "role": role, "created_at": now},
         )
-        self.conn.commit()
+        self._commit_if_needed()
         member = self.get_member(org_id, user_id)
         if member is None:
             raise RuntimeError("Failed to retrieve member after create")
@@ -644,7 +654,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             text("DELETE FROM organization_members WHERE organization_id = :org_id AND user_id = :user_id"),
             {"org_id": org_id, "user_id": user_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
         row = (
@@ -689,7 +699,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             text("UPDATE organization_members SET role = :role WHERE organization_id = :org_id AND user_id = :user_id"),
             {"role": role, "org_id": org_id, "user_id": user_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def user_has_enforcing_org(self, user_id: int) -> bool:
         result = (
@@ -708,9 +718,9 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         return (result["cnt"] if result else 0) > 0
 
 
-class SQLAlchemyInviteRepository(InviteRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyInviteRepository(_AutocommitRepository, InviteRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_invite(row: RowMapping) -> Invite:
@@ -750,7 +760,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
                 "created_at": now,
             },
         )
-        self.conn.commit()
+        self._commit_if_needed()
         created = self.get_by_uuid(invite_uuid)
         if created is None:
             raise RuntimeError("Failed to retrieve invite after create")
@@ -822,7 +832,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             text("UPDATE invites SET status = :status, responded_at = :responded_at WHERE id = :id"),
             {"status": status, "responded_at": _now(), "id": invite_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def count_pending_for_user(self, user_id: int) -> int:
         result = (
@@ -851,9 +861,9 @@ class SQLAlchemyInviteRepository(InviteRepository):
         return (result["cnt"] if result else 0) > 0
 
 
-class SQLAlchemyReceiptRepository(ReceiptRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyReceiptRepository(_AutocommitRepository, ReceiptRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_receipt(row: RowMapping) -> Receipt:
@@ -870,8 +880,8 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
         )
 
     def create(self, receipt: Receipt) -> Receipt:
-        receipt_uuid = str(ULID())
-        now = _now()
+        receipt_uuid = receipt.uuid or str(ULID())
+        now = receipt.created_at or _now()
         self.conn.execute(
             text(
                 "INSERT INTO receipts (uuid, bill_id, filename, storage_key, content_type, "
@@ -890,7 +900,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
                 "created_at": now,
             },
         )
-        self.conn.commit()
+        self._commit_if_needed()
         created = self.get_by_uuid(receipt_uuid)
         if created is None:
             raise RuntimeError(f"Failed to retrieve receipt after create (uuid={receipt_uuid})")
@@ -938,7 +948,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             text("DELETE FROM receipts WHERE id = :id"),
             {"id": receipt_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None:
         for receipt_id, sort_order in updates:
@@ -946,12 +956,12 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
                 text("UPDATE receipts SET sort_order = :sort_order WHERE id = :id"),
                 {"sort_order": sort_order, "id": receipt_id},
             )
-        self.conn.commit()
+        self._commit_if_needed()
 
 
-class SQLAlchemyAuditLogRepository(AuditLogRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyAuditLogRepository(_AutocommitRepository, AuditLogRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_audit_log(row: RowMapping) -> AuditLog:
@@ -1014,7 +1024,7 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
                 "created_at": now,
             },
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
         row = (
             self.conn.execute(
@@ -1066,9 +1076,9 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
         return [self._row_to_audit_log(row) for row in rows]
 
 
-class SQLAlchemyMFATOTPRepository(MFATOTPRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyMFATOTPRepository(_AutocommitRepository, MFATOTPRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_totp(row: RowMapping) -> UserTOTP:
@@ -1107,7 +1117,7 @@ class SQLAlchemyMFATOTPRepository(MFATOTPRepository):
                 "created_at": _now(),
             },
         )
-        self.conn.commit()
+        self._commit_if_needed()
         result = self.get_by_user_id(totp.user_id)
         if result is None:
             raise RuntimeError("Failed to retrieve TOTP after create")
@@ -1118,19 +1128,19 @@ class SQLAlchemyMFATOTPRepository(MFATOTPRepository):
             text("UPDATE user_totp SET confirmed = 1, confirmed_at = :now WHERE user_id = :user_id"),
             {"now": _now(), "user_id": user_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def delete_by_user_id(self, user_id: int) -> None:
         self.conn.execute(
             text("DELETE FROM user_totp WHERE user_id = :user_id"),
             {"user_id": user_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
 
-class SQLAlchemyRecoveryCodeRepository(RecoveryCodeRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyRecoveryCodeRepository(_AutocommitRepository, RecoveryCodeRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_code(row: RowMapping) -> RecoveryCode:
@@ -1152,7 +1162,7 @@ class SQLAlchemyRecoveryCodeRepository(RecoveryCodeRepository):
                 ),
                 {"user_id": user_id, "code_hash": code_hash, "created_at": now},
             )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def list_unused_by_user(self, user_id: int) -> list[RecoveryCode]:
         rows = (
@@ -1170,19 +1180,19 @@ class SQLAlchemyRecoveryCodeRepository(RecoveryCodeRepository):
             text("UPDATE user_recovery_codes SET used_at = :now WHERE id = :id"),
             {"now": _now(), "id": code_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def delete_all_by_user(self, user_id: int) -> None:
         self.conn.execute(
             text("DELETE FROM user_recovery_codes WHERE user_id = :user_id"),
             {"user_id": user_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
 
-class SQLAlchemyPasskeyRepository(PasskeyRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyPasskeyRepository(_AutocommitRepository, PasskeyRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_passkey(row: RowMapping) -> UserPasskey:
@@ -1220,7 +1230,7 @@ class SQLAlchemyPasskeyRepository(PasskeyRepository):
                 "created_at": now,
             },
         )
-        self.conn.commit()
+        self._commit_if_needed()
         created = self.get_by_uuid(passkey_uuid)
         if created is None:
             raise RuntimeError("Failed to retrieve passkey after create")
@@ -1268,26 +1278,26 @@ class SQLAlchemyPasskeyRepository(PasskeyRepository):
             text("UPDATE user_passkeys SET sign_count = :sign_count WHERE id = :id"),
             {"sign_count": sign_count, "id": passkey_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def update_last_used(self, passkey_id: int) -> None:
         self.conn.execute(
             text("UPDATE user_passkeys SET last_used_at = :now WHERE id = :id"),
             {"now": _now(), "id": passkey_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
     def delete(self, passkey_id: int) -> None:
         self.conn.execute(
             text("DELETE FROM user_passkeys WHERE id = :id"),
             {"id": passkey_id},
         )
-        self.conn.commit()
+        self._commit_if_needed()
 
 
-class SQLAlchemyThemeRepository(ThemeRepository):
-    def __init__(self, conn: Connection) -> None:
-        self.conn = conn
+class SQLAlchemyThemeRepository(_AutocommitRepository, ThemeRepository):
+    def __init__(self, conn: Connection, *, autocommit: bool = True) -> None:
+        super().__init__(conn, autocommit=autocommit)
 
     @staticmethod
     def _row_to_theme(row: RowMapping) -> Theme:
@@ -1338,8 +1348,13 @@ class SQLAlchemyThemeRepository(ThemeRepository):
                 "updated_at": now,
             },
         )
-        self.conn.commit()
-        return self.get_by_owner(theme.owner_type, theme.owner_id)  # type: ignore
+        self._commit_if_needed()
+        result = self.get_by_owner(theme.owner_type, theme.owner_id)
+        if result is None:
+            raise RuntimeError(
+                f"Failed to retrieve theme after create (owner_type={theme.owner_type}, owner_id={theme.owner_id})"
+            )
+        return result
 
     def get_by_id(self, theme_id: int) -> Theme | None:
         row = self.conn.execute(text("SELECT * FROM themes WHERE id = :id"), {"id": theme_id}).mappings().fetchone()
@@ -1388,7 +1403,7 @@ class SQLAlchemyThemeRepository(ThemeRepository):
                 "id": theme.id,
             },
         )
-        self.conn.commit()
+        self._commit_if_needed()
         if theme.id is None:
             raise ValueError("Cannot update theme without an id")
         result = self.get_by_id(theme.id)
@@ -1398,4 +1413,4 @@ class SQLAlchemyThemeRepository(ThemeRepository):
 
     def delete(self, theme_id: int) -> None:
         self.conn.execute(text("DELETE FROM themes WHERE id = :id"), {"id": theme_id})
-        self.conn.commit()
+        self._commit_if_needed()

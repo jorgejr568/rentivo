@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 
 from rentivo.models.theme import Theme
@@ -121,3 +123,10 @@ class TestThemeRepoCRUD:
         assert fetched is not None
         # Both exist in the DB — verify by get_by_id
         assert created2.id is not None
+
+    def test_create_theme_missing_after_insert_raises(self, theme_repo: SQLAlchemyThemeRepository):
+        theme = Theme(owner_type="user", owner_id=6, name="Missing")
+
+        with patch.object(theme_repo, "get_by_owner", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to retrieve theme after create"):
+                theme_repo.create(theme)

@@ -167,6 +167,207 @@ class TestBillService:
         self.service.delete_bill(1)
         self.mock_repo.delete.assert_called_once_with(1)
 
+    def test_generate_bill_rolls_back_created_bill_when_pdf_generation_fails(self):
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101", items=[])
+        created_bill = Bill(
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=0,
+        )
+        self.mock_repo.create.return_value = created_bill
+
+        with patch.object(self.service, "_generate_and_store_pdf", side_effect=RuntimeError("pdf failed")):
+            with pytest.raises(RuntimeError, match="pdf failed"):
+                self.service.generate_bill(billing, "2025-03", {}, [])
+
+        self.mock_repo.delete.assert_called_once_with(1)
+
+    def test_update_bill_rolls_back_database_changes_when_pdf_generation_fails(self):
+        previous_line_items = [
+            BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
+        ]
+        updated_line_items = [
+            BillLineItem(description="Rent", amount=120000, item_type=ItemType.FIXED, sort_order=0),
+        ]
+        bill = Bill(
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            line_items=previous_line_items,
+            notes="old notes",
+            due_date="10/04/2025",
+            pdf_path="/existing.pdf",
+        )
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        updated_bill = bill.model_copy(deep=True)
+        updated_bill.line_items = updated_line_items
+        updated_bill.total_amount = 120000
+        updated_bill.notes = "new notes"
+        updated_bill.due_date = "15/04/2025"
+
+        self.mock_repo.update.side_effect = [updated_bill, bill.model_copy(deep=True)]
+
+        with patch.object(self.service, "_generate_and_store_pdf", side_effect=RuntimeError("pdf failed")):
+            with pytest.raises(RuntimeError, match="pdf failed"):
+                self.service.update_bill(
+                    bill,
+                    billing,
+                    updated_line_items,
+                    "new notes",
+                    "15/04/2025",
+                )
+
+        assert self.mock_repo.update.call_count == 2
+        rollback_call = self.mock_repo.update.call_args_list[1].args[0]
+        assert rollback_call.total_amount == 100000
+        assert rollback_call.notes == "old notes"
+        assert rollback_call.due_date == "10/04/2025"
+
+
+class TestTransactionalBillService:
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_storage = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = BillService(self.mock_repo, self.mock_storage, db_conn=self.mock_conn)
+
+    def test_generate_bill_rolls_back_transaction_and_pdf_when_commit_fails(self):
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101", items=[])
+        self.mock_repo.create.return_value = Bill(
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=0,
+        )
+        self.mock_storage.save.return_value = "/new.pdf"
+        self.mock_conn.commit.side_effect = RuntimeError("commit failed")
+
+        with patch.object(self.service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF-fake"
+            with pytest.raises(RuntimeError, match="commit failed"):
+                self.service.generate_bill(billing, "2025-03", {}, [])
+
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_storage.delete.assert_called_once_with("/new.pdf")
+        self.mock_repo.delete.assert_not_called()
+
+    def test_update_bill_rolls_back_transaction_and_restores_pdf_when_commit_fails(self):
+        bill = Bill(
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            line_items=[
+                BillLineItem(description="Rent", amount=100000, item_type=ItemType.FIXED, sort_order=0),
+            ],
+            notes="old notes",
+            due_date="10/04/2025",
+            pdf_path="/existing.pdf",
+        )
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        self.mock_repo.update.return_value = bill
+        self.mock_storage.get.return_value = b"%PDF-old"
+        self.mock_storage.save.return_value = "/existing.pdf"
+        self.mock_conn.commit.side_effect = RuntimeError("commit failed")
+
+        with patch.object(self.service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF-new"
+            with pytest.raises(RuntimeError, match="commit failed"):
+                self.service.update_bill(
+                    bill,
+                    billing,
+                    [BillLineItem(description="Rent", amount=120000, item_type=ItemType.FIXED, sort_order=0)],
+                    "new notes",
+                    "15/04/2025",
+                )
+
+        self.mock_conn.rollback.assert_called_once()
+        assert self.mock_repo.update.call_count == 1
+        assert self.mock_storage.save.call_count == 2
+        assert self.mock_storage.save.call_args_list[1].args[:2] == ("/existing.pdf", b"%PDF-old")
+        assert bill.total_amount == 100000
+        assert bill.notes == "old notes"
+        assert bill.due_date == "10/04/2025"
+
+    def test_add_receipt_rolls_back_transaction_when_commit_fails(self):
+        mock_receipt_repo = MagicMock()
+        service = BillService(self.mock_repo, self.mock_storage, mock_receipt_repo, db_conn=self.mock_conn)
+        bill = Bill(
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            pdf_path="/existing.pdf",
+        )
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        mock_receipt_repo.list_by_bill.return_value = []
+        mock_receipt_repo.create.return_value = Receipt(
+            id=1,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="receipt.pdf",
+            storage_key="receipt-key",
+            content_type="application/pdf",
+            file_size=1024,
+        )
+        self.mock_storage.get.return_value = b"%PDF-old"
+        self.mock_storage.save.side_effect = ["/receipt.pdf", "/existing.pdf", "/existing.pdf"]
+        self.mock_conn.commit.side_effect = RuntimeError("commit failed")
+
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF-new"
+            with pytest.raises(RuntimeError, match="commit failed"):
+                service.add_receipt(bill, billing, "receipt.pdf", b"pdf-data", "application/pdf")
+
+        self.mock_conn.rollback.assert_called_once()
+        mock_receipt_repo.delete.assert_not_called()
+        self.mock_storage.delete.assert_called_once()
+        assert self.mock_storage.save.call_args_list[2].args[:2] == ("/existing.pdf", b"%PDF-old")
+
+    def test_delete_receipt_rolls_back_transaction_and_restores_files_when_commit_fails(self):
+        mock_receipt_repo = MagicMock()
+        service = BillService(self.mock_repo, self.mock_storage, mock_receipt_repo, db_conn=self.mock_conn)
+        bill = Bill(
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+            pdf_path="/existing.pdf",
+        )
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        receipt = Receipt(
+            id=5,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="receipt.pdf",
+            storage_key="receipt-key",
+            content_type="application/pdf",
+            file_size=100,
+        )
+        self.mock_storage.get.side_effect = [b"%PDF-receipt", b"%PDF-old"]
+        self.mock_storage.save.side_effect = ["/existing.pdf", "receipt-key", "/existing.pdf"]
+        self.mock_conn.commit.side_effect = RuntimeError("commit failed")
+
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF-new"
+            with pytest.raises(RuntimeError, match="commit failed"):
+                service.delete_receipt(receipt, bill, billing)
+
+        self.mock_conn.rollback.assert_called_once()
+        mock_receipt_repo.delete.assert_called_once_with(5)
+        self.mock_storage.delete.assert_called_once_with("receipt-key")
+        assert self.mock_storage.save.call_args_list[1].args[:2] == ("receipt-key", b"%PDF-receipt")
+        assert self.mock_storage.save.call_args_list[1].kwargs["content_type"] == "application/pdf"
+        assert self.mock_storage.save.call_args_list[2].args[:2] == ("/existing.pdf", b"%PDF-old")
+
 
 class TestGetPixData:
     def test_with_billing_pix_key(self):
@@ -241,6 +442,28 @@ class TestBillServiceValueErrors:
             self.mock_storage.save.return_value = "/path.pdf"
             with pytest.raises(ValueError, match="Cannot update pdf_path"):
                 self.service._generate_and_store_pdf(bill, billing)
+
+    def test_generate_and_store_pdf_restores_previous_pdf_when_update_fails(self):
+        bill = Bill(
+            id=1,
+            uuid="u",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100,
+            pdf_path="/existing.pdf",
+        )
+        billing = Billing(id=1, uuid="bu", name="Apt")
+        self.mock_storage.get.return_value = b"%PDF-old"
+        self.mock_storage.save.return_value = "/existing.pdf"
+        self.mock_repo.update_pdf_path.side_effect = RuntimeError("db failed")
+
+        with patch.object(self.service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF-new"
+            with pytest.raises(RuntimeError, match="db failed"):
+                self.service._generate_and_store_pdf(bill, billing)
+
+        assert self.mock_storage.save.call_count == 2
+        assert self.mock_storage.save.call_args_list[1].args[:2] == ("/existing.pdf", b"%PDF-old")
 
     def test_generate_bill_billing_id_none(self):
         import pytest
@@ -337,6 +560,51 @@ class TestReceiptMethods:
         assert self.mock_storage.save.call_count == 2
         self.mock_receipt_repo.create.assert_called_once()
 
+    def test_add_receipt_rolls_back_receipt_when_pdf_generation_fails(self):
+        bill = Bill(id=1, uuid="bill-uuid", billing_id=1, reference_month="2025-03", total_amount=100000)
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        created_receipt = Receipt(
+            id=1,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="receipt.pdf",
+            storage_key="key.pdf",
+            content_type="application/pdf",
+            file_size=1024,
+        )
+        self.mock_receipt_repo.list_by_bill.return_value = []
+        self.mock_receipt_repo.create.return_value = created_receipt
+
+        with patch.object(self.service, "_generate_and_store_pdf", side_effect=RuntimeError("pdf failed")):
+            with pytest.raises(RuntimeError, match="pdf failed"):
+                self.service.add_receipt(bill, billing, "receipt.pdf", b"pdf-data", "application/pdf")
+
+        self.mock_receipt_repo.delete.assert_called_once_with(1)
+        saved_key = self.mock_storage.save.call_args.args[0]
+        self.mock_storage.delete.assert_called_once_with(saved_key)
+
+    def test_add_receipt_cleans_up_partial_row_when_repo_create_fails(self):
+        bill = Bill(id=1, uuid="bill-uuid", billing_id=1, reference_month="2025-03", total_amount=100000)
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        partial_receipt = Receipt(
+            id=9,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="receipt.pdf",
+            storage_key="key.pdf",
+            content_type="application/pdf",
+            file_size=1024,
+        )
+        self.mock_receipt_repo.list_by_bill.return_value = []
+        self.mock_receipt_repo.create.side_effect = RuntimeError("create failed")
+        self.mock_receipt_repo.get_by_uuid.return_value = partial_receipt
+
+        with pytest.raises(RuntimeError, match="create failed"):
+            self.service.add_receipt(bill, billing, "receipt.pdf", b"pdf-data", "application/pdf")
+
+        self.mock_receipt_repo.delete.assert_called_once_with(9)
+        self.mock_storage.delete.assert_called_once()
+
     def test_add_receipt_sort_order_increments(self):
         bill = Bill(
             id=1,
@@ -430,6 +698,52 @@ class TestReceiptMethods:
             self.service.delete_receipt(receipt, bill, billing)
 
         self.mock_receipt_repo.delete.assert_called_once_with(5)
+        self.mock_storage.delete.assert_called_once_with("k.pdf")
+
+    def test_delete_receipt_restores_row_when_pdf_generation_fails(self):
+        bill = Bill(id=1, uuid="bill-uuid", billing_id=1, reference_month="2025-03", total_amount=100000)
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        receipt = Receipt(
+            id=5,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="r.pdf",
+            storage_key="k.pdf",
+            content_type="application/pdf",
+            file_size=100,
+        )
+        self.mock_receipt_repo.create.return_value = receipt
+
+        with patch.object(self.service, "_generate_and_store_pdf", side_effect=RuntimeError("pdf failed")):
+            with pytest.raises(RuntimeError, match="pdf failed"):
+                self.service.delete_receipt(receipt, bill, billing)
+
+        restore_call = self.mock_receipt_repo.create.call_args.args[0]
+        assert restore_call.uuid == "receipt-uuid"
+        self.mock_storage.delete.assert_not_called()
+
+    def test_delete_receipt_restores_row_when_storage_cleanup_fails(self):
+        bill = Bill(id=1, uuid="bill-uuid", billing_id=1, reference_month="2025-03", total_amount=100000)
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+        receipt = Receipt(
+            id=5,
+            uuid="receipt-uuid",
+            bill_id=1,
+            filename="r.pdf",
+            storage_key="k.pdf",
+            content_type="application/pdf",
+            file_size=100,
+        )
+        self.mock_storage.delete.side_effect = RuntimeError("delete failed")
+        self.mock_receipt_repo.create.return_value = receipt
+
+        with patch.object(self.service, "_generate_and_store_pdf") as mock_regen:
+            with pytest.raises(RuntimeError, match="delete failed"):
+                self.service.delete_receipt(receipt, bill, billing)
+
+        assert mock_regen.call_count == 2
+        restore_call = self.mock_receipt_repo.create.call_args.args[0]
+        assert restore_call.uuid == "receipt-uuid"
 
     def test_delete_receipt_no_repo(self):
         service = BillService(self.mock_repo, self.mock_storage)
@@ -527,6 +841,24 @@ class TestReceiptMethods:
         self.mock_receipt_repo.list_by_bill.return_value = [r1, r2]
         with pytest.raises(ValueError, match="Must include all receipts"):
             self.service.reorder_receipts(bill, billing, ["r1"])
+
+    def test_reorder_receipts_restores_previous_order_when_pdf_generation_fails(self):
+        bill = Bill(id=1, uuid="u", billing_id=1, reference_month="2025-03")
+        billing = Billing(id=1, uuid="bu", name="A")
+        r1 = Receipt(
+            id=1, uuid="r1", bill_id=1, filename="a.pdf", sort_order=0, storage_key="k", content_type="application/pdf"
+        )
+        r2 = Receipt(
+            id=2, uuid="r2", bill_id=1, filename="b.pdf", sort_order=1, storage_key="k", content_type="application/pdf"
+        )
+        self.mock_receipt_repo.list_by_bill.return_value = [r1, r2]
+
+        with patch.object(self.service, "_generate_and_store_pdf", side_effect=RuntimeError("pdf failed")):
+            with pytest.raises(RuntimeError, match="pdf failed"):
+                self.service.reorder_receipts(bill, billing, ["r2", "r1"])
+
+        assert self.mock_receipt_repo.update_sort_orders.call_count == 2
+        assert self.mock_receipt_repo.update_sort_orders.call_args_list[1].args[0] == [(1, 0), (2, 1)]
 
 
 class TestPdfGenerationWithReceipts:

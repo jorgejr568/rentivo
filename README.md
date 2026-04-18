@@ -71,6 +71,7 @@ Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RENTIVO_DB_URL` | `mysql://rentivo:rentivo@db:3306/rentivo` | SQLAlchemy database URL (MariaDB) |
+| `RENTIVO_WEB_RUN_MIGRATIONS_ON_STARTUP` | `false` | Run Alembic automatically when the web app boots |
 
 </details>
 
@@ -107,6 +108,8 @@ Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `RENTIVO_SECRET_KEY` | `change-me-in-production` | Secret key for session signing |
+
+For deploys, prefer running migrations as an explicit release step and keep `RENTIVO_WEB_RUN_MIGRATIONS_ON_STARTUP=false`. Enabling startup migrations is mostly useful for local development or single-instance environments.
 
 </details>
 

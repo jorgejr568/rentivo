@@ -9,19 +9,6 @@ from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from rentivo.db import get_engine
-from rentivo.repositories.sqlalchemy import (
-    SQLAlchemyAuditLogRepository,
-    SQLAlchemyBillingRepository,
-    SQLAlchemyBillRepository,
-    SQLAlchemyInviteRepository,
-    SQLAlchemyMFATOTPRepository,
-    SQLAlchemyOrganizationRepository,
-    SQLAlchemyPasskeyRepository,
-    SQLAlchemyReceiptRepository,
-    SQLAlchemyRecoveryCodeRepository,
-    SQLAlchemyThemeRepository,
-    SQLAlchemyUserRepository,
-)
 from rentivo.services.audit_service import AuditService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
@@ -33,6 +20,7 @@ from rentivo.services.theme_service import ThemeService
 from rentivo.services.user_service import UserService
 from rentivo.storage.factory import get_storage
 from web.flash import get_flashed_messages
+from web.request_scope import close_request_scope, count_pending_invites_for_user, get_request_services
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +113,7 @@ class MFAEnforcementMiddleware:
 
 
 class DBConnectionMiddleware:
-    """Pure ASGI middleware — creates a single DB connection per request."""
+    """Pure ASGI middleware — manages request-scoped DB/services cleanup."""
 
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -136,75 +124,59 @@ class DBConnectionMiddleware:
             return
 
         request = Request(scope)
-        request.state.db_conn = None
         try:
             await self.app(scope, receive, send)
         finally:
-            conn = getattr(request.state, "db_conn", None)
-            if conn is not None:
-                conn.close()
-                logger.debug("DB connection closed for %s %s", request.method, request.url.path)
+            close_request_scope(request)
 
 
-def _get_conn(request: Request):
-    """Lazy per-request connection — created on first use, closed by middleware."""
-    if request.state.db_conn is None:
-        logger.debug("Creating DB connection for %s %s", request.method, request.url.path)
-        request.state.db_conn = get_engine().connect()
-    return request.state.db_conn
+def _request_services(request: Request):
+    return get_request_services(request, engine_factory=get_engine, storage_factory=get_storage)
+
+
+def _pending_invite_count(request: Request, user_id: int) -> int:
+    return count_pending_invites_for_user(
+        request,
+        user_id,
+        engine_factory=get_engine,
+        storage_factory=get_storage,
+    )
 
 
 def get_billing_service(request: Request) -> BillingService:
-    return BillingService(SQLAlchemyBillingRepository(_get_conn(request)))
+    return _request_services(request).billing_service
 
 
 def get_bill_service(request: Request) -> BillService:
-    conn = _get_conn(request)
-    return BillService(
-        SQLAlchemyBillRepository(conn),
-        get_storage(),
-        SQLAlchemyReceiptRepository(conn),
-        theme_service=get_theme_service(request),
-    )
+    return _request_services(request).bill_service
 
 
 def get_theme_service(request: Request) -> ThemeService:
-    return ThemeService(SQLAlchemyThemeRepository(_get_conn(request)))
+    return _request_services(request).theme_service
 
 
 def get_user_service(request: Request) -> UserService:
-    return UserService(SQLAlchemyUserRepository(_get_conn(request)))
+    return _request_services(request).user_service
 
 
 def get_organization_service(request: Request) -> OrganizationService:
-    return OrganizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+    return _request_services(request).organization_service
 
 
 def get_invite_service(request: Request) -> InviteService:
-    conn = _get_conn(request)
-    return InviteService(
-        SQLAlchemyInviteRepository(conn),
-        SQLAlchemyOrganizationRepository(conn),
-        SQLAlchemyUserRepository(conn),
-    )
+    return _request_services(request).invite_service
 
 
 def get_authorization_service(request: Request) -> AuthorizationService:
-    return AuthorizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+    return _request_services(request).authorization_service
 
 
 def get_audit_service(request: Request) -> AuditService:
-    return AuditService(SQLAlchemyAuditLogRepository(_get_conn(request)))
+    return _request_services(request).audit_service
 
 
 def get_mfa_service(request: Request) -> MFAService:
-    conn = _get_conn(request)
-    return MFAService(
-        SQLAlchemyMFATOTPRepository(conn),
-        SQLAlchemyRecoveryCodeRepository(conn),
-        SQLAlchemyPasskeyRepository(conn),
-        SQLAlchemyOrganizationRepository(conn),
-    )
+    return _request_services(request).mfa_service
 
 
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:
@@ -222,9 +194,7 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     user_id = request.session.get("user_id")
     if user_id and "pending_invite_count" not in ctx:
         try:
-            conn = _get_conn(request)
-            invite_repo = SQLAlchemyInviteRepository(conn)
-            ctx["pending_invite_count"] = invite_repo.count_pending_for_user(user_id)
+            ctx["pending_invite_count"] = _pending_invite_count(request, user_id)
         except Exception:
             ctx["pending_invite_count"] = 0
     else:

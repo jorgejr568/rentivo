@@ -8,6 +8,7 @@ import secrets
 import bcrypt
 import pyotp
 import qrcode
+from sqlalchemy import Connection
 
 from rentivo.models.mfa import UserPasskey, UserTOTP
 from rentivo.repositories.base import (
@@ -16,6 +17,7 @@ from rentivo.repositories.base import (
     PasskeyRepository,
     RecoveryCodeRepository,
 )
+from rentivo.services._transaction import validate_transaction_binding
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +32,32 @@ class MFAService:
         recovery_repo: RecoveryCodeRepository,
         passkey_repo: PasskeyRepository,
         org_repo: OrganizationRepository,
+        db_conn: Connection | None = None,
     ) -> None:
         self.totp_repo = totp_repo
         self.recovery_repo = recovery_repo
         self.passkey_repo = passkey_repo
         self.org_repo = org_repo
+        self.db_conn = db_conn
+        validate_transaction_binding(
+            self.db_conn,
+            self.totp_repo,
+            self.recovery_repo,
+            self.passkey_repo,
+            self.org_repo,
+        )
+
+    @property
+    def transactional(self) -> bool:
+        return self.db_conn is not None
+
+    def _commit_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.commit()
+
+    def _rollback_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.rollback()
 
     # --- TOTP ---
 
@@ -54,20 +77,28 @@ class MFAService:
         existing = self.totp_repo.get_by_user_id(user_id)
         if existing is not None and existing.confirmed:
             raise ValueError("TOTP já está ativado")
-        if existing is not None:
-            self.totp_repo.delete_by_user_id(user_id)
+        try:
+            if existing is not None:
+                self.totp_repo.delete_by_user_id(user_id)
 
-        secret = pyotp.random_base32()
-        totp_record = UserTOTP(user_id=user_id, secret=secret, confirmed=False)
-        created = self.totp_repo.create(totp_record)
+            secret = pyotp.random_base32()
+            totp_record = UserTOTP(user_id=user_id, secret=secret, confirmed=False)
+            created = self.totp_repo.create(totp_record)
 
-        totp = pyotp.TOTP(secret)
-        provisioning_uri = totp.provisioning_uri(name=username, issuer_name="Rentivo")
+            totp = pyotp.TOTP(secret)
+            provisioning_uri = totp.provisioning_uri(name=username, issuer_name="Rentivo")
 
-        qr = qrcode.make(provisioning_uri)
-        buf = io.BytesIO()
-        qr.save(buf, format="PNG")
-        qr_base64 = base64.b64encode(buf.getvalue()).decode()
+            qr = qrcode.make(provisioning_uri)
+            buf = io.BytesIO()
+            qr.save(buf, format="PNG")
+            qr_base64 = base64.b64encode(buf.getvalue()).decode()
+
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
 
         logger.info("TOTP setup initiated for user=%s", user_id)
         return created, provisioning_uri, qr_base64
@@ -84,8 +115,15 @@ class MFAService:
         if not totp.verify(code, valid_window=1):
             raise ValueError("Código TOTP inválido")
 
-        self.totp_repo.confirm(user_id)
-        recovery_codes = self._generate_recovery_codes(user_id)
+        try:
+            self.totp_repo.confirm(user_id)
+            recovery_codes = self._generate_recovery_codes(user_id)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
 
         logger.info("TOTP confirmed for user=%s", user_id)
         return recovery_codes
@@ -100,8 +138,15 @@ class MFAService:
 
     def disable_totp(self, user_id: int) -> None:
         """Disable TOTP and delete all recovery codes."""
-        self.totp_repo.delete_by_user_id(user_id)
-        self.recovery_repo.delete_all_by_user(user_id)
+        try:
+            self.totp_repo.delete_by_user_id(user_id)
+            self.recovery_repo.delete_all_by_user(user_id)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("TOTP disabled for user=%s", user_id)
 
     # --- Recovery Codes ---
@@ -124,14 +169,29 @@ class MFAService:
         totp = self.totp_repo.get_by_user_id(user_id)
         if totp is None or not totp.confirmed:
             raise ValueError("TOTP não está ativado")
-        return self._generate_recovery_codes(user_id)
+        try:
+            codes = self._generate_recovery_codes(user_id)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
+        return codes
 
     def verify_recovery_code(self, user_id: int, code: str) -> bool:
         """Verify and consume a recovery code."""
         unused = self.recovery_repo.list_unused_by_user(user_id)
         for rc in unused:
             if bcrypt.checkpw(code.encode(), rc.code_hash.encode()):
-                self.recovery_repo.mark_used(rc.id)
+                try:
+                    self.recovery_repo.mark_used(rc.id)
+                    if self.transactional:
+                        self._commit_transaction()
+                except Exception:
+                    if self.transactional:
+                        self._rollback_transaction()
+                    raise
                 logger.info("Recovery code used for user=%s", user_id)
                 return True
         return False
@@ -145,7 +205,14 @@ class MFAService:
         return self.passkey_repo.list_by_user(user_id)
 
     def register_passkey(self, passkey: UserPasskey) -> UserPasskey:
-        created = self.passkey_repo.create(passkey)
+        try:
+            created = self.passkey_repo.create(passkey)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Passkey registered for user=%s name=%s", passkey.user_id, passkey.name)
         return created
 
@@ -153,14 +220,28 @@ class MFAService:
         return self.passkey_repo.get_by_credential_id(credential_id)
 
     def update_passkey_sign_count(self, passkey_id: int, sign_count: int) -> None:
-        self.passkey_repo.update_sign_count(passkey_id, sign_count)
-        self.passkey_repo.update_last_used(passkey_id)
+        try:
+            self.passkey_repo.update_sign_count(passkey_id, sign_count)
+            self.passkey_repo.update_last_used(passkey_id)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
 
     def delete_passkey(self, passkey_uuid: str, user_id: int) -> None:
         passkey = self.passkey_repo.get_by_uuid(passkey_uuid)
         if passkey is None or passkey.user_id != user_id:
             raise ValueError("Passkey não encontrada")
-        self.passkey_repo.delete(passkey.id)
+        try:
+            self.passkey_repo.delete(passkey.id)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Passkey deleted: uuid=%s user=%s", passkey_uuid, user_id)
 
     # --- MFA Status ---

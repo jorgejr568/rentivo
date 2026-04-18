@@ -451,7 +451,7 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     try:
-        billing_service.transfer_to_organization(billing.id, org.id)
+        billing_service.transfer_to_organization(billing.id, org.id, actor_user_id=user_id)
     except ValueError as e:
         logger.warning(
             "Transfer billing failed: billing=%s org=%s error=%s",

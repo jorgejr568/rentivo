@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 class TestApp:
@@ -14,17 +14,33 @@ class TestApp:
 
 
 class TestLifespan:
-    def test_lifespan_runs_initialize_db(self, test_engine):
-        """Test that the lifespan function calls initialize_db on startup."""
+    def test_lifespan_skips_initialize_db_by_default(self, monkeypatch, test_engine):
         from starlette.testclient import TestClient
 
-        from web.app import app
+        import web.app as app_module
 
-        # The web_test_db fixture patches initialize_db to a no-op,
-        # and creates the TestClient which triggers lifespan.
-        # We verify the patched version was called by confirming the app works.
-        with TestClient(app):
-            pass  # lifespan runs on enter, cleanup on exit
+        calls: list[str] = []
+        monkeypatch.setattr(app_module.settings, "web_run_migrations_on_startup", False)
+        monkeypatch.setattr(app_module, "initialize_db", lambda: calls.append("init"))
+
+        with TestClient(app_module.app):
+            pass
+
+        assert calls == []
+
+    def test_lifespan_runs_initialize_db_when_enabled(self, monkeypatch, test_engine):
+        from starlette.testclient import TestClient
+
+        import web.app as app_module
+
+        calls: list[str] = []
+        monkeypatch.setattr(app_module.settings, "web_run_migrations_on_startup", True)
+        monkeypatch.setattr(app_module, "initialize_db", lambda: calls.append("init"))
+
+        with TestClient(app_module.app):
+            pass
+
+        assert calls == ["init"]
 
 
 class TestExceptionHandler:
@@ -43,10 +59,9 @@ class TestExceptionHandler:
         client = TestClient(app, raise_server_exceptions=False)
         client.post("/login", data={"username": "erruser", "password": "errpass"})
 
-        with patch(
-            "web.deps.SQLAlchemyBillingRepository.list_for_user",
-            side_effect=RuntimeError("Unexpected DB crash"),
-        ):
+        failing_repo = MagicMock()
+        failing_repo.list_for_user.side_effect = RuntimeError("Unexpected DB crash")
+        with patch("rentivo.services.container.get_billing_repository", return_value=failing_repo):
             response = client.get("/billings/")
         assert response.status_code == 500
         assert "Internal Server Error" in response.text

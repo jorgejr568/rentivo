@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="RENTIVO_", extra="ignore")
 
     db_url: str = "mysql://rentivo:rentivo@db:3306/rentivo"
+    web_run_migrations_on_startup: bool = False
 
     storage_backend: str = "local"
     storage_local_path: str = "./invoices"

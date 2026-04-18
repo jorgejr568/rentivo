@@ -2,7 +2,11 @@ from unittest.mock import MagicMock, patch
 
 from rentivo.models.billing import Billing
 from rentivo.models.user import User
-from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+from rentivo.repositories.sqlalchemy import (
+    SQLAlchemyBillingRepository,
+    SQLAlchemyOrganizationRepository,
+    SQLAlchemyUserRepository,
+)
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
 
 
@@ -12,6 +16,13 @@ def _create_other_user_billing(test_engine):
         user_repo = SQLAlchemyUserRepository(conn)
         other = user_repo.create(User(username="other", password_hash="h"))
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
+
+
+def _create_other_user_org(test_engine, name="Other Org"):
+    with test_engine.connect() as conn:
+        user_repo = SQLAlchemyUserRepository(conn)
+        other = user_repo.create(User(username=f"org_owner_{name}", password_hash="h"))
+    return create_org_in_db(test_engine, name, other.id)
 
 
 class TestBillingList:
@@ -342,6 +353,52 @@ class TestBillingCreateWithOrg:
         )
         assert response.status_code == 302
 
+    def test_create_for_unmanaged_organization_rejected(self, auth_client, test_engine, csrf_token):
+        org = _create_other_user_org(test_engine, "Foreign Org")
+        response = auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Blocked Org Billing",
+                "description": "",
+                "pix_key": "",
+                "organization_id": str(org.id),
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            assert SQLAlchemyBillingRepository(conn).list_all() == []
+
+    def test_create_for_viewer_organization_rejected(self, auth_client, test_engine, csrf_token):
+        user_id = get_test_user_id(test_engine)
+        org = _create_other_user_org(test_engine, "Viewer Org")
+        with test_engine.connect() as conn:
+            SQLAlchemyOrganizationRepository(conn).add_member(org.id, user_id, "viewer")
+
+        response = auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Viewer Org Billing",
+                "description": "",
+                "pix_key": "",
+                "organization_id": str(org.id),
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            assert SQLAlchemyBillingRepository(conn).list_all() == []
+
 
 class TestBillingTransfer:
     def test_transfer_success(self, auth_client, test_engine, csrf_token):
@@ -403,6 +460,38 @@ class TestBillingTransfer:
                 follow_redirects=False,
             )
         assert response.status_code == 302
+
+    def test_transfer_to_unmanaged_org_rejected(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        org = _create_other_user_org(test_engine, "Blocked Transfer Org")
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/transfer",
+            data={"csrf_token": csrf_token, "organization_id": str(org.id)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            updated = SQLAlchemyBillingRepository(conn).get_by_uuid(billing.uuid)
+        assert updated is not None
+        assert updated.owner_type == "user"
+
+    def test_transfer_to_viewer_org_rejected(self, auth_client, test_engine, csrf_token):
+        user_id = get_test_user_id(test_engine)
+        billing = create_billing_in_db(test_engine)
+        org = _create_other_user_org(test_engine, "Viewer Transfer Org")
+        with test_engine.connect() as conn:
+            SQLAlchemyOrganizationRepository(conn).add_member(org.id, user_id, "viewer")
+
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/transfer",
+            data={"csrf_token": csrf_token, "organization_id": str(org.id)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            updated = SQLAlchemyBillingRepository(conn).get_by_uuid(billing.uuid)
+        assert updated is not None
+        assert updated.owner_type == "user"
 
 
 class TestBillingDetailIdNone:

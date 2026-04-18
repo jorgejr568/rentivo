@@ -1,6 +1,9 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.services.billing_service import BillingService
 
 
@@ -82,7 +85,100 @@ class TestBillingService:
 
     def test_transfer_already_org_owned(self):
         self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="organization", owner_id=3)
-        import pytest
 
         with pytest.raises(ValueError, match="personal billings"):
             self.service.transfer_to_organization(1, 5)
+
+    def test_create_billing_for_other_user_rejected(self):
+        items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
+
+        with pytest.raises(ValueError, match="another user"):
+            self.service.create_billing(
+                "Apt 101",
+                "desc",
+                items,
+                owner_type="user",
+                owner_id=2,
+                actor_user_id=1,
+            )
+
+    def test_create_billing_for_org_requires_manage_role(self):
+        items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
+        mock_org_repo = MagicMock()
+        mock_org_repo.get_by_id.return_value = Organization(id=5, name="Org")
+        mock_org_repo.get_member.return_value = OrganizationMember(organization_id=5, user_id=1, role="viewer")
+        service = BillingService(self.mock_repo, mock_org_repo)
+
+        with pytest.raises(ValueError, match="permission to manage billings"):
+            service.create_billing(
+                "Apt 101",
+                "desc",
+                items,
+                owner_type="organization",
+                owner_id=5,
+                actor_user_id=1,
+            )
+
+    def test_create_billing_for_org_manager_allowed(self):
+        items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
+        mock_org_repo = MagicMock()
+        mock_org_repo.get_by_id.return_value = Organization(id=5, name="Org")
+        mock_org_repo.get_member.return_value = OrganizationMember(organization_id=5, user_id=1, role="manager")
+        mock_repo = MagicMock()
+        mock_repo.create.return_value = Billing(
+            id=1,
+            name="Apt 101",
+            items=items,
+            owner_type="organization",
+            owner_id=5,
+        )
+        service = BillingService(mock_repo, mock_org_repo)
+
+        result = service.create_billing(
+            "Apt 101",
+            "desc",
+            items,
+            owner_type="organization",
+            owner_id=5,
+            actor_user_id=1,
+        )
+
+        mock_repo.create.assert_called_once()
+        assert result.owner_type == "organization"
+
+    def test_transfer_to_organization_requires_manage_role(self):
+        mock_org_repo = MagicMock()
+        mock_org_repo.get_by_id.return_value = Organization(id=5, name="Org")
+        mock_org_repo.get_member.return_value = None
+        service = BillingService(self.mock_repo, mock_org_repo)
+        self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="user", owner_id=1)
+
+        with pytest.raises(ValueError, match="permission to manage billings"):
+            service.transfer_to_organization(1, 5, actor_user_id=1)
+
+
+class TestTransactionalBillingService:
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = BillingService(self.mock_repo, db_conn=self.mock_conn)
+
+    def test_create_billing_commits_once(self):
+        items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
+        self.mock_repo.create.return_value = Billing(id=1, name="Apt 101", items=items)
+
+        result = self.service.create_billing("Apt 101", "desc", items, pix_key="key")
+
+        assert result.name == "Apt 101"
+        self.mock_conn.commit.assert_called_once()
+        self.mock_conn.rollback.assert_not_called()
+
+    def test_transfer_rolls_back_when_repo_fails(self):
+        self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="user", owner_id=1)
+        self.mock_repo.transfer_owner.side_effect = RuntimeError("transfer failed")
+
+        with pytest.raises(RuntimeError, match="transfer failed"):
+            self.service.transfer_to_organization(1, 5)
+
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()

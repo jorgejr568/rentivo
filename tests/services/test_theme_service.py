@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from rentivo.models.billing import Billing
 from rentivo.models.theme import DEFAULT_THEME, Theme
 from rentivo.services.theme_service import ThemeService
@@ -120,3 +122,30 @@ class TestThemeService:
         result = self.service.get_by_uuid("nonexistent")
 
         assert result is None
+
+
+class TestTransactionalThemeService:
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = ThemeService(self.mock_repo, db_conn=self.mock_conn)
+
+    def test_create_or_update_commits_once(self):
+        self.mock_repo.get_by_owner.return_value = None
+        self.mock_repo.create.return_value = Theme(id=1, uuid="new-uuid", owner_type="user", owner_id=10)
+
+        result = self.service.create_or_update_theme("user", 10, primary="#FF0000")
+
+        assert result.id == 1
+        self.mock_conn.commit.assert_called_once()
+        self.mock_conn.rollback.assert_not_called()
+
+    def test_delete_theme_rolls_back_when_repo_fails(self):
+        self.mock_repo.get_by_owner.return_value = Theme(id=7, uuid="del-uuid", owner_type="user", owner_id=10)
+        self.mock_repo.delete.side_effect = RuntimeError("delete failed")
+
+        with pytest.raises(RuntimeError, match="delete failed"):
+            self.service.delete_theme("user", 10)
+
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()

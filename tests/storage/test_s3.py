@@ -134,3 +134,23 @@ class TestS3Storage:
             ContentType="image/jpeg",
         )
         assert result == "path/to/img.jpg"
+
+    @patch("rentivo.storage.s3.boto3")
+    def test_delete_calls_delete_object(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.storage.s3 import S3Storage
+
+        storage = S3Storage(
+            bucket="my-bucket",
+            region="us-east-1",
+            access_key_id="key",
+            secret_access_key="secret",
+        )
+        storage.delete("path/to/file.pdf")
+
+        mock_client.delete_object.assert_called_once_with(
+            Bucket="my-bucket",
+            Key="path/to/file.pdf",
+        )

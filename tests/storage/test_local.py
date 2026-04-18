@@ -37,3 +37,19 @@ class TestLocalStorage:
         storage.save("test/img.jpg", b"jpeg-data", content_type="image/jpeg")
         assert (tmp_path / "test" / "img.jpg").exists()
         assert (tmp_path / "test" / "img.jpg").read_bytes() == b"jpeg-data"
+
+    def test_delete_removes_file(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        storage.save("test/file.pdf", b"pdf-content")
+
+        storage.delete("test/file.pdf")
+
+        assert not (tmp_path / "test" / "file.pdf").exists()
+
+    def test_delete_accepts_absolute_path(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        saved_path = storage.save("test/file.pdf", b"pdf-content")
+
+        storage.delete(saved_path)
+
+        assert not (tmp_path / "test" / "file.pdf").exists()

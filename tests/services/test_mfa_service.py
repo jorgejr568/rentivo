@@ -359,6 +359,74 @@ class TestMFAServiceStatus:
         self.org_repo.user_has_enforcing_org.return_value = True
         assert self.service.user_requires_mfa_setup(10) is True
 
+
+class TestTransactionalMFAService:
+    def setup_method(self):
+        self.totp_repo = MagicMock()
+        self.recovery_repo = MagicMock()
+        self.passkey_repo = MagicMock()
+        self.org_repo = MagicMock()
+        self.mock_conn = MagicMock()
+        self.service = MFAService(
+            totp_repo=self.totp_repo,
+            recovery_repo=self.recovery_repo,
+            passkey_repo=self.passkey_repo,
+            org_repo=self.org_repo,
+            db_conn=self.mock_conn,
+        )
+
+    @patch("rentivo.services.mfa_service.qrcode")
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_setup_totp_rolls_back_when_qr_generation_fails(self, mock_pyotp, mock_qrcode):
+        self.totp_repo.get_by_user_id.return_value = None
+        mock_pyotp.random_base32.return_value = "FAKESECRET"
+        self.totp_repo.create.return_value = UserTOTP(id=1, user_id=10, secret="FAKESECRET", confirmed=False)
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.provisioning_uri.return_value = "otpauth://totp/Rentivo:user?secret=FAKESECRET"
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+        mock_qrcode.make.side_effect = RuntimeError("qr failed")
+
+        with pytest.raises(RuntimeError, match="qr failed"):
+            self.service.setup_totp(10, "user")
+
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()
+
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_confirm_totp_rolls_back_when_recovery_code_create_fails(self, mock_pyotp):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="SECRET", confirmed=False)
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.verify.return_value = True
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+        self.recovery_repo.create_batch.side_effect = RuntimeError("recovery failed")
+
+        with pytest.raises(RuntimeError, match="recovery failed"):
+            self.service.confirm_totp(10, "123456")
+
+        self.totp_repo.confirm.assert_called_once_with(10)
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()
+
+    def test_update_passkey_sign_count_rolls_back_when_last_used_update_fails(self):
+        self.passkey_repo.update_last_used.side_effect = RuntimeError("last used failed")
+
+        with pytest.raises(RuntimeError, match="last used failed"):
+            self.service.update_passkey_sign_count(1, 42)
+
+        self.passkey_repo.update_sign_count.assert_called_once_with(1, 42)
+        self.mock_conn.rollback.assert_called_once()
+        self.mock_conn.commit.assert_not_called()
+
+    def test_register_passkey_commits_once(self):
+        passkey = UserPasskey(user_id=10, name="MyKey", credential_id="cred1", public_key="pk1")
+        created = UserPasskey(id=1, user_id=10, name="MyKey", credential_id="cred1", public_key="pk1")
+        self.passkey_repo.create.return_value = created
+
+        result = self.service.register_passkey(passkey)
+
+        assert result.id == 1
+        self.mock_conn.commit.assert_called_once()
+
     def test_user_requires_mfa_setup_no_mfa_no_enforcing_org(self):
         self.totp_repo.get_by_user_id.return_value = None
         self.passkey_repo.list_by_user.return_value = []

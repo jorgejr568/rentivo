@@ -75,9 +75,9 @@ def create_billing_in_db(engine, **overrides):
 def generate_bill_in_db(engine, billing, tmp_path):
     """Generate a bill in the test DB. Shared helper for web route tests."""
     with engine.connect() as conn:
-        bill_repo = SQLAlchemyBillRepository(conn)
+        bill_repo = SQLAlchemyBillRepository(conn, autocommit=False)
         storage = LocalStorage(str(tmp_path))
-        service = BillService(bill_repo, storage)
+        service = BillService(bill_repo, storage, db_conn=conn)
         bill = service.generate_bill(
             billing=billing,
             reference_month="2025-03",

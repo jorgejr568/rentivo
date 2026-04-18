@@ -3,7 +3,13 @@ from unittest.mock import MagicMock, patch
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import Bill
 from rentivo.models.user import User
-from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
+from rentivo.repositories.sqlalchemy import (
+    SQLAlchemyBillingRepository,
+    SQLAlchemyBillRepository,
+    SQLAlchemyReceiptRepository,
+    SQLAlchemyUserRepository,
+)
+from rentivo.services.bill_service import BillService
 from rentivo.storage.local import LocalStorage
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs
 
@@ -14,6 +20,27 @@ def _create_other_user_billing(test_engine):
         user_repo = SQLAlchemyUserRepository(conn)
         other = user_repo.create(User(username="bill_other", password_hash="h"))
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
+
+
+def _create_other_user_bill_with_receipt(test_engine, tmp_path):
+    billing = _create_other_user_billing(test_engine)
+    storage = LocalStorage(str(tmp_path))
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)
+    with test_engine.connect() as conn:
+        service = BillService(
+            SQLAlchemyBillRepository(conn, autocommit=False),
+            storage,
+            SQLAlchemyReceiptRepository(conn, autocommit=False),
+            db_conn=conn,
+        )
+        receipt = service.add_receipt(
+            bill=bill,
+            billing=billing,
+            filename="receipt.pdf",
+            file_bytes=b"%PDF-test-data",
+            content_type="application/pdf",
+        )
+    return billing, bill, receipt
 
 
 class TestBillGenerate:
@@ -313,6 +340,97 @@ class TestBillAccessDenied:
                 f"/billings/{billing.uuid}/bills/{bill.uuid}",
                 follow_redirects=False,
             )
+        assert response.status_code == 302
+
+    def test_edit_form_access_denied(self, auth_client, test_engine, tmp_path):
+        billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/edit",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_edit_post_access_denied(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/edit",
+                data={
+                    "csrf_token": csrf_token,
+                    "due_date": "",
+                    "notes": "",
+                    "items-TOTAL_FORMS": "1",
+                    "items-0-description": "Rent",
+                    "items-0-amount": "285000",
+                    "items-0-item_type": "fixed",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_regenerate_pdf_access_denied(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/regenerate-pdf",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_delete_access_denied(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/delete",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_invoice_access_denied(self, auth_client, test_engine, tmp_path):
+        billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/invoice",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_receipt_upload_access_denied(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_files": ("receipt.pdf", b"%PDF-test", "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_receipt_view_access_denied(self, auth_client, test_engine, tmp_path):
+        billing, bill, receipt = _create_other_user_bill_with_receipt(test_engine, tmp_path)
+        response = auth_client.get(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
+    def test_receipt_delete_access_denied(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing, bill, receipt = _create_other_user_bill_with_receipt(test_engine, tmp_path)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
         assert response.status_code == 302
 
 
@@ -699,6 +817,63 @@ class TestReceiptDelete:
         assert response.status_code == 302
 
 
+class TestBillNestedResourceValidation:
+    def test_invoice_rejects_mismatched_billing_uuid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        other_billing = create_billing_in_db(test_engine, name="Apt 202")
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.get(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/invoice",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_receipt_view_rejects_mismatched_bill_uuid(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            other_bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_files": ("proof.pdf", b"%PDF-test", "application/pdf")},
+                follow_redirects=False,
+            )
+            with test_engine.connect() as conn:
+                receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{other_bill.uuid}/receipts/{receipts[0].uuid}",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+    def test_receipt_delete_rejects_mismatched_bill_uuid(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            other_bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_files": ("proof.pdf", b"%PDF-test", "application/pdf")},
+                follow_redirects=False,
+            )
+            with test_engine.connect() as conn:
+                receipt_repo = SQLAlchemyReceiptRepository(conn)
+                receipts = receipt_repo.list_by_bill(bill.id)
+                receipt_uuid = receipts[0].uuid
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{other_bill.uuid}/receipts/{receipt_uuid}/delete",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+            with test_engine.connect() as conn:
+                receipt_repo = SQLAlchemyReceiptRepository(conn)
+                assert receipt_repo.get_by_uuid(receipt_uuid) is not None
+        assert response.status_code == 302
+
+
 class TestEditFormShowsReceipts:
     def test_edit_form_shows_receipts(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
@@ -857,6 +1032,7 @@ class TestReceiptViewS3Redirect:
         # Mock bill_service to return a non-local URL
         with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
             mock_svc = MagicMock()
+            mock_svc.get_bill_by_uuid.return_value = bill
             mock_svc.get_receipt_by_uuid.return_value = receipts[0]
             mock_svc.storage.get_url.return_value = "https://s3.example.com/receipt.pdf"
             mock_svc_fn.return_value = mock_svc

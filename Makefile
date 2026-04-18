@@ -85,7 +85,7 @@ web-run:
 
 .PHONY: web-createuser
 web-createuser:
-	$(PYTHON) -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
+	$(PYTHON) -m rentivo.scripts.create_user
 
 # --- Docker: Web (standalone) ---
 
@@ -141,7 +141,7 @@ print('Migrations applied.')"
 
 .PHONY: docker-createuser
 docker-createuser:
-	docker exec -it $(CONTAINER) python -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
+	docker exec -it $(CONTAINER) python -m rentivo.scripts.create_user
 
 .PHONY: docker-regenerate
 docker-regenerate:
@@ -225,7 +225,7 @@ print('Migrations applied.')"
 
 .PHONY: compose-createuser
 compose-createuser:
-	docker compose exec -it rentivo python -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
+	docker compose exec -it rentivo python -m rentivo.scripts.create_user
 
 .PHONY: compose-regenerate
 compose-regenerate:

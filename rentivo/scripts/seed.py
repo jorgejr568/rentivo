@@ -14,24 +14,16 @@ from rich.console import Console
 from rich.table import Table
 from sqlalchemy import text
 
-from rentivo.db import get_connection, initialize_db
+from rentivo.db import initialize_db
 from rentivo.models import format_brl
 from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.invite import Invite, InviteStatus
 from rentivo.models.organization import OrgRole
-from rentivo.repositories.factory import (
-    get_bill_repository,
-    get_billing_repository,
-    get_invite_repository,
-    get_organization_repository,
-    get_receipt_repository,
-    get_user_repository,
-)
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
-from rentivo.services.invite_service import InviteService
+from rentivo.services.container import ConnectionServices
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.user_service import UserService
-from rentivo.storage.factory import get_storage
 
 console = Console()
 fake = Faker("pt_BR")
@@ -218,7 +210,7 @@ def _create_organization(org_service: OrganizationService, users: list):
     return org
 
 
-def _create_invites(invite_service: InviteService, org, users: list) -> None:
+def _create_invites(invite_repo, conn, org, users: list) -> None:
     """Create a few historical invites (already accepted since users are members).
 
     We use send_invite for users NOT yet members, then accept/decline them.
@@ -229,47 +221,44 @@ def _create_invites(invite_service: InviteService, org, users: list) -> None:
     directly via the repo to avoid service-level validation.
     """
     console.print("[cyan]Creating invite history...[/cyan]")
-
-    # The invite service checks membership, so we'll create invite records
-    # directly via the repository for historical records.
-    from rentivo.models.invite import Invite, InviteStatus
-    from rentivo.repositories.factory import get_invite_repository
-
-    invite_repo = get_invite_repository()
     main_user = users[0]
     assert org.id is not None
     assert main_user.id is not None
 
-    # Create accepted invites for a few members (simulating history)
-    for user in users[1:4]:
-        assert user.id is not None
-        invite = Invite(
-            organization_id=org.id,
-            invited_user_id=user.id,
-            invited_by_user_id=main_user.id,
-            role=OrgRole.VIEWER.value,
-            status=InviteStatus.ACCEPTED.value,
-        )
-        created = invite_repo.create(invite)
-        # Mark as accepted
-        assert created.id is not None
-        invite_repo.update_status(created.id, InviteStatus.ACCEPTED.value)
-        console.print(f"  Invite (accepted): {user.username}")
+    try:
+        # Create accepted invites for a few members (simulating history)
+        for user in users[1:4]:
+            assert user.id is not None
+            invite = Invite(
+                organization_id=org.id,
+                invited_user_id=user.id,
+                invited_by_user_id=main_user.id,
+                role=OrgRole.VIEWER.value,
+                status=InviteStatus.ACCEPTED.value,
+            )
+            created = invite_repo.create(invite)
+            assert created.id is not None
+            invite_repo.update_status(created.id, InviteStatus.ACCEPTED.value)
+            console.print(f"  Invite (accepted): {user.username}")
 
-    # Create a couple of declined invites
-    for user in users[4:6]:
-        assert user.id is not None
-        invite = Invite(
-            organization_id=org.id,
-            invited_user_id=user.id,
-            invited_by_user_id=main_user.id,
-            role=OrgRole.MANAGER.value,
-            status=InviteStatus.DECLINED.value,
-        )
-        created = invite_repo.create(invite)
-        assert created.id is not None
-        invite_repo.update_status(created.id, InviteStatus.DECLINED.value)
-        console.print(f"  Invite (declined): {user.username}")
+        # Create a couple of declined invites
+        for user in users[4:6]:
+            assert user.id is not None
+            invite = Invite(
+                organization_id=org.id,
+                invited_user_id=user.id,
+                invited_by_user_id=main_user.id,
+                role=OrgRole.MANAGER.value,
+                status=InviteStatus.DECLINED.value,
+            )
+            created = invite_repo.create(invite)
+            assert created.id is not None
+            invite_repo.update_status(created.id, InviteStatus.DECLINED.value)
+            console.print(f"  Invite (declined): {user.username}")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     console.print("[green]Invite history created.[/green]\n")
 
@@ -414,40 +403,25 @@ def main() -> None:
     console.print("=" * 40)
 
     initialize_db()
-    conn = get_connection()
 
-    # --- Truncate ---
-    _truncate_all(conn)
+    with ConnectionServices.open() as services:
+        # --- Truncate ---
+        _truncate_all(services.conn)
 
-    # --- Repositories & Services ---
-    user_repo = get_user_repository()
-    billing_repo = get_billing_repository()
-    bill_repo = get_bill_repository()
-    org_repo = get_organization_repository()
-    invite_repo = get_invite_repository()
-    receipt_repo = get_receipt_repository()
-    storage = get_storage()
+        # --- Seed ---
+        users = _create_users(services.user_service)
+        org = _create_organization(services.organization_service, users)
+        _create_invites(services.invite_repo, services.conn, org, users)
+        billings = _create_billings(services.billing_service, users[0], org)
+        total_bills = _create_bills(services.bill_service, billings)
 
-    user_service = UserService(user_repo)
-    billing_service = BillingService(billing_repo)
-    bill_service = BillService(bill_repo, storage, receipt_repo)
-    org_service = OrganizationService(org_repo)
-    invite_service = InviteService(invite_repo, org_repo, user_repo)
-
-    # --- Seed ---
-    users = _create_users(user_service)
-    org = _create_organization(org_service, users)
-    _create_invites(invite_service, org, users)
-    billings = _create_billings(billing_service, users[0], org)
-    total_bills = _create_bills(bill_service, billings)
-
-    # --- Summary ---
-    console.print("[bold green]Seeding complete![/bold green]")
-    console.print(f"  Users:        {len(users)}")
-    console.print(f"  Organization: 1 ({org.name})")
-    console.print(f"  Billings:     {len(billings)}")
-    console.print(f"  Bills:        {total_bills}")
-    console.print(f"\n  Login with: [bold]{MAIN_USERNAME}[/bold] / [bold]{PASSWORD}[/bold]")
+        # --- Summary ---
+        console.print("[bold green]Seeding complete![/bold green]")
+        console.print(f"  Users:        {len(users)}")
+        console.print(f"  Organization: 1 ({org.name})")
+        console.print(f"  Billings:     {len(billings)}")
+        console.print(f"  Bills:        {total_bills}")
+        console.print(f"\n  Login with: [bold]{MAIN_USERNAME}[/bold] / [bold]{PASSWORD}[/bold]")
 
 
 if __name__ == "__main__":  # pragma: no cover

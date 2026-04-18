@@ -2,15 +2,32 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import Connection
+
 from rentivo.models.audit_log import AuditLog
 from rentivo.repositories.base import AuditLogRepository
+from rentivo.services._transaction import validate_transaction_binding
 
 logger = logging.getLogger(__name__)
 
 
 class AuditService:
-    def __init__(self, repo: AuditLogRepository) -> None:
+    def __init__(self, repo: AuditLogRepository, db_conn: Connection | None = None) -> None:
         self.repo = repo
+        self.db_conn = db_conn
+        validate_transaction_binding(self.db_conn, self.repo)
+
+    @property
+    def transactional(self) -> bool:
+        return self.db_conn is not None
+
+    def _commit_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.commit()
+
+    def _rollback_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.rollback()
 
     def log(
         self,
@@ -39,7 +56,14 @@ class AuditService:
             new_state=new_state,
             metadata=metadata or {},
         )
-        result = self.repo.create(audit_log)
+        try:
+            result = self.repo.create(audit_log)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info(
             "Audit logged: event=%s actor=%s entity=%s/%s",
             event_type,

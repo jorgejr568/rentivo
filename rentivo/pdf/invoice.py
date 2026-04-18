@@ -17,14 +17,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 FONTS_DIR = Path(__file__).parent / "fonts"
+RGBColor = tuple[int, int, int]
 
 
-def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+def _hex_to_rgb(hex_color: str) -> RGBColor:
     h = hex_color.lstrip("#")
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
-def _derive_colors(theme: Theme) -> dict[str, tuple[int, int, int]]:
+def _shift_rgb(color: RGBColor, delta: int) -> RGBColor:
+    return (
+        max(0, min(255, color[0] + delta)),
+        max(0, min(255, color[1] + delta)),
+        max(0, min(255, color[2] + delta)),
+    )
+
+
+def _derive_colors(theme: Theme) -> dict[str, RGBColor]:
     primary = _hex_to_rgb(theme.primary)
     primary_light = _hex_to_rgb(theme.primary_light)
     secondary = _hex_to_rgb(theme.secondary)
@@ -32,9 +41,9 @@ def _derive_colors(theme: Theme) -> dict[str, tuple[int, int, int]]:
     text_color = _hex_to_rgb(theme.text_color)
     text_contrast = _hex_to_rgb(theme.text_contrast)
 
-    row_alt = tuple(min(255, c + 6) for c in primary_light)
-    border_color = tuple(max(0, c - 28) for c in primary_light)
-    muted_text = tuple(min(255, c + 68) for c in text_color)
+    row_alt = _shift_rgb(primary_light, 6)
+    border_color = _shift_rgb(primary_light, -28)
+    muted_text = _shift_rgb(text_color, 68)
 
     return {
         "primary": primary,
@@ -44,8 +53,8 @@ def _derive_colors(theme: Theme) -> dict[str, tuple[int, int, int]]:
         "text_color": text_color,
         "text_contrast": text_contrast,
         "muted_text": muted_text,
-        "row_alt": row_alt,  # type: ignore[dict-item]
-        "border_color": border_color,  # type: ignore[dict-item]
+        "row_alt": row_alt,
+        "border_color": border_color,
     }
 
 

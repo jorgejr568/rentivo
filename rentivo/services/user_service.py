@@ -3,21 +3,44 @@ from __future__ import annotations
 import logging
 
 import bcrypt
+from sqlalchemy import Connection
 
 from rentivo.models.user import User
 from rentivo.repositories.base import UserRepository
+from rentivo.services._transaction import validate_transaction_binding
 
 logger = logging.getLogger(__name__)
 
 
 class UserService:
-    def __init__(self, repo: UserRepository) -> None:
+    def __init__(self, repo: UserRepository, db_conn: Connection | None = None) -> None:
         self.repo = repo
+        self.db_conn = db_conn
+        validate_transaction_binding(self.db_conn, self.repo)
+
+    @property
+    def transactional(self) -> bool:
+        return self.db_conn is not None
+
+    def _commit_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.commit()
+
+    def _rollback_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.rollback()
 
     def create_user(self, username: str, password: str) -> User:
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user = User(username=username, password_hash=password_hash)
-        result = self.repo.create(user)
+        try:
+            result = self.repo.create(user)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("User created: %s", username)
         return result
 
@@ -27,7 +50,14 @@ class UserService:
             raise ValueError(f"Username '{username}' already exists")
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user = User(username=username, email=email, password_hash=password_hash)
-        result = self.repo.create(user)
+        try:
+            result = self.repo.create(user)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("User registered: %s", username)
         return result
 
@@ -49,7 +79,14 @@ class UserService:
 
     def change_password(self, username: str, new_password: str) -> None:
         password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-        self.repo.update_password_hash(username, password_hash)
+        try:
+            self.repo.update_password_hash(username, password_hash)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
         logger.info("Password changed for user: %s", username)
 
     def list_users(self) -> list[User]:

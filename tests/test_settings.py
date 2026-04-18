@@ -11,6 +11,7 @@ class TestSettings:
                 monkeypatch.delenv(key, raising=False)
         s = Settings(_env_file=None)
         assert s.db_url == "mysql://rentivo:rentivo@db:3306/rentivo"
+        assert s.web_run_migrations_on_startup is False
         assert s.storage_backend == "local"
         assert s.storage_prefix == "bills"
         assert s.s3_presigned_expiry == 604800
@@ -18,9 +19,11 @@ class TestSettings:
 
     def test_env_override(self, monkeypatch):
         monkeypatch.setenv("RENTIVO_DB_URL", "mysql://user:pass@host/db")
+        monkeypatch.setenv("RENTIVO_WEB_RUN_MIGRATIONS_ON_STARTUP", "true")
         monkeypatch.setenv("RENTIVO_STORAGE_BACKEND", "s3")
         s = Settings(_env_file=None)
         assert s.db_url == "mysql://user:pass@host/db"
+        assert s.web_run_migrations_on_startup is True
         assert s.storage_backend == "s3"
 
     def test_get_secret_key_generates_random_when_default(self, monkeypatch):

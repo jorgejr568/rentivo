@@ -2,15 +2,32 @@ from __future__ import annotations
 
 import logging
 
+from sqlalchemy import Connection
+
 from rentivo.models.theme import DEFAULT_THEME, Theme
 from rentivo.repositories.base import ThemeRepository
+from rentivo.services._transaction import validate_transaction_binding
 
 logger = logging.getLogger(__name__)
 
 
 class ThemeService:
-    def __init__(self, theme_repo: ThemeRepository) -> None:
+    def __init__(self, theme_repo: ThemeRepository, db_conn: Connection | None = None) -> None:
         self.theme_repo = theme_repo
+        self.db_conn = db_conn
+        validate_transaction_binding(self.db_conn, self.theme_repo)
+
+    @property
+    def transactional(self) -> bool:
+        return self.db_conn is not None
+
+    def _commit_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.commit()
+
+    def _rollback_transaction(self) -> None:
+        if self.db_conn is not None:
+            self.db_conn.rollback()
 
     def get_theme_for_owner(self, owner_type: str, owner_id: int) -> Theme | None:
         return self.theme_repo.get_by_owner(owner_type, owner_id)
@@ -39,19 +56,34 @@ class ThemeService:
 
     def create_or_update_theme(self, owner_type: str, owner_id: int, **fields) -> Theme:
         existing = self.theme_repo.get_by_owner(owner_type, owner_id)
-        if existing:
-            for key, value in fields.items():
-                if hasattr(existing, key):
-                    setattr(existing, key, value)
-            return self.theme_repo.update(existing)
-        else:
-            theme = Theme(owner_type=owner_type, owner_id=owner_id, **fields)
-            return self.theme_repo.create(theme)
+        try:
+            if existing:
+                for key, value in fields.items():
+                    if hasattr(existing, key):
+                        setattr(existing, key, value)
+                result = self.theme_repo.update(existing)
+            else:
+                theme = Theme(owner_type=owner_type, owner_id=owner_id, **fields)
+                result = self.theme_repo.create(theme)
+            if self.transactional:
+                self._commit_transaction()
+        except Exception:
+            if self.transactional:
+                self._rollback_transaction()
+            raise
+        return result
 
     def delete_theme(self, owner_type: str, owner_id: int) -> bool:
         theme = self.theme_repo.get_by_owner(owner_type, owner_id)
         if theme and theme.id:
-            self.theme_repo.delete(theme.id)
+            try:
+                self.theme_repo.delete(theme.id)
+                if self.transactional:
+                    self._commit_transaction()
+            except Exception:
+                if self.transactional:
+                    self._rollback_transaction()
+                raise
             logger.info("Theme deleted for %s/%s", owner_type, owner_id)
             return True
         return False
