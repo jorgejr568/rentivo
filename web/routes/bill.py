@@ -519,6 +519,7 @@ async def receipt_view(request: Request, billing_uuid: str, bill_uuid: str, rece
 async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
 
     form = await request.form()
     redirect_url = str(form.get("next", "")).strip() or f"/billings/{billing_uuid}/bills/{bill_uuid}/edit"
@@ -530,9 +531,15 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         return RedirectResponse("/", status_code=302)
 
     billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
+    if not billing or billing.uuid != billing_uuid:
         logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
         flash(request, "Cobrança não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    user_id = request.session.get("user_id")
+    if not auth_service.can_manage_bills(user_id, billing):
+        logger.warning("receipt_upload_access_denied", bill_uuid=bill_uuid, user_id=user_id)
+        flash(request, "Acesso negado.", "danger")
         return RedirectResponse("/", status_code=302)
 
     uploads = form.getlist("receipt_files")
