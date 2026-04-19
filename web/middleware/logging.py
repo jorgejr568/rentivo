@@ -42,6 +42,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         structlog.contextvars.clear_contextvars()
         rid = _accept_inbound_id(request.headers.get("X-Request-ID")) or new_request_id()
+        request.state.request_id = rid
         structlog.contextvars.bind_contextvars(
             request_id=rid,
             method=request.method,
