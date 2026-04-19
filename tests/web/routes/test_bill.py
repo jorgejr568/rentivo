@@ -118,6 +118,47 @@ class TestBillEdit:
         )
         assert response.status_code == 302
 
+    def test_edit_form_access_denied_for_other_users_bill(self, auth_client, test_engine, tmp_path):
+        """Vuln 1: GET /edit on another user's bill must be denied."""
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            response = auth_client.get(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/edit",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+    def test_edit_post_access_denied_for_other_users_bill(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Vuln 2: POST /edit on another user's bill must not mutate it."""
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            original_notes = bill.notes
+            response = auth_client.post(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/edit",
+                data={
+                    "csrf_token": csrf_token,
+                    "due_date": "15/04/2025",
+                    "notes": "attacker was here",
+                    "items-TOTAL_FORMS": "1",
+                    "items-0-description": "hacked",
+                    "items-0-amount": "0",
+                    "items-0-item_type": "fixed",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+        # Bill must be unchanged
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+        assert reloaded.notes == original_notes
+
 
 class TestBillRegeneratePdf:
     def test_regenerate(self, auth_client, test_engine, tmp_path, csrf_token):

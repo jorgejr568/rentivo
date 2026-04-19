@@ -210,6 +210,7 @@ async def bill_detail(request: Request, billing_uuid: str, bill_uuid: str):
 async def bill_edit_form(request: Request, billing_uuid: str, bill_uuid: str):
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
 
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
@@ -218,10 +219,17 @@ async def bill_edit_form(request: Request, billing_uuid: str, bill_uuid: str):
         return RedirectResponse("/", status_code=302)
 
     billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
+    if not billing or billing.uuid != billing_uuid:
         logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
+
+    user_id = request.session.get("user_id")
+    if not auth_service.can_manage_bills(user_id, billing):
+        logger.warning("bill_edit_access_denied", bill_uuid=bill_uuid, user_id=user_id)
+        flash(request, "Acesso negado.", "danger")
+        return RedirectResponse("/", status_code=302)
+
     receipts = bill_service.list_receipts(bill.id) if bill.id else []
     return render(request, "bill/edit.html", {"bill": bill, "billing": billing, "receipts": receipts})
 
@@ -230,6 +238,7 @@ async def bill_edit_form(request: Request, billing_uuid: str, bill_uuid: str):
 async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
 
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
@@ -238,9 +247,15 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
         return RedirectResponse("/", status_code=302)
 
     billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
+    if not billing or billing.uuid != billing_uuid:
         logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
         flash(request, "Cobrança não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    user_id = request.session.get("user_id")
+    if not auth_service.can_manage_bills(user_id, billing):
+        logger.warning("bill_edit_access_denied", bill_uuid=bill_uuid, user_id=user_id)
+        flash(request, "Acesso negado.", "danger")
         return RedirectResponse("/", status_code=302)
 
     if get_pix_service(request).billing_needs_setup(billing):
@@ -300,7 +315,6 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
         due_date=due_date,
     )
 
-    user_id = request.session.get("user_id")
     audit = get_audit_service(request)
     audit.safe_log(
         AuditEventType.BILL_UPDATE,
