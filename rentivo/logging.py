@@ -19,13 +19,12 @@ from structlog.stdlib import ProcessorFormatter
 from rentivo.settings import settings
 
 
-def _shared_processors() -> list:
-    return [
+def _shared_processors(json_output: bool) -> list:
+    base = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.dict_tracebacks,
         structlog.processors.CallsiteParameterAdder(
             {
                 structlog.processors.CallsiteParameter.FILENAME,
@@ -33,6 +32,9 @@ def _shared_processors() -> list:
             }
         ),
     ]
+    if json_output:
+        base.insert(4, structlog.processors.dict_tracebacks)
+    return base
 
 
 def _pick_renderer(cli: bool):
@@ -49,7 +51,8 @@ def configure_logging(cli: bool = False) -> None:
             The CLI reads logs interactively, so JSON would be useless there.
     """
     level = getattr(logging, settings.log_level.upper(), logging.INFO)
-    shared = _shared_processors()
+    json_output = not cli and settings.log_json
+    shared = _shared_processors(json_output=json_output)
     renderer = _pick_renderer(cli)
 
     formatter = ProcessorFormatter(
