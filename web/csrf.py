@@ -22,7 +22,18 @@ from web.flash import flash
 logger = structlog.get_logger(__name__)
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
-EXEMPT_PATHS = {"/login", "/signup", "/static", "/security/passkeys", "/mfa-verify"}
+# Only JSON webauthn endpoints need the blanket exemption. The passkey delete
+# route (/security/passkeys/{uuid}/delete) is a form POST and must go through
+# CSRF — exempting the whole /security/passkeys prefix would let an attacker
+# cross-origin-submit a form and remove the victim's MFA factor.
+EXEMPT_PATHS = {
+    "/login",
+    "/signup",
+    "/static",
+    "/security/passkeys/register",
+    "/security/passkeys/auth",
+    "/mfa-verify",
+}
 
 
 def get_csrf_token(request: Request) -> str:
