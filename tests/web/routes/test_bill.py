@@ -763,6 +763,24 @@ class TestReceiptUpload:
         )
         assert response.status_code == 302
 
+    def test_upload_access_denied_for_other_users_bill(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Vuln 4: uploading a receipt to another user's bill must be refused."""
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_files": ("r.pdf", b"%PDF-malicious", "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+        with test_engine.connect() as conn:
+            assert SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id) == []
+
 
 class TestReceiptUploadMultiple:
     def test_upload_multiple_files(self, auth_client, test_engine, tmp_path, csrf_token):
