@@ -34,7 +34,9 @@ def validate_pix_key(key: str) -> str:
     """Validate a PIX key, returning its normalized form.
 
     - CPF/CNPJ/phone: strips common separators (., -, /, space, parentheses).
-      Phones without a country code are assumed Brazilian and prefixed with +55.
+      10-digit numerics are treated as Brazilian landlines and prefixed with +55.
+      **11-digit numerics are ambiguous**: they match CPF and are returned as CPF.
+      Users registering a mobile phone must include the +55 country code.
     - email: lowercased.
     - evp: lowercased.
 

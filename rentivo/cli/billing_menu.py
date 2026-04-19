@@ -68,8 +68,10 @@ def create_billing_menu(billing_service: BillingService, audit_service: AuditSer
         console.print(f"\n  [dim]Chave PIX padrão: {app_settings.pix_key}[/dim]")
         override = questionary.confirm("Usar uma chave PIX diferente para esta cobrança?", default=False).ask()
         if override:
+            console.print("  [dim]Para celular, inclua +55 (11 dígitos são tratados como CPF).[/dim]")
             pix_key = questionary.text("  Chave PIX:").ask() or ""
     else:
+        console.print("  [dim]Para celular, inclua +55 (11 dígitos são tratados como CPF).[/dim]")
         pix_key = questionary.text("Chave PIX para esta cobrança (opcional):").ask() or ""
 
     try:
@@ -221,10 +223,12 @@ def _edit_pix_key(billing, billing_service: BillingService, audit_service: Audit
     if new_key is None:
         return billing
     previous_state = serialize_billing(billing)
+    old_key = billing.pix_key
     billing.pix_key = new_key
     try:
         billing = billing_service.update_billing(billing)
     except ValueError as e:
+        billing.pix_key = old_key
         console.print(f"[red]{e}[/red]")
         return billing
 

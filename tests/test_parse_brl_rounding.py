@@ -27,5 +27,15 @@ class TestParseBrlRounding:
     def test_invalid(self):
         assert parse_brl("abc") is None
 
-    def test_negative_allowed(self):
-        assert parse_brl("-2850,00") == -285000
+    def test_negative_rejected(self):
+        assert parse_brl("-2850,00") is None
+
+    def test_half_up_rounds_up_not_zero(self):
+        # 0.005 -> 1 centavo under half-up, 0 under banker's
+        assert parse_brl("0,005") == 1
+
+    def test_whitespace_only(self):
+        assert parse_brl("   ") is None
+
+    def test_large_amount(self):
+        assert parse_brl("1.234.567,89") == 123456789

@@ -330,9 +330,10 @@ class TestReceiptMethods:
 
         with patch.object(self.service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF-fake"
-            result = self.service.add_receipt(bill, billing, "receipt.pdf", b"pdf-data", "application/pdf")
+            receipt, failed = self.service.add_receipt(bill, billing, "receipt.pdf", b"pdf-data", "application/pdf")
 
-        assert result.filename == "receipt.pdf"
+        assert receipt.filename == "receipt.pdf"
+        assert failed == []
         # Storage save called twice: once for receipt file, once for regenerated PDF
         assert self.mock_storage.save.call_count == 2
         self.mock_receipt_repo.create.assert_called_once()
@@ -404,6 +405,23 @@ class TestReceiptMethods:
         billing = Billing(id=1, uuid="bu", name="A")
         with pytest.raises(ValueError, match="Empty file"):
             self.service.add_receipt(bill, billing, "f.pdf", b"", "application/pdf")
+
+    def test_add_receipt_rolls_back_storage_on_repo_failure(self):
+        """Regression: if receipt_repo.create fails, storage.delete is called to clean up."""
+        bill = Bill(id=1, uuid="bill-uuid", billing_id=1, reference_month="2025-03", total_amount=100)
+        billing = Billing(id=1, uuid="billing-uuid", name="A")
+
+        self.mock_receipt_repo.list_by_bill.return_value = []
+        self.mock_receipt_repo.create.side_effect = RuntimeError("DB down")
+
+        with pytest.raises(RuntimeError, match="DB down"):
+            self.service.add_receipt(bill, billing, "f.pdf", b"data", "application/pdf")
+
+        # storage.delete should have been called with the same key that was saved
+        assert self.mock_storage.delete.call_count == 1
+        saved_key = self.mock_storage.save.call_args_list[0][0][0]
+        deleted_key = self.mock_storage.delete.call_args[0][0]
+        assert deleted_key == saved_key
 
     def test_delete_receipt(self):
         bill = Bill(

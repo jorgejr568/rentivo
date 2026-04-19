@@ -1,5 +1,8 @@
+import pytest
+
 from rentivo.pix import (
     _crc16_ccitt,
+    _format_amount_centavos,
     _strip_accents,
     _tlv,
     generate_pix_payload,
@@ -97,6 +100,18 @@ class TestGeneratePixPayload:
             txid="ABC123",
         )
         assert "ABC123" in payload
+
+
+class TestFormatAmountCentavos:
+    def test_zero(self):
+        assert _format_amount_centavos(0) == "0.00"
+
+    def test_simple(self):
+        assert _format_amount_centavos(15050) == "150.50"
+
+    def test_negative_raises(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            _format_amount_centavos(-1)
 
 
 class TestGeneratePixQrcodePng:

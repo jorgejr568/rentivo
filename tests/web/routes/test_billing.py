@@ -92,6 +92,25 @@ class TestBillingCreate:
         )
         assert response.status_code == 302
 
+    def test_create_invalid_pix_key_redirects_with_flash(self, auth_client, csrf_token):
+        """Regression: invalid PIX key raises ValueError; route must redirect to /create with flash."""
+        response = auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Apt 501",
+                "description": "",
+                "pix_key": "not-a-valid-pix-key",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/billings/create"
+
 
 class TestBillingDetail:
     def test_detail(self, auth_client, test_engine):

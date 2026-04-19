@@ -114,7 +114,7 @@ async def bill_generate(request: Request, billing_uuid: str):
             continue
         if len(file_bytes) > MAX_RECEIPT_SIZE:
             continue
-        receipt = bill_service.add_receipt(
+        receipt, _ = bill_service.add_receipt(
             bill=bill,
             billing=billing,
             filename=upload.filename,
@@ -534,6 +534,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
 
     attached = 0
     skipped = 0
+    accumulated_failed: set[str] = set()
     audit = get_audit_service(request)
     for upload in valid_uploads:
         file_bytes = await upload.read()
@@ -550,7 +551,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
             skipped += 1
             continue
 
-        receipt = bill_service.add_receipt(
+        receipt, failed_uuids = bill_service.add_receipt(
             bill=bill,
             billing=billing,
             filename=upload.filename,
@@ -559,6 +560,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         )
         logger.info("Receipt uploaded for bill uuid=%s", bill_uuid)
         attached += 1
+        accumulated_failed.update(failed_uuids)
 
         audit.safe_log(
             AuditEventType.RECEIPT_UPLOAD,
@@ -583,11 +585,10 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         flash(request, f"{attached} comprovantes anexados com sucesso!", "success")
     if skipped:
         flash(request, f"{skipped} arquivo(s) ignorado(s) (tipo inválido, vazio ou muito grande).", "warning")
-    failed = bill_service.last_failed_receipt_uuids
-    if failed:
+    if accumulated_failed:
         flash(
             request,
-            f"{len(failed)} comprovante(s) não puderam ser incluídos no PDF. Tente enviar novamente.",
+            f"{len(accumulated_failed)} comprovante(s) não puderam ser incluídos no PDF. Tente enviar novamente.",
             "warning",
         )
     return RedirectResponse(redirect_url, status_code=302)

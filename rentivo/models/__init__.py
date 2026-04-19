@@ -16,10 +16,11 @@ def format_brl_input(centavos: int) -> str:
 
 
 def parse_brl(text: str) -> int | None:
-    """Parse a BRL amount string into centavos. Returns None on invalid input.
+    """Parse a BRL amount string into non-negative centavos. Returns None on invalid input.
 
     Accepts formats like '2850', '2850.00', '2.850,00', '2850,50'.
     Uses Decimal with ROUND_HALF_UP to avoid float/banker's-rounding artifacts.
+    Rejects negatives — monetary fields in this system are non-negative.
     """
     text = text.strip()
     if not text:
@@ -29,6 +30,8 @@ def parse_brl(text: str) -> int | None:
     try:
         value = Decimal(text)
     except InvalidOperation:
+        return None
+    if value < 0:
         return None
     centavos = (value * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
     return int(centavos)

@@ -52,12 +52,6 @@ class BillService:
         self.receipt_repo = receipt_repo
         self.theme_service = theme_service
         self.pdf_generator = InvoicePDF()
-        self._last_failed_receipt_uuids: list[str] = []
-
-    @property
-    def last_failed_receipt_uuids(self) -> list[str]:
-        """UUIDs of receipts that could not be merged during the most recent PDF render."""
-        return list(self._last_failed_receipt_uuids)
 
     @staticmethod
     def _get_pix_data(billing: Billing, total_centavos: int) -> tuple[bytes | None, str, str]:
@@ -111,8 +105,12 @@ class BillService:
                 )
         return data, ordered
 
-    def _generate_and_store_pdf(self, bill: Bill, billing: Billing) -> str:
-        """Generate PDF, save to storage, and update bill's pdf_path. Returns the storage path."""
+    def _generate_and_store_pdf(self, bill: Bill, billing: Billing) -> tuple[str, list[str]]:
+        """Generate PDF, save to storage, and update bill's pdf_path.
+
+        Returns (storage_path, failed_receipt_uuids) where failed_receipt_uuids
+        lists receipts that could not be merged into the PDF.
+        """
         theme = None
         if self.theme_service is not None:
             theme = self.theme_service.resolve_theme_for_billing(billing)
@@ -127,19 +125,16 @@ class BillService:
             theme=theme,
         )
 
-        # Merge receipts if available
         receipt_data, ordered_receipts = self._fetch_receipt_data(bill)
-        self._last_failed_receipt_uuids: list[str] = []
+        failed_uuids: list[str] = []
         if receipt_data:
             pdf_bytes, failed_idxs = merge_receipts(pdf_bytes, receipt_data)
             if failed_idxs:
-                self._last_failed_receipt_uuids = [
-                    ordered_receipts[i].uuid for i in failed_idxs if 0 <= i < len(ordered_receipts)
-                ]
+                failed_uuids = [ordered_receipts[i].uuid for i in failed_idxs if 0 <= i < len(ordered_receipts)]
                 logger.warning(
                     "Receipts failed to merge for bill %s: %s",
                     bill.uuid,
-                    self._last_failed_receipt_uuids,
+                    failed_uuids,
                 )
 
         key = _storage_key(billing.uuid, bill.uuid)
@@ -150,7 +145,7 @@ class BillService:
             raise ValueError("Cannot update pdf_path for bill without an id")
         self.bill_repo.update_pdf_path(bill.id, path)
         bill.pdf_path = path
-        return path
+        return path, failed_uuids
 
     def generate_bill(
         self,
@@ -290,8 +285,12 @@ class BillService:
         filename: str,
         file_bytes: bytes,
         content_type: str,
-    ) -> Receipt:
-        """Upload a receipt file and attach it to a bill, then regenerate the PDF."""
+    ) -> tuple[Receipt, list[str]]:
+        """Upload a receipt file and attach it to a bill, then regenerate the PDF.
+
+        Returns (receipt, failed_receipt_uuids) — failed_receipt_uuids lists any
+        existing receipts that could not be merged into the regenerated PDF.
+        """
         if self.receipt_repo is None:
             raise RuntimeError("Receipt repository not configured")
         if bill.id is None:
@@ -335,10 +334,8 @@ class BillService:
             raise
         logger.info("Receipt added: uuid=%s bill=%s file=%s", receipt.uuid, bill.uuid, filename)
 
-        # Regenerate the merged PDF
-        self._generate_and_store_pdf(bill, billing)
-
-        return receipt
+        _, failed_uuids = self._generate_and_store_pdf(bill, billing)
+        return receipt, failed_uuids
 
     def delete_receipt(self, receipt: Receipt, bill: Bill, billing: Billing) -> None:
         """Delete a receipt and regenerate the bill PDF."""

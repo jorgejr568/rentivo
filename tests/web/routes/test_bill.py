@@ -257,6 +257,72 @@ class TestBillInvoice:
         assert response.status_code == 302
         assert response.headers.get("location") == "/"
 
+    def test_invoice_redirects_when_billing_missing(self, auth_client, test_engine, tmp_path):
+        """Cover the 'billing not found' branch in bill_invoice."""
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            with patch("web.routes.bill.get_billing_service") as mock_billing_svc_fn:
+                mock_billing_svc = MagicMock()
+                mock_billing_svc.get_billing.return_value = None
+                mock_billing_svc_fn.return_value = mock_billing_svc
+                response = auth_client.get(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/invoice",
+                    follow_redirects=False,
+                )
+        assert response.status_code == 302
+        assert response.headers.get("location") == "/"
+
+    def test_receipt_view_bill_uuid_mismatch(self, auth_client, test_engine, tmp_path):
+        """Cover receipt_view branch where bill.uuid doesn't match the URL."""
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            with test_engine.connect() as conn:
+                receipt = SQLAlchemyReceiptRepository(conn).create(
+                    Receipt(
+                        bill_id=bill.id,
+                        filename="r.pdf",
+                        storage_key="stub.pdf",
+                        content_type="application/pdf",
+                        file_size=4,
+                    )
+                )
+        response = auth_client.get(
+            f"/billings/{billing.uuid}/bills/wrong-bill-uuid/receipts/{receipt.uuid}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers.get("location") == "/"
+
+    def test_receipt_view_billing_uuid_mismatch(self, auth_client, test_engine, tmp_path):
+        """Cover receipt_view branch where billing.uuid doesn't match the URL."""
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            with test_engine.connect() as conn:
+                receipt = SQLAlchemyReceiptRepository(conn).create(
+                    Receipt(
+                        bill_id=bill.id,
+                        filename="r.pdf",
+                        storage_key="stub.pdf",
+                        content_type="application/pdf",
+                        file_size=4,
+                    )
+                )
+        response = auth_client.get(
+            f"/billings/wrong-billing-uuid/bills/{bill.uuid}/receipts/{receipt.uuid}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers.get("location") == "/"
+
     def test_receipt_view_rejects_unauthorized_user(self, auth_client, test_engine, tmp_path, csrf_token):
         """Regression: GET /receipts/<uuid> must check can_view_billing."""
         # Owner uploads a receipt to their own bill
