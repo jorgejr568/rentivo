@@ -1,5 +1,8 @@
+import pytest
+
 from rentivo.pix import (
     _crc16_ccitt,
+    _format_amount_centavos,
     _strip_accents,
     _tlv,
     generate_pix_payload,
@@ -58,7 +61,7 @@ class TestGeneratePixPayload:
             pix_key="key",
             merchant_name="Name",
             merchant_city="City",
-            amount=150.50,
+            amount_centavos=15050,
         )
         assert "150.50" in payload
 
@@ -67,7 +70,7 @@ class TestGeneratePixPayload:
             pix_key="key",
             merchant_name="Name",
             merchant_city="City",
-            amount=None,
+            amount_centavos=None,
         )
         # tag 54 should not appear
         assert "54" not in payload[:20]
@@ -99,6 +102,18 @@ class TestGeneratePixPayload:
         assert "ABC123" in payload
 
 
+class TestFormatAmountCentavos:
+    def test_zero(self):
+        assert _format_amount_centavos(0) == "0.00"
+
+    def test_simple(self):
+        assert _format_amount_centavos(15050) == "150.50"
+
+    def test_negative_raises(self):
+        with pytest.raises(ValueError, match="non-negative"):
+            _format_amount_centavos(-1)
+
+
 class TestGeneratePixQrcodePng:
     def test_returns_png_bytes(self):
         result = generate_pix_qrcode_png(
@@ -115,6 +130,6 @@ class TestGeneratePixQrcodePng:
             pix_key="key",
             merchant_name="Name",
             merchant_city="City",
-            amount=100.00,
+            amount_centavos=10000,
         )
         assert result[:4] == b"\x89PNG"

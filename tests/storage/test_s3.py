@@ -113,6 +113,30 @@ class TestS3Storage:
         assert data == b"file-contents"
 
     @patch("rentivo.storage.s3.boto3")
+    def test_delete_calls_delete_object(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.storage.s3 import S3Storage
+
+        storage = S3Storage(bucket="b", region="r", access_key_id="k", secret_access_key="s")
+        storage.delete("path/to/file.pdf")
+
+        mock_client.delete_object.assert_called_once_with(Bucket="b", Key="path/to/file.pdf")
+
+    @patch("rentivo.storage.s3.boto3")
+    def test_delete_swallows_client_errors(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_client.delete_object.side_effect = RuntimeError("boom")
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.storage.s3 import S3Storage
+
+        storage = S3Storage(bucket="b", region="r", access_key_id="k", secret_access_key="s")
+        # Must not raise — delete is used in rollback paths.
+        storage.delete("path/to/file.pdf")
+
+    @patch("rentivo.storage.s3.boto3")
     def test_save_with_content_type(self, mock_boto3):
         mock_client = MagicMock()
         mock_boto3.client.return_value = mock_client

@@ -82,14 +82,18 @@ async def billing_create(request: Request):
     else:
         owner_type = "user"
         owner_id = user_id
-    billing = service.create_billing(
-        name,
-        description,
-        items,
-        pix_key=pix_key,
-        owner_type=owner_type,
-        owner_id=owner_id,
-    )
+    try:
+        billing = service.create_billing(
+            name,
+            description,
+            items,
+            pix_key=pix_key,
+            owner_type=owner_type,
+            owner_id=owner_id,
+        )
+    except ValueError as e:
+        flash(request, str(e), "danger")
+        return RedirectResponse("/billings/create", status_code=302)
     logger.info("Billing created: uuid=%s name=%s items=%d", billing.uuid, billing.name, len(items))
 
     audit = get_audit_service(request)
@@ -216,7 +220,11 @@ async def billing_edit(request: Request, billing_uuid: str):
         return RedirectResponse(f"/billings/{billing_uuid}/edit", status_code=302)
 
     billing.items = items
-    updated = service.update_billing(billing)
+    try:
+        updated = service.update_billing(billing)
+    except ValueError as e:
+        flash(request, str(e), "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}/edit", status_code=302)
     logger.info("Billing updated: uuid=%s name=%s items=%d", billing_uuid, billing.name, len(items))
 
     audit = get_audit_service(request)
@@ -250,13 +258,29 @@ async def billing_transfer(request: Request, billing_uuid: str):
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
     form = await request.form()
-    org_id = str(form.get("organization_id", "")).strip()
-    if not org_id:
+    org_id_raw = str(form.get("organization_id", "")).strip()
+    if not org_id_raw:
         flash(request, "Selecione uma organização.", "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+    try:
+        org_id = int(org_id_raw)
+    except ValueError:
+        flash(request, "Organização inválida.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
+    org_service = get_organization_service(request)
+    if org_service.get_member(org_id, user_id) is None:
+        logger.warning(
+            "Billing transfer rejected: user=%s not a member of org=%s",
+            user_id,
+            org_id,
+        )
+        flash(request, "Você não é membro dessa organização.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
     previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
-        billing_service.transfer_to_organization(billing.id, int(org_id))
+        billing_service.transfer_to_organization(billing.id, org_id)
     except ValueError as e:
         flash(request, str(e), "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
@@ -271,7 +295,7 @@ async def billing_transfer(request: Request, billing_uuid: str):
         entity_id=billing.id,
         entity_uuid=billing.uuid,
         previous_state=previous_owner,
-        new_state={"owner_type": "organization", "owner_id": int(org_id)},
+        new_state={"owner_type": "organization", "owner_id": org_id},
     )
 
     flash(request, "Cobrança transferida com sucesso!", "success")

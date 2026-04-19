@@ -59,7 +59,7 @@ class TestInvoicePDF:
             pix_key="test@pix.com",
             merchant_name="Test",
             merchant_city="City",
-            amount=2950.00,
+            amount_centavos=295000,
         )
         result = pdf_gen.generate(
             bill,
@@ -112,7 +112,7 @@ class TestInvoicePDF:
             pix_key="test@pix.com",
             merchant_name="Test",
             merchant_city="City",
-            amount=2950.00,
+            amount_centavos=295000,
         )
         result = pdf_gen.generate(
             bill,

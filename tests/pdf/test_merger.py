@@ -56,29 +56,33 @@ def _make_landscape_image() -> bytes:
 class TestMergeReceipts:
     def test_no_receipts_returns_original(self):
         invoice = _make_pdf(2)
-        result = merge_receipts(invoice, [])
+        result, failed = merge_receipts(invoice, [])
         assert result == invoice
+        assert failed == []
 
     def test_merge_pdf_receipt(self):
         invoice = _make_pdf(1)
         receipt_pdf = _make_pdf(2)
-        result = merge_receipts(invoice, [(receipt_pdf, "application/pdf")])
+        result, failed = merge_receipts(invoice, [(receipt_pdf, "application/pdf")])
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 3  # 1 invoice + 2 receipt pages
+        assert failed == []
 
     def test_merge_jpeg_receipt(self):
         invoice = _make_pdf(1)
         jpeg = _make_jpeg()
-        result = merge_receipts(invoice, [(jpeg, "image/jpeg")])
+        result, failed = merge_receipts(invoice, [(jpeg, "image/jpeg")])
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 2  # 1 invoice + 1 image page
+        assert failed == []
 
     def test_merge_png_receipt(self):
         invoice = _make_pdf(1)
         png = _make_png()
-        result = merge_receipts(invoice, [(png, "image/png")])
+        result, failed = merge_receipts(invoice, [(png, "image/png")])
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 2
+        assert failed == []
 
     def test_merge_multiple_receipts(self):
         invoice = _make_pdf(1)
@@ -87,34 +91,40 @@ class TestMergeReceipts:
             (_make_jpeg(), "image/jpeg"),
             (_make_png(), "image/png"),
         ]
-        result = merge_receipts(invoice, receipts)
+        result, failed = merge_receipts(invoice, receipts)
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 4  # 1 + 1 + 1 + 1
+        assert failed == []
 
     def test_merge_mixed_types(self):
         invoice = _make_pdf(2)
         receipt_pdf = _make_pdf(3)
         jpeg = _make_jpeg()
-        result = merge_receipts(invoice, [(receipt_pdf, "application/pdf"), (jpeg, "image/jpeg")])
+        result, failed = merge_receipts(invoice, [(receipt_pdf, "application/pdf"), (jpeg, "image/jpeg")])
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 6  # 2 + 3 + 1
+        assert failed == []
 
     def test_unsupported_type_skipped(self):
         invoice = _make_pdf(1)
-        result = merge_receipts(invoice, [(b"data", "text/plain")])
+        result, failed = merge_receipts(invoice, [(b"data", "text/plain")])
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 1  # Only invoice
+        assert failed == [0]
 
     def test_corrupt_receipt_skipped(self):
         invoice = _make_pdf(1)
-        result = merge_receipts(invoice, [(b"not-a-pdf", "application/pdf")])
+        result, failed = merge_receipts(invoice, [(b"not-a-pdf", "application/pdf")])
         reader = PdfReader(BytesIO(result))
         assert len(reader.pages) == 1  # Only invoice, corrupt one skipped
+        assert failed == [0]
 
     def test_corrupt_invoice_returns_original(self):
         bad_invoice = b"not-a-pdf"
-        result = merge_receipts(bad_invoice, [(_make_pdf(1), "application/pdf")])
+        receipts = [(_make_pdf(1), "application/pdf")]
+        result, failed = merge_receipts(bad_invoice, receipts)
         assert result == bad_invoice
+        assert failed == [0]
 
 
 class TestImageToPdf:

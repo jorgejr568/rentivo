@@ -103,7 +103,7 @@ class TestBillingAuditLogs:
                 "csrf_token": csrf_token,
                 "name": "Updated Name",
                 "description": "Updated",
-                "pix_key": "new@pix",
+                "pix_key": "new@pix.com",
                 "items-TOTAL_FORMS": "1",
                 "items-0-description": "Rent",
                 "items-0-amount": "2850,00",

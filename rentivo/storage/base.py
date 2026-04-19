@@ -16,3 +16,8 @@ class StorageBackend(ABC):
     def get_url(self, key: str) -> str:
         """Return a presigned URL (S3) or absolute file path (local)."""
         ...
+
+    @abstractmethod
+    def delete(self, key: str) -> None:
+        """Delete the object at the given key. No-op if missing."""
+        ...

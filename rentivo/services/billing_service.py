@@ -3,9 +3,17 @@ from __future__ import annotations
 import logging
 
 from rentivo.models.billing import Billing, BillingItem
+from rentivo.pix import validate_pix_key
 from rentivo.repositories.base import BillingRepository
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_pix_key(value: str) -> str:
+    """Return a normalized PIX key, or '' if the value is empty. Raises ValueError if invalid."""
+    if not value or not value.strip():
+        return ""
+    return validate_pix_key(value)
 
 
 class BillingService:
@@ -25,7 +33,7 @@ class BillingService:
             name=name,
             description=description,
             items=items,
-            pix_key=pix_key,
+            pix_key=_normalize_pix_key(pix_key),
             owner_type=owner_type,
             owner_id=owner_id,
         )
@@ -54,6 +62,7 @@ class BillingService:
         return result
 
     def update_billing(self, billing: Billing) -> Billing:
+        billing.pix_key = _normalize_pix_key(billing.pix_key)
         result = self.repo.update(billing)
         logger.info("Billing updated: id=%s, name=%s", result.id, result.name)
         return result

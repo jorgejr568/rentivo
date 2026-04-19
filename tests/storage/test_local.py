@@ -1,4 +1,38 @@
+import pytest
+
 from rentivo.storage.local import LocalStorage
+
+
+class TestLocalStoragePathTraversal:
+    def test_save_rejects_traversal(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        with pytest.raises(ValueError):
+            storage.save("../outside.pdf", b"data")
+
+    def test_get_rejects_traversal(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        with pytest.raises(ValueError):
+            storage.get("../../etc/passwd")
+
+    def test_get_url_rejects_traversal(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        with pytest.raises(ValueError):
+            storage.get_url("../../etc/passwd")
+
+    def test_delete_removes_file(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        storage.save("a/file.pdf", b"data")
+        assert (tmp_path / "a" / "file.pdf").exists()
+        storage.delete("a/file.pdf")
+        assert not (tmp_path / "a" / "file.pdf").exists()
+
+    def test_delete_missing_key_is_noop(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        storage.delete("does-not-exist.pdf")  # should not raise
+
+    def test_delete_refuses_unsafe_key(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        storage.delete("../outside.pdf")  # logs warning, no raise
 
 
 class TestLocalStorage:

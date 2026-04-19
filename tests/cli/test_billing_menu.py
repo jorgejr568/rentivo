@@ -96,6 +96,30 @@ class TestCreateBillingMenu:
 
     @patch("rentivo.settings.settings")
     @patch("rentivo.cli.billing_menu.questionary")
+    def test_create_invalid_pix_key_shows_error(self, mock_q, mock_settings):
+        """Regression: invalid PIX key must surface as a CLI error, not crash."""
+        from rentivo.cli.billing_menu import create_billing_menu
+
+        mock_settings.pix_key = ""
+        mock_q.text.return_value.ask.side_effect = [
+            "Apt 101",
+            "desc",
+            "Rent",
+            "1000",
+            "not-a-pix-key",
+        ]
+        mock_q.confirm.return_value.ask.side_effect = [True, False]
+        mock_q.select.return_value.ask.return_value = "Fixo"
+
+        mock_service = MagicMock()
+        mock_service.create_billing.side_effect = ValueError("Chave PIX inválida.")
+        audit = MagicMock()
+        create_billing_menu(mock_service, audit)
+        mock_service.create_billing.assert_called_once()
+        audit.safe_log.assert_not_called()
+
+    @patch("rentivo.settings.settings")
+    @patch("rentivo.cli.billing_menu.questionary")
     def test_create_skip_empty_item_desc(self, mock_q, mock_settings):
         from rentivo.cli.billing_menu import create_billing_menu
 
@@ -472,6 +496,21 @@ class TestEditBillingMenu:
         mock_svc = MagicMock()
         _edit_billing_menu(billing, mock_svc, MagicMock())
         mock_svc.update_billing.assert_not_called()
+
+    @patch("rentivo.cli.billing_menu.questionary")
+    def test_edit_pix_key_invalid_restores_old_key(self, mock_q):
+        """Regression: invalid PIX key must not leave the in-memory billing mutated."""
+        from rentivo.cli.billing_menu import _edit_billing_menu
+
+        billing = Billing(id=1, name="Apt 101", pix_key="old@pix.com", items=[])
+        mock_q.select.return_value.ask.side_effect = ["Editar Chave PIX", "Voltar"]
+        mock_q.text.return_value.ask.return_value = "not-a-valid-key"
+
+        mock_svc = MagicMock()
+        mock_svc.update_billing.side_effect = ValueError("Chave PIX inválida.")
+        result = _edit_billing_menu(billing, mock_svc, MagicMock())
+        mock_svc.update_billing.assert_called_once()
+        assert result.pix_key == "old@pix.com"
 
     @patch("rentivo.cli.billing_menu.questionary")
     def test_edit_item_no_items(self, mock_q):

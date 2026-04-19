@@ -12,7 +12,7 @@ class TestBillingService:
     def test_create_billing(self):
         items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
         self.mock_repo.create.return_value = Billing(id=1, name="Apt 101", items=items)
-        result = self.service.create_billing("Apt 101", "desc", items, pix_key="key")
+        result = self.service.create_billing("Apt 101", "desc", items, pix_key="test@pix.com")
         self.mock_repo.create.assert_called_once()
         assert result.name == "Apt 101"
 

@@ -114,7 +114,7 @@ async def bill_generate(request: Request, billing_uuid: str):
             continue
         if len(file_bytes) > MAX_RECEIPT_SIZE:
             continue
-        receipt = bill_service.add_receipt(
+        receipt, _ = bill_service.add_receipt(
             bill=bill,
             billing=billing,
             filename=upload.filename,
@@ -437,17 +437,31 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
 async def bill_invoice(request: Request, billing_uuid: str, bill_uuid: str):
     logger.info("GET /bills/%s/invoice — serving PDF", bill_uuid)
     bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
+
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill or not bill.pdf_path:
         logger.warning("Bill not found or no PDF: uuid=%s", bill_uuid)
         flash(request, "Fatura sem PDF.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    logger.info("Bill pdf_path=%s", bill.pdf_path)
+    billing = billing_service.get_billing(bill.billing_id)
+    if not billing:
+        logger.warning("Billing not found for bill: billing_id=%s", bill.billing_id)
+        flash(request, "Cobrança não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    user_id = request.session.get("user_id")
+    if not auth_service.can_view_billing(user_id, billing):
+        flash(request, "Acesso negado.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    logger.debug("Bill pdf_path=%s", bill.pdf_path)
 
     # Local storage: serve file directly. S3: redirect to presigned URL.
     if os.path.isfile(bill.pdf_path):
-        logger.info("Serving local file: %s", bill.pdf_path)
+        logger.info("Serving local file for bill uuid=%s", bill_uuid)
         return FileResponse(bill.pdf_path, media_type="application/pdf")
 
     url = bill_service.get_invoice_url(bill.pdf_path)
@@ -459,10 +473,27 @@ async def bill_invoice(request: Request, billing_uuid: str, bill_uuid: str):
 async def receipt_view(request: Request, billing_uuid: str, bill_uuid: str, receipt_uuid: str):
     logger.info("GET /bills/%s/receipts/%s — serving file", bill_uuid, receipt_uuid)
     bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
 
     receipt = bill_service.get_receipt_by_uuid(receipt_uuid)
     if not receipt or not receipt.storage_key:
         flash(request, "Comprovante não encontrado.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    bill = bill_service.get_bill(receipt.bill_id)
+    if not bill or bill.uuid != bill_uuid:
+        flash(request, "Comprovante não encontrado.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    billing = billing_service.get_billing(bill.billing_id)
+    if not billing or billing.uuid != billing_uuid:
+        flash(request, "Cobrança não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    user_id = request.session.get("user_id")
+    if not auth_service.can_view_billing(user_id, billing):
+        flash(request, "Acesso negado.", "danger")
         return RedirectResponse("/", status_code=302)
 
     url_or_path = bill_service.storage.get_url(receipt.storage_key)
@@ -503,6 +534,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
 
     attached = 0
     skipped = 0
+    accumulated_failed: set[str] = set()
     audit = get_audit_service(request)
     for upload in valid_uploads:
         file_bytes = await upload.read()
@@ -519,7 +551,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
             skipped += 1
             continue
 
-        receipt = bill_service.add_receipt(
+        receipt, failed_uuids = bill_service.add_receipt(
             bill=bill,
             billing=billing,
             filename=upload.filename,
@@ -528,6 +560,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         )
         logger.info("Receipt uploaded for bill uuid=%s", bill_uuid)
         attached += 1
+        accumulated_failed.update(failed_uuids)
 
         audit.safe_log(
             AuditEventType.RECEIPT_UPLOAD,
@@ -552,6 +585,12 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         flash(request, f"{attached} comprovantes anexados com sucesso!", "success")
     if skipped:
         flash(request, f"{skipped} arquivo(s) ignorado(s) (tipo inválido, vazio ou muito grande).", "warning")
+    if accumulated_failed:
+        flash(
+            request,
+            f"{len(accumulated_failed)} comprovante(s) não puderam ser incluídos no PDF. Tente enviar novamente.",
+            "warning",
+        )
     return RedirectResponse(redirect_url, status_code=302)
 
 
