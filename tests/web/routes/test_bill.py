@@ -882,6 +882,69 @@ class TestReceiptDelete:
         )
         assert response.status_code == 302
 
+    def test_delete_receipt_access_denied_for_other_users_bill(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Vuln 5: can't delete a receipt on another user's bill."""
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+        with test_engine.connect() as conn:
+            receipt_repo = SQLAlchemyReceiptRepository(conn)
+            victim_receipt = receipt_repo.create(
+                Receipt(
+                    bill_id=bill.id,
+                    filename="victim.pdf",
+                    storage_key="k",
+                    content_type="application/pdf",
+                    file_size=10,
+                    sort_order=0,
+                )
+            )
+        response = auth_client.post(
+            f"/billings/{other_billing.uuid}/bills/{bill.uuid}/receipts/{victim_receipt.uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+        with test_engine.connect() as conn:
+            assert SQLAlchemyReceiptRepository(conn).get_by_uuid(victim_receipt.uuid) is not None
+
+    def test_delete_receipt_cross_bill_rejected(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Vuln 5 amplification: supplying attacker's own bill/billing uuids but a victim receipt uuid."""
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        # Attacker's own bill (auth_client is the logged-in test user)
+        attacker_billing = create_billing_in_db(test_engine)
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            attacker_bill = generate_bill_in_db(test_engine, attacker_billing, tmp_path)
+            victim_bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+        with test_engine.connect() as conn:
+            receipt_repo = SQLAlchemyReceiptRepository(conn)
+            victim_receipt = receipt_repo.create(
+                Receipt(
+                    bill_id=victim_bill.id,
+                    filename="victim.pdf",
+                    storage_key="k",
+                    content_type="application/pdf",
+                    file_size=10,
+                    sort_order=0,
+                )
+            )
+        # Attacker passes their own bill/billing UUIDs but the victim's receipt UUID.
+        response = auth_client.post(
+            f"/billings/{attacker_billing.uuid}/bills/{attacker_bill.uuid}/receipts/{victim_receipt.uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            assert SQLAlchemyReceiptRepository(conn).get_by_uuid(victim_receipt.uuid) is not None
+
 
 class TestEditFormShowsReceipts:
     def test_edit_form_shows_receipts(self, auth_client, test_engine, tmp_path, csrf_token):
