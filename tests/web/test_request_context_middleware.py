@@ -98,6 +98,13 @@ class TestRequestContextMiddleware:
         resp = client.get("/ok", headers={"X-Request-ID": "x" * 200})
         assert resp.headers.get("x-request-id") != "x" * 200
 
+    def test_inbound_request_id_with_non_printable_rejected(self, app_and_buffer):
+        app, buf = app_and_buffer
+        client = TestClient(app, raise_server_exceptions=False)
+        # Tab is control-range, outside printable ASCII [32, 127)
+        resp = client.get("/ok", headers={"X-Request-ID": "abc\tdef"})
+        assert resp.headers.get("x-request-id") != "abc\tdef"
+
     def test_exception_logs_request_failed(self, app_and_buffer):
         app, buf = app_and_buffer
         client = TestClient(app, raise_server_exceptions=False)
