@@ -75,6 +75,8 @@ templates.env.globals["format_brl_input"] = format_brl_input
 templates.env.globals["format_month"] = format_month
 templates.env.globals["asset_version"] = ASSET_VERSION
 templates.env.globals["public_url"] = settings.public_url.rstrip("/") if settings.public_url else ""
+templates.env.globals["gtm_container_id"] = settings.gtm_container_id
+templates.env.globals["environment"] = settings.environment
 
 app.include_router(auth_router)
 app.include_router(billing_router)
@@ -89,21 +91,21 @@ app.include_router(seo_router)
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404:
+        from web.analytics import build_page_context, pop_events
         from web.csrf import get_csrf_token
         from web.flash import get_flashed_messages
 
-        return templates.TemplateResponse(
-            request,
-            "404.html",
-            {
-                "user": request.session.get("username"),
-                "user_id": request.session.get("user_id"),
-                "messages": get_flashed_messages(request),
-                "csrf_token": get_csrf_token(request),
-                "pending_invite_count": 0,
-            },
-            status_code=404,
-        )
+        ctx = {
+            "user": request.session.get("username"),
+            "user_id": request.session.get("user_id"),
+            "messages": get_flashed_messages(request),
+            "csrf_token": get_csrf_token(request),
+            "pending_invite_count": 0,
+            "asset_version": ASSET_VERSION,
+        }
+        ctx["gtm_initial_push"] = build_page_context(request, "404.html", ctx)
+        ctx["gtm_pending_events"] = pop_events(request)
+        return templates.TemplateResponse(request, "404.html", ctx, status_code=404)
     return HTMLResponse(exc.detail or "Error", status_code=exc.status_code)
 
 
@@ -117,11 +119,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 async def home(request: Request):
     if request.session.get("user_id"):
         return RedirectResponse("/billings/", status_code=302)
-    return templates.TemplateResponse(
-        request,
-        "landing.html",
-        {
-            "asset_version": ASSET_VERSION,
-            "user": request.session.get("username"),
-        },
-    )
+    from web.analytics import build_page_context, pop_events
+
+    ctx = {
+        "asset_version": ASSET_VERSION,
+        "user": request.session.get("username"),
+    }
+    ctx["gtm_initial_push"] = build_page_context(request, "landing.html", ctx)
+    ctx["gtm_pending_events"] = pop_events(request)
+    return templates.TemplateResponse(request, "landing.html", ctx)
