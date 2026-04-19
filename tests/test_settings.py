@@ -58,7 +58,21 @@ def test_gtm_container_id_accepts_valid():
 def test_gtm_container_id_rejects_invalid_prefix():
     with pytest.raises(ValidationError) as exc_info:
         Settings(_env_file=None, gtm_container_id="UA-12345")
-    assert "must start with 'GTM-'" in str(exc_info.value)
+    assert "must match GTM-[A-Z0-9]+" in str(exc_info.value)
+
+
+def test_gtm_container_id_rejects_bad_chars():
+    """Defense-in-depth: reject any char outside [A-Z0-9] in the suffix."""
+    bad_values = [
+        "GTM-abc123",  # lowercase
+        "GTM-ABC');x()//",  # XSS-style payload
+        "GTM-AB C",  # space
+        "GTM-AB-C",  # dash
+        "GTM-",  # empty suffix
+    ]
+    for val in bad_values:
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, gtm_container_id=val)
 
 
 def test_environment_default_is_production():

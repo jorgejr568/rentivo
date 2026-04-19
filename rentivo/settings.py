@@ -1,3 +1,4 @@
+import re
 import secrets
 
 import structlog
@@ -7,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 logger = structlog.get_logger(__name__)
 
 _INSECURE_DEFAULT_KEY = "change-me-in-production"
+_GTM_RE = re.compile(r"^GTM-[A-Z0-9]+$")
 
 
 class Settings(BaseSettings):
@@ -44,8 +46,8 @@ class Settings(BaseSettings):
     @field_validator("gtm_container_id")
     @classmethod
     def _validate_gtm_id(cls, v: str) -> str:
-        if v and not v.startswith("GTM-"):
-            raise ValueError("RENTIVO_GTM_CONTAINER_ID must start with 'GTM-' or be empty")
+        if v and not _GTM_RE.match(v):
+            raise ValueError("RENTIVO_GTM_CONTAINER_ID must match GTM-[A-Z0-9]+ or be empty")
         return v
 
     @field_validator("environment")
