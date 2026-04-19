@@ -3,13 +3,54 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rentivo — Gestão de cobranças para imóveis</title>
+    <title>Rentivo — Gestão de cobranças para imóveis com PIX</title>
+    <meta name="description" content="Rentivo é uma plataforma gratuita e de código aberto para gestão de cobranças de aluguéis e imóveis. Gere faturas em PDF com QR Code PIX, organize equipes e acompanhe pagamentos.">
+    <meta name="keywords" content="gestão de aluguel, cobrança imóvel, fatura PIX, QR Code PIX, cobrança de aluguel, gestão imobiliária">
+    <meta name="author" content="Rentivo">
+    <meta name="robots" content="index, follow">
+    {% set origin = public_url or request.url.scheme ~ '://' ~ request.url.netloc %}
+    <link rel="canonical" href="{{ origin }}/">
+    <link rel="alternate" hreflang="pt-BR" href="{{ origin }}/">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Rentivo">
+    <meta property="og:title" content="Rentivo — Gestão de cobranças para imóveis">
+    <meta property="og:description" content="Crie cobranças, gere faturas em PDF com QR Code PIX e gerencie pagamentos de aluguéis — gratuito e open source.">
+    <meta property="og:url" content="{{ origin }}/">
+    <meta property="og:locale" content="pt_BR">
+    <meta property="og:image" content="{{ origin }}{{ url_for('static', path='og-cover.svg') }}">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Rentivo — Gestão de cobranças para imóveis">
+    <meta name="twitter:description" content="Crie cobranças, gere faturas em PDF com QR Code PIX e gerencie pagamentos de aluguéis — gratuito e open source.">
+    <meta name="twitter:image" content="{{ origin }}{{ url_for('static', path='og-cover.svg') }}">
+
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='favicon.svg') }}?v={{ asset_version }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
     <link href="{{ url_for('static', path='core/css/custom.css') }}?v={{ asset_version }}" rel="stylesheet">
     <link href="{{ url_for('static', path='core/css/landing.css') }}?v={{ asset_version }}" rel="stylesheet">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Rentivo",
+      "description": "Gestão de cobranças para imóveis com geração de faturas em PDF e QR Code PIX.",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "inLanguage": "pt-BR",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "BRL"
+      },
+      "url": "{{ origin }}/"
+    }
+    </script>
 </head>
 <body>
 <!-- ─── Topbar ─── -->
