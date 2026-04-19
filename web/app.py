@@ -27,6 +27,7 @@ from web.routes.billing import router as billing_router
 from web.routes.invite import router as invite_router
 from web.routes.organization import router as organization_router
 from web.routes.security import router as security_router
+from web.routes.seo import router as seo_router
 from web.routes.theme import router as theme_router
 
 configure_logging()
@@ -73,6 +74,7 @@ templates.env.globals["format_brl"] = format_brl
 templates.env.globals["format_brl_input"] = format_brl_input
 templates.env.globals["format_month"] = format_month
 templates.env.globals["asset_version"] = ASSET_VERSION
+templates.env.globals["public_url"] = settings.public_url.rstrip("/") if settings.public_url else ""
 
 app.include_router(auth_router)
 app.include_router(billing_router)
@@ -81,6 +83,7 @@ app.include_router(organization_router)
 app.include_router(invite_router)
 app.include_router(security_router)
 app.include_router(theme_router)
+app.include_router(seo_router)
 
 
 @app.exception_handler(StarletteHTTPException)

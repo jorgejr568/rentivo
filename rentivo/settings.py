@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     webauthn_rp_name: str = "Landlord"
     webauthn_origin: str = "http://localhost:8000"
 
+    # Canonical public origin (no trailing slash) used for robots.txt / sitemap.xml / OG tags.
+    # Leave empty to derive from the incoming request at runtime.
+    public_url: str = ""
+
     secret_key: str = _INSECURE_DEFAULT_KEY
 
     def get_secret_key(self) -> str:
