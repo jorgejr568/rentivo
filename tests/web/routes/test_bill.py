@@ -244,6 +244,46 @@ class TestBillInvoice:
         )
         assert response.status_code == 302
 
+    def test_invoice_rejects_unauthorized_user(self, auth_client, test_engine, tmp_path):
+        """Regression: GET /invoice must check can_view_billing."""
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            response = auth_client.get(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/invoice",
+                follow_redirects=False,
+            )
+        # Redirected to "/" with access-denied flash, not 200 FileResponse
+        assert response.status_code == 302
+        assert response.headers.get("location") == "/"
+
+    def test_receipt_view_rejects_unauthorized_user(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Regression: GET /receipts/<uuid> must check can_view_billing."""
+        # Owner uploads a receipt to their own bill
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            with test_engine.connect() as conn:
+                receipt = SQLAlchemyReceiptRepository(conn).create(
+                    Receipt(
+                        bill_id=bill.id,
+                        filename="r.pdf",
+                        storage_key="stub.pdf",
+                        content_type="application/pdf",
+                        file_size=4,
+                    )
+                )
+
+        response = auth_client.get(
+            f"/billings/{other_billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers.get("location") == "/"
+
 
 class TestBillGenerateExtras:
     def test_generate_with_extras(self, auth_client, test_engine, tmp_path, csrf_token):
@@ -858,6 +898,7 @@ class TestReceiptViewS3Redirect:
         with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
             mock_svc = MagicMock()
             mock_svc.get_receipt_by_uuid.return_value = receipts[0]
+            mock_svc.get_bill.return_value = bill
             mock_svc.storage.get_url.return_value = "https://s3.example.com/receipt.pdf"
             mock_svc_fn.return_value = mock_svc
             response = auth_client.get(

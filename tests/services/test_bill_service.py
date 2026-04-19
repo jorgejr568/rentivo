@@ -557,7 +557,7 @@ class TestPdfGenerationWithReceipts:
         with patch.object(self.service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF-invoice"
             with patch("rentivo.services.bill_service.merge_receipts") as mock_merge:
-                mock_merge.return_value = b"%PDF-merged"
+                mock_merge.return_value = (b"%PDF-merged", [])
                 self.service._generate_and_store_pdf(bill, billing)
 
         mock_merge.assert_called_once()
@@ -596,16 +596,19 @@ class TestPdfGenerationWithReceipts:
         ]
         self.mock_storage.get.side_effect = Exception("download failed")
 
-        result = self.service._fetch_receipt_data(bill)
-        assert result == []  # Error is caught and skipped
+        data, ordered = self.service._fetch_receipt_data(bill)
+        assert data == []  # Error is caught and skipped
+        assert ordered == []
 
     def test_fetch_receipt_data_no_receipt_repo(self):
         service = BillService(self.mock_repo, self.mock_storage)
         bill = Bill(id=1, uuid="u", billing_id=1, reference_month="2025-03")
-        result = service._fetch_receipt_data(bill)
-        assert result == []
+        data, ordered = service._fetch_receipt_data(bill)
+        assert data == []
+        assert ordered == []
 
     def test_fetch_receipt_data_bill_id_none(self):
         bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03")
-        result = self.service._fetch_receipt_data(bill)
-        assert result == []
+        data, ordered = self.service._fetch_receipt_data(bill)
+        assert data == []
+        assert ordered == []

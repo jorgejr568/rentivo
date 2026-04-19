@@ -5,10 +5,68 @@ Generates the payload string for a static PIX QR code and renders it as a PNG im
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
 
 import qrcode
 from qrcode.image.pil import PilImage
+
+_PIX_KEY_PATTERNS: dict[str, re.Pattern[str]] = {
+    "cpf": re.compile(r"^\d{11}$"),
+    "cnpj": re.compile(r"^\d{14}$"),
+    "email": re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$"),
+    "phone": re.compile(r"^\+55\d{10,11}$"),
+    "evp": re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"),
+}
+
+
+def classify_pix_key(key: str) -> str | None:
+    """Return the PIX key type ('cpf', 'cnpj', 'email', 'phone', 'evp') or None if invalid."""
+    if not key:
+        return None
+    for kind, pattern in _PIX_KEY_PATTERNS.items():
+        if pattern.match(key):
+            return kind
+    return None
+
+
+def validate_pix_key(key: str) -> str:
+    """Validate a PIX key, returning its normalized form.
+
+    - CPF/CNPJ/phone: strips common separators (., -, /, space, parentheses).
+      Phones without a country code are assumed Brazilian and prefixed with +55.
+    - email: lowercased.
+    - evp: lowercased.
+
+    Raises ValueError if the key is empty or does not match any recognized format.
+    """
+    if not key or not key.strip():
+        raise ValueError("Chave PIX vazia")
+    raw = key.strip()
+
+    digits_only = re.sub(r"[.\-/\s()]", "", raw)
+    if digits_only.isdigit():
+        if len(digits_only) == 11:
+            return digits_only  # CPF
+        if len(digits_only) == 14:
+            return digits_only  # CNPJ
+        if len(digits_only) in (10, 11):
+            return f"+55{digits_only}"  # assume Brazilian phone
+
+    if raw.startswith("+") and re.sub(r"[\s()-]", "", raw).replace("+", "", 1).isdigit():
+        normalized = "+" + re.sub(r"[\s()\-]", "", raw[1:])
+        if _PIX_KEY_PATTERNS["phone"].match(normalized):
+            return normalized
+
+    if "@" in raw:
+        candidate = raw.lower()
+        if _PIX_KEY_PATTERNS["email"].match(candidate):
+            return candidate
+
+    if _PIX_KEY_PATTERNS["evp"].match(raw):
+        return raw.lower()
+
+    raise ValueError("Chave PIX inválida. Use CPF, CNPJ, e-mail, telefone (+55...) ou chave aleatória (UUID).")
 
 
 def _tlv(tag: str, value: str) -> str:
@@ -30,12 +88,19 @@ def _crc16_ccitt(data: str) -> str:
     return f"{crc:04X}"
 
 
+def _format_amount_centavos(centavos: int) -> str:
+    """Format integer centavos as a BRL decimal string without float rounding."""
+    if centavos < 0:
+        raise ValueError("amount_centavos must be non-negative")
+    return f"{centavos // 100}.{centavos % 100:02d}"
+
+
 def generate_pix_payload(
     *,
     pix_key: str,
     merchant_name: str,
     merchant_city: str,
-    amount: float | None = None,
+    amount_centavos: int | None = None,
     txid: str = "***",
 ) -> str:
     """Generate a PIX BR Code payload string.
@@ -44,7 +109,7 @@ def generate_pix_payload(
         pix_key: The PIX key (CPF, CNPJ, phone, email, or random key).
         merchant_name: Recipient name (max 25 chars, ASCII only).
         merchant_city: Recipient city (max 15 chars, ASCII only).
-        amount: Transaction amount in reais (e.g. 150.50). None for open amount.
+        amount_centavos: Transaction amount in centavos (e.g. 15050 for R$ 150,50). None for open amount.
         txid: Transaction ID (default "***").
 
     Returns:
@@ -66,8 +131,8 @@ def generate_pix_payload(
         + _tlv("53", "986")  # Transaction Currency (BRL)
     )
 
-    if amount is not None and amount > 0:
-        payload += _tlv("54", f"{amount:.2f}")
+    if amount_centavos is not None and amount_centavos > 0:
+        payload += _tlv("54", _format_amount_centavos(amount_centavos))
 
     payload += (
         _tlv("58", "BR")  # Country Code
@@ -97,7 +162,7 @@ def generate_pix_qrcode_png(
     pix_key: str,
     merchant_name: str,
     merchant_city: str,
-    amount: float | None = None,
+    amount_centavos: int | None = None,
     txid: str = "***",
     box_size: int = 10,
     border: int = 2,
@@ -116,7 +181,7 @@ def generate_pix_qrcode_png(
             pix_key=pix_key,
             merchant_name=merchant_name,
             merchant_city=merchant_city,
-            amount=amount,
+            amount_centavos=amount_centavos,
             txid=txid,
         )
 

@@ -58,7 +58,7 @@ class TestGeneratePixPayload:
             pix_key="key",
             merchant_name="Name",
             merchant_city="City",
-            amount=150.50,
+            amount_centavos=15050,
         )
         assert "150.50" in payload
 
@@ -67,7 +67,7 @@ class TestGeneratePixPayload:
             pix_key="key",
             merchant_name="Name",
             merchant_city="City",
-            amount=None,
+            amount_centavos=None,
         )
         # tag 54 should not appear
         assert "54" not in payload[:20]
@@ -115,6 +115,6 @@ class TestGeneratePixQrcodePng:
             pix_key="key",
             merchant_name="Name",
             merchant_city="City",
-            amount=100.00,
+            amount_centavos=10000,
         )
         assert result[:4] == b"\x89PNG"

@@ -72,7 +72,11 @@ def create_billing_menu(billing_service: BillingService, audit_service: AuditSer
     else:
         pix_key = questionary.text("Chave PIX para esta cobrança (opcional):").ask() or ""
 
-    billing = billing_service.create_billing(name, description, items, pix_key=pix_key)
+    try:
+        billing = billing_service.create_billing(name, description, items, pix_key=pix_key)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        return
 
     audit_service.safe_log(
         AuditEventType.BILLING_CREATE,
@@ -218,7 +222,11 @@ def _edit_pix_key(billing, billing_service: BillingService, audit_service: Audit
         return billing
     previous_state = serialize_billing(billing)
     billing.pix_key = new_key
-    billing = billing_service.update_billing(billing)
+    try:
+        billing = billing_service.update_billing(billing)
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        return billing
 
     audit_service.safe_log(
         AuditEventType.BILLING_UPDATE,

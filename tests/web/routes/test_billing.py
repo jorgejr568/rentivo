@@ -381,9 +381,43 @@ class TestBillingTransfer:
         )
         assert response.status_code == 302
 
+    def test_transfer_rejects_non_member(self, auth_client, test_engine, csrf_token):
+        """Regression: transfer must reject orgs the user is not a member of."""
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        billing = create_billing_in_db(test_engine)
+        with test_engine.connect() as conn:
+            stranger = SQLAlchemyUserRepository(conn).create(User(username="stranger", password_hash="h"))
+        other_org = create_org_in_db(test_engine, "Stranger Org", stranger.id)
+
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/transfer",
+            data={"csrf_token": csrf_token, "organization_id": str(other_org.id)},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        # Billing owner should be unchanged — still user-owned
+        with test_engine.connect() as conn:
+            from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+            reloaded = SQLAlchemyBillingRepository(conn).get_by_id(billing.id)
+        assert reloaded.owner_type == "user"
+
+    def test_transfer_invalid_org_id(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/transfer",
+            data={"csrf_token": csrf_token, "organization_id": "not-a-number"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
     def test_transfer_value_error(self, auth_client, test_engine, csrf_token):
         """When transfer_to_organization raises ValueError, show flash error."""
+        user_id = get_test_user_id(test_engine)
         billing = create_billing_in_db(test_engine)
+        org = create_org_in_db(test_engine, "My Org", user_id)
         with patch(
             "web.routes.billing.get_billing_service",
         ) as mock_svc_fn:
@@ -393,13 +427,13 @@ class TestBillingTransfer:
                 uuid=billing.uuid,
                 name="A",
                 owner_type="user",
-                owner_id=1,
+                owner_id=user_id,
             )
             mock_svc.transfer_to_organization.side_effect = ValueError("Only personal billings")
             mock_svc_fn.return_value = mock_svc
             response = auth_client.post(
                 f"/billings/{billing.uuid}/transfer",
-                data={"csrf_token": csrf_token, "organization_id": "99"},
+                data={"csrf_token": csrf_token, "organization_id": str(org.id)},
                 follow_redirects=False,
             )
         assert response.status_code == 302

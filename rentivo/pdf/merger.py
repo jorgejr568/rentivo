@@ -60,7 +60,10 @@ def _image_to_pdf(image_bytes: bytes) -> bytes:
     return bytes(pdf.output())
 
 
-def merge_receipts(invoice_pdf: bytes, receipts: list[tuple[bytes, str]]) -> bytes:
+def merge_receipts(
+    invoice_pdf: bytes,
+    receipts: list[tuple[bytes, str]],
+) -> tuple[bytes, list[int]]:
     """Merge receipt attachments after the invoice PDF.
 
     Args:
@@ -68,12 +71,14 @@ def merge_receipts(invoice_pdf: bytes, receipts: list[tuple[bytes, str]]) -> byt
         receipts: List of (file_bytes, content_type) tuples, in order.
 
     Returns:
-        Merged PDF bytes.
+        (merged_pdf_bytes, failed_indices) — failed_indices lists the positions
+        in the receipts list that could not be merged.
     """
     if not receipts:
-        return invoice_pdf
+        return invoice_pdf, []
 
     writer = PdfWriter()
+    failed: list[int] = []
 
     # Add all invoice pages
     try:
@@ -82,10 +87,9 @@ def merge_receipts(invoice_pdf: bytes, receipts: list[tuple[bytes, str]]) -> byt
             writer.add_page(page)
     except Exception:
         logger.exception("Failed to read invoice PDF, returning original")
-        return invoice_pdf
+        return invoice_pdf, list(range(len(receipts)))
 
-    # Add each receipt
-    for file_bytes, content_type in receipts:
+    for idx, (file_bytes, content_type) in enumerate(receipts):
         try:
             if content_type == "application/pdf":
                 reader = PdfReader(BytesIO(file_bytes))
@@ -98,10 +102,12 @@ def merge_receipts(invoice_pdf: bytes, receipts: list[tuple[bytes, str]]) -> byt
                     writer.add_page(page)
             else:
                 logger.warning("Skipping unsupported content type: %s", content_type)
+                failed.append(idx)
         except Exception:
             logger.exception("Failed to process receipt (type=%s), skipping", content_type)
+            failed.append(idx)
             continue
 
     output = BytesIO()
     writer.write(output)
-    return output.getvalue()
+    return output.getvalue(), failed

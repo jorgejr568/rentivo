@@ -62,3 +62,10 @@ class S3Storage(StorageBackend):
         )
         logger.debug("Generated presigned URL for %s", key)
         return url
+
+    def delete(self, key: str) -> None:
+        try:
+            self.client.delete_object(Bucket=self.bucket, Key=key)
+            logger.debug("Deleted s3://%s/%s", self.bucket, key)
+        except Exception:
+            logger.exception("Failed to delete s3://%s/%s", self.bucket, key)

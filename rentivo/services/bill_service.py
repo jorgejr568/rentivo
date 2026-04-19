@@ -52,6 +52,12 @@ class BillService:
         self.receipt_repo = receipt_repo
         self.theme_service = theme_service
         self.pdf_generator = InvoicePDF()
+        self._last_failed_receipt_uuids: list[str] = []
+
+    @property
+    def last_failed_receipt_uuids(self) -> list[str]:
+        """UUIDs of receipts that could not be merged during the most recent PDF render."""
+        return list(self._last_failed_receipt_uuids)
 
     @staticmethod
     def _get_pix_data(billing: Billing, total_centavos: int) -> tuple[bytes | None, str, str]:
@@ -65,39 +71,45 @@ class BillService:
         if not merchant_name or not merchant_city:
             return None, "", ""
 
-        amount = total_centavos / 100
         payload = generate_pix_payload(
             pix_key=pix_key,
             merchant_name=merchant_name,
             merchant_city=merchant_city,
-            amount=amount,
+            amount_centavos=total_centavos,
         )
         png = generate_pix_qrcode_png(
             pix_key=pix_key,
             merchant_name=merchant_name,
             merchant_city=merchant_city,
-            amount=amount,
+            amount_centavos=total_centavos,
             payload=payload,
         )
         return png, pix_key, payload
 
-    def _fetch_receipt_data(self, bill: Bill) -> list[tuple[bytes, str]]:
-        """Fetch receipt file data for a bill, for merging into the PDF."""
+    def _fetch_receipt_data(self, bill: Bill) -> tuple[list[tuple[bytes, str]], list[Receipt]]:
+        """Fetch receipt file data for a bill, for merging into the PDF.
+
+        Returns (data, ordered_receipts) where ordered_receipts[i] corresponds
+        to data[i]. Receipts whose file fetch fails are excluded from both lists
+        but recorded in the log.
+        """
         if self.receipt_repo is None or bill.id is None:
-            return []
+            return [], []
         receipts = self.receipt_repo.list_by_bill(bill.id)
-        result: list[tuple[bytes, str]] = []
+        data: list[tuple[bytes, str]] = []
+        ordered: list[Receipt] = []
         for receipt in receipts:
             try:
-                data = self.storage.get(receipt.storage_key)
-                result.append((data, receipt.content_type))
+                blob = self.storage.get(receipt.storage_key)
+                data.append((blob, receipt.content_type))
+                ordered.append(receipt)
             except Exception:
                 logger.exception(
                     "Failed to fetch receipt %s (key=%s), skipping",
                     receipt.uuid,
                     receipt.storage_key,
                 )
-        return result
+        return data, ordered
 
     def _generate_and_store_pdf(self, bill: Bill, billing: Billing) -> str:
         """Generate PDF, save to storage, and update bill's pdf_path. Returns the storage path."""
@@ -116,9 +128,19 @@ class BillService:
         )
 
         # Merge receipts if available
-        receipt_data = self._fetch_receipt_data(bill)
+        receipt_data, ordered_receipts = self._fetch_receipt_data(bill)
+        self._last_failed_receipt_uuids: list[str] = []
         if receipt_data:
-            pdf_bytes = merge_receipts(pdf_bytes, receipt_data)
+            pdf_bytes, failed_idxs = merge_receipts(pdf_bytes, receipt_data)
+            if failed_idxs:
+                self._last_failed_receipt_uuids = [
+                    ordered_receipts[i].uuid for i in failed_idxs if 0 <= i < len(ordered_receipts)
+                ]
+                logger.warning(
+                    "Receipts failed to merge for bill %s: %s",
+                    bill.uuid,
+                    self._last_failed_receipt_uuids,
+                )
 
         key = _storage_key(billing.uuid, bill.uuid)
         path = self.storage.save(key, pdf_bytes)
@@ -294,15 +316,23 @@ class BillService:
         # Store file
         self.storage.save(storage_key, file_bytes, content_type=content_type)
 
-        receipt = Receipt(
-            bill_id=bill.id,
-            filename=filename,
-            storage_key=storage_key,
-            content_type=content_type,
-            file_size=len(file_bytes),
-            sort_order=sort_order,
-        )
-        receipt = self.receipt_repo.create(receipt)
+        try:
+            receipt = Receipt(
+                bill_id=bill.id,
+                filename=filename,
+                storage_key=storage_key,
+                content_type=content_type,
+                file_size=len(file_bytes),
+                sort_order=sort_order,
+            )
+            receipt = self.receipt_repo.create(receipt)
+        except Exception:
+            logger.exception(
+                "Receipt repo create failed, cleaning up orphaned storage key=%s",
+                storage_key,
+            )
+            self.storage.delete(storage_key)
+            raise
         logger.info("Receipt added: uuid=%s bill=%s file=%s", receipt.uuid, bill.uuid, filename)
 
         # Regenerate the merged PDF
