@@ -271,6 +271,23 @@ class TestPasskeyDelete:
             passkey_repo = SQLAlchemyPasskeyRepository(conn)
             assert passkey_repo.get_by_uuid(passkey.uuid) is not None
 
+    def test_delete_passkey_without_csrf_rejected(self, auth_client, test_engine):
+        """Vuln 7: form POST must require CSRF token (previously exempt via /security/passkeys prefix)."""
+        user_id = get_test_user_id(test_engine)
+        passkey = _setup_passkey(test_engine, user_id, name="Needs CSRF")
+
+        # Send a form body with a bogus csrf_token so the middleware actually engages.
+        response = auth_client.post(
+            f"/security/passkeys/{passkey.uuid}/delete",
+            data={"csrf_token": "this-is-not-the-real-token"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        # Passkey must still exist — CSRF middleware redirected before the handler ran.
+        with test_engine.connect() as conn:
+            passkey_repo = SQLAlchemyPasskeyRepository(conn)
+            assert passkey_repo.get_by_uuid(passkey.uuid) is not None
+
 
 class TestOrganizationToggleMFA:
     def test_toggle_mfa_enable(self, auth_client, test_engine, csrf_token):
