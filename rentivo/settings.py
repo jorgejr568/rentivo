@@ -1,6 +1,7 @@
 import secrets
 
 import structlog
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = structlog.get_logger(__name__)
@@ -36,6 +37,23 @@ class Settings(BaseSettings):
     public_url: str = ""
 
     secret_key: str = _INSECURE_DEFAULT_KEY
+
+    gtm_container_id: str = ""
+    environment: str = "production"
+
+    @field_validator("gtm_container_id")
+    @classmethod
+    def _validate_gtm_id(cls, v: str) -> str:
+        if v and not v.startswith("GTM-"):
+            raise ValueError("RENTIVO_GTM_CONTAINER_ID must start with 'GTM-' or be empty")
+        return v
+
+    @field_validator("environment")
+    @classmethod
+    def _validate_environment(cls, v: str) -> str:
+        if v not in ("production", "staging", "dev"):
+            raise ValueError("RENTIVO_ENVIRONMENT must be one of: production, staging, dev")
+        return v
 
     def get_secret_key(self) -> str:
         if self.secret_key == _INSECURE_DEFAULT_KEY:

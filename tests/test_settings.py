@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from rentivo.settings import _INSECURE_DEFAULT_KEY, Settings
 
 
@@ -40,3 +43,36 @@ class TestSettings:
         monkeypatch.setenv("RENTIVO_SECRET_KEY", "my-production-key")
         s = Settings(_env_file=None)
         assert s.get_secret_key() == "my-production-key"
+
+
+def test_gtm_container_id_default_is_empty():
+    s = Settings(_env_file=None)
+    assert s.gtm_container_id == ""
+
+
+def test_gtm_container_id_accepts_valid():
+    s = Settings(_env_file=None, gtm_container_id="GTM-ABC1234")
+    assert s.gtm_container_id == "GTM-ABC1234"
+
+
+def test_gtm_container_id_rejects_invalid_prefix():
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None, gtm_container_id="UA-12345")
+    assert "must start with 'GTM-'" in str(exc_info.value)
+
+
+def test_environment_default_is_production():
+    s = Settings(_env_file=None)
+    assert s.environment == "production"
+
+
+def test_environment_accepts_known_values():
+    for value in ("production", "staging", "dev"):
+        s = Settings(_env_file=None, environment=value)
+        assert s.environment == value
+
+
+def test_environment_rejects_unknown():
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None, environment="qa")
+    assert "must be one of" in str(exc_info.value)
