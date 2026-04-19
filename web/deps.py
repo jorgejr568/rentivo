@@ -29,6 +29,7 @@ from rentivo.services.billing_service import BillingService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
+from rentivo.services.pix_service import PixService
 from rentivo.services.theme_service import ThemeService
 from rentivo.services.user_service import UserService
 from rentivo.storage.factory import get_storage
@@ -171,11 +172,20 @@ def get_bill_service(request: Request) -> BillService:
         get_storage(),
         SQLAlchemyReceiptRepository(conn),
         theme_service=get_theme_service(request),
+        pix_service=get_pix_service(request),
     )
 
 
 def get_theme_service(request: Request) -> ThemeService:
     return ThemeService(SQLAlchemyThemeRepository(_get_conn(request)))
+
+
+def get_pix_service(request: Request) -> PixService:
+    conn = _get_conn(request)
+    return PixService(
+        SQLAlchemyUserRepository(conn),
+        SQLAlchemyOrganizationRepository(conn),
+    )
 
 
 def get_user_service(request: Request) -> UserService:

@@ -18,6 +18,9 @@ class Organization(BaseModel):
     name: str
     created_by: int = 0
     enforce_mfa: bool = False
+    pix_key: str = ""
+    pix_merchant_name: str = ""
+    pix_merchant_city: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
     deleted_at: datetime | None = None

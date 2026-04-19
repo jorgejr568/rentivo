@@ -3,11 +3,14 @@ from unittest.mock import MagicMock, patch
 
 class TestBuildServices:
     @patch("rentivo.cli.app.get_storage")
+    @patch("rentivo.cli.app.get_organization_repository")
     @patch("rentivo.cli.app.get_user_repository")
     @patch("rentivo.cli.app.get_bill_repository")
     @patch("rentivo.cli.app.get_billing_repository")
     @patch("rentivo.cli.app.get_audit_log_repository")
-    def test_returns_tuple(self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_storage):
+    def test_returns_tuple(
+        self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_org_repo, mock_storage
+    ):
         from rentivo.cli.app import _build_services
 
         result = _build_services()
@@ -15,12 +18,13 @@ class TestBuildServices:
         assert len(result) == 4
 
     @patch("rentivo.cli.app.get_storage")
+    @patch("rentivo.cli.app.get_organization_repository")
     @patch("rentivo.cli.app.get_user_repository")
     @patch("rentivo.cli.app.get_bill_repository")
     @patch("rentivo.cli.app.get_billing_repository")
     @patch("rentivo.cli.app.get_audit_log_repository")
     def test_returns_correct_types(
-        self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_storage
+        self, mock_audit_repo, mock_billing_repo, mock_bill_repo, mock_user_repo, mock_org_repo, mock_storage
     ):
         from rentivo.cli.app import _build_services
         from rentivo.services.audit_service import AuditService

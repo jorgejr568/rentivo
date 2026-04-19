@@ -12,6 +12,25 @@
     </div>
 </div>
 
+{% if user_pix_incomplete %}
+<div class="toast toast--warning" role="alert">
+    Você ainda não configurou seus dados de PIX.
+    <a href="/security">Configure agora</a> para conseguir gerar faturas das suas cobranças pessoais.
+</div>
+{% endif %}
+
+{% if billings_needing_pix %}
+<div class="toast toast--warning" role="alert">
+    As cobranças a seguir não podem gerar faturas até que a chave PIX, o nome e a cidade do recebedor sejam preenchidos
+    {% if user_pix_incomplete %}(na sua conta ou na organização, ou diretamente na cobrança){% else %}(no proprietário ou na própria cobrança){% endif %}:
+    <ul class="mb-0" style="margin-top: 0.5rem;">
+        {% for b in billings_needing_pix %}
+        <li><a href="/billings/{{ b.uuid }}">{{ b.name }}</a></li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
 {% if billings %}
 <div>
     {% for billing in billings %}

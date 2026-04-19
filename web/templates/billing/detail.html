@@ -12,7 +12,11 @@
     </div>
     <div class="page-actions">
         {% if role in ("owner", "admin", "manager") %}
+        {% if pix_needs_setup %}
+        <button type="button" class="btn btn--primary" disabled title="Configure os dados do PIX primeiro">Gerar Fatura</button>
+        {% else %}
         <a href="/billings/{{ billing.uuid }}/bills/generate" class="btn btn--primary">Gerar Fatura</a>
+        {% endif %}
         {% endif %}
         {% if role in ("owner", "admin") %}
         <a href="/themes/billing/{{ billing.uuid }}" class="btn">Tema</a>
@@ -21,11 +25,35 @@
     </div>
 </div>
 
-{% if billing.pix_key %}
+{% if pix_needs_setup %}
+<div class="toast toast--warning" role="alert">
+    Os dados do PIX não estão configurados. Preencha a chave PIX, o nome e a cidade do recebedor
+    {% if billing.owner_type == "organization" %}
+    em <a href="/organizations/">Organizações</a>
+    {% else %}
+    em <a href="/security">Segurança</a>
+    {% endif %}
+    ou diretamente na <a href="/billings/{{ billing.uuid }}/edit">edição desta cobrança</a>.
+</div>
+{% endif %}
+
+{% if billing.pix_key or billing.pix_merchant_name or billing.pix_merchant_city %}
 <div class="detail-meta">
+    {% if billing.pix_key %}
     <div class="detail-meta-item">
-        <strong>Chave PIX:</strong> <span class="text-mono">{{ billing.pix_key }}</span>
+        <strong>Chave PIX (override):</strong> <span class="text-mono">{{ billing.pix_key }}</span>
     </div>
+    {% endif %}
+    {% if billing.pix_merchant_name %}
+    <div class="detail-meta-item">
+        <strong>Recebedor:</strong> {{ billing.pix_merchant_name }}
+    </div>
+    {% endif %}
+    {% if billing.pix_merchant_city %}
+    <div class="detail-meta-item">
+        <strong>Cidade:</strong> {{ billing.pix_merchant_city }}
+    </div>
+    {% endif %}
 </div>
 {% endif %}
 

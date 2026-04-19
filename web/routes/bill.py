@@ -12,7 +12,14 @@ from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE
 from rentivo.services.audit_serializers import serialize_bill
-from web.deps import get_audit_service, get_authorization_service, get_bill_service, get_billing_service, render
+from web.deps import (
+    get_audit_service,
+    get_authorization_service,
+    get_bill_service,
+    get_billing_service,
+    get_pix_service,
+    render,
+)
 from web.flash import flash
 from web.forms import parse_brl, parse_formset
 
@@ -33,6 +40,13 @@ async def bill_generate_form(request: Request, billing_uuid: str):
     user_id = request.session.get("user_id")
     if not auth_service.can_manage_bills(user_id, billing):
         flash(request, "Acesso negado.", "danger")
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+    if get_pix_service(request).billing_needs_setup(billing):
+        flash(
+            request,
+            "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas.",
+            "warning",
+        )
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
     return render(request, "bill/generate.html", {"billing": billing})
 
@@ -63,6 +77,15 @@ async def bill_generate(request: Request, billing_uuid: str):
         logger.warning("bill_generate_rejected", reason="empty_reference_month")
         flash(request, "Mês de referência é obrigatório.", "danger")
         return RedirectResponse(f"/billings/{billing_uuid}/bills/generate", status_code=302)
+
+    if get_pix_service(request).billing_needs_setup(billing):
+        logger.warning("bill_generate_rejected", billing_uuid=billing_uuid, reason="pix_not_configured")
+        flash(
+            request,
+            "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas.",
+            "warning",
+        )
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     # Parse variable amounts
     variable_amounts: dict[int, int] = {}
@@ -220,6 +243,14 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
+    if get_pix_service(request).billing_needs_setup(billing):
+        flash(
+            request,
+            "Configure a chave PIX, o nome e a cidade do recebedor antes de editar esta fatura.",
+            "warning",
+        )
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
     previous_state = serialize_bill(bill)
 
     form = await request.form()
@@ -303,6 +334,14 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
         logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
+
+    if get_pix_service(request).billing_needs_setup(billing):
+        flash(
+            request,
+            "Configure a chave PIX, o nome e a cidade do recebedor antes de regenerar o PDF.",
+            "warning",
+        )
+        return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill_uuid}", status_code=302)
 
     old_pdf_path = bill.pdf_path
     bill_service.regenerate_pdf(bill, billing)
@@ -503,6 +542,14 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         flash(request, "Nenhum arquivo selecionado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
 
+    if get_pix_service(request).billing_needs_setup(billing):
+        flash(
+            request,
+            "Configure a chave PIX, o nome e a cidade do recebedor antes de anexar comprovantes.",
+            "warning",
+        )
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
     attached = 0
     skipped = 0
     accumulated_failed: set[str] = set()
@@ -591,6 +638,14 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
         flash(request, "Comprovante não encontrado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
 
+    if get_pix_service(request).billing_needs_setup(billing):
+        flash(
+            request,
+            "Configure a chave PIX, o nome e a cidade do recebedor antes de remover comprovantes.",
+            "warning",
+        )
+        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
     previous_state = {
         "filename": receipt.filename,
         "content_type": receipt.content_type,
@@ -633,6 +688,12 @@ async def receipt_reorder(request: Request, billing_uuid: str, bill_uuid: str):
     user_id = request.session.get("user_id")
     if not auth_service.can_manage_bills(user_id, billing):
         return JSONResponse({"error": "Acesso negado."}, status_code=403)
+
+    if get_pix_service(request).billing_needs_setup(billing):
+        return JSONResponse(
+            {"error": "Configure a chave PIX, o nome e a cidade do recebedor antes de reordenar comprovantes."},
+            status_code=400,
+        )
 
     try:
         body = await request.json()

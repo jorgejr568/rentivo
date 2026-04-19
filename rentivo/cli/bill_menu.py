@@ -109,14 +109,18 @@ def generate_bill_menu(billing: Billing, bill_service: BillService, audit_servic
     notes = questionary.text("Observa\u00e7\u00f5es (opcional):").ask() or ""
 
     # Generate
-    bill = bill_service.generate_bill(
-        billing=billing,
-        reference_month=month,
-        variable_amounts=variable_amounts,
-        extras=extras,
-        notes=notes,
-        due_date=due_date,
-    )
+    try:
+        bill = bill_service.generate_bill(
+            billing=billing,
+            reference_month=month,
+            variable_amounts=variable_amounts,
+            extras=extras,
+            notes=notes,
+            due_date=due_date,
+        )
+    except ValueError as e:
+        console.print(f"[red]{e}[/red]")
+        return
 
     audit_service.safe_log(
         AuditEventType.BILL_CREATE,

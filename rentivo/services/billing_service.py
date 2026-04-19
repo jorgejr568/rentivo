@@ -26,6 +26,8 @@ class BillingService:
         description: str,
         items: list[BillingItem],
         pix_key: str = "",
+        pix_merchant_name: str = "",
+        pix_merchant_city: str = "",
         owner_type: str = "user",
         owner_id: int = 0,
     ) -> Billing:
@@ -34,6 +36,8 @@ class BillingService:
             description=description,
             items=items,
             pix_key=_normalize_pix_key(pix_key),
+            pix_merchant_name=pix_merchant_name.strip(),
+            pix_merchant_city=pix_merchant_city.strip(),
             owner_type=owner_type,
             owner_id=owner_id,
         )
@@ -63,6 +67,8 @@ class BillingService:
 
     def update_billing(self, billing: Billing) -> Billing:
         billing.pix_key = _normalize_pix_key(billing.pix_key)
+        billing.pix_merchant_name = billing.pix_merchant_name.strip()
+        billing.pix_merchant_city = billing.pix_merchant_city.strip()
         result = self.repo.update(billing)
         logger.info("billing_updated", billing_id=result.id, name=result.name)
         return result

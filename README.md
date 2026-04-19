@@ -91,17 +91,6 @@ Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
 </details>
 
 <details>
-<summary><strong>PIX</strong></summary>
-
-| Variable | Description |
-|----------|-------------|
-| `RENTIVO_PIX_KEY` | PIX key (CPF, email, phone, or random) |
-| `RENTIVO_PIX_MERCHANT_NAME` | Merchant name for QR code |
-| `RENTIVO_PIX_MERCHANT_CITY` | Merchant city for QR code |
-
-</details>
-
-<details>
 <summary><strong>Web</strong></summary>
 
 | Variable | Default | Description |

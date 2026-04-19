@@ -14,6 +14,7 @@ class AuditEventType:
     USER_SIGNUP = "user.signup"
     USER_CREATE = "user.create"
     USER_CHANGE_PASSWORD = "user.change_password"
+    USER_UPDATE = "user.update"
     USER_LOGOUT = "user.logout"
 
     # Billing events

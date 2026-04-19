@@ -80,6 +80,9 @@ class UserRepository(ABC):
     @abstractmethod
     def update_password_hash(self, username: str, password_hash: str) -> None: ...
 
+    @abstractmethod
+    def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None: ...
+
 
 class OrganizationRepository(ABC):
     @abstractmethod

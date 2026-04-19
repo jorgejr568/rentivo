@@ -27,6 +27,8 @@ class Billing(BaseModel):
     name: str
     description: str = ""
     pix_key: str = ""
+    pix_merchant_name: str = ""
+    pix_merchant_city: str = ""
     owner_type: str = "user"
     owner_id: int = 0
     items: list[BillingItem] = []

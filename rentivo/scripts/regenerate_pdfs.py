@@ -20,9 +20,12 @@ from rentivo.models.billing import Billing
 from rentivo.repositories.factory import (
     get_bill_repository,
     get_billing_repository,
+    get_organization_repository,
     get_receipt_repository,
+    get_user_repository,
 )
 from rentivo.services.bill_service import BillService
+from rentivo.services.pix_service import PixService
 from rentivo.storage.factory import get_storage
 
 console = Console()
@@ -37,9 +40,12 @@ def main() -> None:
     billing_repo = get_billing_repository()
     bill_repo = get_bill_repository()
     receipt_repo = get_receipt_repository()
+    user_repo = get_user_repository()
+    org_repo = get_organization_repository()
     storage = get_storage()
 
-    bill_service = BillService(bill_repo, storage, receipt_repo)
+    pix_service = PixService(user_repo, org_repo)
+    bill_service = BillService(bill_repo, storage, receipt_repo, pix_service=pix_service)
 
     billings = billing_repo.list_all()
 
@@ -84,12 +90,22 @@ def main() -> None:
 
     console.print("\n[cyan]Regenerando PDFs...[/cyan]\n")
 
+    regenerated = 0
+    skipped: list[tuple[str, str, str]] = []
     for billing, bill in all_bills:
-        bill_service.regenerate_pdf(bill, billing)
+        try:
+            bill_service.regenerate_pdf(bill, billing)
+        except ValueError as e:
+            skipped.append((billing.name, bill.reference_month, str(e)))
+            console.print(f"  [yellow]\u2717[/yellow] {billing.name} - {bill.reference_month}: {e}")
+            continue
+        regenerated += 1
         url = storage.get_url(bill.pdf_path) if bill.pdf_path else "-"
         console.print(f"  [green]\u2713[/green] {billing.name} - {bill.reference_month} \u2192 {url}")
 
-    console.print(f"\n[green bold]{len(all_bills)} fatura(s) regenerada(s) com sucesso![/green bold]")
+    console.print(f"\n[green bold]{regenerated} fatura(s) regenerada(s) com sucesso![/green bold]")
+    if skipped:
+        console.print(f"[yellow]{len(skipped)} fatura(s) ignorada(s) por falta de configuração de PIX.[/yellow]")
 
 
 if __name__ == "__main__":  # pragma: no cover

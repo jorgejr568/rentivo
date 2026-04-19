@@ -20,11 +20,23 @@
                 <input type="text" class="field-input" id="description" name="description"
                        value="{{ billing.description }}">
             </div>
-            <div class="field mb-0">
-                <label for="pix_key" class="field-label">Chave PIX</label>
+            <div class="field">
+                <label for="pix_key" class="field-label">Chave PIX (opcional)</label>
                 <input type="text" class="field-input" id="pix_key" name="pix_key"
                        value="{{ billing.pix_key }}">
-                <span class="field-hint">Para celular, inclua +55 (caso contrário 11 dígitos são tratados como CPF).</span>
+                <span class="field-hint">Deixe em branco para usar a configuração do proprietário (usuário ou organização). Para celular, inclua +55 (caso contrário 11 dígitos são tratados como CPF).</span>
+            </div>
+            <div class="field">
+                <label for="pix_merchant_name" class="field-label">Nome do recebedor (opcional)</label>
+                <input type="text" class="field-input" id="pix_merchant_name" name="pix_merchant_name"
+                       value="{{ billing.pix_merchant_name }}" maxlength="25">
+                <span class="field-hint">Até 25 caracteres. Preencha junto com a chave PIX para sobrescrever a configuração do proprietário.</span>
+            </div>
+            <div class="field mb-0">
+                <label for="pix_merchant_city" class="field-label">Cidade do recebedor (opcional)</label>
+                <input type="text" class="field-input" id="pix_merchant_city" name="pix_merchant_city"
+                       value="{{ billing.pix_merchant_city }}" maxlength="15">
+                <span class="field-hint">Até 15 caracteres, sem acentos.</span>
             </div>
         </div>
     </div>

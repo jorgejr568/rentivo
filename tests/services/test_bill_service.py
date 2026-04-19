@@ -8,6 +8,7 @@ from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.receipt import Receipt
 from rentivo.services.bill_service import BillService, _receipt_storage_key, _storage_key
+from rentivo.services.pix_service import PixConfig
 
 
 class TestStorageKey:
@@ -22,11 +23,21 @@ class TestStorageKey:
             assert _storage_key("billing-uuid", "bill-uuid") == "billing-uuid/bill-uuid.pdf"
 
 
+def _pix_service_with(config: PixConfig | None = None):
+    """Shared stub PixService that returns a fixed config for all billings."""
+
+    class _Stub:
+        def resolve_for_billing(self, billing):
+            return config or PixConfig(pix_key="test@pix.com", merchant_name="Rentivo", merchant_city="Sao Paulo")
+
+    return _Stub()
+
+
 class TestBillService:
     def setup_method(self):
         self.mock_repo = MagicMock()
         self.mock_storage = MagicMock()
-        self.service = BillService(self.mock_repo, self.mock_storage)
+        self.service = BillService(self.mock_repo, self.mock_storage, pix_service=_pix_service_with())
 
     def test_generate_bill(self):
         billing = Billing(
@@ -168,59 +179,60 @@ class TestBillService:
         self.mock_repo.delete.assert_called_once_with(1)
 
 
+class _StaticPixService:
+    """Minimal stand-in for PixService used by BillService tests."""
+
+    def __init__(self, config):
+        self._config = config
+
+    def resolve_for_billing(self, billing):
+        return self._config
+
+
 class TestGetPixData:
-    def test_with_billing_pix_key(self):
-        billing = Billing(name="Apt", pix_key="billing@pix.com")
-        with patch("rentivo.services.bill_service.settings") as mock_settings:
-            mock_settings.pix_key = "global@pix.com"
-            mock_settings.pix_merchant_name = "Rentivo"
-            mock_settings.pix_merchant_city = "Sao Paulo"
-            png, key, payload = BillService._get_pix_data(billing, 10000)
+    def _service(self, config):
+        svc = BillService(MagicMock(), MagicMock(), pix_service=_StaticPixService(config))
+        return svc
+
+    def test_with_billing_pix_config(self):
+        from rentivo.services.pix_service import PixConfig
+
+        billing = Billing(
+            name="Apt",
+            pix_key="billing@pix.com",
+            pix_merchant_name="Billing Co",
+            pix_merchant_city="Campinas",
+        )
+        service = self._service(
+            PixConfig(pix_key="billing@pix.com", merchant_name="Billing Co", merchant_city="Campinas")
+        )
+        png, key, payload = service._get_pix_data(billing, 10000)
 
         assert png is not None
         assert key == "billing@pix.com"
         assert len(payload) > 0
 
-    def test_falls_back_to_global_pix_key(self):
-        billing = Billing(name="Apt", pix_key="")
-        with patch("rentivo.services.bill_service.settings") as mock_settings:
-            mock_settings.pix_key = "global@pix.com"
-            mock_settings.pix_merchant_name = "Rentivo"
-            mock_settings.pix_merchant_city = "Sao Paulo"
-            png, key, payload = BillService._get_pix_data(billing, 10000)
+    def test_falls_back_to_owner_pix(self):
+        from rentivo.services.pix_service import PixConfig
+
+        billing = Billing(name="Apt")
+        service = self._service(PixConfig(pix_key="owner@pix.com", merchant_name="Owner", merchant_city="Sao Paulo"))
+        png, key, _ = service._get_pix_data(billing, 10000)
 
         assert png is not None
-        assert key == "global@pix.com"
+        assert key == "owner@pix.com"
 
-    def test_no_pix_key(self):
-        billing = Billing(name="Apt", pix_key="")
-        with patch("rentivo.services.bill_service.settings") as mock_settings:
-            mock_settings.pix_key = ""
-            png, key, payload = BillService._get_pix_data(billing, 10000)
+    def test_no_pix_config_raises(self):
+        billing = Billing(name="Apt")
+        service = self._service(None)
+        with pytest.raises(ValueError, match="Configure a chave PIX"):
+            service._get_pix_data(billing, 10000)
 
-        assert png is None
-        assert key == ""
-        assert payload == ""
-
-    def test_no_merchant_name(self):
-        billing = Billing(name="Apt", pix_key="key@pix")
-        with patch("rentivo.services.bill_service.settings") as mock_settings:
-            mock_settings.pix_key = ""
-            mock_settings.pix_merchant_name = ""
-            mock_settings.pix_merchant_city = "City"
-            png, key, payload = BillService._get_pix_data(billing, 10000)
-
-        assert png is None
-
-    def test_no_merchant_city(self):
-        billing = Billing(name="Apt", pix_key="key@pix")
-        with patch("rentivo.services.bill_service.settings") as mock_settings:
-            mock_settings.pix_key = ""
-            mock_settings.pix_merchant_name = "Name"
-            mock_settings.pix_merchant_city = ""
-            png, key, payload = BillService._get_pix_data(billing, 10000)
-
-        assert png is None
+    def test_missing_pix_service_raises(self):
+        billing = Billing(name="Apt")
+        service = BillService(MagicMock(), MagicMock())
+        with pytest.raises(ValueError, match="Configure a chave PIX"):
+            service._get_pix_data(billing, 10000)
 
 
 class TestBillServiceValueErrors:
@@ -229,7 +241,7 @@ class TestBillServiceValueErrors:
     def setup_method(self):
         self.mock_repo = MagicMock()
         self.mock_storage = MagicMock()
-        self.service = BillService(self.mock_repo, self.mock_storage)
+        self.service = BillService(self.mock_repo, self.mock_storage, pix_service=_pix_service_with())
 
     def test_generate_and_store_pdf_bill_id_none(self):
         import pytest
@@ -304,7 +316,12 @@ class TestReceiptMethods:
         self.mock_repo = MagicMock()
         self.mock_storage = MagicMock()
         self.mock_receipt_repo = MagicMock()
-        self.service = BillService(self.mock_repo, self.mock_storage, self.mock_receipt_repo)
+        self.service = BillService(
+            self.mock_repo,
+            self.mock_storage,
+            self.mock_receipt_repo,
+            pix_service=_pix_service_with(),
+        )
 
     def test_add_receipt(self):
         bill = Bill(
@@ -554,7 +571,12 @@ class TestPdfGenerationWithReceipts:
         self.mock_repo = MagicMock()
         self.mock_storage = MagicMock()
         self.mock_receipt_repo = MagicMock()
-        self.service = BillService(self.mock_repo, self.mock_storage, self.mock_receipt_repo)
+        self.service = BillService(
+            self.mock_repo,
+            self.mock_storage,
+            self.mock_receipt_repo,
+            pix_service=_pix_service_with(),
+        )
 
     def test_pdf_generation_fetches_and_merges_receipts(self):
         bill = Bill(

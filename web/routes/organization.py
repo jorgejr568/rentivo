@@ -149,12 +149,19 @@ async def organization_edit(request: Request, org_uuid: str):
 
     form = await request.form()
     org.name = str(form.get("name", "")).strip()
+    org.pix_key = str(form.get("pix_key", "")).strip()
+    org.pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
+    org.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
     if not org.name:
         logger.warning("organization_edit_rejected", org_uuid=org_uuid, reason="empty_name")
         flash(request, "Nome é obrigatório.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}/edit", status_code=302)
 
-    updated = service.update_organization(org)
+    try:
+        updated = service.update_organization(org)
+    except ValueError as e:
+        flash(request, str(e), "danger")
+        return RedirectResponse(f"/organizations/{org_uuid}/edit", status_code=302)
 
     audit = get_audit_service(request)
     audit.safe_log(

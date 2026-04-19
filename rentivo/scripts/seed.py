@@ -31,6 +31,7 @@ from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.organization_service import OrganizationService
+from rentivo.services.pix_service import PixService
 from rentivo.services.user_service import UserService
 from rentivo.storage.factory import get_storage
 
@@ -182,6 +183,8 @@ def _create_users(user_service: UserService) -> list:
     console.print("[cyan]Creating users...[/cyan]")
 
     main_user = user_service.create_user(MAIN_USERNAME, PASSWORD)
+    user_service.update_pix(main_user.id, "admin@rentivo.com", "Admin Rentivo", "Sao Paulo")
+    main_user = user_service.get_by_id(main_user.id) or main_user
     console.print(f"  [bold green]Main user:[/bold green] {main_user.username} (id={main_user.id})")
 
     users = [main_user]
@@ -207,6 +210,10 @@ def _create_organization(org_service: OrganizationService, users: list):
     main_user = users[0]
     assert main_user.id is not None
     org = org_service.create_organization(ORG_NAME, main_user.id)
+    org.pix_key = "12345678000190"
+    org.pix_merchant_name = "Imob Horizonte"
+    org.pix_merchant_city = "Sao Paulo"
+    org = org_service.update_organization(org)
     console.print(f"  Organization: {org.name} (id={org.id})")
 
     for user in users[1:]:
@@ -432,7 +439,8 @@ def main() -> None:
 
     user_service = UserService(user_repo)
     billing_service = BillingService(billing_repo)
-    bill_service = BillService(bill_repo, storage, receipt_repo)
+    pix_service = PixService(user_repo, org_repo)
+    bill_service = BillService(bill_repo, storage, receipt_repo, pix_service=pix_service)
     org_service = OrganizationService(org_repo)
     invite_service = InviteService(invite_repo, org_repo, user_repo)
 

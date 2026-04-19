@@ -24,10 +24,6 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = ""
     s3_presigned_expiry: int = 604800  # 7 days in seconds
 
-    pix_key: str = ""
-    pix_merchant_name: str = ""
-    pix_merchant_city: str = ""
-
     log_level: str = "INFO"
     log_json: bool = False
 

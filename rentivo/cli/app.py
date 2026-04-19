@@ -7,11 +7,13 @@ from rentivo.repositories.factory import (
     get_audit_log_repository,
     get_bill_repository,
     get_billing_repository,
+    get_organization_repository,
     get_user_repository,
 )
 from rentivo.services.audit_service import AuditService
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
+from rentivo.services.pix_service import PixService
 from rentivo.services.user_service import UserService
 from rentivo.storage.factory import get_storage
 
@@ -22,11 +24,13 @@ def _build_services() -> tuple[BillingService, BillService, UserService, AuditSe
     billing_repo = get_billing_repository()
     bill_repo = get_bill_repository()
     user_repo = get_user_repository()
+    org_repo = get_organization_repository()
     audit_repo = get_audit_log_repository()
     storage = get_storage()
+    pix_service = PixService(user_repo, org_repo)
     return (
         BillingService(billing_repo),
-        BillService(bill_repo, storage),
+        BillService(bill_repo, storage, pix_service=pix_service),
         UserService(user_repo),
         AuditService(audit_repo),
     )

@@ -12,8 +12,11 @@ from rentivo.pdf.invoice import InvoicePDF
 from rentivo.pdf.merger import merge_receipts
 from rentivo.pix import generate_pix_payload, generate_pix_qrcode_png
 from rentivo.repositories.base import BillRepository, ReceiptRepository
+from rentivo.services.pix_service import PixConfig, PixService
 from rentivo.settings import settings
 from rentivo.storage.base import StorageBackend
+
+PIX_NOT_CONFIGURED_MESSAGE = "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas."
 
 logger = structlog.get_logger(__name__)
 
@@ -47,39 +50,45 @@ class BillService:
         storage: StorageBackend,
         receipt_repo: ReceiptRepository | None = None,
         theme_service: object | None = None,
+        pix_service: PixService | None = None,
     ) -> None:
         self.bill_repo = bill_repo
         self.storage = storage
         self.receipt_repo = receipt_repo
         self.theme_service = theme_service
+        self.pix_service = pix_service
         self.pdf_generator = InvoicePDF()
 
-    @staticmethod
-    def _get_pix_data(billing: Billing, total_centavos: int) -> tuple[bytes | None, str, str]:
-        """Resolve PIX config and return (qrcode_png, pix_key, pix_payload)."""
-        pix_key = billing.pix_key or settings.pix_key
-        if not pix_key:
-            return None, "", ""
+    def _resolve_pix(self, billing: Billing) -> PixConfig:
+        if self.pix_service is None:
+            raise ValueError(PIX_NOT_CONFIGURED_MESSAGE)
+        config = self.pix_service.resolve_for_billing(billing)
+        if config is None:
+            raise ValueError(PIX_NOT_CONFIGURED_MESSAGE)
+        return config
 
-        merchant_name = settings.pix_merchant_name
-        merchant_city = settings.pix_merchant_city
-        if not merchant_name or not merchant_city:
-            return None, "", ""
+    def _get_pix_data(self, billing: Billing, total_centavos: int) -> tuple[bytes, str, str]:
+        """Resolve PIX config and return (qrcode_png, pix_key, pix_payload).
+
+        Raises ValueError when PIX is not configured — invoice generation must
+        not proceed without a valid PIX configuration.
+        """
+        config = self._resolve_pix(billing)
 
         payload = generate_pix_payload(
-            pix_key=pix_key,
-            merchant_name=merchant_name,
-            merchant_city=merchant_city,
+            pix_key=config.pix_key,
+            merchant_name=config.merchant_name,
+            merchant_city=config.merchant_city,
             amount_centavos=total_centavos,
         )
         png = generate_pix_qrcode_png(
-            pix_key=pix_key,
-            merchant_name=merchant_name,
-            merchant_city=merchant_city,
+            pix_key=config.pix_key,
+            merchant_name=config.merchant_name,
+            merchant_city=config.merchant_city,
             amount_centavos=total_centavos,
             payload=payload,
         )
-        return png, pix_key, payload
+        return png, config.pix_key, payload
 
     def _fetch_receipt_data(self, bill: Bill) -> tuple[list[tuple[bytes, str]], list[Receipt]]:
         """Fetch receipt file data for a bill, for merging into the PDF.
