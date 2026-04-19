@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import logging
 import time
 
+import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
@@ -10,7 +10,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
 from web.deps import get_audit_service, get_mfa_service, get_user_service, render
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
@@ -87,24 +87,24 @@ async def signup(request: Request):
     confirm_password = str(form.get("confirm_password", ""))
 
     if not username or not email or not password:
-        logger.warning("Signup rejected: empty fields")
+        logger.warning("signup_rejected", reason="empty_fields")
         return render(request, "signup.html", {"error": "Preencha todos os campos."})
 
     if password != confirm_password:
-        logger.warning("Signup rejected: password mismatch for username=%s", username)
+        logger.warning("signup_rejected", reason="password_mismatch", username=username)
         return render(request, "signup.html", {"error": "As senhas não coincidem."})
 
     user_service = get_user_service(request)
     try:
         user = user_service.register_user(username, email, password)
     except ValueError:
-        logger.warning("Signup rejected: duplicate username=%s", username)
+        logger.warning("signup_rejected", reason="duplicate_username", username=username)
         return render(request, "signup.html", {"error": "Nome de usuário já existe."})
 
     request.session.clear()
     request.session["user_id"] = user.id
     request.session["username"] = user.username
-    logger.info("User %s signed up", user.username)
+    logger.info("user_signed_up", username=user.username)
 
     audit = get_audit_service(request)
     audit.safe_log(
@@ -132,7 +132,7 @@ async def login(request: Request):
     client_ip = request.client.host if request.client else "unknown"
 
     if _is_rate_limited(client_ip):
-        logger.warning("Rate-limited login attempt from %s", client_ip)
+        logger.warning("login_rate_limited", client_ip=client_ip)
         return render(
             request,
             "login.html",
@@ -150,7 +150,7 @@ async def login(request: Request):
 
     if user is None:
         _record_failed_attempt(client_ip)
-        logger.warning("Failed login attempt for username=%s from %s", username, client_ip)
+        logger.warning("login_failed", username=str(username), client_ip=client_ip)
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.USER_LOGIN_FAILED,
@@ -172,7 +172,7 @@ async def login(request: Request):
         request.session.clear()
         request.session["mfa_pending_user_id"] = user.id
         request.session["mfa_pending_username"] = user.username
-        logger.info("MFA verification required for user=%s", user.username)
+        logger.info("mfa_verification_required", username=user.username, user_id=user.id)
 
         audit = get_audit_service(request)
         audit.safe_log(
@@ -191,7 +191,7 @@ async def login(request: Request):
     request.session.clear()
     request.session["user_id"] = user.id
     request.session["username"] = user.username
-    logger.info("User %s logged in", user.username)
+    logger.info("user_logged_in", username=user.username, user_id=user.id)
 
     # Check if MFA setup is required by org enforcement
     if mfa_service.user_requires_mfa_setup(user.id):
@@ -243,7 +243,7 @@ async def mfa_verify(request: Request):
     client_ip = request.client.host if request.client else "unknown"
 
     if _is_mfa_rate_limited(client_ip):
-        logger.warning("MFA rate-limited from %s", client_ip)
+        logger.warning("mfa_rate_limited", client_ip=client_ip)
         return render(
             request,
             "mfa_verify.html",
@@ -317,7 +317,7 @@ async def mfa_verify(request: Request):
         metadata={"ip": client_ip, "mfa": True},
     )
 
-    logger.info("MFA verified for user=%s method=%s", username, method)
+    logger.info("mfa_verified", username=username, method=method)
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -343,5 +343,5 @@ async def logout(request: Request):
     )
 
     request.session.clear()
-    logger.info("User %s logged out", username)
+    logger.info("user_logged_out", username=username)
     return RedirectResponse("/login", status_code=302)

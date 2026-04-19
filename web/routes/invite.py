@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import logging
-
+import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
@@ -9,33 +8,30 @@ from rentivo.models.audit_log import AuditEventType
 from web.deps import get_audit_service, get_invite_service, get_mfa_service, render
 from web.flash import flash
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/invites")
 
 
 @router.get("/")
 async def invite_list(request: Request):
-    logger.info("GET /invites/ — listing pending invites")
     user_id = request.session.get("user_id")
     service = get_invite_service(request)
     invites = service.list_pending(user_id)
-    logger.info("Found %d pending invites for user=%s", len(invites), user_id)
+
     return render(request, "invite/list.html", {"invites": invites})
 
 
 @router.post("/{invite_uuid}/accept")
 async def invite_accept(request: Request, invite_uuid: str):
-    logger.info("POST /invites/%s/accept", invite_uuid)
     user_id = request.session.get("user_id")
     service = get_invite_service(request)
     try:
         service.accept_invite(invite_uuid, user_id)
     except ValueError as e:
-        logger.warning("Invite accept failed: uuid=%s user=%s error=%s", invite_uuid, user_id, e)
+        logger.warning("invite_accept_failed", invite_uuid=invite_uuid, error=str(e))
         flash(request, str(e), "danger")
         return RedirectResponse("/invites/", status_code=302)
-    logger.info("Invite accepted: uuid=%s user=%s", invite_uuid, user_id)
 
     audit = get_audit_service(request)
     audit.safe_log(
@@ -60,16 +56,14 @@ async def invite_accept(request: Request, invite_uuid: str):
 
 @router.post("/{invite_uuid}/decline")
 async def invite_decline(request: Request, invite_uuid: str):
-    logger.info("POST /invites/%s/decline", invite_uuid)
     user_id = request.session.get("user_id")
     service = get_invite_service(request)
     try:
         service.decline_invite(invite_uuid, user_id)
     except ValueError as e:
-        logger.warning("Invite decline failed: uuid=%s user=%s error=%s", invite_uuid, user_id, e)
+        logger.warning("invite_decline_failed", invite_uuid=invite_uuid, error=str(e))
         flash(request, str(e), "danger")
         return RedirectResponse("/invites/", status_code=302)
-    logger.info("Invite declined: uuid=%s user=%s", invite_uuid, user_id)
 
     audit = get_audit_service(request)
     audit.safe_log(

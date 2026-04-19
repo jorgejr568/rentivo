@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import logging
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import structlog
 from fpdf import FPDF
 
 from rentivo.constants import TYPE_LABELS, format_month
@@ -14,7 +14,7 @@ from rentivo.models.bill import Bill
 if TYPE_CHECKING:
     from rentivo.models.theme import Theme
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 FONTS_DIR = Path(__file__).parent / "fonts"
 
@@ -108,11 +108,11 @@ class InvoicePDF:
 
         output = pdf.output()
         logger.debug(
-            "PDF generated: billing=%s items=%d pix=%s size=%d bytes",
-            billing_name,
-            len(bill.line_items),
-            bool(pix_qrcode_png),
-            len(output),
+            "pdf_generated",
+            billing_name=billing_name,
+            line_item_count=len(bill.line_items),
+            has_pix=bool(pix_qrcode_png),
+            bytes=len(output),
         )
         return output
 

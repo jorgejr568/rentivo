@@ -19,6 +19,7 @@ dependencies = [
     "itsdangerous>=2.2,<3",
     "python-json-logger>=3.0,<4",
     "python-ulid>=3.0,<4",
+    "structlog>=24.1,<26",
     "mysqlclient>=2.2,<3",
     "boto3>=1.35,<2",
     "pypdf>=5.0,<6",

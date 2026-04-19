@@ -9,17 +9,17 @@ request body — downstream handlers can still read request.form().
 
 from __future__ import annotations
 
-import logging
 import secrets
 from typing import Any
 
+import structlog
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from web.flash import flash
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
 EXEMPT_PATHS = {"/login", "/signup", "/static", "/security/passkeys", "/mfa-verify"}
@@ -31,7 +31,7 @@ def get_csrf_token(request: Request) -> str:
     if not token:
         token = secrets.token_urlsafe(32)
         request.session["_csrf_token"] = token
-        logger.debug("CSRF token generated for session")
+        logger.debug("csrf_token_generated")
     return token
 
 
@@ -71,7 +71,7 @@ class CSRFMiddleware:
 
         content_type = request.headers.get("content-type", "")
         if "multipart/form-data" not in content_type and "application/x-www-form-urlencoded" not in content_type:
-            logger.debug("CSRF bypass: non-form content type for %s %s", request.method, path)
+            logger.debug("csrf_bypass_non_form", content_type=content_type)
             await self.app(scope, receive, send)
             return
         body = await request.body()
@@ -80,7 +80,7 @@ class CSRFMiddleware:
         await form.close()
 
         if not _verify_csrf_token(request, form_token):
-            logger.warning("CSRF token mismatch for %s %s", request.method, path)
+            logger.warning("csrf_token_mismatch")
             flash(request, "Sessão expirada. Tente novamente.", "danger")
             referer = request.headers.get("referer", "/")
             response = RedirectResponse(referer, status_code=302)

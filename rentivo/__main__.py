@@ -4,7 +4,7 @@ from rentivo.logging import configure_logging
 
 
 def main() -> None:
-    configure_logging()
+    configure_logging(cli=True)
     initialize_db()
     main_menu()
 

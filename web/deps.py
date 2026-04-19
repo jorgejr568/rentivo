@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import logging
 from functools import cache
 
+import structlog
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.responses import Response
@@ -34,7 +34,7 @@ from rentivo.services.user_service import UserService
 from rentivo.storage.factory import get_storage
 from web.flash import get_flashed_messages
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 PUBLIC_PREFIX_PATHS = {"/login", "/signup", "/static", "/mfa-verify", "/security/passkeys/auth"}
 PUBLIC_EXACT_PATHS = {"/"}
@@ -79,15 +79,21 @@ class AuthMiddleware:
         if path in PUBLIC_EXACT_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIX_PATHS):
             await self.app(scope, receive, send)
             return
-        if not request.session.get("user_id"):
+        user_id = request.session.get("user_id")
+        if not user_id:
             if not _path_matches_route(scope):
                 await self.app(scope, receive, send)
                 return
 
-            logger.info("Auth redirect: %s %s — no session", request.method, path)
+            logger.info("auth_redirect", reason="no_session")
             response = RedirectResponse("/login", status_code=302)
             await response(scope, receive, send)
             return
+        # Bind identity for all downstream logs in this request.
+        structlog.contextvars.bind_contextvars(
+            user_id=user_id,
+            username=request.session.get("username"),
+        )
         await self.app(scope, receive, send)
 
 
@@ -116,7 +122,7 @@ class MFAEnforcementMiddleware:
             return
 
         if request.session.get("mfa_setup_required"):
-            logger.info("MFA enforcement redirect: %s %s — user=%s", request.method, path, user_id)
+            logger.info("mfa_enforcement_redirect")
             response = RedirectResponse("/security/totp/setup", status_code=302)
             await response(scope, receive, send)
             return
@@ -143,13 +149,13 @@ class DBConnectionMiddleware:
             conn = getattr(request.state, "db_conn", None)
             if conn is not None:
                 conn.close()
-                logger.debug("DB connection closed for %s %s", request.method, request.url.path)
+                logger.debug("db_connection_closed")
 
 
 def _get_conn(request: Request):
     """Lazy per-request connection — created on first use, closed by middleware."""
     if request.state.db_conn is None:
-        logger.debug("Creating DB connection for %s %s", request.method, request.url.path)
+        logger.debug("db_connection_opened")
         request.state.db_conn = get_engine().connect()
     return request.state.db_conn
 
@@ -211,7 +217,7 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     from web.app import templates
     from web.csrf import get_csrf_token
 
-    logger.debug("Rendering %s", template_name)
+    logger.debug("template_render", template=template_name)
     ctx = context or {}
     ctx["request"] = request
     ctx["user"] = request.session.get("username")

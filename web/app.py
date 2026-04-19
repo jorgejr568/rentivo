@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import hashlib
-import logging
-import traceback
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,6 +21,7 @@ from rentivo.settings import settings
 from web.auth import router as auth_router
 from web.csrf import CSRFMiddleware
 from web.deps import AuthMiddleware, DBConnectionMiddleware, MFAEnforcementMiddleware
+from web.middleware.logging import RequestContextMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router
 from web.routes.invite import router as invite_router
@@ -30,7 +30,7 @@ from web.routes.security import router as security_router
 from web.routes.theme import router as theme_router
 
 configure_logging()
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 BASE_DIR = Path(__file__).parent
 
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_db()
     # Re-apply logging config — Alembic's fileConfig may have overridden it
     reconfigure()
-    logger.info("Application started")
+    logger.info("application_started")
     yield
 
 
@@ -63,6 +63,8 @@ app.add_middleware(CSRFMiddleware)
 app.add_middleware(MFAEnforcementMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=settings.get_secret_key())
+# Outermost — wraps every other middleware so logs carry request_id.
+app.add_middleware(RequestContextMiddleware)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
@@ -104,12 +106,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger.error(
-        "Unhandled exception on %s %s:\n%s",
-        request.method,
-        request.url.path,
-        traceback.format_exc(),
-    )
+    logger.exception("unhandled_exception")
     return HTMLResponse("Internal Server Error", status_code=500)
 
 

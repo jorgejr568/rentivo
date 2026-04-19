@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import logging
 import re
 
+import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from starlette.responses import Response
@@ -22,7 +22,7 @@ from web.deps import (
 )
 from web.flash import flash
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/themes")
 
@@ -92,7 +92,6 @@ def _serialize_theme(theme: Theme) -> dict:
 
 @router.get("/user")
 async def user_theme_form(request: Request):
-    logger.info("GET /themes/user — rendering user theme form")
     user_id = request.session.get("user_id")
     theme_service = get_theme_service(request)
     existing = theme_service.get_theme_for_owner("user", user_id)
@@ -116,7 +115,6 @@ async def user_theme_form(request: Request):
 
 @router.post("/user")
 async def user_theme_save(request: Request):
-    logger.info("POST /themes/user — saving user theme")
     user_id = request.session.get("user_id")
     theme_service = get_theme_service(request)
 
@@ -126,7 +124,7 @@ async def user_theme_save(request: Request):
     fields = _parse_theme_fields(dict(form))
 
     theme = theme_service.create_or_update_theme("user", user_id, **fields)
-    logger.info("User theme saved: uuid=%s user=%s", theme.uuid, user_id)
+    logger.info("theme_saved", scope="user", theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = get_audit_service(request)
@@ -148,7 +146,6 @@ async def user_theme_save(request: Request):
 
 @router.post("/user/delete")
 async def user_theme_delete(request: Request):
-    logger.info("POST /themes/user/delete — resetting user theme")
     user_id = request.session.get("user_id")
     theme_service = get_theme_service(request)
 
@@ -156,7 +153,7 @@ async def user_theme_delete(request: Request):
     deleted = theme_service.delete_theme("user", user_id)
 
     if deleted:
-        logger.info("User theme deleted: user=%s", user_id)
+        logger.info("theme_deleted", scope="user")
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.THEME_DELETE,
@@ -188,14 +185,14 @@ def _check_org_admin(request: Request, org_uuid: str):
     org_service = get_organization_service(request)
     org = org_service.get_by_uuid(org_uuid)
     if not org:
-        logger.warning("Organization not found: uuid=%s", org_uuid)
+        logger.warning("organization_not_found", org_uuid=org_uuid)
         flash(request, "Organização não encontrada.", "danger")
         return RedirectResponse("/organizations/", status_code=302), None
 
     user_id = request.session.get("user_id")
     member = org_service.get_member(org.id, user_id)
     if not member or member.role != "admin":
-        logger.warning("Organization theme access denied: uuid=%s user=%s", org_uuid, user_id)
+        logger.warning("organization_theme_access_denied", org_uuid=org_uuid)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302), None
 
@@ -204,7 +201,6 @@ def _check_org_admin(request: Request, org_uuid: str):
 
 @router.get("/organization/{org_uuid}")
 async def org_theme_form(request: Request, org_uuid: str):
-    logger.info("GET /themes/organization/%s — rendering org theme form", org_uuid)
     result, user_id = _check_org_admin(request, org_uuid)
     if isinstance(result, RedirectResponse):
         return result
@@ -232,7 +228,6 @@ async def org_theme_form(request: Request, org_uuid: str):
 
 @router.post("/organization/{org_uuid}")
 async def org_theme_save(request: Request, org_uuid: str):
-    logger.info("POST /themes/organization/%s — saving org theme", org_uuid)
     result, user_id = _check_org_admin(request, org_uuid)
     if isinstance(result, RedirectResponse):
         return result
@@ -245,7 +240,7 @@ async def org_theme_save(request: Request, org_uuid: str):
     fields = _parse_theme_fields(dict(form))
 
     theme = theme_service.create_or_update_theme("organization", org.id, **fields)
-    logger.info("Org theme saved: uuid=%s org=%s", theme.uuid, org_uuid)
+    logger.info("theme_saved", scope="organization", org_uuid=org_uuid, theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = get_audit_service(request)
@@ -267,7 +262,6 @@ async def org_theme_save(request: Request, org_uuid: str):
 
 @router.post("/organization/{org_uuid}/delete")
 async def org_theme_delete(request: Request, org_uuid: str):
-    logger.info("POST /themes/organization/%s/delete — resetting org theme", org_uuid)
     result, user_id = _check_org_admin(request, org_uuid)
     if isinstance(result, RedirectResponse):
         return result
@@ -278,7 +272,7 @@ async def org_theme_delete(request: Request, org_uuid: str):
     deleted = theme_service.delete_theme("organization", org.id)
 
     if deleted:
-        logger.info("Org theme deleted: org=%s", org_uuid)
+        logger.info("theme_deleted", scope="organization", org_uuid=org_uuid)
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.THEME_DELETE,
@@ -310,14 +304,14 @@ def _check_billing_access(request: Request, billing_uuid: str):
     billing_service = get_billing_service(request)
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
-        logger.warning("Billing not found: uuid=%s", billing_uuid)
+        logger.warning("billing_not_found", billing_uuid=billing_uuid)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/billings/", status_code=302), None
 
     user_id = request.session.get("user_id")
     auth_service = get_authorization_service(request)
     if not auth_service.can_edit_billing(user_id, billing):
-        logger.warning("Billing theme access denied: uuid=%s user=%s", billing_uuid, user_id)
+        logger.warning("billing_theme_access_denied", billing_uuid=billing_uuid)
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302), None
 
@@ -341,7 +335,6 @@ def _resolve_effective_source(theme_service, billing) -> str:
 
 @router.get("/billing/{billing_uuid}")
 async def billing_theme_form(request: Request, billing_uuid: str):
-    logger.info("GET /themes/billing/%s — rendering billing theme form", billing_uuid)
     result, user_id = _check_billing_access(request, billing_uuid)
     if isinstance(result, RedirectResponse):
         return result
@@ -373,7 +366,6 @@ async def billing_theme_form(request: Request, billing_uuid: str):
 
 @router.post("/billing/{billing_uuid}")
 async def billing_theme_save(request: Request, billing_uuid: str):
-    logger.info("POST /themes/billing/%s — saving billing theme", billing_uuid)
     result, user_id = _check_billing_access(request, billing_uuid)
     if isinstance(result, RedirectResponse):
         return result
@@ -386,7 +378,7 @@ async def billing_theme_save(request: Request, billing_uuid: str):
     fields = _parse_theme_fields(dict(form))
 
     theme = theme_service.create_or_update_theme("billing", billing.id, **fields)
-    logger.info("Billing theme saved: uuid=%s billing=%s", theme.uuid, billing_uuid)
+    logger.info("theme_saved", scope="billing", billing_uuid=billing_uuid, theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = get_audit_service(request)
@@ -408,7 +400,6 @@ async def billing_theme_save(request: Request, billing_uuid: str):
 
 @router.post("/billing/{billing_uuid}/delete")
 async def billing_theme_delete(request: Request, billing_uuid: str):
-    logger.info("POST /themes/billing/%s/delete — resetting billing theme", billing_uuid)
     result, user_id = _check_billing_access(request, billing_uuid)
     if isinstance(result, RedirectResponse):
         return result
@@ -419,7 +410,7 @@ async def billing_theme_delete(request: Request, billing_uuid: str):
     deleted = theme_service.delete_theme("billing", billing.id)
 
     if deleted:
-        logger.info("Billing theme deleted: billing=%s", billing_uuid)
+        logger.info("theme_deleted", scope="billing", billing_uuid=billing_uuid)
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.THEME_DELETE,
@@ -445,7 +436,6 @@ async def billing_theme_delete(request: Request, billing_uuid: str):
 
 @router.get("/preview")
 async def theme_preview(request: Request):
-    logger.info("GET /themes/preview — generating sample PDF")
     fields = _parse_theme_fields(dict(request.query_params))
 
     theme = Theme(**fields)
@@ -464,6 +454,6 @@ async def theme_preview(request: Request):
     )
 
     pdf_bytes = InvoicePDF().generate(sample_bill, "Exemplo", theme=theme)
-    logger.info("Preview PDF generated: %d bytes", len(pdf_bytes))
+    logger.info("theme_preview_generated", bytes=len(pdf_bytes))
 
     return Response(content=bytes(pdf_bytes), media_type="application/pdf")

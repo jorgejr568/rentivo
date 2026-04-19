@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import logging
+import structlog
 
 from rentivo.models.theme import DEFAULT_THEME, Theme
 from rentivo.repositories.base import ThemeRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class ThemeService:
@@ -52,7 +52,7 @@ class ThemeService:
         theme = self.theme_repo.get_by_owner(owner_type, owner_id)
         if theme and theme.id:
             self.theme_repo.delete(theme.id)
-            logger.info("Theme deleted for %s/%s", owner_type, owner_id)
+            logger.info("theme_deleted", owner_type=owner_type, owner_id=owner_id)
             return True
         return False
 

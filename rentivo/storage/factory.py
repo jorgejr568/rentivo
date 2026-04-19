@@ -1,9 +1,9 @@
-import logging
+import structlog
 
 from rentivo.settings import settings
 from rentivo.storage.base import StorageBackend
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_storage() -> StorageBackend:
@@ -12,13 +12,13 @@ def get_storage() -> StorageBackend:
     if backend == "local":
         from rentivo.storage.local import LocalStorage
 
-        logger.info("Using storage backend: local")
+        logger.info("storage_backend_selected", backend="local", path=settings.storage_local_path)
         return LocalStorage(settings.storage_local_path)
 
     if backend == "s3":
         from rentivo.storage.s3 import S3Storage
 
-        logger.info("Using storage backend: s3 bucket=%s", settings.s3_bucket)
+        logger.info("storage_backend_selected", backend="s3", bucket=settings.s3_bucket)
         return S3Storage(
             bucket=settings.s3_bucket,
             region=settings.s3_region,

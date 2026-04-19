@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
 import time
 
+import structlog
 import webauthn
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -21,7 +21,7 @@ from rentivo.settings import settings
 from web.deps import get_audit_service, get_mfa_service, get_user_service, render
 from web.flash import flash
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/security")
 
@@ -65,11 +65,11 @@ async def change_password(request: Request):
     ctx = {"has_totp": has_totp, "passkeys": passkeys, "recovery_count": recovery_count}
 
     if not current_password or not new_password:
-        logger.warning("Change password rejected: empty fields for user=%s", request.session.get("username"))
+        logger.warning("change_password_rejected", reason="empty_fields")
         return render(request, "security/index.html", {**ctx, "password_error": "Preencha todos os campos."})
 
     if new_password != confirm_password:
-        logger.warning("Change password rejected: password mismatch for user=%s", request.session.get("username"))
+        logger.warning("change_password_rejected", reason="password_mismatch")
         return render(request, "security/index.html", {**ctx, "password_error": "As senhas não coincidem."})
 
     user_service = get_user_service(request)
@@ -77,11 +77,11 @@ async def change_password(request: Request):
     user = user_service.authenticate(username, current_password)
 
     if user is None:
-        logger.warning("Change password failed: incorrect current password for user=%s", username)
+        logger.warning("change_password_failed", reason="incorrect_current_password", username=username)
         return render(request, "security/index.html", {**ctx, "password_error": "Senha atual incorreta."})
 
     user_service.change_password(username, new_password)
-    logger.info("Password changed for user=%s", username)
+    logger.info("password_changed", username=username)
 
     audit = get_audit_service(request)
     audit.safe_log(
@@ -277,7 +277,7 @@ async def passkey_register_complete(request: Request):
             expected_origin=settings.webauthn_origin,
         )
     except Exception as e:
-        logger.warning("Passkey registration failed for user=%s: %s", user_id, e)
+        logger.warning("passkey_registration_failed", user_id=user_id, error=str(e))
         return JSONResponse({"error": "Falha na verificação da passkey."}, status_code=400)
 
     passkey_name = body.get("name", "Minha Passkey")
@@ -403,7 +403,7 @@ async def passkey_auth_complete(request: Request):
             credential_current_sign_count=passkey.sign_count,
         )
     except Exception as e:
-        logger.warning("Passkey auth failed for user=%s: %s", user_id, e)
+        logger.warning("passkey_auth_failed", user_id=user_id, error=str(e))
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.MFA_VERIFY_FAILED,
@@ -447,5 +447,5 @@ async def passkey_auth_complete(request: Request):
         metadata={"ip": client_ip, "mfa": True, "method": "passkey"},
     )
 
-    logger.info("Passkey auth verified for user=%s", username)
+    logger.info("passkey_auth_verified", username=username)
     return JSONResponse({"status": "ok", "redirect": "/billings/"})

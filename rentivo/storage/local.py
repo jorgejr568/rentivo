@@ -1,9 +1,10 @@
-import logging
 from pathlib import Path
+
+import structlog
 
 from rentivo.storage.base import StorageBackend
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class LocalStorage(StorageBackend):
@@ -24,27 +25,27 @@ class LocalStorage(StorageBackend):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
         resolved = str(path)
-        logger.debug("Saved %s (%d bytes) to %s", key, len(data), resolved)
+        logger.debug("storage_saved", backend="local", key=key, bytes=len(data), path=resolved)
         return resolved
 
     def get(self, key: str) -> bytes:
         path = self._safe_path(key)
-        logger.debug("Reading %s from %s", key, path)
+        logger.debug("storage_read", backend="local", key=key, path=str(path))
         return path.read_bytes()
 
     def get_url(self, key: str) -> str:
         resolved = str(self._safe_path(key))
-        logger.debug("Resolved URL for %s: %s", key, resolved)
+        logger.debug("storage_url", backend="local", key=key, path=resolved)
         return resolved
 
     def delete(self, key: str) -> None:
         try:
             path = self._safe_path(key)
         except ValueError:
-            logger.warning("Refusing to delete unsafe key: %s", key)
+            logger.warning("storage_delete_refused_unsafe_key", backend="local", key=key)
             return
         try:
             path.unlink()
-            logger.debug("Deleted %s", path)
+            logger.debug("storage_deleted", backend="local", path=str(path))
         except FileNotFoundError:
-            logger.debug("Delete skipped (not found): %s", path)
+            logger.debug("storage_delete_not_found", backend="local", path=str(path))

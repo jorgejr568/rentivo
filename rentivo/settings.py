@@ -1,9 +1,9 @@
-import logging
 import secrets
 
+import structlog
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 _INSECURE_DEFAULT_KEY = "change-me-in-production"
 
@@ -40,9 +40,8 @@ class Settings(BaseSettings):
     def get_secret_key(self) -> str:
         if self.secret_key == _INSECURE_DEFAULT_KEY:
             logger.warning(
-                "RENTIVO_SECRET_KEY is not set — using a random key. "
-                "Sessions will not survive restarts. "
-                "Set RENTIVO_SECRET_KEY in your environment or .env file."
+                "secret_key_not_configured",
+                message=("RENTIVO_SECRET_KEY is not set — using a random key. Sessions will not survive restarts."),
             )
             self.secret_key = secrets.token_urlsafe(32)
         return self.secret_key
