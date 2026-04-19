@@ -41,7 +41,7 @@ def analytics_hash(value: Any) -> str | None:
     """
     if value is None or value == "":
         return None
-    key = settings.secret_key.encode()
+    key = settings.get_secret_key().encode()
     return hmac.new(key, str(value).encode(), hashlib.sha256).hexdigest()[:HASH_LEN]
 
 
