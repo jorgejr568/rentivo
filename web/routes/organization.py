@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.organization import OrgRole
 from rentivo.services.audit_serializers import serialize_invite, serialize_organization
+from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
@@ -62,6 +63,7 @@ async def organization_create(request: Request):
     )
 
     flash(request, f"Organização '{org.name}' criada com sucesso!", "success")
+    push_event(request, {"event": "rentivo_organization_created", "org_id_hash": analytics_hash(org.uuid)})
     return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
 
@@ -358,6 +360,7 @@ async def organization_invite(request: Request, org_uuid: str):
         )
 
     flash(request, f"Convite enviado para '{username}'!", "success")
+    push_event(request, {"event": "rentivo_invite_sent", "org_id_hash": analytics_hash(org_uuid)})
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
 

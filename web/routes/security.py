@@ -19,6 +19,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
+from web.analytics import push_event
 from web.deps import get_audit_service, get_mfa_service, get_user_service, render
 from web.flash import flash
 
@@ -135,6 +136,7 @@ async def change_password(request: Request):
     )
 
     flash(request, "Senha alterada com sucesso!", "success")
+    push_event(request, {"event": "rentivo_password_changed"})
     return RedirectResponse("/security", status_code=302)
 
 
@@ -187,6 +189,7 @@ async def totp_confirm(request: Request):
         entity_id=user_id,
     )
 
+    push_event(request, {"event": "rentivo_mfa_enabled", "method": "totp"})
     return render(
         request,
         "security/recovery_codes.html",
@@ -228,6 +231,7 @@ async def totp_disable(request: Request):
     )
 
     flash(request, "TOTP desativado com sucesso.", "success")
+    push_event(request, {"event": "rentivo_mfa_disabled"})
     return RedirectResponse("/security", status_code=302)
 
 
@@ -252,6 +256,7 @@ async def regenerate_recovery_codes(request: Request):
         entity_id=user_id,
     )
 
+    push_event(request, {"event": "rentivo_recovery_codes_regenerated"})
     return render(
         request,
         "security/recovery_codes.html",
@@ -348,6 +353,7 @@ async def passkey_register_complete(request: Request):
         metadata={"passkey_name": passkey_name},
     )
 
+    push_event(request, {"event": "rentivo_passkey_added"})
     return JSONResponse({"status": "ok", "name": passkey_name})
 
 
@@ -374,6 +380,7 @@ async def passkey_delete(request: Request, passkey_uuid: str):
     )
 
     flash(request, "Passkey removida.", "success")
+    push_event(request, {"event": "rentivo_passkey_removed"})
     return RedirectResponse("/security", status_code=302)
 
 

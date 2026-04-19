@@ -12,6 +12,7 @@ from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import ItemType
 from rentivo.models.theme import AVAILABLE_FONTS, DEFAULT_THEME, Theme
 from rentivo.pdf.invoice import InvoicePDF
+from web.analytics import push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
@@ -141,6 +142,7 @@ async def user_theme_save(request: Request):
     )
 
     flash(request, "Tema salvo com sucesso!", "success")
+    push_event(request, {"event": "rentivo_theme_changed", "scope": "user"})
     return RedirectResponse("/themes/user", status_code=302)
 
 
@@ -257,6 +259,7 @@ async def org_theme_save(request: Request, org_uuid: str):
     )
 
     flash(request, "Tema da organização salvo com sucesso!", "success")
+    push_event(request, {"event": "rentivo_theme_changed", "scope": "billing"})
     return RedirectResponse(f"/themes/organization/{org_uuid}", status_code=302)
 
 
@@ -395,6 +398,7 @@ async def billing_theme_save(request: Request, billing_uuid: str):
     )
 
     flash(request, "Tema da cobrança salvo com sucesso!", "success")
+    push_event(request, {"event": "rentivo_theme_changed", "scope": "billing"})
     return RedirectResponse(f"/themes/billing/{billing_uuid}", status_code=302)
 
 

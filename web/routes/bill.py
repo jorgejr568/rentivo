@@ -12,6 +12,7 @@ from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE
 from rentivo.services.audit_serializers import serialize_bill
+from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
@@ -166,6 +167,18 @@ async def bill_generate(request: Request, billing_uuid: str):
         )
 
     flash(request, "Fatura gerada com sucesso!", "success")
+    push_event(
+        request,
+        {
+            "event": "rentivo_bill_generated",
+            "billing_uuid_hash": analytics_hash(billing.uuid),
+            "bill_uuid_hash": analytics_hash(bill.uuid),
+            "reference_month": bill.reference_month,
+            "line_item_count": len(bill.line_items),
+            "total_amount_brl": round(bill.total_amount / 100),
+            "receipt_count": len(attached_receipts),
+        },
+    )
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
@@ -329,6 +342,7 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
     )
 
     flash(request, "Fatura atualizada com sucesso!", "success")
+    push_event(request, {"event": "rentivo_bill_edited", "bill_uuid_hash": analytics_hash(bill_uuid)})
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
@@ -381,6 +395,7 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
     )
 
     flash(request, "PDF regenerado com sucesso!", "success")
+    push_event(request, {"event": "rentivo_bill_regenerated", "bill_uuid_hash": analytics_hash(bill_uuid)})
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
@@ -430,6 +445,14 @@ async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str
     )
 
     flash(request, "Status atualizado!", "success")
+    push_event(
+        request,
+        {
+            "event": "rentivo_bill_status_changed",
+            "bill_uuid_hash": analytics_hash(bill_uuid),
+            "new_status": new_status,
+        },
+    )
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
 
@@ -477,6 +500,7 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     )
 
     flash(request, "Fatura excluída.", "success")
+    push_event(request, {"event": "rentivo_bill_deleted", "bill_uuid_hash": analytics_hash(bill_uuid)})
     return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
 
@@ -652,6 +676,16 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
             f"{len(accumulated_failed)} comprovante(s) não puderam ser incluídos no PDF. Tente enviar novamente.",
             "warning",
         )
+    if attached > 0:
+        push_event(
+            request,
+            {
+                "event": "rentivo_receipt_uploaded",
+                "bill_uuid_hash": analytics_hash(bill_uuid),
+                "count": attached,
+                "total_bytes": 0,
+            },
+        )
     return RedirectResponse(redirect_url, status_code=302)
 
 
@@ -721,6 +755,7 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
     )
 
     flash(request, "Comprovante removido.", "success")
+    push_event(request, {"event": "rentivo_receipt_deleted", "bill_uuid_hash": analytics_hash(bill_uuid)})
     return RedirectResponse(redirect_url, status_code=302)
 
 

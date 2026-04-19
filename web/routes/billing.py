@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.billing import BillingItem, ItemType
 from rentivo.services.audit_serializers import serialize_billing
+from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
@@ -119,6 +120,15 @@ async def billing_create(request: Request):
     )
 
     flash(request, f"Cobrança '{billing.name}' criada com sucesso!", "success")
+    push_event(
+        request,
+        {
+            "event": "rentivo_billing_created",
+            "billing_uuid_hash": analytics_hash(billing.uuid),
+            "item_count": len(billing.items),
+            "has_pix": bool(billing.pix_key),
+        },
+    )
     return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
 
 
@@ -250,6 +260,7 @@ async def billing_edit(request: Request, billing_uuid: str):
     )
 
     flash(request, "Cobrança atualizada com sucesso!", "success")
+    push_event(request, {"event": "rentivo_billing_edited", "billing_uuid_hash": analytics_hash(updated.uuid)})
     return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
 
@@ -308,6 +319,7 @@ async def billing_transfer(request: Request, billing_uuid: str):
     )
 
     flash(request, "Cobrança transferida com sucesso!", "success")
+    push_event(request, {"event": "rentivo_billing_transferred", "billing_uuid_hash": analytics_hash(billing_uuid)})
     return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
 
@@ -346,4 +358,5 @@ async def billing_delete(request: Request, billing_uuid: str):
     )
 
     flash(request, f"Cobrança '{billing.name}' excluída.", "success")
+    push_event(request, {"event": "rentivo_billing_deleted", "billing_uuid_hash": analytics_hash(billing_uuid)})
     return RedirectResponse("/", status_code=302)
