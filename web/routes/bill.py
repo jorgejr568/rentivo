@@ -616,6 +616,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
 async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, receipt_uuid: str):
     bill_service = get_bill_service(request)
     billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
 
     form = await request.form()
     redirect_url = str(form.get("next", "")).strip() or f"/billings/{billing_uuid}/bills/{bill_uuid}/edit"
@@ -627,13 +628,19 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
         return RedirectResponse("/", status_code=302)
 
     billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
+    if not billing or billing.uuid != billing_uuid:
         logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
         flash(request, "Cobrança não encontrada.", "danger")
         return RedirectResponse("/", status_code=302)
 
+    user_id = request.session.get("user_id")
+    if not auth_service.can_manage_bills(user_id, billing):
+        logger.warning("receipt_delete_access_denied", bill_uuid=bill_uuid, user_id=user_id)
+        flash(request, "Acesso negado.", "danger")
+        return RedirectResponse("/", status_code=302)
+
     receipt = bill_service.get_receipt_by_uuid(receipt_uuid)
-    if not receipt:
+    if not receipt or receipt.bill_id != bill.id:
         logger.warning("receipt_not_found", receipt_uuid=receipt_uuid)
         flash(request, "Comprovante não encontrado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
