@@ -965,6 +965,50 @@ class TestReceiptDelete:
             assert SQLAlchemyReceiptRepository(conn).get_by_uuid(victim_receipt.uuid) is not None
 
 
+class TestReceiptRedirectSafety:
+    def test_upload_next_external_url_ignored(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Vuln 8: `next` form param pointing off-site must not be honoured."""
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token, "next": "https://evil.example/phish"},
+                files={"receipt_files": ("r.pdf", b"%PDF", "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert not response.headers["location"].startswith("https://evil.example")
+        assert response.headers["location"].startswith(f"/billings/{billing.uuid}/bills/{bill.uuid}/edit")
+
+    def test_delete_next_protocol_relative_ignored(self, auth_client, test_engine, tmp_path, csrf_token):
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        with test_engine.connect() as conn:
+            receipt = SQLAlchemyReceiptRepository(conn).create(
+                Receipt(
+                    bill_id=bill.id,
+                    filename="r.pdf",
+                    storage_key="k",
+                    content_type="application/pdf",
+                    file_size=10,
+                    sort_order=0,
+                )
+            )
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}/delete",
+                data={"csrf_token": csrf_token, "next": "//evil.example/"},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert not response.headers["location"].startswith("//evil.example")
+
+
 class TestEditFormShowsReceipts:
     def test_edit_form_shows_receipts(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)

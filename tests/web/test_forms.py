@@ -1,4 +1,4 @@
-from web.forms import parse_brl, parse_formset
+from web.forms import parse_brl, parse_formset, safe_redirect_path
 
 
 class TestParseBrlReexport:
@@ -47,3 +47,34 @@ class TestParseFormset:
         form_data = {"items-TOTAL_FORMS": None}
         rows = parse_formset(form_data, "items")
         assert rows == []
+
+
+class TestSafeRedirectPath:
+    FALLBACK = "/billings/x/bills/y/edit"
+
+    def test_relative_path_is_kept(self):
+        assert safe_redirect_path("/billings/abc/bills/def/edit", self.FALLBACK) == "/billings/abc/bills/def/edit"
+
+    def test_empty_falls_back(self):
+        assert safe_redirect_path("", self.FALLBACK) == self.FALLBACK
+
+    def test_whitespace_falls_back(self):
+        assert safe_redirect_path("   ", self.FALLBACK) == self.FALLBACK
+
+    def test_absolute_https_rejected(self):
+        assert safe_redirect_path("https://evil.example/login", self.FALLBACK) == self.FALLBACK
+
+    def test_absolute_http_rejected(self):
+        assert safe_redirect_path("http://evil.example/", self.FALLBACK) == self.FALLBACK
+
+    def test_protocol_relative_rejected(self):
+        assert safe_redirect_path("//evil.example/path", self.FALLBACK) == self.FALLBACK
+
+    def test_backslash_rejected(self):
+        assert safe_redirect_path("/\\evil.example/path", self.FALLBACK) == self.FALLBACK
+
+    def test_encoded_slash_rejected(self):
+        assert safe_redirect_path("/%2fevil.example", self.FALLBACK) == self.FALLBACK
+
+    def test_no_leading_slash_rejected(self):
+        assert safe_redirect_path("billings/abc", self.FALLBACK) == self.FALLBACK
