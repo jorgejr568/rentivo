@@ -266,6 +266,24 @@ class TestBillDelete:
         )
         assert response.status_code == 302
 
+    def test_delete_access_denied_for_other_users_bill(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Vuln 3: delete on another user's bill must be refused; bill persists."""
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            response = auth_client.post(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/delete",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+        assert reloaded is not None, "victim's bill must not be soft-deleted"
+
 
 class TestBillInvoice:
     def test_invoice_local_file(self, auth_client, test_engine, tmp_path):
