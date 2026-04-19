@@ -17,6 +17,33 @@
         </div>
     </div>
 
+    <div class="panel">
+        <div class="panel-head"><h5>Dados do PIX</h5></div>
+        <div class="panel-body">
+            <p class="field-hint mb-1">
+                Estes dados são usados para gerar o QR Code nas faturas das cobranças desta organização.
+                Todos os três campos são obrigatórios para gerar faturas.
+            </p>
+            <div class="field">
+                <label for="pix_key" class="field-label">Chave PIX</label>
+                <input type="text" class="field-input" id="pix_key" name="pix_key" value="{{ org.pix_key }}">
+                <span class="field-hint">Para celular, inclua +55 (caso contrário 11 dígitos são tratados como CPF).</span>
+            </div>
+            <div class="field">
+                <label for="pix_merchant_name" class="field-label">Nome do recebedor</label>
+                <input type="text" class="field-input" id="pix_merchant_name" name="pix_merchant_name"
+                       value="{{ org.pix_merchant_name }}" maxlength="25">
+                <span class="field-hint">Até 25 caracteres.</span>
+            </div>
+            <div class="field mb-0">
+                <label for="pix_merchant_city" class="field-label">Cidade do recebedor</label>
+                <input type="text" class="field-input" id="pix_merchant_city" name="pix_merchant_city"
+                       value="{{ org.pix_merchant_city }}" maxlength="15">
+                <span class="field-hint">Até 15 caracteres, sem acentos.</span>
+            </div>
+        </div>
+    </div>
+
     <div class="btn-group">
         <button type="submit" class="btn btn--primary">Salvar</button>
         <a href="/organizations/{{ org.uuid }}" class="btn btn--ghost">Cancelar</a>

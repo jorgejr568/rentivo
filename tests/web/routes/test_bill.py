@@ -13,6 +13,7 @@ def _create_other_user_billing(test_engine):
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
         other = user_repo.create(User(username="bill_other", password_hash="h"))
+        user_repo.update_pix(other.id, "other@pix.com", "Other Merchant", "Campinas")
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
 
 

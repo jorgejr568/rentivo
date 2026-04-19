@@ -32,18 +32,16 @@ class TestCreateBillingMenu:
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_not_called()
 
-    @patch("rentivo.settings.settings")
     @patch("rentivo.cli.billing_menu.questionary")
-    def test_create_with_fixed_item(self, mock_q, mock_settings):
+    def test_create_with_fixed_item(self, mock_q):
         from rentivo.cli.billing_menu import create_billing_menu
 
-        mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",  # name
             "desc",  # description
             "Rent",  # item description
             "2850.00",  # item amount
-            "",  # pix key
+            "",  # pix key (leave blank to fall back to owner)
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]  # add item? yes, add more? no
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -53,17 +51,15 @@ class TestCreateBillingMenu:
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_called_once()
 
-    @patch("rentivo.settings.settings")
     @patch("rentivo.cli.billing_menu.questionary")
-    def test_create_with_variable_item(self, mock_q, mock_settings):
+    def test_create_with_variable_item(self, mock_q):
         from rentivo.cli.billing_menu import create_billing_menu
 
-        mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",
             "desc",
             "Water",
-            "",
+            "",  # pix key (blank)
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
         mock_q.select.return_value.ask.return_value = "Variável"
@@ -73,40 +69,44 @@ class TestCreateBillingMenu:
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_called_once()
 
-    @patch("rentivo.settings.settings")
     @patch("rentivo.cli.billing_menu.questionary")
-    def test_create_with_global_pix_override(self, mock_q, mock_settings):
+    def test_create_with_billing_pix_override(self, mock_q):
         from rentivo.cli.billing_menu import create_billing_menu
 
-        mock_settings.pix_key = "global@pix.com"
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",
             "desc",
             "Rent",
             "1000",
-            "custom@pix.com",
+            "custom@pix.com",  # pix key
+            "Custom Merchant",  # merchant name
+            "Sao Paulo",  # merchant city
         ]
-        mock_q.confirm.return_value.ask.side_effect = [True, False, True]  # add item, stop, override pix
+        mock_q.confirm.return_value.ask.side_effect = [True, False]
         mock_q.select.return_value.ask.return_value = "Fixo"
 
         mock_service = MagicMock()
         mock_service.create_billing.return_value = Billing(name="Apt 101")
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_called_once()
+        kwargs = mock_service.create_billing.call_args.kwargs
+        assert kwargs["pix_key"] == "custom@pix.com"
+        assert kwargs["pix_merchant_name"] == "Custom Merchant"
+        assert kwargs["pix_merchant_city"] == "Sao Paulo"
 
-    @patch("rentivo.settings.settings")
     @patch("rentivo.cli.billing_menu.questionary")
-    def test_create_invalid_pix_key_shows_error(self, mock_q, mock_settings):
+    def test_create_invalid_pix_key_shows_error(self, mock_q):
         """Regression: invalid PIX key must surface as a CLI error, not crash."""
         from rentivo.cli.billing_menu import create_billing_menu
 
-        mock_settings.pix_key = ""
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",
             "desc",
             "Rent",
             "1000",
-            "not-a-pix-key",
+            "not-a-pix-key",  # pix key
+            "Merchant",  # merchant name
+            "City",  # merchant city
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, False]
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -118,12 +118,10 @@ class TestCreateBillingMenu:
         mock_service.create_billing.assert_called_once()
         audit.safe_log.assert_not_called()
 
-    @patch("rentivo.settings.settings")
     @patch("rentivo.cli.billing_menu.questionary")
-    def test_create_skip_empty_item_desc(self, mock_q, mock_settings):
+    def test_create_skip_empty_item_desc(self, mock_q):
         from rentivo.cli.billing_menu import create_billing_menu
 
-        mock_settings.pix_key = ""
         # First item has empty desc, second has valid desc
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",
@@ -131,7 +129,7 @@ class TestCreateBillingMenu:
             "",  # empty item desc -> skip
             "Rent",  # valid item desc
             "1000",  # amount
-            "",  # pix key
+            "",  # pix key (blank)
         ]
         mock_q.confirm.return_value.ask.side_effect = [True, True, False]  # add, add again, stop
         mock_q.select.return_value.ask.return_value = "Fixo"
@@ -317,30 +315,29 @@ class TestBillingDetailMenuEdgeCases:
         _billing_detail_menu(billing, MagicMock(), MagicMock(), MagicMock())
 
 
-class TestCreateBillingPixNoOverride:
-    @patch("rentivo.settings.settings")
+class TestCreateBillingPixBlank:
     @patch("rentivo.cli.billing_menu.questionary")
-    def test_global_pix_no_override(self, mock_q, mock_settings):
-        """Cover branch 76->83: user has global pix but declines override."""
+    def test_blank_pix_key_skips_merchant_prompts(self, mock_q):
         from rentivo.cli.billing_menu import create_billing_menu
 
-        mock_settings.pix_key = "global@pix.com"
         mock_q.text.return_value.ask.side_effect = [
             "Apt 101",
             "desc",
             "Rent",
             "1000",
+            "",  # blank pix key — merchant prompts are skipped
         ]
-        mock_q.confirm.return_value.ask.side_effect = [True, False, False]  # add item, stop, no override
+        mock_q.confirm.return_value.ask.side_effect = [True, False]  # add item, stop
         mock_q.select.return_value.ask.return_value = "Fixo"
 
         mock_service = MagicMock()
         mock_service.create_billing.return_value = Billing(name="Apt 101")
         create_billing_menu(mock_service, MagicMock())
         mock_service.create_billing.assert_called_once()
-        # pix_key should be "" since user declined override
-        call_kwargs = mock_service.create_billing.call_args
-        assert call_kwargs[1]["pix_key"] == ""
+        kwargs = mock_service.create_billing.call_args.kwargs
+        assert kwargs["pix_key"] == ""
+        assert kwargs["pix_merchant_name"] == ""
+        assert kwargs["pix_merchant_city"] == ""
 
 
 class TestBillingDetailMenuUnrecognized:

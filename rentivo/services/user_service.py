@@ -4,6 +4,7 @@ import bcrypt
 import structlog
 
 from rentivo.models.user import User
+from rentivo.pix import validate_pix_key
 from rentivo.repositories.base import UserRepository
 
 logger = structlog.get_logger(__name__)
@@ -55,3 +56,23 @@ class UserService:
         result = self.repo.list_all()
         logger.debug("users_listed", count=len(result))
         return result
+
+    def update_pix(
+        self,
+        user_id: int,
+        pix_key: str,
+        pix_merchant_name: str,
+        pix_merchant_city: str,
+    ) -> User:
+        normalized_key = validate_pix_key(pix_key) if pix_key.strip() else ""
+        self.repo.update_pix(
+            user_id,
+            normalized_key,
+            pix_merchant_name.strip(),
+            pix_merchant_city.strip(),
+        )
+        updated = self.repo.get_by_id(user_id)
+        if updated is None:
+            raise ValueError("Usuário não encontrado.")
+        logger.info("user_pix_updated", user_id=user_id)
+        return updated

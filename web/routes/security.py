@@ -17,6 +17,7 @@ from webauthn.helpers.structs import (
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.mfa import UserPasskey
+from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.deps import get_audit_service, get_mfa_service, get_user_service, render
 from web.flash import flash
@@ -32,11 +33,13 @@ WEBAUTHN_CHALLENGE_TIMEOUT = 300  # 5 minutes
 async def security_settings(request: Request):
     user_id = request.session["user_id"]
     mfa_service = get_mfa_service(request)
+    user_service = get_user_service(request)
 
     totp = mfa_service.get_totp(user_id)
     has_totp = totp is not None and totp.confirmed
     passkeys = mfa_service.list_passkeys(user_id)
     recovery_count = mfa_service.count_unused_recovery_codes(user_id) if has_totp else 0
+    current_user = user_service.get_by_id(user_id)
 
     return render(
         request,
@@ -45,8 +48,45 @@ async def security_settings(request: Request):
             "has_totp": has_totp,
             "passkeys": passkeys,
             "recovery_count": recovery_count,
+            "current_user": current_user,
         },
     )
+
+
+@router.post("/pix")
+async def update_pix(request: Request):
+    user_id = request.session["user_id"]
+    form = await request.form()
+    pix_key = str(form.get("pix_key", "")).strip()
+    pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
+    pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
+
+    user_service = get_user_service(request)
+    previous = user_service.get_by_id(user_id)
+    if previous is None:
+        flash(request, "Usuário não encontrado.", "danger")
+        return RedirectResponse("/security", status_code=302)
+
+    try:
+        updated = user_service.update_pix(user_id, pix_key, pix_merchant_name, pix_merchant_city)
+    except ValueError as e:
+        flash(request, str(e), "danger")
+        return RedirectResponse("/security", status_code=302)
+
+    audit = get_audit_service(request)
+    audit.safe_log(
+        AuditEventType.USER_UPDATE,
+        actor_id=user_id,
+        actor_username=request.session.get("username", ""),
+        source="web",
+        entity_type="user",
+        entity_id=user_id,
+        previous_state=serialize_user(previous),
+        new_state=serialize_user(updated),
+    )
+
+    flash(request, "Dados do PIX atualizados.", "success")
+    return RedirectResponse("/security", status_code=302)
 
 
 @router.post("/change-password")

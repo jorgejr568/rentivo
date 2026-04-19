@@ -16,6 +16,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyUserRepository,
 )
 from rentivo.services.bill_service import BillService
+from rentivo.services.pix_service import PixService
 from rentivo.storage.local import LocalStorage
 from tests.conftest import SCHEMA_DDL
 
@@ -77,7 +78,11 @@ def generate_bill_in_db(engine, billing, tmp_path):
     with engine.connect() as conn:
         bill_repo = SQLAlchemyBillRepository(conn)
         storage = LocalStorage(str(tmp_path))
-        service = BillService(bill_repo, storage)
+        pix_service = PixService(
+            SQLAlchemyUserRepository(conn),
+            SQLAlchemyOrganizationRepository(conn),
+        )
+        service = BillService(bill_repo, storage, pix_service=pix_service)
         bill = service.generate_bill(
             billing=billing,
             reference_month="2025-03",
@@ -156,13 +161,14 @@ def client():
 
 @pytest.fixture()
 def auth_client(client, test_engine):
-    """Client that is already logged in."""
+    """Client that is already logged in. Seeds PIX info so bill generation is unblocked."""
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
         from rentivo.services.user_service import UserService
 
         user_service = UserService(user_repo)
-        user_service.create_user("testuser", "testpass")
+        user = user_service.create_user("testuser", "testpass")
+        user_service.update_pix(user.id, "test@pix.com", "Test Merchant", "Sao Paulo")
 
     client.post("/login", data={"username": "testuser", "password": "testpass"})
     return client

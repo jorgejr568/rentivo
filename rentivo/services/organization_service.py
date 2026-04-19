@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.organization import Organization, OrganizationMember, OrgRole
+from rentivo.pix import validate_pix_key
 from rentivo.repositories.base import OrganizationRepository
 
 logger = structlog.get_logger(__name__)
@@ -40,6 +41,9 @@ class OrganizationService:
         return result
 
     def update_organization(self, org: Organization) -> Organization:
+        org.pix_key = validate_pix_key(org.pix_key) if org.pix_key.strip() else ""
+        org.pix_merchant_name = org.pix_merchant_name.strip()
+        org.pix_merchant_city = org.pix_merchant_city.strip()
         result = self.repo.update(org)
         logger.info("organization_updated", org_id=result.id, name=result.name)
         return result

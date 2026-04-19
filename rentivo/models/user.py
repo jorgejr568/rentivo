@@ -10,4 +10,7 @@ class User(BaseModel):
     username: str
     email: str = ""
     password_hash: str = ""
+    pix_key: str = ""
+    pix_merchant_name: str = ""
+    pix_merchant_city: str = ""
     created_at: datetime | None = None

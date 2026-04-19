@@ -60,22 +60,25 @@ def create_billing_menu(billing_service: BillingService, audit_service: AuditSer
         console.print("[yellow]Nenhum item adicionado. Cobrança não criada.[/yellow]")
         return
 
-    # Optional PIX key override for this billing
-    from rentivo.settings import settings as app_settings
-
-    pix_key = ""
-    if app_settings.pix_key:
-        console.print(f"\n  [dim]Chave PIX padrão: {app_settings.pix_key}[/dim]")
-        override = questionary.confirm("Usar uma chave PIX diferente para esta cobrança?", default=False).ask()
-        if override:
-            console.print("  [dim]Para celular, inclua +55 (11 dígitos são tratados como CPF).[/dim]")
-            pix_key = questionary.text("  Chave PIX:").ask() or ""
-    else:
-        console.print("  [dim]Para celular, inclua +55 (11 dígitos são tratados como CPF).[/dim]")
-        pix_key = questionary.text("Chave PIX para esta cobrança (opcional):").ask() or ""
+    # Optional PIX override for this billing (falls back to owner PIX config)
+    console.print("  [dim]Opcionalmente sobrescreva os dados de PIX do proprietário para esta cobrança.[/dim]")
+    console.print("  [dim]Para celular, inclua +55 (11 dígitos são tratados como CPF).[/dim]")
+    pix_key = questionary.text("  Chave PIX (opcional):").ask() or ""
+    pix_merchant_name = ""
+    pix_merchant_city = ""
+    if pix_key:
+        pix_merchant_name = questionary.text("  Nome do recebedor (até 25 caracteres):").ask() or ""
+        pix_merchant_city = questionary.text("  Cidade do recebedor (até 15 caracteres):").ask() or ""
 
     try:
-        billing = billing_service.create_billing(name, description, items, pix_key=pix_key)
+        billing = billing_service.create_billing(
+            name,
+            description,
+            items,
+            pix_key=pix_key,
+            pix_merchant_name=pix_merchant_name,
+            pix_merchant_city=pix_merchant_city,
+        )
     except ValueError as e:
         console.print(f"[red]{e}[/red]")
         return

@@ -44,13 +44,17 @@ class SQLAlchemyBillingRepository(BillingRepository):
         now = _now()
         result = self.conn.execute(
             text(
-                "INSERT INTO billings (name, description, pix_key, uuid, owner_type, owner_id, created_at, updated_at) "
-                "VALUES (:name, :description, :pix_key, :uuid, :owner_type, :owner_id, :created_at, :updated_at)"
+                "INSERT INTO billings (name, description, pix_key, pix_merchant_name, pix_merchant_city, "
+                "uuid, owner_type, owner_id, created_at, updated_at) "
+                "VALUES (:name, :description, :pix_key, :pix_merchant_name, :pix_merchant_city, "
+                ":uuid, :owner_type, :owner_id, :created_at, :updated_at)"
             ),
             {
                 "name": billing.name,
                 "description": billing.description,
                 "pix_key": billing.pix_key,
+                "pix_merchant_name": billing.pix_merchant_name,
+                "pix_merchant_city": billing.pix_merchant_city,
                 "uuid": billing_uuid,
                 "owner_type": billing.owner_type,
                 "owner_id": billing.owner_id,
@@ -87,6 +91,8 @@ class SQLAlchemyBillingRepository(BillingRepository):
             name=row["name"],
             description=row["description"],
             pix_key=row["pix_key"],
+            pix_merchant_name=row.get("pix_merchant_name", "") or "",
+            pix_merchant_city=row.get("pix_merchant_city", "") or "",
             owner_type=row.get("owner_type", "user"),
             owner_id=row.get("owner_id", 0),
             items=[
@@ -190,12 +196,15 @@ class SQLAlchemyBillingRepository(BillingRepository):
         self.conn.execute(
             text(
                 "UPDATE billings SET name = :name, description = :description, "
-                "pix_key = :pix_key, updated_at = :updated_at WHERE id = :id"
+                "pix_key = :pix_key, pix_merchant_name = :pix_merchant_name, "
+                "pix_merchant_city = :pix_merchant_city, updated_at = :updated_at WHERE id = :id"
             ),
             {
                 "name": billing.name,
                 "description": billing.description,
                 "pix_key": billing.pix_key,
+                "pix_merchant_name": billing.pix_merchant_name,
+                "pix_merchant_city": billing.pix_merchant_city,
                 "updated_at": _now(),
                 "id": billing.id,
             },
@@ -460,6 +469,9 @@ class SQLAlchemyUserRepository(UserRepository):
             username=row["username"],
             email=row.get("email", ""),
             password_hash=row["password_hash"],
+            pix_key=row.get("pix_key", "") or "",
+            pix_merchant_name=row.get("pix_merchant_name", "") or "",
+            pix_merchant_city=row.get("pix_merchant_city", "") or "",
             created_at=row["created_at"],
         )
 
@@ -514,6 +526,21 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         self.conn.commit()
 
+    def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None:
+        self.conn.execute(
+            text(
+                "UPDATE users SET pix_key = :pix_key, pix_merchant_name = :pix_merchant_name, "
+                "pix_merchant_city = :pix_merchant_city WHERE id = :id"
+            ),
+            {
+                "pix_key": pix_key,
+                "pix_merchant_name": pix_merchant_name,
+                "pix_merchant_city": pix_merchant_city,
+                "id": user_id,
+            },
+        )
+        self.conn.commit()
+
 
 class SQLAlchemyOrganizationRepository(OrganizationRepository):
     def __init__(self, conn: Connection) -> None:
@@ -527,6 +554,9 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             name=row["name"],
             created_by=row["created_by"],
             enforce_mfa=bool(row.get("enforce_mfa", False)),
+            pix_key=row.get("pix_key", "") or "",
+            pix_merchant_name=row.get("pix_merchant_name", "") or "",
+            pix_merchant_city=row.get("pix_merchant_city", "") or "",
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             deleted_at=row.get("deleted_at"),
@@ -605,9 +635,18 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         self.conn.execute(
             text(
                 "UPDATE organizations SET name = :name, enforce_mfa = :enforce_mfa, "
-                "updated_at = :updated_at WHERE id = :id"
+                "pix_key = :pix_key, pix_merchant_name = :pix_merchant_name, "
+                "pix_merchant_city = :pix_merchant_city, updated_at = :updated_at WHERE id = :id"
             ),
-            {"name": org.name, "enforce_mfa": org.enforce_mfa, "updated_at": _now(), "id": org.id},
+            {
+                "name": org.name,
+                "enforce_mfa": org.enforce_mfa,
+                "pix_key": org.pix_key,
+                "pix_merchant_name": org.pix_merchant_name,
+                "pix_merchant_city": org.pix_merchant_city,
+                "updated_at": _now(),
+                "id": org.id,
+            },
         )
         self.conn.commit()
         if org.id is None:  # pragma: no cover

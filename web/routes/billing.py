@@ -13,6 +13,7 @@ from web.deps import (
     get_bill_service,
     get_billing_service,
     get_organization_service,
+    get_pix_service,
     render,
 )
 from web.flash import flash
@@ -26,9 +27,20 @@ router = APIRouter(prefix="/billings")
 @router.get("/")
 async def billing_list(request: Request):
     service = get_billing_service(request)
+    pix_service = get_pix_service(request)
     user_id = request.session.get("user_id")
     billings = service.list_billings_for_user(user_id)
-    return render(request, "billing/list.html", {"billings": billings})
+    billings_needing_pix = [b for b in billings if pix_service.billing_needs_setup(b)]
+    user_pix_incomplete = pix_service.owner_needs_setup("user", user_id) if user_id else False
+    return render(
+        request,
+        "billing/list.html",
+        {
+            "billings": billings,
+            "billings_needing_pix": billings_needing_pix,
+            "user_pix_incomplete": user_pix_incomplete,
+        },
+    )
 
 
 @router.get("/create")
@@ -42,6 +54,8 @@ async def billing_create(request: Request):
     name = str(form.get("name", "")).strip()
     description = str(form.get("description", "")).strip()
     pix_key = str(form.get("pix_key", "")).strip()
+    pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
+    pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
 
     if not name:
         logger.warning("billing_create_rejected", reason="empty_name")
@@ -83,6 +97,8 @@ async def billing_create(request: Request):
             description,
             items,
             pix_key=pix_key,
+            pix_merchant_name=pix_merchant_name,
+            pix_merchant_city=pix_merchant_city,
             owner_type=owner_type,
             owner_id=owner_id,
         )
@@ -138,6 +154,9 @@ async def billing_detail(request: Request, billing_uuid: str):
         org_service.list_user_organizations(user_id) if auth_service.can_transfer_billing(user_id, billing) else []
     )
 
+    pix_service = get_pix_service(request)
+    pix_needs_setup = pix_service.billing_needs_setup(billing)
+
     return render(
         request,
         "billing/detail.html",
@@ -146,6 +165,7 @@ async def billing_detail(request: Request, billing_uuid: str):
             "bills": bills,
             "role": role,
             "user_orgs": user_orgs,
+            "pix_needs_setup": pix_needs_setup,
         },
     )
 
@@ -186,6 +206,8 @@ async def billing_edit(request: Request, billing_uuid: str):
     billing.name = str(form.get("name", "")).strip()
     billing.description = str(form.get("description", "")).strip()
     billing.pix_key = str(form.get("pix_key", "")).strip()
+    billing.pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
+    billing.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
 
     items_data = parse_formset(dict(form), "items")
     items: list[BillingItem] = []

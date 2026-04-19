@@ -9,6 +9,45 @@
 </div>
 
 <div class="panel">
+    <div class="panel-head"><h5>Dados do PIX</h5></div>
+    <div class="panel-body">
+        <p class="field-hint mb-1">
+            Estes dados são usados para gerar o QR Code nas faturas das suas cobranças pessoais.
+            Todos os três campos são obrigatórios para gerar faturas.
+        </p>
+        {% if not current_user or not current_user.pix_key or not current_user.pix_merchant_name or not current_user.pix_merchant_city %}
+        <div class="toast toast--warning" role="alert">
+            Preencha todos os campos abaixo para poder gerar faturas das cobranças pessoais.
+        </div>
+        {% endif %}
+        <form method="post" action="/security/pix">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="field">
+                <label for="pix_key" class="field-label">Chave PIX</label>
+                <input type="text" class="field-input" id="pix_key" name="pix_key"
+                       value="{{ current_user.pix_key if current_user else '' }}" style="max-width: 350px;">
+                <span class="field-hint">Para celular, inclua +55 (caso contrário 11 dígitos são tratados como CPF).</span>
+            </div>
+            <div class="field">
+                <label for="pix_merchant_name" class="field-label">Nome do recebedor</label>
+                <input type="text" class="field-input" id="pix_merchant_name" name="pix_merchant_name"
+                       value="{{ current_user.pix_merchant_name if current_user else '' }}"
+                       maxlength="25" style="max-width: 350px;">
+                <span class="field-hint">Até 25 caracteres.</span>
+            </div>
+            <div class="field">
+                <label for="pix_merchant_city" class="field-label">Cidade do recebedor</label>
+                <input type="text" class="field-input" id="pix_merchant_city" name="pix_merchant_city"
+                       value="{{ current_user.pix_merchant_city if current_user else '' }}"
+                       maxlength="15" style="max-width: 350px;">
+                <span class="field-hint">Até 15 caracteres, sem acentos.</span>
+            </div>
+            <button type="submit" class="btn btn--primary btn--sm">Salvar Dados PIX</button>
+        </form>
+    </div>
+</div>
+
+<div class="panel">
     <div class="panel-head"><h5>Alterar Senha</h5></div>
     <div class="panel-body">
         {% if password_error %}

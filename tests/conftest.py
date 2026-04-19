@@ -16,6 +16,8 @@ CREATE TABLE billings (
     name TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
     pix_key TEXT NOT NULL DEFAULT '',
+    pix_merchant_name TEXT NOT NULL DEFAULT '',
+    pix_merchant_city TEXT NOT NULL DEFAULT '',
     uuid VARCHAR(26) NOT NULL UNIQUE,
     owner_type TEXT NOT NULL DEFAULT 'user',
     owner_id INTEGER NOT NULL DEFAULT 0,
@@ -62,6 +64,9 @@ CREATE TABLE users (
     username TEXT NOT NULL UNIQUE,
     email TEXT NOT NULL DEFAULT '',
     password_hash TEXT NOT NULL,
+    pix_key TEXT NOT NULL DEFAULT '',
+    pix_merchant_name TEXT NOT NULL DEFAULT '',
+    pix_merchant_city TEXT NOT NULL DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -71,6 +76,9 @@ CREATE TABLE organizations (
     name TEXT NOT NULL,
     created_by INTEGER NOT NULL REFERENCES users(id),
     enforce_mfa TINYINT NOT NULL DEFAULT 0,
+    pix_key TEXT NOT NULL DEFAULT '',
+    pix_merchant_name TEXT NOT NULL DEFAULT '',
+    pix_merchant_city TEXT NOT NULL DEFAULT '',
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     deleted_at DATETIME

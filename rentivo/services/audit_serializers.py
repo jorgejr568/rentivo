@@ -30,6 +30,8 @@ def serialize_billing(billing: Billing) -> dict:
         "name": billing.name,
         "description": billing.description,
         "pix_key": billing.pix_key,
+        "pix_merchant_name": billing.pix_merchant_name,
+        "pix_merchant_city": billing.pix_merchant_city,
         "owner_type": billing.owner_type,
         "owner_id": billing.owner_id,
         "items": [
@@ -80,6 +82,9 @@ def serialize_user(user: User) -> dict:
         "id": user.id,
         "username": user.username,
         "email": user.email,
+        "pix_key": user.pix_key,
+        "pix_merchant_name": user.pix_merchant_name,
+        "pix_merchant_city": user.pix_merchant_city,
         "created_at": _dt(user.created_at),
     }
 
@@ -92,6 +97,9 @@ def serialize_organization(org: Organization) -> dict:
         "name": org.name,
         "created_by": org.created_by,
         "enforce_mfa": org.enforce_mfa,
+        "pix_key": org.pix_key,
+        "pix_merchant_name": org.pix_merchant_name,
+        "pix_merchant_city": org.pix_merchant_city,
         "created_at": _dt(org.created_at),
         "updated_at": _dt(org.updated_at),
     }
