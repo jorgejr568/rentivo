@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import logging
+import structlog
 
 from rentivo.models.organization import Organization, OrganizationMember, OrgRole
 from rentivo.repositories.base import OrganizationRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class OrganizationService:
@@ -17,45 +17,45 @@ class OrganizationService:
         created = self.repo.create(org)
         self.repo.add_member(created.id, created_by, OrgRole.ADMIN.value)
         logger.info(
-            "Organization created: id=%s name=%s by user=%s",
-            created.id,
-            created.name,
-            created_by,
+            "organization_created",
+            org_id=created.id,
+            name=created.name,
+            created_by=created_by,
         )
         return created
 
     def get_by_id(self, org_id: int) -> Organization | None:
         result = self.repo.get_by_id(org_id)
-        logger.debug("get_by_id org_id=%s found=%s", org_id, result is not None)
+        logger.debug("organization_get_by_id", org_id=org_id, found=result is not None)
         return result
 
     def get_by_uuid(self, uuid: str) -> Organization | None:
         result = self.repo.get_by_uuid(uuid)
-        logger.debug("get_by_uuid uuid=%s found=%s", uuid, result is not None)
+        logger.debug("organization_get_by_uuid", org_uuid=uuid, found=result is not None)
         return result
 
     def list_user_organizations(self, user_id: int) -> list[Organization]:
         result = self.repo.list_by_user(user_id)
-        logger.debug("Listed %d organizations for user=%s", len(result), user_id)
+        logger.debug("organizations_listed_for_user", user_id=user_id, count=len(result))
         return result
 
     def update_organization(self, org: Organization) -> Organization:
         result = self.repo.update(org)
-        logger.info("Organization updated: id=%s name=%s", result.id, result.name)
+        logger.info("organization_updated", org_id=result.id, name=result.name)
         return result
 
     def delete_organization(self, org_id: int) -> None:
         self.repo.delete(org_id)
-        logger.info("Organization %s soft-deleted", org_id)
+        logger.info("organization_deleted", org_id=org_id)
 
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
         result = self.repo.get_member(org_id, user_id)
-        logger.debug("get_member org=%s user=%s found=%s", org_id, user_id, result is not None)
+        logger.debug("org_member_get", org_id=org_id, user_id=user_id, found=result is not None)
         return result
 
     def list_members(self, org_id: int) -> list[OrganizationMember]:
         result = self.repo.list_members(org_id)
-        logger.debug("Listed %d members for org=%s", len(result), org_id)
+        logger.debug("org_members_listed", org_id=org_id, count=len(result))
         return result
 
     def add_member(self, org_id: int, user_id: int, role: str) -> OrganizationMember:
@@ -63,11 +63,11 @@ class OrganizationService:
 
     def remove_member(self, org_id: int, user_id: int) -> None:
         self.repo.remove_member(org_id, user_id)
-        logger.info("Removed user %s from org %s", user_id, org_id)
+        logger.info("org_member_removed", org_id=org_id, user_id=user_id)
 
     def update_member_role(self, org_id: int, user_id: int, role: str) -> None:
         self.repo.update_member_role(org_id, user_id, role)
-        logger.info("Updated role for user %s in org %s to %s", user_id, org_id, role)
+        logger.info("org_member_role_updated", org_id=org_id, user_id=user_id, role=role)
 
     def set_enforce_mfa(self, org_id: int, enforce: bool) -> Organization:
         org = self.repo.get_by_id(org_id)
@@ -75,5 +75,5 @@ class OrganizationService:
             raise ValueError("Organização não encontrada")
         org.enforce_mfa = enforce
         updated = self.repo.update(org)
-        logger.info("Organization %s enforce_mfa set to %s", org_id, enforce)
+        logger.info("org_enforce_mfa_set", org_id=org_id, enforce=enforce)
         return updated

@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 from io import BytesIO
 
+import structlog
 from fpdf import FPDF
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _image_to_pdf(image_bytes: bytes) -> bytes:
@@ -86,7 +86,7 @@ def merge_receipts(
         for page in invoice_reader.pages:
             writer.add_page(page)
     except Exception:
-        logger.exception("Failed to read invoice PDF, returning original")
+        logger.exception("invoice_pdf_read_failed")
         return invoice_pdf, list(range(len(receipts)))
 
     for idx, (file_bytes, content_type) in enumerate(receipts):
@@ -101,10 +101,10 @@ def merge_receipts(
                 for page in reader.pages:
                     writer.add_page(page)
             else:
-                logger.warning("Skipping unsupported content type: %s", content_type)
+                logger.warning("receipt_merge_skipped_unsupported_type", content_type=content_type)
                 failed.append(idx)
         except Exception:
-            logger.exception("Failed to process receipt (type=%s), skipping", content_type)
+            logger.exception("receipt_merge_failed", content_type=content_type)
             failed.append(idx)
             continue
 

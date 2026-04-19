@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import logging
 from datetime import datetime
+
+import structlog
 
 from rentivo.constants import SP_TZ
 from rentivo.models.bill import Bill, BillLineItem
@@ -14,7 +15,7 @@ from rentivo.repositories.base import BillRepository, ReceiptRepository
 from rentivo.settings import settings
 from rentivo.storage.base import StorageBackend
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 CONTENT_TYPE_EXTENSIONS = {
@@ -99,9 +100,9 @@ class BillService:
                 ordered.append(receipt)
             except Exception:
                 logger.exception(
-                    "Failed to fetch receipt %s (key=%s), skipping",
-                    receipt.uuid,
-                    receipt.storage_key,
+                    "receipt_fetch_failed",
+                    receipt_uuid=receipt.uuid,
+                    storage_key=receipt.storage_key,
                 )
         return data, ordered
 
@@ -132,14 +133,14 @@ class BillService:
             if failed_idxs:
                 failed_uuids = [ordered_receipts[i].uuid for i in failed_idxs if 0 <= i < len(ordered_receipts)]
                 logger.warning(
-                    "Receipts failed to merge for bill %s: %s",
-                    bill.uuid,
-                    failed_uuids,
+                    "receipts_merge_failed",
+                    bill_uuid=bill.uuid,
+                    failed_receipt_uuids=failed_uuids,
                 )
 
         key = _storage_key(billing.uuid, bill.uuid)
         path = self.storage.save(key, pdf_bytes)
-        logger.info("PDF stored at %s for bill %s", key, bill.uuid)
+        logger.info("bill_pdf_stored", bill_uuid=bill.uuid, storage_key=key)
 
         if bill.id is None:
             raise ValueError("Cannot update pdf_path for bill without an id")
@@ -201,11 +202,12 @@ class BillService:
         )
         bill = self.bill_repo.create(bill)
         logger.info(
-            "Bill created: id=%s, billing=%s, month=%s, total=%d",
-            bill.id,
-            billing.name,
-            reference_month,
-            total,
+            "bill_created",
+            bill_id=bill.id,
+            billing_id=billing.id,
+            billing_name=billing.name,
+            reference_month=reference_month,
+            total_centavos=total,
         )
 
         self._generate_and_store_pdf(bill, billing)
@@ -226,7 +228,7 @@ class BillService:
         bill.due_date = due_date or None
 
         bill = self.bill_repo.update(bill)
-        logger.info("Bill updated: id=%s, total=%d", bill.id, bill.total_amount)
+        logger.info("bill_updated", bill_id=bill.id, total_centavos=bill.total_amount)
 
         self._generate_and_store_pdf(bill, billing)
 
@@ -234,19 +236,19 @@ class BillService:
 
     def regenerate_pdf(self, bill: Bill, billing: Billing) -> Bill:
         """Regenerate the PDF using current billing info (PIX key, etc.)."""
-        logger.info("Regenerating PDF for bill uuid=%s", bill.uuid)
+        logger.info("bill_pdf_regenerate", bill_uuid=bill.uuid)
         self._generate_and_store_pdf(bill, billing)
         return bill
 
     def get_invoice_url(self, pdf_path: str | None) -> str:
         if not pdf_path:
             return ""
-        logger.debug("get_invoice_url key=%s", pdf_path)
+        logger.debug("invoice_url_resolve", storage_key=pdf_path)
         return self.storage.get_url(pdf_path)
 
     def list_bills(self, billing_id: int) -> list[Bill]:
         result = self.bill_repo.list_by_billing(billing_id)
-        logger.debug("Listed %d bills for billing=%s", len(result), billing_id)
+        logger.debug("bills_listed", billing_id=billing_id, count=len(result))
         return result
 
     def change_status(self, bill: Bill, new_status: str) -> Bill:
@@ -259,22 +261,22 @@ class BillService:
         self.bill_repo.update_status(bill.id, new_status, now)
         bill.status = new_status
         bill.status_updated_at = now
-        logger.info("Bill %s status changed to %s", bill.id, new_status)
+        logger.info("bill_status_changed", bill_id=bill.id, new_status=new_status)
         return bill
 
     def get_bill(self, bill_id: int) -> Bill | None:
         result = self.bill_repo.get_by_id(bill_id)
-        logger.debug("get_bill id=%s found=%s", bill_id, result is not None)
+        logger.debug("bill_get", bill_id=bill_id, found=result is not None)
         return result
 
     def get_bill_by_uuid(self, uuid: str) -> Bill | None:
         result = self.bill_repo.get_by_uuid(uuid)
-        logger.debug("get_bill_by_uuid uuid=%s found=%s", uuid, result is not None)
+        logger.debug("bill_get_by_uuid", bill_uuid=uuid, found=result is not None)
         return result
 
     def delete_bill(self, bill_id: int) -> None:
         self.bill_repo.delete(bill_id)
-        logger.info("Bill %s soft-deleted", bill_id)
+        logger.info("bill_deleted", bill_id=bill_id)
 
     # ---- Receipt methods ----
 
@@ -327,12 +329,17 @@ class BillService:
             receipt = self.receipt_repo.create(receipt)
         except Exception:
             logger.exception(
-                "Receipt repo create failed, cleaning up orphaned storage key=%s",
-                storage_key,
+                "receipt_create_failed_cleanup",
+                storage_key=storage_key,
             )
             self.storage.delete(storage_key)
             raise
-        logger.info("Receipt added: uuid=%s bill=%s file=%s", receipt.uuid, bill.uuid, filename)
+        logger.info(
+            "receipt_added",
+            receipt_uuid=receipt.uuid,
+            bill_uuid=bill.uuid,
+            filename=filename,
+        )
 
         _, failed_uuids = self._generate_and_store_pdf(bill, billing)
         return receipt, failed_uuids
@@ -345,7 +352,7 @@ class BillService:
             raise ValueError("Cannot delete receipt without an id")
 
         self.receipt_repo.delete(receipt.id)
-        logger.info("Receipt deleted: uuid=%s bill=%s", receipt.uuid, bill.uuid)
+        logger.info("receipt_deleted", receipt_uuid=receipt.uuid, bill_uuid=bill.uuid)
 
         # Regenerate PDF without this receipt
         self._generate_and_store_pdf(bill, billing)
@@ -380,6 +387,6 @@ class BillService:
 
         updates = [(by_uuid[uuid].id, idx) for idx, uuid in enumerate(receipt_uuids)]
         self.receipt_repo.update_sort_orders(updates)
-        logger.info("Receipts reordered: bill=%s", bill.uuid)
+        logger.info("receipts_reordered", bill_uuid=bill.uuid, count=len(updates))
 
         self._generate_and_store_pdf(bill, billing)

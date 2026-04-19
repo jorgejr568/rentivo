@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import logging
+import structlog
 
 from rentivo.models.audit_log import AuditLog
 from rentivo.repositories.base import AuditLogRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class AuditService:
@@ -41,11 +41,12 @@ class AuditService:
         )
         result = self.repo.create(audit_log)
         logger.info(
-            "Audit logged: event=%s actor=%s entity=%s/%s",
-            event_type,
-            actor_username or actor_id,
-            entity_type,
-            entity_id,
+            "audit_logged",
+            event_type=event_type,
+            actor_id=actor_id,
+            actor_username=actor_username,
+            entity_type=entity_type,
+            entity_id=entity_id,
         )
         return result
 
@@ -54,7 +55,7 @@ class AuditService:
         try:
             return self.log(*args, **kwargs)
         except Exception:
-            logger.exception("Failed to write audit log")
+            logger.exception("audit_log_failed")
             return None
 
     def list_by_entity(self, entity_type: str, entity_id: int) -> list[AuditLog]:

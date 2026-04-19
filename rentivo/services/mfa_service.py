@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import base64
 import io
-import logging
 import secrets
 
 import bcrypt
 import pyotp
 import qrcode
+import structlog
 
 from rentivo.models.mfa import UserPasskey, UserTOTP
 from rentivo.repositories.base import (
@@ -17,7 +17,7 @@ from rentivo.repositories.base import (
     RecoveryCodeRepository,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 RECOVERY_CODE_COUNT = 10
 RECOVERY_CODE_LENGTH = 8
@@ -69,7 +69,7 @@ class MFAService:
         qr.save(buf, format="PNG")
         qr_base64 = base64.b64encode(buf.getvalue()).decode()
 
-        logger.info("TOTP setup initiated for user=%s", user_id)
+        logger.info("totp_setup_initiated", user_id=user_id)
         return created, provisioning_uri, qr_base64
 
     def confirm_totp(self, user_id: int, code: str) -> list[str]:
@@ -87,7 +87,7 @@ class MFAService:
         self.totp_repo.confirm(user_id)
         recovery_codes = self._generate_recovery_codes(user_id)
 
-        logger.info("TOTP confirmed for user=%s", user_id)
+        logger.info("totp_confirmed", user_id=user_id)
         return recovery_codes
 
     def verify_totp(self, user_id: int, code: str) -> bool:
@@ -102,7 +102,7 @@ class MFAService:
         """Disable TOTP and delete all recovery codes."""
         self.totp_repo.delete_by_user_id(user_id)
         self.recovery_repo.delete_all_by_user(user_id)
-        logger.info("TOTP disabled for user=%s", user_id)
+        logger.info("totp_disabled", user_id=user_id)
 
     # --- Recovery Codes ---
 
@@ -116,7 +116,7 @@ class MFAService:
             codes.append(code)
             hashes.append(bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode())
         self.recovery_repo.create_batch(user_id, hashes)
-        logger.info("Generated %d recovery codes for user=%s", len(codes), user_id)
+        logger.info("recovery_codes_generated", user_id=user_id, count=len(codes))
         return codes
 
     def regenerate_recovery_codes(self, user_id: int) -> list[str]:
@@ -132,7 +132,7 @@ class MFAService:
         for rc in unused:
             if bcrypt.checkpw(code.encode(), rc.code_hash.encode()):
                 self.recovery_repo.mark_used(rc.id)
-                logger.info("Recovery code used for user=%s", user_id)
+                logger.info("recovery_code_used", user_id=user_id)
                 return True
         return False
 
@@ -146,7 +146,7 @@ class MFAService:
 
     def register_passkey(self, passkey: UserPasskey) -> UserPasskey:
         created = self.passkey_repo.create(passkey)
-        logger.info("Passkey registered for user=%s name=%s", passkey.user_id, passkey.name)
+        logger.info("passkey_registered", user_id=passkey.user_id, name=passkey.name)
         return created
 
     def get_passkey_by_credential_id(self, credential_id: str) -> UserPasskey | None:
@@ -161,7 +161,7 @@ class MFAService:
         if passkey is None or passkey.user_id != user_id:
             raise ValueError("Passkey não encontrada")
         self.passkey_repo.delete(passkey.id)
-        logger.info("Passkey deleted: uuid=%s user=%s", passkey_uuid, user_id)
+        logger.info("passkey_deleted", passkey_uuid=passkey_uuid, user_id=user_id)
 
     # --- MFA Status ---
 

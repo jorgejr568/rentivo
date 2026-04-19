@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import logging
+import structlog
 
 try:
     import boto3
@@ -9,7 +9,7 @@ except ImportError:  # pragma: no cover
 
 from rentivo.storage.base import StorageBackend
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class S3Storage(StorageBackend):
@@ -45,13 +45,13 @@ class S3Storage(StorageBackend):
             Body=data,
             ContentType=content_type,
         )
-        logger.info("Uploaded %s to s3://%s/%s (%d bytes)", key, self.bucket, key, len(data))
+        logger.info("storage_saved", backend="s3", bucket=self.bucket, key=key, bytes=len(data))
         return key
 
     def get(self, key: str) -> bytes:
         response = self.client.get_object(Bucket=self.bucket, Key=key)
         data = response["Body"].read()
-        logger.debug("Downloaded %s from s3://%s/%s (%d bytes)", key, self.bucket, key, len(data))
+        logger.debug("storage_read", backend="s3", bucket=self.bucket, key=key, bytes=len(data))
         return data
 
     def get_url(self, key: str) -> str:
@@ -60,12 +60,12 @@ class S3Storage(StorageBackend):
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=self.presigned_expiry,
         )
-        logger.debug("Generated presigned URL for %s", key)
+        logger.debug("storage_url", backend="s3", bucket=self.bucket, key=key)
         return url
 
     def delete(self, key: str) -> None:
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)
-            logger.debug("Deleted s3://%s/%s", self.bucket, key)
+            logger.debug("storage_deleted", backend="s3", bucket=self.bucket, key=key)
         except Exception:
-            logger.exception("Failed to delete s3://%s/%s", self.bucket, key)
+            logger.exception("storage_delete_failed", backend="s3", bucket=self.bucket, key=key)

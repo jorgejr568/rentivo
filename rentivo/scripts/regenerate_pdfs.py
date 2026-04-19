@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from rentivo.db import initialize_db
+from rentivo.logging import configure_logging
 from rentivo.models import format_brl
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
@@ -28,6 +29,7 @@ console = Console()
 
 
 def main() -> None:
+    configure_logging(cli=True)
     dry_run = "--dry-run" in sys.argv
 
     initialize_db()

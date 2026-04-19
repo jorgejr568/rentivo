@@ -15,6 +15,7 @@ from rich.table import Table
 from sqlalchemy import text
 
 from rentivo.db import get_connection, initialize_db
+from rentivo.logging import configure_logging
 from rentivo.models import format_brl
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.organization import OrgRole
@@ -410,6 +411,7 @@ def _create_bills(bill_service: BillService, billings: list[Billing]) -> int:
 
 
 def main() -> None:
+    configure_logging(cli=True)
     console.print("[bold magenta]Rentivo — Database Seeder[/bold magenta]")
     console.print("=" * 40)
 

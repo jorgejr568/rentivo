@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import logging
-
 import bcrypt
+import structlog
 
 from rentivo.models.user import User
 from rentivo.repositories.base import UserRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class UserService:
@@ -18,7 +17,7 @@ class UserService:
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user = User(username=username, password_hash=password_hash)
         result = self.repo.create(user)
-        logger.info("User created: %s", username)
+        logger.info("user_created", username=username)
         return result
 
     def register_user(self, username: str, email: str, password: str) -> User:
@@ -28,31 +27,31 @@ class UserService:
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user = User(username=username, email=email, password_hash=password_hash)
         result = self.repo.create(user)
-        logger.info("User registered: %s", username)
+        logger.info("user_registered", username=username)
         return result
 
     def get_by_id(self, user_id: int) -> User | None:
         result = self.repo.get_by_id(user_id)
-        logger.debug("get_by_id user_id=%s found=%s", user_id, result is not None)
+        logger.debug("user_get_by_id", user_id=user_id, found=result is not None)
         return result
 
     def authenticate(self, username: str, password: str) -> User | None:
         user = self.repo.get_by_username(username)
         if user is None:
-            logger.warning("Authentication failed: user not found username=%s", username)
+            logger.warning("auth_failed", username=username, reason="user_not_found")
             return None
         if bcrypt.checkpw(password.encode(), user.password_hash.encode()):
-            logger.info("User authenticated: %s", username)
+            logger.info("user_authenticated", username=username)
             return user
-        logger.warning("Authentication failed: invalid password username=%s", username)
+        logger.warning("auth_failed", username=username, reason="invalid_password")
         return None
 
     def change_password(self, username: str, new_password: str) -> None:
         password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
         self.repo.update_password_hash(username, password_hash)
-        logger.info("Password changed for user: %s", username)
+        logger.info("password_changed", username=username)
 
     def list_users(self) -> list[User]:
         result = self.repo.list_all()
-        logger.debug("Listed %d users", len(result))
+        logger.debug("users_listed", count=len(result))
         return result
