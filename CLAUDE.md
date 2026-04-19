@@ -143,6 +143,45 @@ make web-run             # start uvicorn at http://localhost:8000
 - CLI: uses `source="cli"`, `actor_id=None`, `actor_username=""`
 - States stored as JSON TEXT in `previous_state` / `new_state` columns
 
+## Analytics (Google Tag Manager)
+
+Rentivo integrates with Google Tag Manager gated by a single env var.
+
+### Configuration
+
+- `RENTIVO_GTM_CONTAINER_ID` — e.g. `GTM-ABC1234`. Empty string fully disables analytics (no script tags, no network calls, no cookies, no tests affected). Validator enforces `GTM-[A-Z0-9]+`.
+- `RENTIVO_ENVIRONMENT` — `production` (default) | `staging` | `dev`. Populates the `environment` dataLayer field so GA4 can filter environments.
+
+### How it works
+
+- `web/analytics.py` owns the server-side helpers: `analytics_hash()` (HMAC-SHA256 of identifiers, keyed by `secret_key`), `build_page_context()` (initial dataLayer push), `push_event()` / `pop_events()` (flash-style queue for post-redirect business events).
+- `web/deps.py:render()` injects `gtm_initial_push` and drains `gtm_pending_events` on every rendered page.
+- `web/templates/base.html` renders the GTM loader + noscript iframe + inline `dataLayer.push(...)` calls only when `gtm_container_id` is set.
+- `web/static/core/js/tracking.js` installs automatic listeners for forms, clicks, uploads, performance, errors, and engagement. No-ops without `window.dataLayer`.
+- `web/static/core/vendor/web-vitals.iife.js` is vendored from `web-vitals@4.2.4` and reports Core Web Vitals.
+
+### Event taxonomy
+
+- **Page context** — `page_context` initial push on every page with `user_status`, `user_id_hash`, `page_type`, `page_template`, `environment`, `app_version`, `request_id`.
+- **Using** — `form_start`, `form_submit`, `button_click`, `link_click`, `download_click`, `file_upload_*`, `scroll_depth`, `page_engaged`, `time_on_page`, and business events (`rentivo_*`).
+- **Suffering** — `form_submit_error`, `form_field_error`, `form_abandon`, `rage_click`, `js_error`, `promise_rejection`.
+- **Issues** — `network_error`, `file_upload_error`.
+- **Waiting** — `web_vital` (LCP/INP/CLS/TTFB/FCP), `slow_page`, `interaction_slow`, `layout_shift_bad`, `long_task`, `slow_form_submit`.
+- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`.
+
+### Privacy
+
+- **Never** push to dataLayer: `username`, `email`, `pix_key`, `pix_merchant_name`, `pix_merchant_city`, bill item descriptions, receipt filenames, organization names, or raw UUIDs. All identifiers must go through `analytics_hash()`.
+- URL paths are sanitized by `tracking.js` (`/:uuid`, `/:ulid`, `/:id`) before being included in `network_error` events.
+- LGPD: legitimate interest (art. 7 IX) for authenticated B2B product analytics. No cookie banner required for launch. User opt-out toggle and `/privacy` policy page are deferred follow-ups.
+
+### Testing
+
+- `tests/web/test_analytics.py` — unit tests for hashing, page context, event queue.
+- `tests/web/test_gtm_integration.py` — integration tests for template rendering (disabled and enabled modes).
+- `tests/web/test_gtm_events.py` — integration tests verifying business events fire on successful state-changing POSTs.
+- Tests use `TestClient` (no JS execution), so there is no risk of hitting `googletagmanager.com` during tests.
+
 ## Alembic Migrations
 
 - **NEVER invent revision IDs manually** — always generate them with `alembic.util.rev_id()` or by running `alembic revision -m "description"` and using the generated file
