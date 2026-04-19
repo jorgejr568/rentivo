@@ -3,6 +3,20 @@ from __future__ import annotations
 from rentivo.models import parse_brl as parse_brl  # noqa: F401 — re-export
 
 
+def safe_redirect_path(raw: str, fallback: str) -> str:
+    """Return a user-supplied redirect target only if it's a same-origin relative path.
+
+    Rejects absolute URLs (\"https://evil\"), protocol-relative URLs (\"//evil\"),
+    and backslash-prefixed paths that some browsers normalize to the root.
+    """
+    candidate = (raw or "").strip()
+    if not candidate.startswith("/"):
+        return fallback
+    if candidate.startswith("//") or candidate.startswith("/\\") or candidate.startswith("/%2f"):
+        return fallback
+    return candidate
+
+
 def parse_formset(form_data: dict, prefix: str) -> list[dict[str, str]]:
     """Parse a Django-style formset from form data.
 

@@ -21,7 +21,7 @@ from web.deps import (
     render,
 )
 from web.flash import flash
-from web.forms import parse_brl, parse_formset
+from web.forms import parse_brl, parse_formset, safe_redirect_path
 
 logger = structlog.get_logger(__name__)
 
@@ -521,7 +521,10 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
     billing_service = get_billing_service(request)
 
     form = await request.form()
-    redirect_url = str(form.get("next", "")).strip() or f"/billings/{billing_uuid}/bills/{bill_uuid}/edit"
+    redirect_url = safe_redirect_path(
+        str(form.get("next", "")),
+        f"/billings/{billing_uuid}/bills/{bill_uuid}/edit",
+    )
 
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
@@ -618,7 +621,10 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
     billing_service = get_billing_service(request)
 
     form = await request.form()
-    redirect_url = str(form.get("next", "")).strip() or f"/billings/{billing_uuid}/bills/{bill_uuid}/edit"
+    redirect_url = safe_redirect_path(
+        str(form.get("next", "")),
+        f"/billings/{billing_uuid}/bills/{bill_uuid}/edit",
+    )
 
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
