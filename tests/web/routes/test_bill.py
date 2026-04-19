@@ -180,6 +180,25 @@ class TestBillRegeneratePdf:
         )
         assert response.status_code == 302
 
+    def test_regenerate_access_denied_for_other_users_bill(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Vuln 6: can't force-regenerate another user's bill PDF."""
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            original_pdf_path = bill.pdf_path
+            response = auth_client.post(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/regenerate-pdf",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+        assert reloaded.pdf_path == original_pdf_path
+
 
 class TestBillChangeStatus:
     def test_change_status(self, auth_client, test_engine, tmp_path, csrf_token):
