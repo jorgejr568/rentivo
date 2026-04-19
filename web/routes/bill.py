@@ -416,11 +416,25 @@ async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str
 @router.post("/{bill_uuid}/delete")
 async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     bill_service = get_bill_service(request)
+    billing_service = get_billing_service(request)
+    auth_service = get_authorization_service(request)
 
     bill = bill_service.get_bill_by_uuid(bill_uuid)
     if not bill:
         logger.warning("bill_not_found", bill_uuid=bill_uuid)
         flash(request, "Fatura não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    billing = billing_service.get_billing(bill.billing_id)
+    if not billing or billing.uuid != billing_uuid:
+        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
+        flash(request, "Cobrança não encontrada.", "danger")
+        return RedirectResponse("/", status_code=302)
+
+    user_id = request.session.get("user_id")
+    if not auth_service.can_delete_billing(user_id, billing):
+        logger.warning("bill_delete_access_denied", bill_uuid=bill_uuid, user_id=user_id)
+        flash(request, "Acesso negado.", "danger")
         return RedirectResponse("/", status_code=302)
 
     if bill.id is None:
@@ -430,7 +444,6 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     previous_state = serialize_bill(bill)
     bill_service.delete_bill(bill.id)
 
-    user_id = request.session.get("user_id")
     audit = get_audit_service(request)
     audit.safe_log(
         AuditEventType.BILL_DELETE,
