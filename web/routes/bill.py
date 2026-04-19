@@ -619,6 +619,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
 
     attached = 0
     skipped = 0
+    total_bytes = 0
     accumulated_failed: set[str] = set()
     audit = get_audit_service(request)
     for upload in valid_uploads:
@@ -636,6 +637,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
             skipped += 1
             continue
 
+        total_bytes += len(file_bytes)
         receipt, failed_uuids = bill_service.add_receipt(
             bill=bill,
             billing=billing,
@@ -683,7 +685,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
                 "event": "rentivo_receipt_uploaded",
                 "bill_uuid_hash": analytics_hash(bill_uuid),
                 "count": attached,
-                "total_bytes": 0,
+                "total_bytes": total_bytes,
             },
         )
     return RedirectResponse(redirect_url, status_code=302)

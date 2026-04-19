@@ -52,7 +52,7 @@ async def invite_accept(request: Request, invite_uuid: str):
         request.session["mfa_setup_required"] = True
 
     flash(request, "Convite aceito!", "success")
-    push_event(request, {"event": "rentivo_invite_accepted", "org_id_hash": analytics_hash(invite_uuid)})
+    push_event(request, {"event": "rentivo_invite_accepted", "invite_uuid_hash": analytics_hash(invite_uuid)})
     return RedirectResponse("/invites/", status_code=302)
 
 

@@ -259,7 +259,7 @@ async def org_theme_save(request: Request, org_uuid: str):
     )
 
     flash(request, "Tema da organização salvo com sucesso!", "success")
-    push_event(request, {"event": "rentivo_theme_changed", "scope": "billing"})
+    push_event(request, {"event": "rentivo_theme_changed", "scope": "organization"})
     return RedirectResponse(f"/themes/organization/{org_uuid}", status_code=302)
 
 

@@ -495,4 +495,5 @@ async def passkey_auth_complete(request: Request):
     )
 
     logger.info("passkey_auth_verified", username=username)
+    push_event(request, {"event": "rentivo_login_success", "via": "passkey"})
     return JSONResponse({"status": "ok", "redirect": "/billings/"})
