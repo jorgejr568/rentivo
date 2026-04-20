@@ -1,0 +1,54 @@
+name: Test PR
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: test-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff-check:
+    name: ruff check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ruff-check
+
+  ruff-format:
+    name: ruff format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/ruff-format
+
+  tests:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/pytest
+
+  all-checks-pass:
+    name: all-checks-pass
+    runs-on: ubuntu-latest
+    needs: [ruff-check, ruff-format, tests]
+    if: always()
+    env:
+      RUFF_CHECK_RESULT: ${{ needs.ruff-check.result }}
+      RUFF_FORMAT_RESULT: ${{ needs.ruff-format.result }}
+      TESTS_RESULT: ${{ needs.tests.result }}
+    steps:
+      - name: Verify all required jobs succeeded
+        run: |
+          if [ "$RUFF_CHECK_RESULT" != "success" ] \
+             || [ "$RUFF_FORMAT_RESULT" != "success" ] \
+             || [ "$TESTS_RESULT" != "success" ]; then
+            echo "One or more required jobs failed."
+            echo "ruff-check=$RUFF_CHECK_RESULT"
+            echo "ruff-format=$RUFF_FORMAT_RESULT"
+            echo "tests=$TESTS_RESULT"
+            exit 1
+          fi
+          echo "All required jobs succeeded."

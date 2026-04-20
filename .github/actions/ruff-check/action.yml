@@ -1,0 +1,11 @@
+name: Ruff Check
+description: Run `ruff check` on the repository.
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup
+
+    - name: Run ruff check
+      shell: bash
+      run: .venv/bin/ruff check .
