@@ -8,3 +8,4 @@ build/
 invoices/
 .coverage
 .pytest_cache/
+docs/superpowers/

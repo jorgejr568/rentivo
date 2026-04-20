@@ -126,3 +126,30 @@ class TestRequestContextMiddleware:
         assert handlers[-1]["request_id"] == "second"
         # Between the two requests the first id must not leak into the second.
         assert handlers[-2]["request_id"] == "first"
+
+    def test_middleware_exposes_request_id_on_request_state(self, app_and_buffer):
+        """The middleware must set request.state.request_id for downstream access."""
+        from starlette.middleware.base import BaseHTTPMiddleware
+
+        app, buf = app_and_buffer
+
+        # Add a middleware that captures request.state.request_id for verification
+        captured_rids = []
+
+        class CaptureStateMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                response = await call_next(request)
+                # Capture the request_id from state if it exists
+                captured_rids.append(getattr(request.state, "request_id", None))
+                return response
+
+        app.add_middleware(CaptureStateMiddleware)
+
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.get("/ok")
+        assert response.status_code == 200
+        rid = response.headers.get("X-Request-ID")
+        assert rid
+        # The middleware should have captured the request_id from request.state
+        assert len(captured_rids) > 0
+        assert captured_rids[-1] == rid

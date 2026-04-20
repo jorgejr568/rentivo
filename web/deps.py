@@ -33,6 +33,7 @@ from rentivo.services.pix_service import PixService
 from rentivo.services.theme_service import ThemeService
 from rentivo.services.user_service import UserService
 from rentivo.storage.factory import get_storage
+from web.analytics import build_page_context, pop_events
 from web.flash import get_flashed_messages
 
 logger = structlog.get_logger(__name__)
@@ -245,5 +246,8 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
             ctx["pending_invite_count"] = 0
     else:
         ctx.setdefault("pending_invite_count", 0)
+
+    ctx["gtm_initial_push"] = build_page_context(request, template_name, ctx)
+    ctx["gtm_pending_events"] = pop_events(request)
 
     return templates.TemplateResponse(request, template_name, ctx)

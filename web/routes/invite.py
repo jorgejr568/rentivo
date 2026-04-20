@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
+from web.analytics import analytics_hash, push_event
 from web.deps import get_audit_service, get_invite_service, get_mfa_service, render
 from web.flash import flash
 
@@ -51,6 +52,7 @@ async def invite_accept(request: Request, invite_uuid: str):
         request.session["mfa_setup_required"] = True
 
     flash(request, "Convite aceito!", "success")
+    push_event(request, {"event": "rentivo_invite_accepted", "invite_uuid_hash": analytics_hash(invite_uuid)})
     return RedirectResponse("/invites/", status_code=302)
 
 
@@ -78,4 +80,5 @@ async def invite_decline(request: Request, invite_uuid: str):
     )
 
     flash(request, "Convite recusado.", "info")
+    push_event(request, {"event": "rentivo_invite_declined"})
     return RedirectResponse("/invites/", status_code=302)

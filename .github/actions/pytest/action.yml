@@ -1,0 +1,11 @@
+name: Pytest
+description: Run the full pytest suite in parallel.
+
+runs:
+  using: composite
+  steps:
+    - uses: ./.github/actions/setup
+
+    - name: Run pytest
+      shell: bash
+      run: .venv/bin/python -m pytest -n auto -q

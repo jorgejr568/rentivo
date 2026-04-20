@@ -1,0 +1,19 @@
+name: Setup Python & Dependencies
+description: Install Python, create venv, and install project + dev + test dependencies (cached).
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: pyproject.toml
+
+    - name: Install dependencies into .venv
+      shell: bash
+      run: |
+        python -m venv .venv
+        .venv/bin/pip install -U pip
+        .venv/bin/pip install -e '.[dev,test,s3]'

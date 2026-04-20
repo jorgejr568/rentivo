@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
+from web.analytics import push_event
 from web.deps import get_audit_service, get_mfa_service, get_user_service, render
 
 logger = structlog.get_logger(__name__)
@@ -117,6 +118,7 @@ async def signup(request: Request):
         new_state=serialize_user(user),
     )
 
+    push_event(request, {"event": "rentivo_signup_completed"})
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -133,6 +135,7 @@ async def login(request: Request):
 
     if _is_rate_limited(client_ip):
         logger.warning("login_rate_limited", client_ip=client_ip)
+        push_event(request, {"event": "rentivo_login_failed", "reason": "rate_limited"})
         return render(
             request,
             "login.html",
@@ -159,6 +162,7 @@ async def login(request: Request):
             new_state={"username": str(username)},
             metadata={"ip": client_ip},
         )
+        push_event(request, {"event": "rentivo_login_failed", "reason": "bad_credentials"})
         return render(request, "login.html", {"error": "Usuário ou senha inválidos."})
 
     _clear_attempts(client_ip)
@@ -209,6 +213,7 @@ async def login(request: Request):
         metadata={"ip": client_ip},
     )
 
+    push_event(request, {"event": "rentivo_login_success", "via": "password"})
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -277,6 +282,7 @@ async def mfa_verify(request: Request):
             metadata={"ip": client_ip, "method": method},
         )
 
+        push_event(request, {"event": "rentivo_mfa_verify_failed"})
         has_passkeys = len(mfa_service.list_passkeys(user_id)) > 0
         return render(
             request,
@@ -318,6 +324,7 @@ async def mfa_verify(request: Request):
     )
 
     logger.info("mfa_verified", username=username, method=method)
+    push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -343,5 +350,6 @@ async def logout(request: Request):
     )
 
     request.session.clear()
+    push_event(request, {"event": "rentivo_logout"})
     logger.info("user_logged_out", username=username)
     return RedirectResponse("/login", status_code=302)
