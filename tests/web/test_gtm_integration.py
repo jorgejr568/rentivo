@@ -68,6 +68,12 @@ class TestSnippetDisabled:
         assert "googletagmanager.com" not in response.text
         assert "dataLayer" not in response.text
 
+    def test_no_gtm_urls_on_landing_when_disabled(self, disable_gtm, client):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "googletagmanager.com" not in response.text
+        assert "dataLayer" not in response.text
+
 
 class TestSnippetEnabled:
     def test_loader_renders(self, enable_gtm, client):
@@ -125,6 +131,18 @@ class TestSnippetEnabled:
         response = client.get("/login")
         push = _extract_page_context_push(response.text)
         assert push["environment"] == "production"
+
+    def test_landing_page_renders_gtm(self, enable_gtm, client):
+        response = client.get("/")
+        assert response.status_code == 200
+        assert "googletagmanager.com/gtm.js" in response.text
+        assert "'GTM-TEST123'" in response.text
+        assert "googletagmanager.com/ns.html?id=GTM-TEST123" in response.text
+        assert "core/js/tracking.js" in response.text
+        push = _extract_page_context_push(response.text)
+        assert push is not None
+        assert push["page_template"] == "landing"
+        assert push["page_type"] == "landing"
 
 
 # Additionally, add the two Task-4-originally-planned tests that belong here:

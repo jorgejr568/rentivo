@@ -3,6 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% if gtm_container_id %}
+    <script>
+    window.dataLayer = window.dataLayer || [];
+    {% if gtm_initial_push %}dataLayer.push({{ gtm_initial_push | tojson }});{% endif %}
+    {% if gtm_pending_events %}{% for evt in gtm_pending_events %}dataLayer.push({{ evt | tojson }});{% endfor %}{% endif %}
+    </script>
+    <!-- Google Tag Manager -->
+    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','{{ gtm_container_id }}');</script>
+    <!-- End Google Tag Manager -->
+    {% endif %}
     <title>Rentivo — Gestão de cobranças para imóveis com PIX</title>
     <meta name="description" content="Rentivo é uma plataforma gratuita e de código aberto para gestão de cobranças de aluguéis e imóveis. Gere faturas em PDF com QR Code PIX, organize equipes e acompanhe pagamentos.">
     <meta name="keywords" content="gestão de aluguel, cobrança imóvel, fatura PIX, QR Code PIX, cobrança de aluguel, gestão imobiliária">
@@ -53,6 +67,10 @@
     </script>
 </head>
 <body>
+{% if gtm_container_id %}
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id={{ gtm_container_id }}"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+{% endif %}
 <!-- ─── Topbar ─── -->
 <nav class="topbar">
     <div class="wrapper">
@@ -341,5 +359,9 @@
     </div>
 </footer>
 
+{% if gtm_container_id %}
+<script src="{{ url_for('static', path='core/vendor/web-vitals.iife.js') }}?v={{ asset_version }}"></script>
+<script src="{{ url_for('static', path='core/js/tracking.js') }}?v={{ asset_version }}"></script>
+{% endif %}
 </body>
 </html>
