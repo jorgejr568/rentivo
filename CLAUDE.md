@@ -188,6 +188,28 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 - Revision IDs must be proper hex strings (e.g. `268d02b96390`), not made-up patterns like `g1h2i3j4k5l6`
 - Migration file naming: `{revision_id}_{slug}.py` (e.g. `268d02b96390_add_mfa_tables.py`)
 
+## Pull Requests
+
+When the user asks you to open a PR, you are responsible for filling out the PR template at `.github/pull_request_template.md`. Fetch the template with `gh api repos/:owner/:repo/contents/.github/pull_request_template.md --jq '.content' | base64 -d` if you need to refresh your memory of its structure — or reuse the structure below.
+
+**Required sections (all must be addressed; delete only sections explicitly marked "delete if N/A"):**
+
+1. **Summary** — 1-3 bullets. Lead with the *why* (the user-visible motivation), not the *what*.
+2. **What changed** — concrete, scannable list of modifications by file/component.
+3. **Test plan** — checklist covering:
+   - `pytest -n auto` passed
+   - `ruff check .` and `ruff format --check .` clean
+   - Manual smoke (describe the flow, or write "N/A")
+   - Any feature-specific verification steps the reviewer should run
+4. **Screenshots / recordings** — include before/after for UI changes; delete section if no UI.
+5. **Config / deployment notes** — env vars added, migrations required, feature flags, rollout order. Write "None" if nothing.
+6. **Risk & rollback** — one line on blast radius, one line on how to revert.
+7. **Related** — linked issues, specs, prior PRs; delete if N/A.
+
+**Tone:** Terse, factual, in English. Assume the reviewer is a teammate who has not read the implementation.
+
+**Use HEREDOC when creating the PR** to preserve newlines — see the `gh pr create` pattern in the main instructions.
+
 ## Key Rules
 
 - **NEVER delete `invoices/`** without explicit user confirmation
