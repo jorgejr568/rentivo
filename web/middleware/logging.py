@@ -18,6 +18,11 @@ logger = structlog.get_logger("web.request")
 
 MAX_REQUEST_ID_LEN = 128
 
+# Paths whose successful (200) responses are not logged. Keeps liveness-probe
+# traffic from flooding access logs; non-200 responses still log so real
+# failures surface.
+SILENT_SUCCESS_PATHS = frozenset({"/health"})
+
 
 def new_request_id() -> str:
     return str(ULID())
@@ -56,7 +61,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 logger.exception("request_failed")
                 raise
             structlog.contextvars.bind_contextvars(status_code=response.status_code)
-            logger.info("request_completed")
+            if not (request.url.path in SILENT_SUCCESS_PATHS and response.status_code == 200):
+                logger.info("request_completed")
             response.headers["X-Request-ID"] = rid
             return response
         finally:

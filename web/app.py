@@ -24,6 +24,7 @@ from web.deps import AuthMiddleware, DBConnectionMiddleware, MFAEnforcementMiddl
 from web.middleware.logging import RequestContextMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router
+from web.routes.health import router as health_router
 from web.routes.invite import router as invite_router
 from web.routes.organization import router as organization_router
 from web.routes.security import router as security_router
@@ -86,6 +87,7 @@ app.include_router(invite_router)
 app.include_router(security_router)
 app.include_router(theme_router)
 app.include_router(seo_router)
+app.include_router(health_router)
 
 
 @app.exception_handler(StarletteHTTPException)
