@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import sqlite3
+from datetime import date, datetime
+
 import pytest
 from sqlalchemy import Connection, create_engine, event, text
 from sqlalchemy.engine import Engine
 
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
+
+# Python 3.12 deprecated the built-in sqlite3 datetime/date adapters. SQLAlchemy
+# still passes Python datetimes straight through, which surfaces the warning on
+# every test row. Register explicit ISO-8601 adapters so sqlite3 stops
+# complaining and behavior is stable across Python versions.
+sqlite3.register_adapter(datetime, datetime.isoformat)
+sqlite3.register_adapter(date, date.isoformat)
 
 # Matches Alembic head: a7b8c9d0e1f2 (replace UUID4 with ULID)
 SCHEMA_DDL = """

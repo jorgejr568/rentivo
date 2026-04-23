@@ -56,6 +56,11 @@ def configure_logging(cli: bool = False) -> None:
     renderer = _pick_renderer(cli)
 
     formatter = ProcessorFormatter(
+        # Keep the raw exc_info tuple on the record so ConsoleRenderer and
+        # dict_tracebacks can format it themselves. Without this, ProcessorFormatter
+        # silently applies format_exc_info and structlog warns that pretty
+        # tracebacks won't work.
+        keep_exc_info=True,
         foreign_pre_chain=shared,
         processors=[
             ProcessorFormatter.remove_processors_meta,
