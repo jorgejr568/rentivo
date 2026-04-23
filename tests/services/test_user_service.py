@@ -69,3 +69,11 @@ class TestUserService:
         self.mock_repo.get_by_username.return_value = User(username="existing")
         with pytest.raises(ValueError, match="already exists"):
             self.service.register_user("existing", "e@t.com", "pass")
+
+    def test_update_pix_raises_when_user_vanishes(self):
+        """After update_pix, get_by_id returning None means the row is gone."""
+        import pytest
+
+        self.mock_repo.get_by_id.return_value = None
+        with pytest.raises(ValueError, match="não encontrado"):
+            self.service.update_pix(1, "", "", "")

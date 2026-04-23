@@ -39,11 +39,11 @@ from web.flash import get_flashed_messages
 logger = structlog.get_logger(__name__)
 
 PUBLIC_PREFIX_PATHS = {"/login", "/signup", "/static", "/mfa-verify", "/security/passkeys/auth"}
-PUBLIC_EXACT_PATHS = {"/", "/robots.txt", "/sitemap.xml"}
+PUBLIC_EXACT_PATHS = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
 # Paths that MFA-enforcement redirect allows even when mfa_setup_required is set
 MFA_EXEMPT_PREFIXES = {"/security", "/logout", "/login", "/signup", "/static", "/mfa-verify"}
-MFA_EXEMPT_EXACT = {"/", "/robots.txt", "/sitemap.xml"}
+MFA_EXEMPT_EXACT = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
 
 @cache

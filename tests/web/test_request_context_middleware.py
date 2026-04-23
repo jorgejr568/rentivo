@@ -9,6 +9,7 @@ from io import StringIO
 import pytest
 import structlog
 from fastapi import FastAPI
+from starlette.responses import Response
 from starlette.testclient import TestClient
 
 from rentivo.logging import configure_logging
@@ -44,6 +45,12 @@ def app_and_buffer(monkeypatch):
     @app.get("/boom")
     async def boom():
         raise RuntimeError("kaboom")
+
+    @app.get("/health")
+    async def health(status: int = 200):
+        # Configurable status lets a single route exercise both the silenced
+        # success path and the "must still log" failure path.
+        return Response("ok" if status == 200 else "fail", status_code=status)
 
     yield app, buf
 
@@ -126,6 +133,35 @@ class TestRequestContextMiddleware:
         assert handlers[-1]["request_id"] == "second"
         # Between the two requests the first id must not leak into the second.
         assert handlers[-2]["request_id"] == "first"
+
+    def test_silences_request_completed_for_health_200(self, app_and_buffer):
+        """Successful /health probes must not clutter access logs."""
+        app, buf = app_and_buffer
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        completed = [ev for ev in _log_lines(buf) if ev.get("event") == "request_completed"]
+        assert completed == []
+
+    def test_still_logs_non_200_at_silenced_path(self, app_and_buffer):
+        """A failing health probe must still log — silencing is strictly for 200s."""
+        app, buf = app_and_buffer
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/health?status=500")
+        assert resp.status_code == 500
+        completed = [ev for ev in _log_lines(buf) if ev.get("event") == "request_completed"]
+        assert len(completed) == 1
+        assert completed[0]["status_code"] == 500
+        assert completed[0]["path"] == "/health"
+
+    def test_still_logs_non_silenced_paths(self, app_and_buffer):
+        """Regression guard — normal routes keep emitting request_completed."""
+        app, buf = app_and_buffer
+        client = TestClient(app, raise_server_exceptions=False)
+        client.get("/ok")
+        completed = [ev for ev in _log_lines(buf) if ev.get("event") == "request_completed"]
+        assert len(completed) == 1
+        assert completed[0]["path"] == "/ok"
 
     def test_middleware_exposes_request_id_on_request_state(self, app_and_buffer):
         """The middleware must set request.state.request_id for downstream access."""

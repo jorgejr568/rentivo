@@ -200,6 +200,33 @@ class TestGenerateBillMenu:
 
         generate_bill_menu(billing, mock_service, MagicMock())
 
+    @patch("rentivo.cli.bill_menu.questionary")
+    def test_generate_value_error_aborts(self, mock_q):
+        """generate_bill raising ValueError prints the message and returns — no audit log."""
+        from rentivo.cli.bill_menu import generate_bill_menu
+
+        billing = Billing(
+            id=1,
+            uuid="u",
+            name="Apt 101",
+            items=[BillingItem(id=1, description="Rent", amount=100000, item_type=ItemType.FIXED)],
+        )
+        mock_q.text.return_value.ask.side_effect = [
+            "2025-03",  # reference month
+            "",  # due date
+            "",  # notes
+        ]
+        mock_q.confirm.return_value.ask.return_value = False  # no extras
+
+        mock_service = MagicMock()
+        mock_service.generate_bill.side_effect = ValueError("PIX não configurado")
+        mock_audit = MagicMock()
+
+        generate_bill_menu(billing, mock_service, mock_audit)
+
+        mock_service.generate_bill.assert_called_once()
+        mock_audit.safe_log.assert_not_called()
+
 
 class TestBillDetailMenu:
     @patch("rentivo.cli.bill_menu.questionary")

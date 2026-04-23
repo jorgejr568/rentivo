@@ -59,7 +59,7 @@ omit = ["rentivo/__main__.py", "rentivo/scripts/seed.py"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 95
+fail_under = 100
 
 [tool.ruff]
 target-version = "py310"
