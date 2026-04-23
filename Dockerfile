@@ -1,5 +1,5 @@
 # --- Build stage: compile native extensions ---
-FROM python:3.10-slim AS builder
+FROM python:3.14-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmariadb-dev \
@@ -17,7 +17,7 @@ COPY . .
 RUN pip install --no-cache-dir .
 
 # --- Runtime stage: slim image with only what's needed ---
-FROM python:3.10-slim
+FROM python:3.14-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmariadb3 \
