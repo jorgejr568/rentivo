@@ -1,6 +1,7 @@
 services:
   db:
     image: mariadb:11
+    restart: unless-stopped
     env_file: .env
     ports:
       - "${MYSQL_PORT:-3306}:3306"
@@ -16,6 +17,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     env_file: .env
     ports:
       - "8000:8000"
@@ -29,6 +31,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.cli
+    restart: unless-stopped
     env_file: .env
     ports:
       - "2019:2019"

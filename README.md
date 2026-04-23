@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white" alt="Python">
+  <img src="https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white" alt="FastAPI">
   <img src="https://img.shields.io/badge/MariaDB-11-003545?logo=mariadb&logoColor=white" alt="MariaDB">
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker">
@@ -183,7 +183,7 @@ web/
 
 | Layer | Technology |
 |-------|-----------|
-| Language | Python 3.10+ |
+| Language | Python 3.14+ |
 | Web Framework | FastAPI + Uvicorn |
 | Templates | Jinja2 + custom CSS |
 | Database | MariaDB 11 (SQLAlchemy Core) |
@@ -195,7 +195,7 @@ web/
 | CLI | questionary + rich |
 | Containers | Docker + Docker Compose |
 | CI/CD | GitHub Actions |
-| Coverage | Codecov (95%+ threshold) |
+| Coverage | Codecov (100% threshold) |
 
 ## License
 
