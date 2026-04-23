@@ -70,7 +70,7 @@ Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RENTIVO_DB_URL` | `mysql://rentivo:rentivo@db:3306/rentivo` | SQLAlchemy database URL (MariaDB) |
+| `RENTIVO_DB_URL` | `mysql+pymysql://rentivo:rentivo@db:3306/rentivo` | SQLAlchemy database URL (MariaDB, PyMySQL driver) |
 
 </details>
 

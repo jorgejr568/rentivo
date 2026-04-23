@@ -14,7 +14,7 @@ _GTM_RE = re.compile(r"^GTM-[A-Z0-9]+$")
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="RENTIVO_", extra="ignore")
 
-    db_url: str = "mysql://rentivo:rentivo@db:3306/rentivo"
+    db_url: str = "mysql+pymysql://rentivo:rentivo@db:3306/rentivo"
 
     storage_backend: str = "local"
     storage_local_path: str = "./invoices"

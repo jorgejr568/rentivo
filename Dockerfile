@@ -1,11 +1,5 @@
-# --- Build stage: compile native extensions ---
+# --- Build stage: install Python deps (all pure-Python) ---
 FROM python:3.14-slim AS builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libmariadb-dev \
-    gcc \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -18,10 +12,6 @@ RUN pip install --no-cache-dir .
 
 # --- Runtime stage: slim image with only what's needed ---
 FROM python:3.14-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libmariadb3 \
-    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
