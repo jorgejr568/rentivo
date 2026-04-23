@@ -28,7 +28,7 @@ def parse_formset(form_data: dict, prefix: str) -> list[dict[str, str]]:
     total_key = f"{prefix}-TOTAL_FORMS"
     try:
         total = int(form_data.get(total_key, "0"))
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         total = 0
     rows: list[dict[str, str]] = []
     for i in range(total):
