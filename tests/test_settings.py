@@ -13,7 +13,7 @@ class TestSettings:
             if key.startswith("RENTIVO_"):
                 monkeypatch.delenv(key, raising=False)
         s = Settings(_env_file=None)
-        assert s.db_url == "mysql://rentivo:rentivo@db:3306/rentivo"
+        assert s.db_url == "mysql+pymysql://rentivo:rentivo@db:3306/rentivo"
         assert s.storage_backend == "local"
         assert s.storage_prefix == "bills"
         assert s.s3_presigned_expiry == 604800

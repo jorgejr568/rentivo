@@ -57,5 +57,5 @@ class TestCSRFNonHTTPScope:
         middleware = CSRFMiddleware(inner_app)
         scope = {"type": "websocket"}
 
-        asyncio.get_event_loop().run_until_complete(middleware(scope, None, None))
+        asyncio.run(middleware(scope, None, None))
         assert called
