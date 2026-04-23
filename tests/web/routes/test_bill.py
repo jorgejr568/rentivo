@@ -5,7 +5,7 @@ from rentivo.models.bill import Bill
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
 from rentivo.storage.local import LocalStorage
-from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs
+from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs, get_test_user_id
 
 
 def _create_other_user_billing(test_engine):
@@ -1439,3 +1439,131 @@ class TestReceiptReorder:
                 json={"order": ["nonexistent-uuid"]},
             )
         assert response.status_code == 400
+
+
+def _clear_test_user_pix(test_engine):
+    """Wipe PIX on the logged-in test user so billing_needs_setup returns True."""
+    user_id = get_test_user_id(test_engine)
+    with test_engine.connect() as conn:
+        SQLAlchemyUserRepository(conn).update_pix(user_id, "", "", "")
+
+
+class TestBillPixNotConfigured:
+    """Every state-changing route must redirect when PIX is not configured."""
+
+    def test_generate_form_redirects(self, auth_client, test_engine):
+        _clear_test_user_pix(test_engine)
+        billing = create_billing_in_db(test_engine)
+        r = auth_client.get(f"/billings/{billing.uuid}/bills/generate", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == f"/billings/{billing.uuid}"
+
+    def test_generate_post_redirects(self, auth_client, test_engine, csrf_token):
+        _clear_test_user_pix(test_engine)
+        billing = create_billing_in_db(test_engine)
+        r = auth_client.post(
+            f"/billings/{billing.uuid}/bills/generate",
+            data={"csrf_token": csrf_token, "reference_month": "2025-03", "extras-TOTAL_FORMS": "0"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == f"/billings/{billing.uuid}"
+
+    def test_edit_post_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        _clear_test_user_pix(test_engine)
+        r = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/edit",
+            data={"csrf_token": csrf_token, "items-TOTAL_FORMS": "0", "extras-TOTAL_FORMS": "0"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == f"/billings/{billing.uuid}"
+
+    def test_regenerate_pdf_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        _clear_test_user_pix(test_engine)
+        r = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/regenerate-pdf",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == f"/billings/{billing.uuid}/bills/{bill.uuid}"
+
+    def test_receipt_upload_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        _clear_test_user_pix(test_engine)
+        r = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+            data={"csrf_token": csrf_token},
+            files={"receipt_files": ("r.pdf", b"%PDF-1.4", "application/pdf")},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == f"/billings/{billing.uuid}"
+
+    def test_receipt_delete_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        with test_engine.connect() as conn:
+            receipt = SQLAlchemyReceiptRepository(conn).create(
+                Receipt(
+                    bill_id=bill.id,
+                    filename="r.pdf",
+                    storage_key="k",
+                    content_type="application/pdf",
+                    file_size=10,
+                    sort_order=0,
+                )
+            )
+        _clear_test_user_pix(test_engine)
+        r = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == f"/billings/{billing.uuid}"
+
+    def test_receipt_reorder_returns_400(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        _clear_test_user_pix(test_engine)
+        r = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
+            json={"order": []},
+        )
+        assert r.status_code == 400
+        assert "PIX" in r.json()["error"]
+
+
+class TestBillDeleteCrossBilling:
+    def test_delete_rejects_bill_when_billing_uuid_mismatches(self, auth_client, test_engine, tmp_path, csrf_token):
+        """bill_delete must reject URLs whose billing_uuid doesn't match the bill's actual billing."""
+        billing_a = create_billing_in_db(test_engine, name="A")
+        billing_b = create_billing_in_db(test_engine, name="B")
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing_a, tmp_path)
+        r = auth_client.post(
+            f"/billings/{billing_b.uuid}/bills/{bill.uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/"
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        with test_engine.connect() as conn:
+            assert SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid) is not None

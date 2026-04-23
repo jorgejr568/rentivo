@@ -117,6 +117,21 @@ class TestBuildPageContext:
             ctx = analytics.build_page_context(mock_request, template, {})
             assert ctx["page_type"] == expected, f"{template} -> expected {expected}, got {ctx['page_type']}"
 
+    def test_page_type_suffix_fallbacks(self, mock_request, monkeypatch):
+        """Templates outside PAGE_TYPE_MAP still classify by naming suffix."""
+        monkeypatch.setattr(analytics.settings, "gtm_container_id", "GTM-TEST")
+        monkeypatch.setattr(analytics.settings, "secret_key", "test-secret")
+        cases = [
+            ("future/create.html", "form"),
+            ("future/edit.html", "form"),
+            ("future/generate.html", "form"),
+            ("future/list.html", "list"),
+            ("future/detail.html", "detail"),
+        ]
+        for template, expected in cases:
+            ctx = analytics.build_page_context(mock_request, template, {})
+            assert ctx["page_type"] == expected, f"{template} -> expected {expected}, got {ctx['page_type']}"
+
     def test_does_not_include_raw_username_or_email(self, mock_request, monkeypatch):
         monkeypatch.setattr(analytics.settings, "gtm_container_id", "GTM-TEST")
         monkeypatch.setattr(analytics.settings, "secret_key", "test-secret")

@@ -96,6 +96,24 @@ class TestOrganizationEdit:
         )
         assert response.status_code == 302
 
+    def test_edit_invalid_pix_redirects_back(self, auth_client, test_engine, csrf_token):
+        """An invalid PIX key bubbles up as ValueError from update_organization → flash + redirect."""
+        user_id = get_test_user_id(test_engine)
+        org = create_org_in_db(test_engine, "My Org", user_id)
+        response = auth_client.post(
+            f"/organizations/{org.uuid}/edit",
+            data={
+                "csrf_token": csrf_token,
+                "name": "My Org",
+                "pix_key": "not-a-valid-pix-key",
+                "pix_merchant_name": "Merchant",
+                "pix_merchant_city": "SP",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == f"/organizations/{org.uuid}/edit"
+
 
 class TestOrganizationDelete:
     def test_delete(self, auth_client, test_engine, csrf_token):

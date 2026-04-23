@@ -143,3 +143,38 @@ class TestRegeneratePdfs:
 
         with patch("sys.argv", ["prog"]):
             main()
+
+    @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
+    @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_bill_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_receipt_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_user_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_organization_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_storage")
+    @patch("rentivo.services.bill_service.BillService.regenerate_pdf", side_effect=ValueError("PIX não configurado"))
+    def test_skips_bills_with_missing_pix(
+        self,
+        mock_regen,
+        mock_storage,
+        mock_org_repo,
+        mock_user_repo,
+        mock_receipt_repo,
+        mock_bill_repo,
+        mock_billing_repo,
+        mock_init_db,
+    ):
+        """ValueError from regenerate_pdf should be collected into the skipped list, not re-raised."""
+        from rentivo.scripts.regenerate_pdfs import main
+
+        billing = self._make_billing()
+        bill = self._make_bill()
+        mock_billing_repo.return_value.list_all.return_value = [billing]
+        mock_bill_repo.return_value.list_by_billing.return_value = [bill]
+        mock_storage.return_value.get_url.return_value = "https://example.com/file.pdf"
+
+        with patch("sys.argv", ["prog"]):
+            main()
+
+        # regenerate_pdf was invoked and raised; the storage.save path is skipped.
+        mock_regen.assert_called_once()
+        mock_storage.return_value.save.assert_not_called()

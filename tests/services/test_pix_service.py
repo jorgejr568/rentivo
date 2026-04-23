@@ -111,3 +111,9 @@ class TestNeedsSetup:
     def test_owner_needs_setup_checks_org(self):
         service = _make_service(org=Organization(id=5, name="Org"))
         assert service.owner_needs_setup("organization", 5) is True
+
+    def test_organization_missing_returns_none(self):
+        """owner_type=organization but repo returns None — guard must short-circuit."""
+        service = _make_service()  # org defaults to None
+        billing = Billing(id=10, name="Apt", owner_type="organization", owner_id=5)
+        assert service.resolve_for_billing(billing) is None

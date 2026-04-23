@@ -682,3 +682,53 @@ class TestPasskeyAuthComplete:
         response = client.get("/billings/", follow_redirects=False)
         assert response.status_code == 302
         assert "/security/totp/setup" in response.headers["location"]
+
+
+class TestSecurityPixUpdate:
+    def test_update_pix_success(self, auth_client, csrf_token):
+        r = auth_client.post(
+            "/security/pix",
+            data={
+                "csrf_token": csrf_token,
+                "pix_key": "merchant@example.com",
+                "pix_merchant_name": "Merchant",
+                "pix_merchant_city": "Sao Paulo",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/security"
+
+    def test_update_pix_invalid_key_redirects_back(self, auth_client, csrf_token):
+        """Invalid PIX keys raise ValueError inside update_pix → flash + redirect."""
+        r = auth_client.post(
+            "/security/pix",
+            data={
+                "csrf_token": csrf_token,
+                "pix_key": "not-a-valid-pix-key",
+                "pix_merchant_name": "Merchant",
+                "pix_merchant_city": "Sao Paulo",
+            },
+            follow_redirects=False,
+        )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/security"
+
+    def test_update_pix_when_user_missing_redirects(self, auth_client, csrf_token):
+        """If the session user has no DB row (edge case), route flashes + redirects."""
+        with patch("web.routes.security.get_user_service") as mock_svc_fn:
+            svc = MagicMock()
+            svc.get_by_id.return_value = None
+            mock_svc_fn.return_value = svc
+            r = auth_client.post(
+                "/security/pix",
+                data={
+                    "csrf_token": csrf_token,
+                    "pix_key": "",
+                    "pix_merchant_name": "",
+                    "pix_merchant_city": "",
+                },
+                follow_redirects=False,
+            )
+        assert r.status_code == 302
+        assert r.headers["location"] == "/security"
