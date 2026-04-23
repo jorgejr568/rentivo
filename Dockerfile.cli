@@ -4,6 +4,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     default-mysql-client \
     && rm -rf /var/lib/apt/lists/*
 
+RUN useradd --system --uid 10001 --create-home --home-dir /home/appuser --shell /bin/bash appuser
+
 WORKDIR /app
 
 COPY pyproject.toml .
@@ -11,7 +13,11 @@ RUN mkdir -p rentivo web && touch rentivo/__init__.py web/__init__.py
 RUN pip install --no-cache-dir .
 
 COPY . .
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . \
+    && mkdir -p /app/invoices \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 EXPOSE 2019
 
