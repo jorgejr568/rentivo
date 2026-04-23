@@ -1,0 +1,28 @@
+name: Docker Build
+description: Build a Dockerfile with BuildKit and cache layers in the GitHub Actions cache.
+
+inputs:
+  dockerfile:
+    description: Path to the Dockerfile (relative to repo root).
+    required: true
+  image-name:
+    description: Tag to apply to the built image (used only inside CI).
+    required: true
+  cache-scope:
+    description: Namespace for the GHA cache so parallel builds of different Dockerfiles don't thrash each other.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: docker/setup-buildx-action@v3
+
+    - uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ${{ inputs.dockerfile }}
+        push: false
+        load: false
+        tags: ${{ inputs.image-name }}:ci
+        cache-from: type=gha,scope=${{ inputs.cache-scope }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.cache-scope }}
