@@ -5,7 +5,7 @@ description = "Apartment billing management and invoice generation"
 requires-python = ">=3.10"
 dependencies = [
     "questionary>=2.1.0,<3",
-    "rich>=13.0,<14",
+    "rich>=13.0,<16",
     "fpdf2>=2.8,<3",
     "pydantic>=2.0,<3",
     "pydantic-settings>=2.0,<3",
