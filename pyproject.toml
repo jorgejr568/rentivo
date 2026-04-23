@@ -2,7 +2,7 @@
 name = "rentivo"
 version = "0.1.0"
 description = "Apartment billing management and invoice generation"
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
     "questionary>=2.1.0,<3",
     "rich>=13.0,<16",
@@ -62,7 +62,7 @@ show_missing = true
 fail_under = 100
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py314"
 line-length = 120
 
 [tool.ruff.lint]
