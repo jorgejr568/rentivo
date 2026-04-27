@@ -22,7 +22,7 @@ dependencies = [
     "structlog>=24.1,<26",
     "pymysql>=1.1,<2",
     "boto3>=1.35,<2",
-    "pypdf>=5.0,<6",
+    "pypdf>=5.0,<7",
     "pyotp>=2.9,<3",
     "webauthn>=2.0,<3",
 ]
