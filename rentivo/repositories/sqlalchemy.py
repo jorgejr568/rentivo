@@ -691,7 +691,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         rows = (
             self.conn.execute(
                 text(
-                    "SELECT om.*, u.username FROM organization_members om "
+                    "SELECT om.*, u.email FROM organization_members om "
                     "JOIN users u ON om.user_id = u.id "
                     "WHERE om.organization_id = :org_id ORDER BY om.created_at"
                 ),
@@ -705,7 +705,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
                 id=row["id"],
                 organization_id=row["organization_id"],
                 user_id=row["user_id"],
-                username=row.get("username", ""),
+                email=row.get("email", ""),
                 role=row["role"],
                 created_at=row["created_at"],
             )
@@ -748,9 +748,9 @@ class SQLAlchemyInviteRepository(InviteRepository):
             organization_id=row["organization_id"],
             organization_name=row.get("org_name", ""),
             invited_user_id=row["invited_user_id"],
-            invited_username=row.get("invited_username", ""),
+            invited_email=row.get("invited_email", ""),
             invited_by_user_id=row["invited_by_user_id"],
-            invited_by_username=row.get("invited_by_username", ""),
+            invited_by_email=row.get("invited_by_email", ""),
             role=row["role"],
             status=row["status"],
             enforce_mfa=bool(row.get("enforce_mfa", False)),
@@ -789,7 +789,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             self.conn.execute(
                 text(
                     "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "u1.email AS invited_email, u2.email AS invited_by_email "
                     "FROM invites i "
                     "JOIN organizations o ON i.organization_id = o.id "
                     "JOIN users u1 ON i.invited_user_id = u1.id "
@@ -810,7 +810,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             self.conn.execute(
                 text(
                     "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "u1.email AS invited_email, u2.email AS invited_by_email "
                     "FROM invites i "
                     "JOIN organizations o ON i.organization_id = o.id "
                     "JOIN users u1 ON i.invited_user_id = u1.id "
@@ -830,7 +830,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             self.conn.execute(
                 text(
                     "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "u1.email AS invited_email, u2.email AS invited_by_email "
                     "FROM invites i "
                     "JOIN organizations o ON i.organization_id = o.id "
                     "JOIN users u1 ON i.invited_user_id = u1.id "

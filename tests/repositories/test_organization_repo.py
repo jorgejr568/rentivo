@@ -6,8 +6,8 @@ from rentivo.models.organization import Organization
 from rentivo.models.user import User
 
 
-def _create_user(user_repo, username="admin"):
-    return user_repo.create(User(username=username, password_hash="hash"))
+def _create_user(user_repo, email="admin@example.com"):
+    return user_repo.create(User(email=email, password_hash="hash"))
 
 
 class TestOrganizationRepoCRUD:
@@ -86,15 +86,15 @@ class TestOrganizationMemberOps:
         assert org_repo.get_member(org.id, user.id) is None
 
     def test_list_members(self, org_repo, user_repo):
-        user1 = _create_user(user_repo, "user1")
-        user2 = _create_user(user_repo, "user2")
+        user1 = _create_user(user_repo, "user1@example.com")
+        user2 = _create_user(user_repo, "user2@example.com")
         org = org_repo.create(Organization(name="Test", created_by=user1.id))
         org_repo.add_member(org.id, user1.id, "admin")
         org_repo.add_member(org.id, user2.id, "viewer")
         members = org_repo.list_members(org.id)
         assert len(members) == 2
-        assert members[0].username == "user1"
-        assert members[1].username == "user2"
+        assert members[0].email == "user1@example.com"
+        assert members[1].email == "user2@example.com"
 
     def test_update_member_role(self, org_repo, user_repo):
         user = _create_user(user_repo)

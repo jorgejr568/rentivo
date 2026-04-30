@@ -18,9 +18,9 @@ class Invite(BaseModel):
     organization_id: int = 0
     organization_name: str = ""
     invited_user_id: int = 0
-    invited_username: str = ""
+    invited_email: str = ""
     invited_by_user_id: int = 0
-    invited_by_username: str = ""
+    invited_by_email: str = ""
     role: str = "viewer"
     status: str = InviteStatus.PENDING.value
     enforce_mfa: bool = False

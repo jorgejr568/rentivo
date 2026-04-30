@@ -30,6 +30,6 @@ class OrganizationMember(BaseModel):
     id: int | None = None
     organization_id: int = 0
     user_id: int = 0
-    username: str = ""
+    email: str = ""
     role: str = OrgRole.VIEWER.value
     created_at: datetime | None = None

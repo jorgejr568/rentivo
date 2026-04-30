@@ -16,30 +16,30 @@ class TestInviteService:
         self.service = InviteService(self.mock_invite_repo, self.mock_org_repo, self.mock_user_repo)
 
     def test_send_invite_success(self):
-        self.mock_user_repo.get_by_username.return_value = User(id=2, username="bob")
+        self.mock_user_repo.get_by_email.return_value = User(id=2, email="bob@example.com")
         self.mock_org_repo.get_member.return_value = None
         self.mock_invite_repo.has_pending_invite.return_value = False
         self.mock_invite_repo.create.return_value = Invite(id=1, organization_id=1, invited_user_id=2, role="viewer")
-        result = self.service.send_invite(1, "bob", "viewer", 1)
+        result = self.service.send_invite(1, "bob@example.com", "viewer", 1)
         assert result.invited_user_id == 2
 
     def test_send_invite_user_not_found(self):
-        self.mock_user_repo.get_by_username.return_value = None
+        self.mock_user_repo.get_by_email.return_value = None
         with pytest.raises(ValueError, match="not found"):
-            self.service.send_invite(1, "nobody", "viewer", 1)
+            self.service.send_invite(1, "nobody@example.com", "viewer", 1)
 
     def test_send_invite_already_member(self):
-        self.mock_user_repo.get_by_username.return_value = User(id=2, username="bob")
+        self.mock_user_repo.get_by_email.return_value = User(id=2, email="bob@example.com")
         self.mock_org_repo.get_member.return_value = OrganizationMember(user_id=2)
         with pytest.raises(ValueError, match="already a member"):
-            self.service.send_invite(1, "bob", "viewer", 1)
+            self.service.send_invite(1, "bob@example.com", "viewer", 1)
 
     def test_send_invite_duplicate_pending(self):
-        self.mock_user_repo.get_by_username.return_value = User(id=2, username="bob")
+        self.mock_user_repo.get_by_email.return_value = User(id=2, email="bob@example.com")
         self.mock_org_repo.get_member.return_value = None
         self.mock_invite_repo.has_pending_invite.return_value = True
         with pytest.raises(ValueError, match="pending invite"):
-            self.service.send_invite(1, "bob", "viewer", 1)
+            self.service.send_invite(1, "bob@example.com", "viewer", 1)
 
     def test_accept_invite(self):
         self.mock_invite_repo.get_by_uuid.return_value = Invite(

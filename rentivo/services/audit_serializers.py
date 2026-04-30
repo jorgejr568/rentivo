@@ -112,9 +112,9 @@ def serialize_invite(invite: Invite) -> dict:
         "organization_id": invite.organization_id,
         "organization_name": invite.organization_name,
         "invited_user_id": invite.invited_user_id,
-        "invited_email": invite.invited_username,  # attribute renamed in A7
+        "invited_email": invite.invited_email,
         "invited_by_user_id": invite.invited_by_user_id,
-        "invited_by_email": invite.invited_by_username,  # attribute renamed in A7
+        "invited_by_email": invite.invited_by_email,
         "role": invite.role,
         "status": invite.status,
         "created_at": _dt(invite.created_at),
