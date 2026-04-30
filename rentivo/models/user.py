@@ -7,8 +7,7 @@ from pydantic import BaseModel
 
 class User(BaseModel):
     id: int | None = None
-    username: str
-    email: str = ""
+    email: str
     password_hash: str = ""
     pix_key: str = ""
     pix_merchant_name: str = ""
