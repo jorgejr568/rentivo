@@ -9,6 +9,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from rentivo.db import get_engine
+from rentivo.email.factory import get_email_backend
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
@@ -26,12 +27,14 @@ from rentivo.services.audit_service import AuditService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
+from rentivo.services.email_service import EmailService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.pix_service import PixService
 from rentivo.services.theme_service import ThemeService
 from rentivo.services.user_service import UserService
+from rentivo.settings import settings
 from rentivo.storage.factory import get_storage
 from web.analytics import build_page_context, pop_events
 from web.flash import get_flashed_messages
@@ -222,6 +225,10 @@ def get_mfa_service(request: Request) -> MFAService:
         SQLAlchemyPasskeyRepository(conn),
         SQLAlchemyOrganizationRepository(conn),
     )
+
+
+def get_email_service(request: Request) -> EmailService:
+    return EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
 
 
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:
