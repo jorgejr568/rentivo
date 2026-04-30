@@ -38,7 +38,7 @@ async def invite_accept(request: Request, invite_uuid: str):
     audit.safe_log(
         AuditEventType.INVITE_ACCEPT,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="invite",
         entity_uuid=invite_uuid,
@@ -71,7 +71,7 @@ async def invite_decline(request: Request, invite_uuid: str):
     audit.safe_log(
         AuditEventType.INVITE_DECLINE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="invite",
         entity_uuid=invite_uuid,

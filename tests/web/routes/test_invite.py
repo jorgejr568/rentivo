@@ -14,7 +14,7 @@ def _setup_invite(test_engine):
 
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
-        user2 = user_repo.create(User(username="invitee", email="inv@t.com", password_hash="h"))
+        user2 = user_repo.create(User(email="inv@t.com", password_hash="h"))
 
     # user2 owns the org (auto-added as admin), then invites the logged-in user
     org = create_org_in_db(test_engine, "Test Org", user2.id)
@@ -91,7 +91,7 @@ class TestInviteAcceptMFAEnforcement:
         # Create another user who owns an MFA-enforcing org
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            user2 = user_repo.create(User(username="orgowner", email="o@t.com", password_hash="h"))
+            user2 = user_repo.create(User(email="o@t.com", password_hash="h"))
 
         org = create_org_in_db(test_engine, "Enforcing Org", user2.id)
         with test_engine.connect() as conn:

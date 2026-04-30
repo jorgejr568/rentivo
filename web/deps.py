@@ -94,7 +94,7 @@ class AuthMiddleware:
         # Bind identity for all downstream logs in this request.
         structlog.contextvars.bind_contextvars(
             user_id=user_id,
-            username=request.session.get("username"),
+            email=request.session.get("email"),
         )
         await self.app(scope, receive, send)
 
@@ -231,7 +231,7 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     logger.debug("template_render", template=template_name)
     ctx = context or {}
     ctx["request"] = request
-    ctx["user"] = request.session.get("username")
+    ctx["user"] = request.session.get("email")
     ctx["user_id"] = request.session.get("user_id")
     ctx["messages"] = get_flashed_messages(request)
     ctx["csrf_token"] = get_csrf_token(request)

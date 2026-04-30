@@ -98,7 +98,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         from web.flash import get_flashed_messages
 
         ctx = {
-            "user": request.session.get("username"),
+            "user": request.session.get("email"),
             "user_id": request.session.get("user_id"),
             "messages": get_flashed_messages(request),
             "csrf_token": get_csrf_token(request),
@@ -125,7 +125,7 @@ async def home(request: Request):
 
     ctx = {
         "asset_version": ASSET_VERSION,
-        "user": request.session.get("username"),
+        "user": request.session.get("email"),
     }
     ctx["gtm_initial_push"] = build_page_context(request, "landing.html", ctx)
     ctx["gtm_pending_events"] = pop_events(request)

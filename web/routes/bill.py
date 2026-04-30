@@ -141,7 +141,7 @@ async def bill_generate(request: Request, billing_uuid: str):
     audit.safe_log(
         AuditEventType.BILL_CREATE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="bill",
         entity_id=bill.id,
@@ -152,7 +152,7 @@ async def bill_generate(request: Request, billing_uuid: str):
         audit.safe_log(
             AuditEventType.RECEIPT_UPLOAD,
             actor_id=user_id,
-            actor_username=request.session.get("username", ""),
+            actor_username=request.session.get("email", ""),
             source="web",
             entity_type="receipt",
             entity_id=receipt.id,
@@ -332,7 +332,7 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
     audit.safe_log(
         AuditEventType.BILL_UPDATE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="bill",
         entity_id=bill.id,
@@ -385,7 +385,7 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
     audit.safe_log(
         AuditEventType.BILL_REGENERATE_PDF,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="bill",
         entity_id=bill.id,
@@ -435,7 +435,7 @@ async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str
     audit.safe_log(
         AuditEventType.BILL_STATUS_CHANGE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="bill",
         entity_id=bill.id,
@@ -491,7 +491,7 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     audit.safe_log(
         AuditEventType.BILL_DELETE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="bill",
         entity_id=bill.id,
@@ -652,7 +652,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         audit.safe_log(
             AuditEventType.RECEIPT_UPLOAD,
             actor_id=request.session.get("user_id"),
-            actor_username=request.session.get("username", ""),
+            actor_username=request.session.get("email", ""),
             source="web",
             entity_type="receipt",
             entity_id=receipt.id,
@@ -748,7 +748,7 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
     audit.safe_log(
         AuditEventType.RECEIPT_DELETE,
         actor_id=request.session.get("user_id"),
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="receipt",
         entity_id=receipt.id,
@@ -803,7 +803,7 @@ async def receipt_reorder(request: Request, billing_uuid: str, bill_uuid: str):
     audit.safe_log(
         AuditEventType.RECEIPT_REORDER,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="bill",
         entity_id=bill.id,

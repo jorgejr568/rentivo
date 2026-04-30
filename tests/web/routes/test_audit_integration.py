@@ -15,26 +15,26 @@ class TestAuthAuditLogs:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             svc = UserService(user_repo)
-            svc.create_user("audituser", "pass123")
+            svc.create_user("audituser@example.com", "pass123")
 
-        client.post("/login", data={"username": "audituser", "password": "pass123"})
+        client.post("/login", data={"email": "audituser@example.com", "password": "pass123"})
 
         logs = get_audit_logs(test_engine, AuditEventType.USER_LOGIN)
         assert len(logs) >= 1
         log = logs[0]
         assert log.source == "web"
         assert log.entity_type == "user"
-        assert log.actor_username == "audituser"
+        assert log.actor_username == "audituser@example.com"
 
     def test_failed_login_creates_audit_log(self, client, test_engine):
         """Failed login creates a user.login_failed audit entry."""
-        client.post("/login", data={"username": "nobody", "password": "wrong"})
+        client.post("/login", data={"email": "nobody@example.com", "password": "wrong"})
 
         logs = get_audit_logs(test_engine, AuditEventType.USER_LOGIN_FAILED)
         assert len(logs) >= 1
         log = logs[0]
         assert log.source == "web"
-        assert log.new_state.get("username") == "nobody"
+        assert log.new_state.get("email") == "nobody@example.com"
         assert log.metadata.get("ip") is not None
 
     def test_change_password_creates_audit_log(self, auth_client, test_engine, csrf_token):
@@ -64,7 +64,7 @@ class TestAuthAuditLogs:
         log = logs[0]
         assert log.source == "web"
         assert log.entity_type == "user"
-        assert log.actor_username == "testuser"
+        assert log.actor_username == "testuser@example.com"
 
 
 class TestBillingAuditLogs:
@@ -274,7 +274,7 @@ class TestAuditLogStateCapture:
         logs = get_audit_logs(test_engine, AuditEventType.BILLING_CREATE)
         assert len(logs) >= 1
         log = logs[0]
-        assert log.actor_username == "testuser"
+        assert log.actor_username == "testuser@example.com"
         assert log.actor_id is not None
 
     def test_audit_log_entity_uuid_captured(self, auth_client, test_engine, csrf_token):

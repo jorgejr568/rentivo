@@ -78,7 +78,7 @@ async def update_pix(request: Request):
     audit.safe_log(
         AuditEventType.USER_UPDATE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -114,25 +114,25 @@ async def change_password(request: Request):
         return render(request, "security/index.html", {**ctx, "password_error": "As senhas não coincidem."})
 
     user_service = get_user_service(request)
-    username = request.session.get("username", "")
-    user = user_service.authenticate(username, current_password)
+    email = request.session.get("email", "")
+    user = user_service.authenticate(email, current_password)
 
     if user is None:
-        logger.warning("change_password_failed", reason="incorrect_current_password", username=username)
+        logger.warning("change_password_failed", reason="incorrect_current_password", email=email)
         return render(request, "security/index.html", {**ctx, "password_error": "Senha atual incorreta."})
 
-    user_service.change_password(username, new_password)
-    logger.info("password_changed", username=username)
+    user_service.change_password(user_id, new_password)
+    logger.info("password_changed", email=email)
 
     audit = get_audit_service(request)
     audit.safe_log(
         AuditEventType.USER_CHANGE_PASSWORD,
         actor_id=user_id,
-        actor_username=username,
+        actor_username=email,
         source="web",
         entity_type="user",
         entity_id=user_id,
-        new_state={"username": username},
+        new_state={"email": email},
     )
 
     flash(request, "Senha alterada com sucesso!", "success")
@@ -143,14 +143,14 @@ async def change_password(request: Request):
 @router.get("/totp/setup")
 async def totp_setup_page(request: Request):
     user_id = request.session["user_id"]
-    username = request.session["username"]
+    email = request.session["email"]
     mfa_service = get_mfa_service(request)
 
     if mfa_service.has_confirmed_totp(user_id):
         flash(request, "TOTP já está ativado.", "info")
         return RedirectResponse("/security", status_code=302)
 
-    totp_record, provisioning_uri, qr_base64 = mfa_service.setup_totp(user_id, username)
+    totp_record, provisioning_uri, qr_base64 = mfa_service.setup_totp(user_id, email)
 
     return render(
         request,
@@ -183,7 +183,7 @@ async def totp_confirm(request: Request):
     audit.safe_log(
         AuditEventType.MFA_TOTP_ENABLED,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -206,8 +206,8 @@ async def totp_disable(request: Request):
     password = str(form.get("password", ""))
 
     user_service = get_user_service(request)
-    username = request.session.get("username", "")
-    user = user_service.authenticate(username, password)
+    email = request.session.get("email", "")
+    user = user_service.authenticate(email, password)
     if user is None:
         flash(request, "Senha incorreta.", "danger")
         return RedirectResponse("/security", status_code=302)
@@ -224,7 +224,7 @@ async def totp_disable(request: Request):
     audit.safe_log(
         AuditEventType.MFA_TOTP_DISABLED,
         actor_id=user_id,
-        actor_username=username,
+        actor_username=email,
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -250,7 +250,7 @@ async def regenerate_recovery_codes(request: Request):
     audit.safe_log(
         AuditEventType.MFA_RECOVERY_REGENERATED,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -272,7 +272,7 @@ async def regenerate_recovery_codes(request: Request):
 @router.post("/passkeys/register/begin")
 async def passkey_register_begin(request: Request):
     user_id = request.session["user_id"]
-    username = request.session["username"]
+    email = request.session["email"]
     mfa_service = get_mfa_service(request)
 
     existing_passkeys = mfa_service.list_passkeys(user_id)
@@ -287,8 +287,8 @@ async def passkey_register_begin(request: Request):
         rp_id=settings.webauthn_rp_id,
         rp_name=settings.webauthn_rp_name,
         user_id=str(user_id).encode(),
-        user_name=username,
-        user_display_name=username,
+        user_name=email,
+        user_display_name=email,
         exclude_credentials=exclude_credentials,
         authenticator_selection=AuthenticatorSelectionCriteria(
             resident_key=ResidentKeyRequirement.PREFERRED,
@@ -346,7 +346,7 @@ async def passkey_register_complete(request: Request):
     audit.safe_log(
         AuditEventType.MFA_PASSKEY_REGISTERED,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -372,7 +372,7 @@ async def passkey_delete(request: Request, passkey_uuid: str):
     audit.safe_log(
         AuditEventType.MFA_PASSKEY_DELETED,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -417,7 +417,7 @@ async def passkey_auth_begin(request: Request):
 @router.post("/passkeys/auth/complete")
 async def passkey_auth_complete(request: Request):
     user_id = request.session.get("mfa_pending_user_id")
-    username = request.session.get("mfa_pending_username")
+    email = request.session.get("mfa_pending_email")
     if not user_id:
         return JSONResponse({"error": "Sem login pendente"}, status_code=400)
 
@@ -455,7 +455,7 @@ async def passkey_auth_complete(request: Request):
         audit.safe_log(
             AuditEventType.MFA_VERIFY_FAILED,
             actor_id=user_id,
-            actor_username=username or "",
+            actor_username=email or "",
             source="web",
             entity_type="user",
             entity_id=user_id,
@@ -468,7 +468,7 @@ async def passkey_auth_complete(request: Request):
     # Complete login
     request.session.clear()
     request.session["user_id"] = user_id
-    request.session["username"] = username
+    request.session["email"] = email
 
     if mfa_service.user_requires_mfa_setup(user_id):
         request.session["mfa_setup_required"] = True
@@ -477,7 +477,7 @@ async def passkey_auth_complete(request: Request):
     audit.safe_log(
         AuditEventType.MFA_PASSKEY_USED,
         actor_id=user_id,
-        actor_username=username or "",
+        actor_username=email or "",
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -486,14 +486,14 @@ async def passkey_auth_complete(request: Request):
     audit.safe_log(
         AuditEventType.USER_LOGIN,
         actor_id=user_id,
-        actor_username=username or "",
+        actor_username=email or "",
         source="web",
         entity_type="user",
         entity_id=user_id,
-        new_state={"user_id": user_id, "username": username},
+        new_state={"user_id": user_id, "email": email},
         metadata={"ip": client_ip, "mfa": True, "method": "passkey"},
     )
 
-    logger.info("passkey_auth_verified", username=username)
+    logger.info("passkey_auth_verified", email=email)
     push_event(request, {"event": "rentivo_login_success", "via": "passkey"})
     return JSONResponse({"status": "ok", "redirect": "/billings/"})

@@ -132,7 +132,7 @@ async def user_theme_save(request: Request):
     audit.safe_log(
         event_type,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="theme",
         entity_id=theme.id,
@@ -160,7 +160,7 @@ async def user_theme_delete(request: Request):
         audit.safe_log(
             AuditEventType.THEME_DELETE,
             actor_id=user_id,
-            actor_username=request.session.get("username", ""),
+            actor_username=request.session.get("email", ""),
             source="web",
             entity_type="theme",
             entity_id=existing.id if existing else None,
@@ -249,7 +249,7 @@ async def org_theme_save(request: Request, org_uuid: str):
     audit.safe_log(
         event_type,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="theme",
         entity_id=theme.id,
@@ -280,7 +280,7 @@ async def org_theme_delete(request: Request, org_uuid: str):
         audit.safe_log(
             AuditEventType.THEME_DELETE,
             actor_id=user_id,
-            actor_username=request.session.get("username", ""),
+            actor_username=request.session.get("email", ""),
             source="web",
             entity_type="theme",
             entity_id=existing.id if existing else None,
@@ -388,7 +388,7 @@ async def billing_theme_save(request: Request, billing_uuid: str):
     audit.safe_log(
         event_type,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="theme",
         entity_id=theme.id,
@@ -419,7 +419,7 @@ async def billing_theme_delete(request: Request, billing_uuid: str):
         audit.safe_log(
             AuditEventType.THEME_DELETE,
             actor_id=user_id,
-            actor_username=request.session.get("username", ""),
+            actor_username=request.session.get("email", ""),
             source="web",
             entity_type="theme",
             entity_id=existing.id if existing else None,
