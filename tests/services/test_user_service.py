@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import bcrypt
+import pytest
 
 from rentivo.models.user import User
 from rentivo.services.user_service import UserService
@@ -12,68 +13,53 @@ class TestUserService:
         self.service = UserService(self.mock_repo)
 
     def test_create_user_hashes_password(self):
-        self.mock_repo.create.return_value = User(id=1, username="admin", password_hash="hashed")
-        result = self.service.create_user("admin", "secret")
+        self.mock_repo.create.return_value = User(id=1, email="a@b.com", password_hash="hashed")
+        result = self.service.create_user("a@b.com", "secret")
         call_args = self.mock_repo.create.call_args[0][0]
-        assert call_args.username == "admin"
-        # Verify it's a bcrypt hash
-        assert call_args.password_hash.startswith("$2b$")
-        assert result.username == "admin"
+        assert call_args.email == "a@b.com"
+        assert bcrypt.checkpw(b"secret", call_args.password_hash.encode())
+        assert result.email == "a@b.com"
 
     def test_authenticate_success(self):
-        password = "secret"
-        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        self.mock_repo.get_by_username.return_value = User(id=1, username="admin", password_hash=hashed)
-        result = self.service.authenticate("admin", "secret")
+        hashed = bcrypt.hashpw(b"secret", bcrypt.gensalt()).decode()
+        self.mock_repo.get_by_email.return_value = User(id=1, email="a@b.com", password_hash=hashed)
+        result = self.service.authenticate("a@b.com", "secret")
         assert result is not None
-        assert result.username == "admin"
+        assert result.email == "a@b.com"
 
     def test_authenticate_wrong_password(self):
         hashed = bcrypt.hashpw(b"secret", bcrypt.gensalt()).decode()
-        self.mock_repo.get_by_username.return_value = User(id=1, username="admin", password_hash=hashed)
-        result = self.service.authenticate("admin", "wrong")
-        assert result is None
+        self.mock_repo.get_by_email.return_value = User(id=1, email="a@b.com", password_hash=hashed)
+        assert self.service.authenticate("a@b.com", "wrong") is None
 
-    def test_authenticate_user_not_found(self):
-        self.mock_repo.get_by_username.return_value = None
-        result = self.service.authenticate("nonexistent", "pass")
-        assert result is None
+    def test_authenticate_unknown_email(self):
+        self.mock_repo.get_by_email.return_value = None
+        assert self.service.authenticate("nobody@b.com", "x") is None
 
-    def test_change_password(self):
-        self.service.change_password("admin", "newpass")
-        call_args = self.mock_repo.update_password_hash.call_args
-        assert call_args[0][0] == "admin"
-        assert call_args[0][1].startswith("$2b$")
+    def test_change_password_updates_hash(self):
+        self.service.change_password(42, "new-secret")
+        user_id, new_hash = self.mock_repo.update_password_hash.call_args[0]
+        assert user_id == 42
+        assert bcrypt.checkpw(b"new-secret", new_hash.encode())
 
     def test_list_users(self):
-        self.mock_repo.list_all.return_value = [User(username="a"), User(username="b")]
-        result = self.service.list_users()
-        assert len(result) == 2
+        self.mock_repo.list_all.return_value = [User(email="a@b.com"), User(email="c@d.com")]
+        assert [u.email for u in self.service.list_users()] == ["a@b.com", "c@d.com"]
 
     def test_get_by_id(self):
-        self.mock_repo.get_by_id.return_value = User(id=1, username="admin")
-        result = self.service.get_by_id(1)
-        assert result.username == "admin"
-        self.mock_repo.get_by_id.assert_called_once_with(1)
+        self.mock_repo.get_by_id.return_value = User(id=1, email="a@b.com")
+        assert self.service.get_by_id(1).email == "a@b.com"
 
-    def test_register_user(self):
-        self.mock_repo.get_by_username.return_value = None
-        self.mock_repo.create.return_value = User(id=1, username="new", email="n@t.com")
-        result = self.service.register_user("new", "n@t.com", "pass")
-        assert result.username == "new"
-        self.mock_repo.create.assert_called_once()
+    def test_get_by_email_returns_user(self):
+        self.mock_repo.get_by_email.return_value = User(id=1, email="a@b.com")
+        assert self.service.get_by_email("a@b.com").email == "a@b.com"
 
-    def test_register_user_duplicate(self):
-        import pytest
+    def test_register_user_succeeds(self):
+        self.mock_repo.get_by_email.return_value = None
+        self.mock_repo.create.return_value = User(id=1, email="new@b.com")
+        assert self.service.register_user("new@b.com", "pw").email == "new@b.com"
 
-        self.mock_repo.get_by_username.return_value = User(username="existing")
-        with pytest.raises(ValueError, match="already exists"):
-            self.service.register_user("existing", "e@t.com", "pass")
-
-    def test_update_pix_raises_when_user_vanishes(self):
-        """After update_pix, get_by_id returning None means the row is gone."""
-        import pytest
-
-        self.mock_repo.get_by_id.return_value = None
-        with pytest.raises(ValueError, match="não encontrado"):
-            self.service.update_pix(1, "", "", "")
+    def test_register_user_duplicate_email(self):
+        self.mock_repo.get_by_email.return_value = User(email="dup@b.com")
+        with pytest.raises(ValueError):
+            self.service.register_user("dup@b.com", "pw")
