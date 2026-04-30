@@ -13,6 +13,7 @@ from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.invite import Invite
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
+from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.models.receipt import Receipt
 from rentivo.models.theme import Theme
 from rentivo.models.user import User
@@ -24,6 +25,7 @@ from rentivo.repositories.base import (
     MFATOTPRepository,
     OrganizationRepository,
     PasskeyRepository,
+    PasswordResetTokenRepository,
     ReceiptRepository,
     RecoveryCodeRepository,
     ThemeRepository,
@@ -1417,4 +1419,64 @@ class SQLAlchemyThemeRepository(ThemeRepository):
 
     def delete(self, theme_id: int) -> None:
         self.conn.execute(text("DELETE FROM themes WHERE id = :id"), {"id": theme_id})
+        self.conn.commit()
+
+
+class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
+    def __init__(self, conn: Connection) -> None:
+        self.conn = conn
+
+    @staticmethod
+    def _row(row: RowMapping) -> PasswordResetToken:
+        return PasswordResetToken(
+            id=row["id"],
+            user_id=row["user_id"],
+            token_hash=row["token_hash"],
+            expires_at=row["expires_at"],
+            used_at=row.get("used_at"),
+            created_at=row.get("created_at"),
+        )
+
+    def create(self, token: PasswordResetToken) -> PasswordResetToken:
+        self.conn.execute(
+            text(
+                "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, created_at) "
+                "VALUES (:user_id, :token_hash, :expires_at, :created_at)"
+            ),
+            {
+                "user_id": token.user_id,
+                "token_hash": token.token_hash,
+                "expires_at": token.expires_at,
+                "created_at": _now(),
+            },
+        )
+        self.conn.commit()
+        result = self.get_by_hash(token.token_hash)
+        if result is None:
+            raise RuntimeError("Failed to retrieve password reset token after create")
+        return result
+
+    def get_by_hash(self, token_hash: str) -> PasswordResetToken | None:
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM password_reset_tokens WHERE token_hash = :h"),
+                {"h": token_hash},
+            )
+            .mappings()
+            .fetchone()
+        )
+        return None if row is None else self._row(row)
+
+    def mark_used(self, token_id: int) -> None:
+        self.conn.execute(
+            text("UPDATE password_reset_tokens SET used_at = :now WHERE id = :id"),
+            {"now": _now(), "id": token_id},
+        )
+        self.conn.commit()
+
+    def invalidate_all_for_user(self, user_id: int) -> None:
+        self.conn.execute(
+            text("UPDATE password_reset_tokens SET used_at = :now WHERE user_id = :uid AND used_at IS NULL"),
+            {"now": _now(), "uid": user_id},
+        )
         self.conn.commit()

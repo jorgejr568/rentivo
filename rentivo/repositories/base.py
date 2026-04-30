@@ -7,6 +7,7 @@ from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
+from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.models.receipt import Receipt
 from rentivo.models.theme import Theme
 from rentivo.models.user import User
@@ -248,3 +249,17 @@ class ThemeRepository(ABC):
 
     @abstractmethod
     def delete(self, theme_id: int) -> None: ...
+
+
+class PasswordResetTokenRepository(ABC):
+    @abstractmethod
+    def create(self, token: PasswordResetToken) -> PasswordResetToken: ...
+
+    @abstractmethod
+    def get_by_hash(self, token_hash: str) -> PasswordResetToken | None: ...
+
+    @abstractmethod
+    def mark_used(self, token_id: int) -> None: ...
+
+    @abstractmethod
+    def invalidate_all_for_user(self, user_id: int) -> None: ...
