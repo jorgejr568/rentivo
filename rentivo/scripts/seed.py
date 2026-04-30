@@ -38,7 +38,7 @@ from rentivo.storage.factory import get_storage
 console = Console()
 fake = Faker("pt_BR")
 
-MAIN_USERNAME = "admin"
+MAIN_EMAIL = "admin@example.com"
 PASSWORD = "password"
 NUM_EXTRA_USERS = 9
 ORG_NAME = "Imobiliaria Horizonte"
@@ -182,21 +182,21 @@ def _create_users(user_service: UserService) -> list:
     """Create the main user + extra users. Returns list of all User objects."""
     console.print("[cyan]Creating users...[/cyan]")
 
-    main_user = user_service.create_user(MAIN_USERNAME, PASSWORD)
+    main_user = user_service.create_user(MAIN_EMAIL, PASSWORD)
     user_service.update_pix(main_user.id, "admin@rentivo.com", "Admin Rentivo", "Sao Paulo")
     main_user = user_service.get_by_id(main_user.id) or main_user
-    console.print(f"  [bold green]Main user:[/bold green] {main_user.username} (id={main_user.id})")
+    console.print(f"  [bold green]Main user:[/bold green] {main_user.email} (id={main_user.id})")
 
     users = [main_user]
-    usernames_seen = {MAIN_USERNAME}
+    emails_seen = {MAIN_EMAIL}
     for _ in range(NUM_EXTRA_USERS):
-        username = fake.user_name()
-        while username in usernames_seen:
-            username = fake.user_name()
-        usernames_seen.add(username)
+        email = fake.email()
+        while email in emails_seen:
+            email = fake.email()
+        emails_seen.add(email)
 
-        user = user_service.create_user(username, PASSWORD)
-        console.print(f"  Created user: {user.username} (id={user.id})")
+        user = user_service.create_user(email, PASSWORD)
+        console.print(f"  Created user: {user.email} (id={user.id})")
         users.append(user)
 
     console.print(f"[green]{len(users)} users created.[/green]\n")
@@ -220,7 +220,7 @@ def _create_organization(org_service: OrganizationService, users: list):
         assert user.id is not None
         assert org.id is not None
         org_service.add_member(org.id, user.id, OrgRole.VIEWER.value)
-        console.print(f"  Added [dim]{user.username}[/dim] as viewer")
+        console.print(f"  Added [dim]{user.email}[/dim] as viewer")
 
     console.print(f"[green]Organization created with {len(users)} members.[/green]\n")
     return org
@@ -262,7 +262,7 @@ def _create_invites(invite_service: InviteService, org, users: list) -> None:
         # Mark as accepted
         assert created.id is not None
         invite_repo.update_status(created.id, InviteStatus.ACCEPTED.value)
-        console.print(f"  Invite (accepted): {user.username}")
+        console.print(f"  Invite (accepted): {user.email}")
 
     # Create a couple of declined invites
     for user in users[4:6]:
@@ -277,7 +277,7 @@ def _create_invites(invite_service: InviteService, org, users: list) -> None:
         created = invite_repo.create(invite)
         assert created.id is not None
         invite_repo.update_status(created.id, InviteStatus.DECLINED.value)
-        console.print(f"  Invite (declined): {user.username}")
+        console.print(f"  Invite (declined): {user.email}")
 
     console.print("[green]Invite history created.[/green]\n")
 
@@ -457,7 +457,7 @@ def main() -> None:
     console.print(f"  Organization: 1 ({org.name})")
     console.print(f"  Billings:     {len(billings)}")
     console.print(f"  Bills:        {total_bills}")
-    console.print(f"\n  Login with: [bold]{MAIN_USERNAME}[/bold] / [bold]{PASSWORD}[/bold]")
+    console.print(f"\n  Login with: [bold]{MAIN_EMAIL}[/bold] / [bold]{PASSWORD}[/bold]")
 
 
 if __name__ == "__main__":  # pragma: no cover
