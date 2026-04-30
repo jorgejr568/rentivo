@@ -128,7 +128,6 @@ class TestSerializeUser:
         now = datetime(2026, 1, 1, 0, 0, 0)
         user = User(
             id=1,
-            username="admin",
             email="admin@test.com",
             password_hash="$2b$12$secrethash",
             created_at=now,
@@ -136,15 +135,23 @@ class TestSerializeUser:
         result = serialize_user(user)
 
         assert result["id"] == 1
-        assert result["username"] == "admin"
         assert result["email"] == "admin@test.com"
         assert result["created_at"] == now.isoformat()
         assert "password_hash" not in result
+        assert "username" not in result
 
     def test_user_none_created_at(self):
-        user = User(username="test", password_hash="hash")
+        user = User(email="test@test.com", password_hash="hash")
         result = serialize_user(user)
         assert result["created_at"] is None
+
+
+def test_serialize_user_uses_email():
+    user = User(id=1, email="a@b.com", password_hash="x", pix_key="k")
+    result = serialize_user(user)
+    assert result["email"] == "a@b.com"
+    assert "username" not in result
+    assert "password_hash" not in result
 
 
 class TestSerializeOrganization:
@@ -198,9 +205,9 @@ class TestSerializeInvite:
         assert result["organization_id"] == 3
         assert result["organization_name"] == "Org A"
         assert result["invited_user_id"] == 5
-        assert result["invited_username"] == "bob"
+        assert result["invited_email"] == "bob"
         assert result["invited_by_user_id"] == 1
-        assert result["invited_by_username"] == "alice"
+        assert result["invited_by_email"] == "alice"
         assert result["role"] == "viewer"
         assert result["status"] == "pending"
         assert result["created_at"] == now.isoformat()

@@ -72,7 +72,7 @@ class AuditLog(BaseModel):
     uuid: str = ""
     event_type: str
     actor_id: int | None = None
-    actor_username: str = ""
+    actor_username: str = ""  # stores user.email since 2026-04-30 (column name kept for back-compat)
     source: str = ""  # 'web' or 'cli'
     entity_type: str = ""
     entity_id: int | None = None

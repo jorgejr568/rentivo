@@ -80,7 +80,6 @@ def serialize_user(user: User) -> dict:
     """Serialize a User for audit state. Excludes password_hash."""
     return {
         "id": user.id,
-        "username": user.username,
         "email": user.email,
         "pix_key": user.pix_key,
         "pix_merchant_name": user.pix_merchant_name,
@@ -113,9 +112,9 @@ def serialize_invite(invite: Invite) -> dict:
         "organization_id": invite.organization_id,
         "organization_name": invite.organization_name,
         "invited_user_id": invite.invited_user_id,
-        "invited_username": invite.invited_username,
+        "invited_email": invite.invited_username,  # attribute renamed in A7
         "invited_by_user_id": invite.invited_by_user_id,
-        "invited_by_username": invite.invited_by_username,
+        "invited_by_email": invite.invited_by_username,  # attribute renamed in A7
         "role": invite.role,
         "status": invite.status,
         "created_at": _dt(invite.created_at),
