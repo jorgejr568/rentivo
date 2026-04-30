@@ -90,3 +90,30 @@ def test_environment_rejects_unknown():
     with pytest.raises(ValidationError) as exc_info:
         Settings(_env_file=None, environment="qa")
     assert "must be one of" in str(exc_info.value)
+
+
+def test_settings_email_defaults(monkeypatch):
+    for k in (
+        "RENTIVO_EMAIL_BACKEND",
+        "RENTIVO_SES_REGION",
+        "RENTIVO_SES_ACCESS_KEY_ID",
+        "RENTIVO_SES_SECRET_ACCESS_KEY",
+        "RENTIVO_SES_FROM_EMAIL",
+        "RENTIVO_SES_CONFIGURATION_SET",
+        "RENTIVO_EMAIL_LOCAL_PATH",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    from rentivo.settings import Settings
+    s = Settings()
+    assert s.email_backend == "local"
+    assert s.email_local_path == "./outbox"
+    assert s.ses_region == ""
+    assert s.ses_from_email == ""
+
+
+def test_settings_email_backend_validation(monkeypatch):
+    monkeypatch.setenv("RENTIVO_EMAIL_BACKEND", "smoke-signals")
+    from rentivo.settings import Settings
+    import pytest as _pytest
+    with _pytest.raises(ValueError):
+        Settings()
