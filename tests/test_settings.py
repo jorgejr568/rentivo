@@ -104,6 +104,7 @@ def test_settings_email_defaults(monkeypatch):
     ):
         monkeypatch.delenv(k, raising=False)
     from rentivo.settings import Settings
+
     s = Settings()
     assert s.email_backend == "local"
     assert s.email_local_path == "./outbox"
@@ -113,7 +114,9 @@ def test_settings_email_defaults(monkeypatch):
 
 def test_settings_email_backend_validation(monkeypatch):
     monkeypatch.setenv("RENTIVO_EMAIL_BACKEND", "smoke-signals")
-    from rentivo.settings import Settings
     import pytest as _pytest
+
+    from rentivo.settings import Settings
+
     with _pytest.raises(ValueError):
         Settings()

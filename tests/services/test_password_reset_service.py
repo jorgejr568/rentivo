@@ -72,7 +72,9 @@ def test_consume_rejects_expired_token():
 def test_consume_rejects_already_used_token():
     service, _, token_repo, _, _, now = _build()
     token_repo.get_by_hash.return_value = PasswordResetToken(
-        id=5, user_id=1, token_hash="h",
+        id=5,
+        user_id=1,
+        token_hash="h",
         expires_at=now + timedelta(hours=1),
         used_at=now - timedelta(minutes=1),
     )
@@ -83,7 +85,9 @@ def test_consume_resets_password_and_marks_used():
     service, _, token_repo, _, user_service, now = _build()
     raw = "raw-token-value"
     token = PasswordResetToken(
-        id=5, user_id=42, token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+        id=5,
+        user_id=42,
+        token_hash=hashlib.sha256(raw.encode()).hexdigest(),
         expires_at=now + timedelta(hours=1),
     )
     token_repo.get_by_hash.return_value = token

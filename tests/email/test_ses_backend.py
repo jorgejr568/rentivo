@@ -54,15 +54,14 @@ def test_send_omits_configuration_set_when_empty(boto3_mock):
         secret_access_key="s",
         from_address="from@x.com",
     )
-    backend.send(EmailMessage(
-        to="to@x.com", subject="s", text_body="t", html_body="<t/>", from_address="from@x.com"
-    ))
+    backend.send(EmailMessage(to="to@x.com", subject="s", text_body="t", html_body="<t/>", from_address="from@x.com"))
     assert "ConfigurationSetName" not in client.send_email.call_args.kwargs
 
 
 @patch("rentivo.email.ses.boto3", None)
 def test_missing_boto3_raises():
     import pytest
+
     with pytest.raises(ImportError):
         SESEmailBackend(region="r", access_key_id="k", secret_access_key="s", from_address="f@x.com")
 
@@ -73,7 +72,10 @@ def test_send_passes_endpoint_url_when_provided(boto3_mock):
     client.send_email.return_value = {"MessageId": "id"}
     boto3_mock.client.return_value = client
     SESEmailBackend(
-        region="r", access_key_id="k", secret_access_key="s",
-        from_address="f@x.com", endpoint_url="http://localstack:4566",
+        region="r",
+        access_key_id="k",
+        secret_access_key="s",
+        from_address="f@x.com",
+        endpoint_url="http://localstack:4566",
     )
     assert boto3_mock.client.call_args.kwargs["endpoint_url"] == "http://localstack:4566"

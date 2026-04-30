@@ -10,11 +10,13 @@ def get_email_backend() -> EmailBackend:
     backend = settings.email_backend
     if backend == "local":
         from rentivo.email.local import LocalEmailBackend
+
         logger.info("email_backend_selected", backend="local", path=settings.email_local_path)
         return LocalEmailBackend(settings.email_local_path)
 
     if backend == "ses":
         from rentivo.email.ses import SESEmailBackend
+
         logger.info("email_backend_selected", backend="ses", region=settings.ses_region)
         return SESEmailBackend(
             region=settings.ses_region,

@@ -18,5 +18,6 @@ def test_email_message_holds_fields():
 
 def test_email_backend_is_abstract():
     import pytest
+
     with pytest.raises(TypeError):
         EmailBackend()  # type: ignore[abstract]
