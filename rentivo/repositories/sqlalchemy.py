@@ -466,8 +466,7 @@ class SQLAlchemyUserRepository(UserRepository):
     def _row_to_user(row: RowMapping) -> User:
         return User(
             id=row["id"],
-            username=row["username"],
-            email=row.get("email", ""),
+            email=row["email"],
             password_hash=row["password_hash"],
             pix_key=row.get("pix_key", "") or "",
             pix_merchant_name=row.get("pix_merchant_name", "") or "",
@@ -478,51 +477,41 @@ class SQLAlchemyUserRepository(UserRepository):
     def create(self, user: User) -> User:
         self.conn.execute(
             text(
-                "INSERT INTO users (username, email, password_hash, created_at) "
-                "VALUES (:username, :email, :password_hash, :created_at)"
+                "INSERT INTO users (email, password_hash, created_at) "
+                "VALUES (:email, :password_hash, :created_at)"
             ),
-            {"username": user.username, "email": user.email, "password_hash": user.password_hash, "created_at": _now()},
+            {"email": user.email, "password_hash": user.password_hash, "created_at": _now()},
         )
         self.conn.commit()
-        result = self.get_by_username(user.username)
+        result = self.get_by_email(user.email)
         if result is None:
-            raise RuntimeError(f"Failed to retrieve user after create (username={user.username})")
+            raise RuntimeError(f"Failed to retrieve user after create (email={user.email})")
         return result
 
     def get_by_id(self, user_id: int) -> User | None:
         row = (
-            self.conn.execute(
-                text("SELECT * FROM users WHERE id = :id"),
-                {"id": user_id},
-            )
+            self.conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
             .mappings()
             .fetchone()
         )
-        if row is None:
-            return None
-        return self._row_to_user(row)
+        return None if row is None else self._row_to_user(row)
 
-    def get_by_username(self, username: str) -> User | None:
+    def get_by_email(self, email: str) -> User | None:
         row = (
-            self.conn.execute(
-                text("SELECT * FROM users WHERE username = :username"),
-                {"username": username},
-            )
+            self.conn.execute(text("SELECT * FROM users WHERE email = :email"), {"email": email})
             .mappings()
             .fetchone()
         )
-        if row is None:
-            return None
-        return self._row_to_user(row)
+        return None if row is None else self._row_to_user(row)
 
     def list_all(self) -> list[User]:
         rows = self.conn.execute(text("SELECT * FROM users ORDER BY created_at DESC")).mappings().fetchall()
         return [self._row_to_user(row) for row in rows]
 
-    def update_password_hash(self, username: str, password_hash: str) -> None:
+    def update_password_hash(self, user_id: int, password_hash: str) -> None:
         self.conn.execute(
-            text("UPDATE users SET password_hash = :password_hash WHERE username = :username"),
-            {"password_hash": password_hash, "username": username},
+            text("UPDATE users SET password_hash = :password_hash WHERE id = :id"),
+            {"password_hash": password_hash, "id": user_id},
         )
         self.conn.commit()
 
