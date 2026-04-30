@@ -18,6 +18,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasskeyRepository,
+    SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyReceiptRepository,
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyThemeRepository,
@@ -31,6 +32,7 @@ from rentivo.services.email_service import EmailService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
+from rentivo.services.password_reset_service import PasswordResetService
 from rentivo.services.pix_service import PixService
 from rentivo.services.theme_service import ThemeService
 from rentivo.services.user_service import UserService
@@ -41,7 +43,15 @@ from web.flash import get_flashed_messages
 
 logger = structlog.get_logger(__name__)
 
-PUBLIC_PREFIX_PATHS = {"/login", "/signup", "/static", "/mfa-verify", "/security/passkeys/auth"}
+PUBLIC_PREFIX_PATHS = {
+    "/login",
+    "/signup",
+    "/static",
+    "/mfa-verify",
+    "/security/passkeys/auth",
+    "/forgot-password",
+    "/reset-password",
+}
 PUBLIC_EXACT_PATHS = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
 # Paths that MFA-enforcement redirect allows even when mfa_setup_required is set
@@ -229,6 +239,18 @@ def get_mfa_service(request: Request) -> MFAService:
 
 def get_email_service(request: Request) -> EmailService:
     return EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
+
+
+def get_password_reset_service(request: Request) -> PasswordResetService:
+    conn = _get_conn(request)
+    user_repo = SQLAlchemyUserRepository(conn)
+    return PasswordResetService(
+        user_repo=user_repo,
+        token_repo=SQLAlchemyPasswordResetTokenRepository(conn),
+        email_service=get_email_service(request),
+        user_service=UserService(user_repo),
+        public_app_url=settings.public_app_url,
+    )
 
 
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:
