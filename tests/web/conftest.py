@@ -48,7 +48,7 @@ def _make_test_engine():
 def get_test_user_id(engine):
     """Get the ID of the test user."""
     with engine.connect() as conn:
-        row = conn.execute(text("SELECT id FROM users WHERE username = 'testuser'")).fetchone()
+        row = conn.execute(text("SELECT id FROM users WHERE email = 'testuser@example.com'")).fetchone()
         return row[0] if row else 1
 
 
@@ -167,10 +167,10 @@ def auth_client(client, test_engine):
         from rentivo.services.user_service import UserService
 
         user_service = UserService(user_repo)
-        user = user_service.create_user("testuser", "testpass")
+        user = user_service.create_user("testuser@example.com", "testpass")
         user_service.update_pix(user.id, "test@pix.com", "Test Merchant", "Sao Paulo")
 
-    client.post("/login", data={"username": "testuser", "password": "testpass"})
+    client.post("/login", data={"email": "testuser@example.com", "password": "testpass"})
     return client
 
 

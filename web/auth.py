@@ -82,36 +82,35 @@ async def signup(request: Request):
         return RedirectResponse("/billings/", status_code=302)
 
     form = await request.form()
-    username = str(form.get("username", "")).strip()
     email = str(form.get("email", "")).strip()
     password = str(form.get("password", ""))
     confirm_password = str(form.get("confirm_password", ""))
 
-    if not username or not email or not password:
+    if not email or not password:
         logger.warning("signup_rejected", reason="empty_fields")
         return render(request, "signup.html", {"error": "Preencha todos os campos."})
 
     if password != confirm_password:
-        logger.warning("signup_rejected", reason="password_mismatch", username=username)
+        logger.warning("signup_rejected", reason="password_mismatch", email=email)
         return render(request, "signup.html", {"error": "As senhas não coincidem."})
 
     user_service = get_user_service(request)
     try:
-        user = user_service.register_user(username, email, password)
+        user = user_service.register_user(email, password)
     except ValueError:
-        logger.warning("signup_rejected", reason="duplicate_username", username=username)
-        return render(request, "signup.html", {"error": "Nome de usuário já existe."})
+        logger.warning("signup_rejected", reason="duplicate_email", email=email)
+        return render(request, "signup.html", {"error": "E-mail já cadastrado."})
 
     request.session.clear()
     request.session["user_id"] = user.id
-    request.session["username"] = user.username
-    logger.info("user_signed_up", username=user.username)
+    request.session["email"] = user.email
+    logger.info("user_signed_up", email=user.email)
 
     audit = get_audit_service(request)
     audit.safe_log(
         AuditEventType.USER_SIGNUP,
         actor_id=user.id,
-        actor_username=user.username,
+        actor_username=user.email,
         source="web",
         entity_type="user",
         entity_id=user.id,
@@ -145,25 +144,25 @@ async def login(request: Request):
         )
 
     form = await request.form()
-    username = form.get("username", "")
+    email = str(form.get("email", "")).strip()
     password = form.get("password", "")
 
     user_service = get_user_service(request)
-    user = user_service.authenticate(str(username), str(password))
+    user = user_service.authenticate(email, str(password))
 
     if user is None:
         _record_failed_attempt(client_ip)
-        logger.warning("login_failed", username=str(username), client_ip=client_ip)
+        logger.warning("login_failed", email=email, client_ip=client_ip)
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.USER_LOGIN_FAILED,
             source="web",
             entity_type="user",
-            new_state={"username": str(username)},
+            new_state={"email": email},
             metadata={"ip": client_ip},
         )
         push_event(request, {"event": "rentivo_login_failed", "reason": "bad_credentials"})
-        return render(request, "login.html", {"error": "Usuário ou senha inválidos."})
+        return render(request, "login.html", {"error": "E-mail ou senha inválidos."})
 
     _clear_attempts(client_ip)
 
@@ -175,14 +174,14 @@ async def login(request: Request):
         # Don't fully authenticate yet — redirect to MFA verification
         request.session.clear()
         request.session["mfa_pending_user_id"] = user.id
-        request.session["mfa_pending_username"] = user.username
-        logger.info("mfa_verification_required", username=user.username, user_id=user.id)
+        request.session["mfa_pending_email"] = user.email
+        logger.info("mfa_verification_required", email=user.email, user_id=user.id)
 
         audit = get_audit_service(request)
         audit.safe_log(
             AuditEventType.MFA_CHALLENGE_ISSUED,
             actor_id=user.id,
-            actor_username=user.username,
+            actor_username=user.email,
             source="web",
             entity_type="user",
             entity_id=user.id,
@@ -194,8 +193,8 @@ async def login(request: Request):
     # No MFA — complete login
     request.session.clear()
     request.session["user_id"] = user.id
-    request.session["username"] = user.username
-    logger.info("user_logged_in", username=user.username, user_id=user.id)
+    request.session["email"] = user.email
+    logger.info("user_logged_in", email=user.email, user_id=user.id)
 
     # Check if MFA setup is required by org enforcement
     if mfa_service.user_requires_mfa_setup(user.id):
@@ -205,11 +204,11 @@ async def login(request: Request):
     audit.safe_log(
         AuditEventType.USER_LOGIN,
         actor_id=user.id,
-        actor_username=user.username,
+        actor_username=user.email,
         source="web",
         entity_type="user",
         entity_id=user.id,
-        new_state={"user_id": user.id, "username": user.username},
+        new_state={"user_id": user.id, "email": user.email},
         metadata={"ip": client_ip},
     )
 
@@ -241,7 +240,7 @@ async def mfa_verify_page(request: Request):
 @router.post("/mfa-verify")
 async def mfa_verify(request: Request):
     user_id = request.session.get("mfa_pending_user_id")
-    username = request.session.get("mfa_pending_username")
+    email = request.session.get("mfa_pending_email")
     if not user_id:
         return RedirectResponse("/login", status_code=302)
 
@@ -275,7 +274,7 @@ async def mfa_verify(request: Request):
         audit.safe_log(
             AuditEventType.MFA_VERIFY_FAILED,
             actor_id=user_id,
-            actor_username=username or "",
+            actor_username=email or "",
             source="web",
             entity_type="user",
             entity_id=user_id,
@@ -297,7 +296,7 @@ async def mfa_verify(request: Request):
     _clear_mfa_attempts(client_ip)
     request.session.clear()
     request.session["user_id"] = user_id
-    request.session["username"] = username
+    request.session["email"] = email
 
     if mfa_service.user_requires_mfa_setup(user_id):
         request.session["mfa_setup_required"] = True
@@ -306,7 +305,7 @@ async def mfa_verify(request: Request):
     audit.safe_log(
         AuditEventType.MFA_VERIFY_SUCCESS,
         actor_id=user_id,
-        actor_username=username or "",
+        actor_username=email or "",
         source="web",
         entity_type="user",
         entity_id=user_id,
@@ -315,15 +314,15 @@ async def mfa_verify(request: Request):
     audit.safe_log(
         AuditEventType.USER_LOGIN,
         actor_id=user_id,
-        actor_username=username or "",
+        actor_username=email or "",
         source="web",
         entity_type="user",
         entity_id=user_id,
-        new_state={"user_id": user_id, "username": username},
+        new_state={"user_id": user_id, "email": email},
         metadata={"ip": client_ip, "mfa": True},
     )
 
-    logger.info("mfa_verified", username=username, method=method)
+    logger.info("mfa_verified", email=email, method=method)
     push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
     return RedirectResponse("/billings/", status_code=302)
 
@@ -336,20 +335,20 @@ async def change_password_redirect(request: Request):
 @router.post("/logout")
 async def logout(request: Request):
     user_id = request.session.get("user_id")
-    username = request.session.get("username")
+    email = request.session.get("email")
 
     audit = get_audit_service(request)
     audit.safe_log(
         AuditEventType.USER_LOGOUT,
         actor_id=user_id,
-        actor_username=username or "",
+        actor_username=email or "",
         source="web",
         entity_type="user",
         entity_id=user_id,
-        new_state={"username": username},
+        new_state={"email": email},
     )
 
     request.session.clear()
     push_event(request, {"event": "rentivo_logout"})
-    logger.info("user_logged_out", username=username)
+    logger.info("user_logged_out", email=email)
     return RedirectResponse("/login", status_code=302)

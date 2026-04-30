@@ -34,11 +34,11 @@ class TestLoginPage:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user_service.create_user("admin", "secret")
+            user_service.create_user("admin@example.com", "secret")
 
         response = client.post(
             "/login",
-            data={"username": "admin", "password": "secret"},
+            data={"email": "admin@example.com", "password": "secret"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -46,9 +46,18 @@ class TestLoginPage:
     def test_login_failure(self, client):
         response = client.post(
             "/login",
-            data={"username": "wrong", "password": "wrong"},
+            data={"email": "wrong@example.com", "password": "wrong"},
         )
         assert response.status_code == 200
+
+    def test_login_failure_with_unknown_email(self, client):
+        response = client.post(
+            "/login",
+            data={"email": "ghost@example.com", "password": "x"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "inválidos" in response.text.lower()
 
     def test_login_sets_session_keys(self, client, test_engine):
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
@@ -57,9 +66,9 @@ class TestLoginPage:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user_service.create_user("admin2", "secret")
+            user_service.create_user("admin2@example.com", "secret")
 
-        client.post("/login", data={"username": "admin2", "password": "secret"})
+        client.post("/login", data={"email": "admin2@example.com", "password": "secret"})
         # After login, the user should be able to access protected pages
         response = client.get("/billings/")
         assert response.status_code == 200
@@ -150,7 +159,6 @@ class TestSignup:
         response = client.post(
             "/signup",
             data={
-                "username": "newuser",
                 "email": "new@test.com",
                 "password": "password123",
                 "confirm_password": "password123",
@@ -166,7 +174,6 @@ class TestSignup:
         response = client.post(
             "/signup",
             data={
-                "username": "",
                 "email": "",
                 "password": "",
                 "confirm_password": "",
@@ -179,7 +186,6 @@ class TestSignup:
         response = client.post(
             "/signup",
             data={
-                "username": "user1",
                 "email": "u@t.com",
                 "password": "pass1",
                 "confirm_password": "pass2",
@@ -195,13 +201,12 @@ class TestSignup:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user_service.create_user("existing", "pass")
+            user_service.create_user("existing@example.com", "pass")
 
         response = client.post(
             "/signup",
             data={
-                "username": "existing",
-                "email": "e@t.com",
+                "email": "existing@example.com",
                 "password": "pass",
                 "confirm_password": "pass",
             },
@@ -212,7 +217,6 @@ class TestSignup:
         response = auth_client.post(
             "/signup",
             data={
-                "username": "x",
                 "email": "x@t.com",
                 "password": "p",
                 "confirm_password": "p",
@@ -242,13 +246,13 @@ class TestRateLimiting:
         for _ in range(5):
             client.post(
                 "/login",
-                data={"username": "nonexistent", "password": "wrong"},
+                data={"email": "nonexistent@example.com", "password": "wrong"},
             )
 
         # 6th attempt should be rate-limited
         response = client.post(
             "/login",
-            data={"username": "nonexistent", "password": "wrong"},
+            data={"email": "nonexistent@example.com", "password": "wrong"},
         )
         assert response.status_code == 200
         assert "Muitas tentativas" in response.text
@@ -270,7 +274,7 @@ class TestAuthMiddleware:
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            UserService(user_repo).create_user("olduser", "pass")
+            UserService(user_repo).create_user("olduser@example.com", "pass")
 
         # Manually set only "user" in session (old-style) - since we can't
         # directly manipulate session, we just verify that without user_id
@@ -282,7 +286,7 @@ class TestAuthMiddleware:
 class TestMFALoginFlow:
     """Tests for the MFA verification flow during login."""
 
-    def _create_user_with_totp(self, test_engine, username="mfauser", password="secret"):
+    def _create_user_with_totp(self, test_engine, email="mfauser@example.com", password="secret"):
         """Create a user and set up a confirmed TOTP for them. Returns (user, secret)."""
         import pyotp
 
@@ -294,7 +298,7 @@ class TestMFALoginFlow:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user = user_service.create_user(username, password)
+            user = user_service.create_user(email, password)
 
         with test_engine.connect() as conn:
             totp_repo = SQLAlchemyMFATOTPRepository(conn)
@@ -321,7 +325,7 @@ class TestMFALoginFlow:
 
         response = client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -342,7 +346,7 @@ class TestMFALoginFlow:
         # Login first to get MFA pending session
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -369,7 +373,7 @@ class TestMFALoginFlow:
         # Login first
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -387,7 +391,7 @@ class TestMFALoginFlow:
         # Login first
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -405,7 +409,7 @@ class TestMFALoginFlow:
 
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -433,7 +437,7 @@ class TestMFALoginFlow:
         # Login first to get MFA pending state
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -448,7 +452,7 @@ class TestMFALoginFlow:
         # Need to re-login as session may have been affected
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -475,7 +479,7 @@ class TestMFAEnforcement:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_svc = UserService(user_repo)
-            user = user_svc.create_user("enforce_user", "pass123")
+            user = user_svc.create_user("enforce_user@example.com", "pass123")
 
         org = create_org_in_db(test_engine, "Enforcing Org", user.id)
         with test_engine.connect() as conn:
@@ -485,7 +489,7 @@ class TestMFAEnforcement:
 
         response = client.post(
             "/login",
-            data={"username": "enforce_user", "password": "pass123"},
+            data={"email": "enforce_user@example.com", "password": "pass123"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -510,7 +514,7 @@ class TestMFAEnforcement:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_svc = UserService(user_repo)
-            user = user_svc.create_user("mfa_enforce2", "pass")
+            user = user_svc.create_user("mfa_enforce2@example.com", "pass")
 
         with test_engine.connect() as conn:
             totp_repo = SQLAlchemyMFATOTPRepository(conn)
@@ -520,7 +524,7 @@ class TestMFAEnforcement:
         # Login -> MFA pending
         client.post(
             "/login",
-            data={"username": "mfa_enforce2", "password": "pass"},
+            data={"email": "mfa_enforce2@example.com", "password": "pass"},
             follow_redirects=False,
         )
 
