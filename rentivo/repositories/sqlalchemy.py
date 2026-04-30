@@ -476,10 +476,7 @@ class SQLAlchemyUserRepository(UserRepository):
 
     def create(self, user: User) -> User:
         self.conn.execute(
-            text(
-                "INSERT INTO users (email, password_hash, created_at) "
-                "VALUES (:email, :password_hash, :created_at)"
-            ),
+            text("INSERT INTO users (email, password_hash, created_at) VALUES (:email, :password_hash, :created_at)"),
             {"email": user.email, "password_hash": user.password_hash, "created_at": _now()},
         )
         self.conn.commit()
@@ -489,18 +486,12 @@ class SQLAlchemyUserRepository(UserRepository):
         return result
 
     def get_by_id(self, user_id: int) -> User | None:
-        row = (
-            self.conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id})
-            .mappings()
-            .fetchone()
-        )
+        row = self.conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id}).mappings().fetchone()
         return None if row is None else self._row_to_user(row)
 
     def get_by_email(self, email: str) -> User | None:
         row = (
-            self.conn.execute(text("SELECT * FROM users WHERE email = :email"), {"email": email})
-            .mappings()
-            .fetchone()
+            self.conn.execute(text("SELECT * FROM users WHERE email = :email"), {"email": email}).mappings().fetchone()
         )
         return None if row is None else self._row_to_user(row)
 

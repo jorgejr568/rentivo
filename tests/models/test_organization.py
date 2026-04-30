@@ -32,13 +32,13 @@ class TestOrganizationMember:
         assert m.id is None
         assert m.organization_id == 0
         assert m.user_id == 0
-        assert m.username == ""
+        assert m.email == ""
         assert m.role == "viewer"
         assert m.created_at is None
 
     def test_with_values(self):
-        m = OrganizationMember(organization_id=1, user_id=2, role="admin", username="bob")
+        m = OrganizationMember(organization_id=1, user_id=2, role="admin", email="bob@example.com")
         assert m.organization_id == 1
         assert m.user_id == 2
         assert m.role == "admin"
-        assert m.username == "bob"
+        assert m.email == "bob@example.com"

@@ -21,10 +21,7 @@ def upgrade() -> None:
     bind = op.get_bind()
     # Backfill any empty/NULL emails using the username so the unique index can be added.
     bind.execute(
-        sa.text(
-            "UPDATE users SET email = CONCAT(username, '@migrated.local') "
-            "WHERE email IS NULL OR email = ''"
-        )
+        sa.text("UPDATE users SET email = CONCAT(username, '@migrated.local') WHERE email IS NULL OR email = ''")
     )
     op.alter_column("users", "email", existing_type=sa.String(255), nullable=False, server_default=None)
     op.create_unique_constraint("uq_users_email", "users", ["email"])
