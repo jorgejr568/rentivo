@@ -686,3 +686,71 @@ class TestLoginTurnstile:
         )
         assert response.status_code == 302
         assert "/billings" in response.headers["location"]
+
+
+class TestSignupTurnstile:
+    def test_signup_renders_widget_when_configured(self, client, monkeypatch):
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk-public-1")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "sk-secret-1")
+
+        response = client.get("/signup")
+        assert response.status_code == 200
+        assert 'class="cf-turnstile"' in response.text
+        assert 'data-sitekey="sk-public-1"' in response.text
+
+    def test_signup_unconfigured_does_not_render_widget(self, client):
+        response = client.get("/signup")
+        assert response.status_code == 200
+        assert 'class="cf-turnstile"' not in response.text
+
+    def test_signup_rejects_when_turnstile_verification_fails(self, client, monkeypatch):
+        from rentivo.services.turnstile_service import TurnstileService
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+        async def _fail(self, token, remote_ip):
+            return False
+
+        monkeypatch.setattr(TurnstileService, "verify", _fail)
+
+        response = client.post(
+            "/signup",
+            data={
+                "email": "new@example.com",
+                "password": "pw",
+                "confirm_password": "pw",
+                "cf-turnstile-response": "bad",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "Verificação de segurança" in response.text
+
+    def test_signup_succeeds_when_turnstile_verification_passes(self, client, monkeypatch):
+        from rentivo.services.turnstile_service import TurnstileService
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+        async def _pass(self, token, remote_ip):
+            return True
+
+        monkeypatch.setattr(TurnstileService, "verify", _pass)
+
+        response = client.post(
+            "/signup",
+            data={
+                "email": "passes@example.com",
+                "password": "pw",
+                "confirm_password": "pw",
+                "cf-turnstile-response": "good",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert "/billings" in response.headers["location"]

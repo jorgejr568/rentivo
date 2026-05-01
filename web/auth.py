@@ -92,6 +92,13 @@ async def signup(request: Request):
     password = str(form.get("password", ""))
     confirm_password = str(form.get("confirm_password", ""))
 
+    turnstile_token = str(form.get("cf-turnstile-response", ""))
+    client_ip = request.client.host if request.client else "unknown"
+    turnstile = get_turnstile_service(request)
+    if not await turnstile.verify(turnstile_token, client_ip):
+        logger.warning("signup_turnstile_failed", email=email, client_ip=client_ip)
+        return render(request, "signup.html", {"error": "Verificação de segurança falhou. Tente novamente."})
+
     if not email or not password:
         logger.warning("signup_rejected", reason="empty_fields")
         return render(request, "signup.html", {"error": "Preencha todos os campos."})

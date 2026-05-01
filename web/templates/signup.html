@@ -25,6 +25,11 @@
                     <label for="confirm_password" class="field-label">Confirmar Senha</label>
                     <input type="password" class="field-input" id="confirm_password" name="confirm_password" required>
                 </div>
+                {% if turnstile_site_key %}
+                <div class="field">
+                    <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
+                </div>
+                {% endif %}
                 <button type="submit" class="btn btn--primary" style="width: 100%; margin-top: 0.5rem;">Criar Conta</button>
             </form>
             <p style="text-align: center; margin-top: 1rem;">
