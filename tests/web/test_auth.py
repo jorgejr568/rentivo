@@ -778,3 +778,31 @@ class TestSignupSendsWelcomeEmail:
         )
         assert response.status_code == 302
         assert sent == [{"to": "newuser@example.com", "url": "http://localhost:8000/security/pix"}]
+
+
+class TestNewDeviceLoginEmail:
+    def test_first_login_sends_email_subsequent_does_not(self, client, test_engine, monkeypatch):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.email_service import EmailService
+        from rentivo.services.user_service import UserService
+
+        with test_engine.connect() as conn:
+            UserService(SQLAlchemyUserRepository(conn)).create_user("nd@example.com", "secret")
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, logged_in_at, source_ip, user_agent, reset_url):
+            sent.append({"to": to_email, "ip": source_ip})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_new_device_login", _capture)
+
+        # First login -> email expected.
+        client.post("/login", data={"email": "nd@example.com", "password": "secret"})
+        assert len(sent) == 1
+        assert sent[0]["to"] == "nd@example.com"
+
+        # Clear session cookies, log in again from same client -> already known -> no second email.
+        client.cookies.clear()
+        client.post("/login", data={"email": "nd@example.com", "password": "secret"})
+        assert len(sent) == 1

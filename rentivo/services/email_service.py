@@ -98,3 +98,24 @@ class EmailService:
                 "reset_url": reset_url,
             },
         )
+
+    def safe_send_new_device_login(
+        self,
+        to_email: str,
+        logged_in_at: str,
+        source_ip: str,
+        user_agent: str,
+        reset_url: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject="Novo acesso detectado — Rentivo",
+            template_stem="new_device_login",
+            ctx={
+                "email": to_email,
+                "logged_in_at": logged_in_at,
+                "source_ip": source_ip,
+                "user_agent": user_agent,
+                "reset_url": reset_url,
+            },
+        )

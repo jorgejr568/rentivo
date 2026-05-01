@@ -5,6 +5,7 @@ from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
+from rentivo.models.known_device import KnownDevice
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.models.password_reset_token import PasswordResetToken
@@ -263,3 +264,11 @@ class PasswordResetTokenRepository(ABC):
 
     @abstractmethod
     def invalidate_all_for_user(self, user_id: int) -> None: ...
+
+
+class KnownDeviceRepository(ABC):
+    @abstractmethod
+    def get(self, user_id: int, device_hash: str) -> KnownDevice | None: ...
+
+    @abstractmethod
+    def upsert(self, device: KnownDevice) -> KnownDevice: ...

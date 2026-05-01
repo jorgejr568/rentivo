@@ -15,6 +15,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyInviteRepository,
+    SQLAlchemyKnownDeviceRepository,
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasskeyRepository,
@@ -30,6 +31,7 @@ from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
 from rentivo.services.email_service import EmailService
 from rentivo.services.invite_service import InviteService
+from rentivo.services.known_device_service import KnownDeviceService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.password_reset_service import PasswordResetService
@@ -240,6 +242,10 @@ def get_mfa_service(request: Request) -> MFAService:
 
 def get_email_service(request: Request) -> EmailService:
     return EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
+
+
+def get_known_device_service(request: Request) -> KnownDeviceService:
+    return KnownDeviceService(SQLAlchemyKnownDeviceRepository(_get_conn(request)))
 
 
 def get_turnstile_service(request: Request) -> TurnstileService:

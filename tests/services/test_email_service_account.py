@@ -47,3 +47,18 @@ def test_send_mfa_changed_renders_label_and_meta():
     assert "TOTP ativado" in sent.html_body
     assert "TOTP ativado" in sent.text_body
     assert "203.0.113.5" in sent.html_body
+
+
+def test_send_new_device_login_renders_metadata():
+    service, backend = _service()
+    service.safe_send_new_device_login(
+        to_email="alice@example.com",
+        logged_in_at="01/05/2026 14:30",
+        source_ip="203.0.113.5",
+        user_agent="Mozilla/5.0 ...",
+        reset_url="http://x/forgot-password",
+    )
+    sent = backend.send.call_args[0][0]
+    assert "Novo acesso" in sent.subject
+    assert "Mozilla/5.0" in sent.html_body
+    assert "203.0.113.5" in sent.text_body

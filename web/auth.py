@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 
 import structlog
 from fastapi import APIRouter, Request
@@ -13,6 +14,7 @@ from web.analytics import push_event
 from web.deps import (
     get_audit_service,
     get_email_service,
+    get_known_device_service,
     get_mfa_service,
     get_turnstile_service,
     get_user_service,
@@ -75,6 +77,24 @@ def _record_mfa_failed(ip: str) -> None:
 
 def _clear_mfa_attempts(ip: str) -> None:
     _mfa_attempts.pop(ip, None)
+
+
+def _check_and_send_new_device_email(request: Request, user) -> None:
+    user_agent = request.headers.get("user-agent", "")
+    client_ip = request.client.host if request.client else "unknown"
+    kd_service = get_known_device_service(request)
+    if kd_service.is_known(user.id, user_agent, client_ip):
+        kd_service.remember(user.id, user_agent, client_ip)
+        return
+    kd_service.remember(user.id, user_agent, client_ip)
+    forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
+    get_email_service(request).safe_send_new_device_login(
+        to_email=user.email,
+        logged_in_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        source_ip=client_ip,
+        user_agent=user_agent,
+        reset_url=forgot_url,
+    )
 
 
 @router.get("/signup")
@@ -237,6 +257,7 @@ async def login(request: Request):
     )
 
     push_event(request, {"event": "rentivo_login_success", "via": "password"})
+    _check_and_send_new_device_email(request, user)
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -348,6 +369,9 @@ async def mfa_verify(request: Request):
 
     logger.info("mfa_verified", email=email, method=method)
     push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
+    user = get_user_service(request).get_by_id(user_id)
+    if user is not None:
+        _check_and_send_new_device_email(request, user)
     return RedirectResponse("/billings/", status_code=302)
 
 
