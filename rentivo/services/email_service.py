@@ -58,3 +58,22 @@ class EmailService:
             template_stem="welcome",
             ctx={"email": to_email, "pix_setup_url": pix_setup_url},
         )
+
+    def safe_send_password_changed(
+        self,
+        to_email: str,
+        changed_at: str,
+        source_ip: str,
+        reset_url: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject="Senha alterada — Rentivo",
+            template_stem="password_changed",
+            ctx={
+                "email": to_email,
+                "changed_at": changed_at,
+                "source_ip": source_ip,
+                "reset_url": reset_url,
+            },
+        )

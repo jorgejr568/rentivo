@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from datetime import datetime
 
 import structlog
 import webauthn
@@ -20,7 +21,7 @@ from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
-from web.deps import get_audit_service, get_mfa_service, get_user_service, render
+from web.deps import get_audit_service, get_email_service, get_mfa_service, get_user_service, render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -133,6 +134,14 @@ async def change_password(request: Request):
         entity_type="user",
         entity_id=user_id,
         new_state={"email": email},
+    )
+
+    forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
+    get_email_service(request).safe_send_password_changed(
+        to_email=email,
+        changed_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        source_ip=request.client.host if request.client else "unknown",
+        reset_url=forgot_url,
     )
 
     flash(request, "Senha alterada com sucesso!", "success")

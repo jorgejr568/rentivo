@@ -732,3 +732,27 @@ class TestSecurityPixUpdate:
             )
         assert r.status_code == 302
         assert r.headers["location"] == "/security"
+
+
+def test_change_password_sends_email(auth_client, csrf_token, monkeypatch):
+    from rentivo.services.email_service import EmailService
+
+    sent: list[dict] = []
+
+    def _capture(self, to_email, changed_at, source_ip, reset_url):
+        sent.append({"to": to_email, "ip": source_ip, "url": reset_url})
+        return "id"
+
+    monkeypatch.setattr(EmailService, "safe_send_password_changed", _capture)
+    response = auth_client.post(
+        "/security/change-password",
+        data={
+            "current_password": "testpass",
+            "new_password": "new-strong-pw",
+            "confirm_password": "new-strong-pw",
+            "csrf_token": csrf_token,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code in (200, 302)
+    assert sent and sent[0]["to"] == "testuser@example.com"

@@ -217,3 +217,48 @@ def test_forgot_password_succeeds_when_turnstile_passes(client, csrf_token, monk
     # Silent success — same UI as "email sent".
     assert response.status_code == 200
     assert "instruções" in response.text.lower()
+
+
+def test_reset_password_sends_change_notification(client, csrf_token, test_engine, monkeypatch):
+    from rentivo.email.local import LocalEmailBackend
+    from rentivo.repositories.sqlalchemy import (
+        SQLAlchemyPasswordResetTokenRepository,
+        SQLAlchemyUserRepository,
+    )
+    from rentivo.services.email_service import EmailService
+    from rentivo.services.password_reset_service import PasswordResetService
+    from rentivo.services.user_service import UserService
+
+    sent: list[dict] = []
+
+    def _capture(self, to_email, changed_at, source_ip, reset_url):
+        sent.append({"to": to_email})
+        return "id"
+
+    monkeypatch.setattr(EmailService, "safe_send_password_changed", _capture)
+
+    with test_engine.connect() as conn:
+        user_repo = SQLAlchemyUserRepository(conn)
+        UserService(user_repo).register_user("flow2@example.com", "old-password")
+        token_repo = SQLAlchemyPasswordResetTokenRepository(conn)
+        svc = PasswordResetService(
+            user_repo=user_repo,
+            token_repo=token_repo,
+            email_service=EmailService(LocalEmailBackend("/tmp/outbox-test"), "noreply@x"),
+            user_service=UserService(user_repo),
+            public_app_url="http://example.com",
+        )
+        raw = svc.request_reset("flow2@example.com")
+
+    response = client.post(
+        "/reset-password",
+        data={
+            "token": raw,
+            "password": "new-password",
+            "confirm_password": "new-password",
+            "csrf_token": csrf_token,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert sent == [{"to": "flow2@example.com"}]
