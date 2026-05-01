@@ -120,3 +120,35 @@ def test_settings_email_backend_validation(monkeypatch):
 
     with _pytest.raises(ValueError):
         Settings()
+
+
+def test_settings_turnstile_defaults(monkeypatch):
+    for k in ("RENTIVO_TURNSTILE_SITE_KEY", "RENTIVO_TURNSTILE_SECRET_KEY", "RENTIVO_TURNSTILE_VERIFY_URL"):
+        monkeypatch.delenv(k, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.turnstile_site_key == ""
+    assert s.turnstile_secret_key == ""
+    assert s.turnstile_verify_url == "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def test_settings_turnstile_requires_both_keys(monkeypatch):
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+    monkeypatch.delenv("RENTIVO_TURNSTILE_SECRET_KEY", raising=False)
+    import pytest as _pytest
+
+    from rentivo.settings import Settings
+
+    with _pytest.raises(ValueError, match="both .* set or both empty"):
+        Settings()
+
+
+def test_settings_turnstile_accepts_paired_keys(monkeypatch):
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA")
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.turnstile_site_key == "1x00000000000000000000AA"
+    assert s.turnstile_secret_key == "1x0000000000000000000000000000000AA"
