@@ -260,12 +260,19 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     logger.debug("template_render", template=template_name)
     ctx = context or {}
     ctx["request"] = request
-    ctx["user"] = request.session.get("email")
-    ctx["user_id"] = request.session.get("user_id")
+    user_id = request.session.get("user_id")
+    email = request.session.get("email")
+    if user_id and not email:
+        user = SQLAlchemyUserRepository(_get_conn(request)).get_by_id(user_id)
+        if user is not None:
+            email = user.email
+            request.session["email"] = email
+        request.session.pop("username", None)
+    ctx["user"] = email
+    ctx["user_id"] = user_id
     ctx["messages"] = get_flashed_messages(request)
     ctx["csrf_token"] = get_csrf_token(request)
 
-    user_id = request.session.get("user_id")
     if user_id and "pending_invite_count" not in ctx:
         try:
             conn = _get_conn(request)
