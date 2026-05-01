@@ -26,7 +26,7 @@
                 <tr>
                     <td>{{ invite.organization_name }}{% if invite.enforce_mfa %} <span class="tag tag--mfa">MFA</span>{% endif %}</td>
                     <td class="text-center">{{ invite.role }}</td>
-                    <td>{{ invite.invited_by_username }}</td>
+                    <td>{{ invite.invited_by_email }}</td>
                     <td class="text-right">
                         <form method="post" action="/invites/{{ invite.uuid }}/accept" class="inline-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

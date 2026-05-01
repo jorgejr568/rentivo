@@ -1,14 +1,7 @@
 from rentivo.models.user import User
 
 
-class TestUser:
-    def test_defaults(self):
-        user = User(username="admin")
-        assert user.id is None
-        assert user.password_hash == ""
-        assert user.created_at is None
-
-    def test_with_values(self):
-        user = User(username="admin", password_hash="hash123", id=1)
-        assert user.id == 1
-        assert user.password_hash == "hash123"
+def test_user_requires_email():
+    user = User(email="alice@example.com", password_hash="x")
+    assert user.email == "alice@example.com"
+    assert not hasattr(user, "username")

@@ -10,7 +10,7 @@ def _create_other_user_billing(test_engine):
     """Create a billing owned by a different user (not the logged-in test user)."""
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
-        other = user_repo.create(User(username="other", password_hash="h"))
+        other = user_repo.create(User(email="other@example.com", password_hash="h"))
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
 
 
@@ -407,7 +407,7 @@ class TestBillingTransfer:
 
         billing = create_billing_in_db(test_engine)
         with test_engine.connect() as conn:
-            stranger = SQLAlchemyUserRepository(conn).create(User(username="stranger", password_hash="h"))
+            stranger = SQLAlchemyUserRepository(conn).create(User(email="stranger@example.com", password_hash="h"))
         other_org = create_org_in_db(test_engine, "Stranger Org", stranger.id)
 
         response = auth_client.post(

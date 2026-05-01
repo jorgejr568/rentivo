@@ -111,7 +111,7 @@ async def billing_create(request: Request):
     audit.safe_log(
         AuditEventType.BILLING_CREATE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="billing",
         entity_id=billing.id,
@@ -250,7 +250,7 @@ async def billing_edit(request: Request, billing_uuid: str):
     audit.safe_log(
         AuditEventType.BILLING_UPDATE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="billing",
         entity_id=updated.id,
@@ -309,7 +309,7 @@ async def billing_transfer(request: Request, billing_uuid: str):
     audit.safe_log(
         AuditEventType.BILLING_TRANSFER,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="billing",
         entity_id=billing.id,
@@ -349,7 +349,7 @@ async def billing_delete(request: Request, billing_uuid: str):
     audit.safe_log(
         AuditEventType.BILLING_DELETE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="billing",
         entity_id=billing.id,

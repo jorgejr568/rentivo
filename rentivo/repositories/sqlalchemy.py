@@ -13,6 +13,7 @@ from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.invite import Invite
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
+from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.models.receipt import Receipt
 from rentivo.models.theme import Theme
 from rentivo.models.user import User
@@ -24,6 +25,7 @@ from rentivo.repositories.base import (
     MFATOTPRepository,
     OrganizationRepository,
     PasskeyRepository,
+    PasswordResetTokenRepository,
     ReceiptRepository,
     RecoveryCodeRepository,
     ThemeRepository,
@@ -466,8 +468,7 @@ class SQLAlchemyUserRepository(UserRepository):
     def _row_to_user(row: RowMapping) -> User:
         return User(
             id=row["id"],
-            username=row["username"],
-            email=row.get("email", ""),
+            email=row["email"],
             password_hash=row["password_hash"],
             pix_key=row.get("pix_key", "") or "",
             pix_merchant_name=row.get("pix_merchant_name", "") or "",
@@ -477,52 +478,33 @@ class SQLAlchemyUserRepository(UserRepository):
 
     def create(self, user: User) -> User:
         self.conn.execute(
-            text(
-                "INSERT INTO users (username, email, password_hash, created_at) "
-                "VALUES (:username, :email, :password_hash, :created_at)"
-            ),
-            {"username": user.username, "email": user.email, "password_hash": user.password_hash, "created_at": _now()},
+            text("INSERT INTO users (email, password_hash, created_at) VALUES (:email, :password_hash, :created_at)"),
+            {"email": user.email, "password_hash": user.password_hash, "created_at": _now()},
         )
         self.conn.commit()
-        result = self.get_by_username(user.username)
+        result = self.get_by_email(user.email)
         if result is None:
-            raise RuntimeError(f"Failed to retrieve user after create (username={user.username})")
+            raise RuntimeError(f"Failed to retrieve user after create (email={user.email})")
         return result
 
     def get_by_id(self, user_id: int) -> User | None:
-        row = (
-            self.conn.execute(
-                text("SELECT * FROM users WHERE id = :id"),
-                {"id": user_id},
-            )
-            .mappings()
-            .fetchone()
-        )
-        if row is None:
-            return None
-        return self._row_to_user(row)
+        row = self.conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id}).mappings().fetchone()
+        return None if row is None else self._row_to_user(row)
 
-    def get_by_username(self, username: str) -> User | None:
+    def get_by_email(self, email: str) -> User | None:
         row = (
-            self.conn.execute(
-                text("SELECT * FROM users WHERE username = :username"),
-                {"username": username},
-            )
-            .mappings()
-            .fetchone()
+            self.conn.execute(text("SELECT * FROM users WHERE email = :email"), {"email": email}).mappings().fetchone()
         )
-        if row is None:
-            return None
-        return self._row_to_user(row)
+        return None if row is None else self._row_to_user(row)
 
     def list_all(self) -> list[User]:
         rows = self.conn.execute(text("SELECT * FROM users ORDER BY created_at DESC")).mappings().fetchall()
         return [self._row_to_user(row) for row in rows]
 
-    def update_password_hash(self, username: str, password_hash: str) -> None:
+    def update_password_hash(self, user_id: int, password_hash: str) -> None:
         self.conn.execute(
-            text("UPDATE users SET password_hash = :password_hash WHERE username = :username"),
-            {"password_hash": password_hash, "username": username},
+            text("UPDATE users SET password_hash = :password_hash WHERE id = :id"),
+            {"password_hash": password_hash, "id": user_id},
         )
         self.conn.commit()
 
@@ -702,7 +684,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         rows = (
             self.conn.execute(
                 text(
-                    "SELECT om.*, u.username FROM organization_members om "
+                    "SELECT om.*, u.email FROM organization_members om "
                     "JOIN users u ON om.user_id = u.id "
                     "WHERE om.organization_id = :org_id ORDER BY om.created_at"
                 ),
@@ -716,7 +698,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
                 id=row["id"],
                 organization_id=row["organization_id"],
                 user_id=row["user_id"],
-                username=row.get("username", ""),
+                email=row.get("email", ""),
                 role=row["role"],
                 created_at=row["created_at"],
             )
@@ -759,9 +741,9 @@ class SQLAlchemyInviteRepository(InviteRepository):
             organization_id=row["organization_id"],
             organization_name=row.get("org_name", ""),
             invited_user_id=row["invited_user_id"],
-            invited_username=row.get("invited_username", ""),
+            invited_email=row.get("invited_email", ""),
             invited_by_user_id=row["invited_by_user_id"],
-            invited_by_username=row.get("invited_by_username", ""),
+            invited_by_email=row.get("invited_by_email", ""),
             role=row["role"],
             status=row["status"],
             enforce_mfa=bool(row.get("enforce_mfa", False)),
@@ -800,7 +782,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             self.conn.execute(
                 text(
                     "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "u1.email AS invited_email, u2.email AS invited_by_email "
                     "FROM invites i "
                     "JOIN organizations o ON i.organization_id = o.id "
                     "JOIN users u1 ON i.invited_user_id = u1.id "
@@ -821,7 +803,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             self.conn.execute(
                 text(
                     "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "u1.email AS invited_email, u2.email AS invited_by_email "
                     "FROM invites i "
                     "JOIN organizations o ON i.organization_id = o.id "
                     "JOIN users u1 ON i.invited_user_id = u1.id "
@@ -841,7 +823,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             self.conn.execute(
                 text(
                     "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.username AS invited_username, u2.username AS invited_by_username "
+                    "u1.email AS invited_email, u2.email AS invited_by_email "
                     "FROM invites i "
                     "JOIN organizations o ON i.organization_id = o.id "
                     "JOIN users u1 ON i.invited_user_id = u1.id "
@@ -1437,4 +1419,64 @@ class SQLAlchemyThemeRepository(ThemeRepository):
 
     def delete(self, theme_id: int) -> None:
         self.conn.execute(text("DELETE FROM themes WHERE id = :id"), {"id": theme_id})
+        self.conn.commit()
+
+
+class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
+    def __init__(self, conn: Connection) -> None:
+        self.conn = conn
+
+    @staticmethod
+    def _row(row: RowMapping) -> PasswordResetToken:
+        return PasswordResetToken(
+            id=row["id"],
+            user_id=row["user_id"],
+            token_hash=row["token_hash"],
+            expires_at=row["expires_at"],
+            used_at=row.get("used_at"),
+            created_at=row.get("created_at"),
+        )
+
+    def create(self, token: PasswordResetToken) -> PasswordResetToken:
+        self.conn.execute(
+            text(
+                "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, created_at) "
+                "VALUES (:user_id, :token_hash, :expires_at, :created_at)"
+            ),
+            {
+                "user_id": token.user_id,
+                "token_hash": token.token_hash,
+                "expires_at": token.expires_at,
+                "created_at": _now(),
+            },
+        )
+        self.conn.commit()
+        result = self.get_by_hash(token.token_hash)
+        if result is None:
+            raise RuntimeError("Failed to retrieve password reset token after create")
+        return result
+
+    def get_by_hash(self, token_hash: str) -> PasswordResetToken | None:
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM password_reset_tokens WHERE token_hash = :h"),
+                {"h": token_hash},
+            )
+            .mappings()
+            .fetchone()
+        )
+        return None if row is None else self._row(row)
+
+    def mark_used(self, token_id: int) -> None:
+        self.conn.execute(
+            text("UPDATE password_reset_tokens SET used_at = :now WHERE id = :id"),
+            {"now": _now(), "id": token_id},
+        )
+        self.conn.commit()
+
+    def invalidate_all_for_user(self, user_id: int) -> None:
+        self.conn.execute(
+            text("UPDATE password_reset_tokens SET used_at = :now WHERE user_id = :uid AND used_at IS NULL"),
+            {"now": _now(), "uid": user_id},
+        )
         self.conn.commit()

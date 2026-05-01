@@ -38,10 +38,10 @@ class TestExceptionHandler:
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            UserService(user_repo).create_user("erruser", "errpass")
+            UserService(user_repo).create_user("erruser@example.com", "errpass")
 
         client = TestClient(app, raise_server_exceptions=False)
-        client.post("/login", data={"username": "erruser", "password": "errpass"})
+        client.post("/login", data={"email": "erruser@example.com", "password": "errpass"})
 
         with patch(
             "web.deps.SQLAlchemyBillingRepository.list_for_user",

@@ -19,9 +19,9 @@ class TestInvite:
         assert invite.organization_id == 0
         assert invite.organization_name == ""
         assert invite.invited_user_id == 0
-        assert invite.invited_username == ""
+        assert invite.invited_email == ""
         assert invite.invited_by_user_id == 0
-        assert invite.invited_by_username == ""
+        assert invite.invited_by_email == ""
         assert invite.role == "viewer"
         assert invite.status == "pending"
         assert invite.created_at is None

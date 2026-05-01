@@ -39,9 +39,9 @@ class TestAuthEvents:
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            UserService(SQLAlchemyUserRepository(conn)).create_user("alice", "pw-alice")
+            UserService(SQLAlchemyUserRepository(conn)).create_user("alice@example.com", "pw-alice")
 
-        client.post("/login", data={"username": "alice", "password": "pw-alice"}, follow_redirects=False)
+        client.post("/login", data={"email": "alice@example.com", "password": "pw-alice"}, follow_redirects=False)
         response = client.get("/billings/")
         events = _find_events(response.text, "rentivo_login_success")
         assert len(events) == 1
@@ -50,7 +50,7 @@ class TestAuthEvents:
     def test_login_failure_emits_event(self, enable_gtm, client):
         response = client.post(
             "/login",
-            data={"username": "nobody", "password": "wrong"},
+            data={"email": "nobody@example.com", "password": "wrong"},
             follow_redirects=False,
         )
         assert response.status_code == 200  # re-renders login page
@@ -62,7 +62,6 @@ class TestAuthEvents:
         client.post(
             "/signup",
             data={
-                "username": "newuser",
                 "email": "new@example.com",
                 "password": "pw-new-123",
                 "confirm_password": "pw-new-123",

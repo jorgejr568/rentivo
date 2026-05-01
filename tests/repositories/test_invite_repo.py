@@ -9,8 +9,8 @@ from rentivo.models.user import User
 
 def _setup(user_repo, org_repo):
     """Create two users and an org for testing."""
-    user1 = user_repo.create(User(username="alice", password_hash="h"))
-    user2 = user_repo.create(User(username="bob", password_hash="h"))
+    user1 = user_repo.create(User(email="alice@example.com", password_hash="h"))
+    user2 = user_repo.create(User(email="bob@example.com", password_hash="h"))
     org = org_repo.create(Organization(name="TestOrg", created_by=user1.id))
     return user1, user2, org
 
@@ -30,8 +30,8 @@ class TestInviteRepoCRUD:
         assert invite.id is not None
         assert invite.uuid != ""
         assert invite.organization_name == "TestOrg"
-        assert invite.invited_username == "bob"
-        assert invite.invited_by_username == "alice"
+        assert invite.invited_email == "bob@example.com"
+        assert invite.invited_by_email == "alice@example.com"
 
     def test_get_by_uuid(self, invite_repo, user_repo, org_repo):
         user1, user2, org = _setup(user_repo, org_repo)

@@ -255,7 +255,7 @@ class TestPasskeyDelete:
             user_repo = SQLAlchemyUserRepository(conn)
             from rentivo.models.user import User
 
-            other_user = user_repo.create(User(username="other_pk_user", password_hash="h"))
+            other_user = user_repo.create(User(email="other_pk_user@example.com", password_hash="h"))
 
         passkey = _setup_passkey(test_engine, other_user.id, name="Other User Key")
 
@@ -347,7 +347,7 @@ class TestOrganizationToggleMFA:
             user_repo = SQLAlchemyUserRepository(conn)
             from rentivo.models.user import User
 
-            other_user = user_repo.create(User(username="mfa_org_owner", password_hash="h"))
+            other_user = user_repo.create(User(email="mfa_org_owner@example.com", password_hash="h"))
 
         org = create_org_in_db(test_engine, "Not Admin Org", other_user.id)
 
@@ -495,7 +495,7 @@ class TestPasskeyAuthBegin:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user = user_service.create_user("passkeyuser", "secret")
+            user = user_service.create_user("passkeyuser@example.com", "secret")
 
         with test_engine.connect() as conn:
             totp_repo = SQLAlchemyMFATOTPRepository(conn)
@@ -504,7 +504,7 @@ class TestPasskeyAuthBegin:
 
         client.post(
             "/login",
-            data={"username": "passkeyuser", "password": "secret"},
+            data={"email": "passkeyuser@example.com", "password": "secret"},
             follow_redirects=False,
         )
         return user, secret
@@ -541,7 +541,7 @@ class TestPasskeyAuthComplete:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user = user_service.create_user("pkauth_user", "secret")
+            user = user_service.create_user("pkauth_user@example.com", "secret")
 
         with test_engine.connect() as conn:
             totp_repo = SQLAlchemyMFATOTPRepository(conn)
@@ -552,7 +552,7 @@ class TestPasskeyAuthComplete:
 
         client.post(
             "/login",
-            data={"username": "pkauth_user", "password": "secret"},
+            data={"email": "pkauth_user@example.com", "password": "secret"},
             follow_redirects=False,
         )
         return user, passkey

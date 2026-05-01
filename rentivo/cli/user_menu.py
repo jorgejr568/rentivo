@@ -38,8 +38,8 @@ def _create_user(user_service: UserService, audit_service: AuditService) -> None
     console.print()
     console.print("[bold]Novo Usuário[/bold]", style="cyan")
 
-    username = questionary.text("Nome de usuário:").ask()
-    if not username:
+    email = questionary.text("E-mail:").ask()
+    if not email:
         console.print("[yellow]Operação cancelada.[/yellow]")
         return
 
@@ -54,7 +54,7 @@ def _create_user(user_service: UserService, audit_service: AuditService) -> None
         return
 
     try:
-        user = user_service.create_user(username, password)
+        user = user_service.create_user(email, password)
 
         audit_service.safe_log(
             AuditEventType.USER_CREATE,
@@ -64,7 +64,7 @@ def _create_user(user_service: UserService, audit_service: AuditService) -> None
             new_state=serialize_user(user),
         )
 
-        console.print(f"[green bold]Usuário '{user.username}' criado com sucesso![/green bold]")
+        console.print(f"[green bold]Usuário '{user.email}' criado com sucesso![/green bold]")
     except Exception as e:
         console.print(f"[red]Erro ao criar usuário: {e}[/red]")
 
@@ -78,9 +78,9 @@ def _change_password(user_service: UserService, audit_service: AuditService) -> 
         console.print("[yellow]Nenhum usuário cadastrado.[/yellow]")
         return
 
-    choices = [u.username for u in users] + ["Voltar"]
-    username = questionary.select("Selecione o usuário:", choices=choices).ask()
-    if username is None or username == "Voltar":
+    choices = [u.email for u in users] + ["Voltar"]
+    email = questionary.select("Selecione o usuário:", choices=choices).ask()
+    if email is None or email == "Voltar":
         return
 
     password = questionary.password("Nova senha:").ask()
@@ -93,21 +93,16 @@ def _change_password(user_service: UserService, audit_service: AuditService) -> 
         console.print("[red]As senhas não coincidem.[/red]")
         return
 
-    # Find the user object for audit logging
-    target_user = next((u for u in users if u.username == username), None)
-
-    user_service.change_password(username, password)
-
-    if target_user:
-        audit_service.safe_log(
-            AuditEventType.USER_CHANGE_PASSWORD,
-            source="cli",
-            entity_type="user",
-            entity_id=target_user.id,
-            metadata={"username": username},
-        )
-
-    console.print(f"[green bold]Senha do usuário '{username}' alterada com sucesso![/green bold]")
+    target_user = next(u for u in users if u.email == email)
+    user_service.change_password(target_user.id, password)
+    audit_service.safe_log(
+        AuditEventType.USER_CHANGE_PASSWORD,
+        source="cli",
+        entity_type="user",
+        entity_id=target_user.id,
+        metadata={"email": email},
+    )
+    console.print(f"[green bold]Senha do usuário '{email}' alterada com sucesso![/green bold]")
 
 
 def _list_users(user_service: UserService) -> None:
@@ -119,12 +114,12 @@ def _list_users(user_service: UserService) -> None:
 
     table = Table(title="Usuários")
     table.add_column("#", style="dim")
-    table.add_column("Usuário", style="bold")
+    table.add_column("E-mail", style="bold")
     table.add_column("Criado em")
 
     for u in users:
         created = u.created_at.strftime("%d/%m/%Y %H:%M") if u.created_at else "-"
-        table.add_row(str(u.id), u.username, created)
+        table.add_row(str(u.id), u.email, created)
 
     console.print()
     console.print(table)

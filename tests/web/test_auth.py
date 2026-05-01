@@ -34,11 +34,11 @@ class TestLoginPage:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user_service.create_user("admin", "secret")
+            user_service.create_user("admin@example.com", "secret")
 
         response = client.post(
             "/login",
-            data={"username": "admin", "password": "secret"},
+            data={"email": "admin@example.com", "password": "secret"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -46,9 +46,18 @@ class TestLoginPage:
     def test_login_failure(self, client):
         response = client.post(
             "/login",
-            data={"username": "wrong", "password": "wrong"},
+            data={"email": "wrong@example.com", "password": "wrong"},
         )
         assert response.status_code == 200
+
+    def test_login_failure_with_unknown_email(self, client):
+        response = client.post(
+            "/login",
+            data={"email": "ghost@example.com", "password": "x"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "inválidos" in response.text.lower()
 
     def test_login_sets_session_keys(self, client, test_engine):
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
@@ -57,9 +66,9 @@ class TestLoginPage:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user_service.create_user("admin2", "secret")
+            user_service.create_user("admin2@example.com", "secret")
 
-        client.post("/login", data={"username": "admin2", "password": "secret"})
+        client.post("/login", data={"email": "admin2@example.com", "password": "secret"})
         # After login, the user should be able to access protected pages
         response = client.get("/billings/")
         assert response.status_code == 200
@@ -150,7 +159,6 @@ class TestSignup:
         response = client.post(
             "/signup",
             data={
-                "username": "newuser",
                 "email": "new@test.com",
                 "password": "password123",
                 "confirm_password": "password123",
@@ -166,7 +174,6 @@ class TestSignup:
         response = client.post(
             "/signup",
             data={
-                "username": "",
                 "email": "",
                 "password": "",
                 "confirm_password": "",
@@ -179,7 +186,6 @@ class TestSignup:
         response = client.post(
             "/signup",
             data={
-                "username": "user1",
                 "email": "u@t.com",
                 "password": "pass1",
                 "confirm_password": "pass2",
@@ -195,13 +201,12 @@ class TestSignup:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user_service.create_user("existing", "pass")
+            user_service.create_user("existing@example.com", "pass")
 
         response = client.post(
             "/signup",
             data={
-                "username": "existing",
-                "email": "e@t.com",
+                "email": "existing@example.com",
                 "password": "pass",
                 "confirm_password": "pass",
             },
@@ -212,7 +217,6 @@ class TestSignup:
         response = auth_client.post(
             "/signup",
             data={
-                "username": "x",
                 "email": "x@t.com",
                 "password": "p",
                 "confirm_password": "p",
@@ -242,13 +246,13 @@ class TestRateLimiting:
         for _ in range(5):
             client.post(
                 "/login",
-                data={"username": "nonexistent", "password": "wrong"},
+                data={"email": "nonexistent@example.com", "password": "wrong"},
             )
 
         # 6th attempt should be rate-limited
         response = client.post(
             "/login",
-            data={"username": "nonexistent", "password": "wrong"},
+            data={"email": "nonexistent@example.com", "password": "wrong"},
         )
         assert response.status_code == 200
         assert "Muitas tentativas" in response.text
@@ -270,7 +274,7 @@ class TestAuthMiddleware:
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            UserService(user_repo).create_user("olduser", "pass")
+            UserService(user_repo).create_user("olduser@example.com", "pass")
 
         # Manually set only "user" in session (old-style) - since we can't
         # directly manipulate session, we just verify that without user_id
@@ -282,7 +286,7 @@ class TestAuthMiddleware:
 class TestMFALoginFlow:
     """Tests for the MFA verification flow during login."""
 
-    def _create_user_with_totp(self, test_engine, username="mfauser", password="secret"):
+    def _create_user_with_totp(self, test_engine, email="mfauser@example.com", password="secret"):
         """Create a user and set up a confirmed TOTP for them. Returns (user, secret)."""
         import pyotp
 
@@ -294,7 +298,7 @@ class TestMFALoginFlow:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_service = UserService(user_repo)
-            user = user_service.create_user(username, password)
+            user = user_service.create_user(email, password)
 
         with test_engine.connect() as conn:
             totp_repo = SQLAlchemyMFATOTPRepository(conn)
@@ -321,7 +325,7 @@ class TestMFALoginFlow:
 
         response = client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -342,7 +346,7 @@ class TestMFALoginFlow:
         # Login first to get MFA pending session
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -369,7 +373,7 @@ class TestMFALoginFlow:
         # Login first
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -387,7 +391,7 @@ class TestMFALoginFlow:
         # Login first
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -405,7 +409,7 @@ class TestMFALoginFlow:
 
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -433,7 +437,7 @@ class TestMFALoginFlow:
         # Login first to get MFA pending state
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -448,7 +452,7 @@ class TestMFALoginFlow:
         # Need to re-login as session may have been affected
         client.post(
             "/login",
-            data={"username": "mfauser", "password": "secret"},
+            data={"email": "mfauser@example.com", "password": "secret"},
             follow_redirects=False,
         )
 
@@ -475,7 +479,7 @@ class TestMFAEnforcement:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_svc = UserService(user_repo)
-            user = user_svc.create_user("enforce_user", "pass123")
+            user = user_svc.create_user("enforce_user@example.com", "pass123")
 
         org = create_org_in_db(test_engine, "Enforcing Org", user.id)
         with test_engine.connect() as conn:
@@ -485,7 +489,7 @@ class TestMFAEnforcement:
 
         response = client.post(
             "/login",
-            data={"username": "enforce_user", "password": "pass123"},
+            data={"email": "enforce_user@example.com", "password": "pass123"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -510,7 +514,7 @@ class TestMFAEnforcement:
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
             user_svc = UserService(user_repo)
-            user = user_svc.create_user("mfa_enforce2", "pass")
+            user = user_svc.create_user("mfa_enforce2@example.com", "pass")
 
         with test_engine.connect() as conn:
             totp_repo = SQLAlchemyMFATOTPRepository(conn)
@@ -520,7 +524,7 @@ class TestMFAEnforcement:
         # Login -> MFA pending
         client.post(
             "/login",
-            data={"username": "mfa_enforce2", "password": "pass"},
+            data={"email": "mfa_enforce2@example.com", "password": "pass"},
             follow_redirects=False,
         )
 
@@ -611,3 +615,142 @@ class TestMFAEnforcementMiddlewareDirect:
         response = test_client.get("/protected-page", follow_redirects=False)
         assert response.status_code == 302
         assert "/security/totp/setup" in response.headers["location"]
+
+
+class TestLoginTurnstile:
+    def test_login_renders_widget_when_configured(self, client, monkeypatch):
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk-public-1")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "sk-secret-1")
+
+        response = client.get("/login")
+        assert response.status_code == 200
+        assert 'class="cf-turnstile"' in response.text
+        assert 'data-sitekey="sk-public-1"' in response.text
+        assert "challenges.cloudflare.com/turnstile/v0/api.js" in response.text
+
+    def test_login_does_not_render_widget_when_unconfigured(self, client):
+        # Default settings have empty keys — no widget, no script.
+        response = client.get("/login")
+        assert response.status_code == 200
+        assert 'class="cf-turnstile"' not in response.text
+        assert "challenges.cloudflare.com" not in response.text
+
+    def test_login_rejects_when_turnstile_verification_fails(self, client, test_engine, monkeypatch):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.turnstile_service import TurnstileService
+        from rentivo.services.user_service import UserService
+        from rentivo.settings import settings
+
+        with test_engine.connect() as conn:
+            UserService(SQLAlchemyUserRepository(conn)).create_user("ts@example.com", "secret")
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+        async def _fail(self, token, remote_ip):
+            return False
+
+        monkeypatch.setattr(TurnstileService, "verify", _fail)
+
+        response = client.post(
+            "/login",
+            data={"email": "ts@example.com", "password": "secret", "cf-turnstile-response": "bad"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "Verificação de segurança" in response.text
+
+    def test_login_succeeds_when_turnstile_verification_passes(self, client, test_engine, monkeypatch):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.turnstile_service import TurnstileService
+        from rentivo.services.user_service import UserService
+        from rentivo.settings import settings
+
+        with test_engine.connect() as conn:
+            UserService(SQLAlchemyUserRepository(conn)).create_user("ok@example.com", "secret")
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+        async def _pass(self, token, remote_ip):
+            return True
+
+        monkeypatch.setattr(TurnstileService, "verify", _pass)
+
+        response = client.post(
+            "/login",
+            data={"email": "ok@example.com", "password": "secret", "cf-turnstile-response": "good"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert "/billings" in response.headers["location"]
+
+
+class TestSignupTurnstile:
+    def test_signup_renders_widget_when_configured(self, client, monkeypatch):
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk-public-1")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "sk-secret-1")
+
+        response = client.get("/signup")
+        assert response.status_code == 200
+        assert 'class="cf-turnstile"' in response.text
+        assert 'data-sitekey="sk-public-1"' in response.text
+
+    def test_signup_unconfigured_does_not_render_widget(self, client):
+        response = client.get("/signup")
+        assert response.status_code == 200
+        assert 'class="cf-turnstile"' not in response.text
+
+    def test_signup_rejects_when_turnstile_verification_fails(self, client, monkeypatch):
+        from rentivo.services.turnstile_service import TurnstileService
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+        async def _fail(self, token, remote_ip):
+            return False
+
+        monkeypatch.setattr(TurnstileService, "verify", _fail)
+
+        response = client.post(
+            "/signup",
+            data={
+                "email": "new@example.com",
+                "password": "pw",
+                "confirm_password": "pw",
+                "cf-turnstile-response": "bad",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 200
+        assert "Verificação de segurança" in response.text
+
+    def test_signup_succeeds_when_turnstile_verification_passes(self, client, monkeypatch):
+        from rentivo.services.turnstile_service import TurnstileService
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+        async def _pass(self, token, remote_ip):
+            return True
+
+        monkeypatch.setattr(TurnstileService, "verify", _pass)
+
+        response = client.post(
+            "/signup",
+            data={
+                "email": "passes@example.com",
+                "password": "pw",
+                "confirm_password": "pw",
+                "cf-turnstile-response": "good",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert "/billings" in response.headers["location"]

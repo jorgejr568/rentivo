@@ -9,7 +9,7 @@ def _create_org_as_other_user(test_engine, org_name="Other Org"):
     """Create an org owned by a different user (not the test user)."""
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
-        other = user_repo.create(User(username=f"other_{org_name}", password_hash="h"))
+        other = user_repo.create(User(email=f"other_{org_name}@example.com", password_hash="h"))
     return create_org_in_db(test_engine, org_name, other.id)
 
 
@@ -146,7 +146,7 @@ class TestMemberManagement:
         # Create another user and add as member
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            user2 = user_repo.create(User(username="member", password_hash="h"))
+            user2 = user_repo.create(User(email="member@example.com", password_hash="h"))
             org_repo = SQLAlchemyOrganizationRepository(conn)
             org_repo.add_member(org.id, user2.id, "viewer")
 
@@ -166,7 +166,7 @@ class TestMemberManagement:
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            user2 = user_repo.create(User(username="member2", password_hash="h"))
+            user2 = user_repo.create(User(email="member2@example.com", password_hash="h"))
             org_repo = SQLAlchemyOrganizationRepository(conn)
             org_repo.add_member(org.id, user2.id, "viewer")
 
@@ -198,11 +198,11 @@ class TestOrganizationInvite:
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            user_repo.create(User(username="invitee", password_hash="h"))
+            user_repo.create(User(email="invitee@example.com", password_hash="h"))
 
         response = auth_client.post(
             f"/organizations/{org.uuid}/invite",
-            data={"csrf_token": csrf_token, "username": "invitee", "role": "viewer"},
+            data={"csrf_token": csrf_token, "email": "invitee@example.com", "role": "viewer"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -212,7 +212,7 @@ class TestOrganizationInvite:
         org = create_org_in_db(test_engine, "My Org", user_id)
         response = auth_client.post(
             f"/organizations/{org.uuid}/invite",
-            data={"csrf_token": csrf_token, "username": "nobody", "role": "viewer"},
+            data={"csrf_token": csrf_token, "email": "nobody@example.com", "role": "viewer"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -222,7 +222,7 @@ class TestOrganizationInvite:
         org = create_org_in_db(test_engine, "My Org", user_id)
         response = auth_client.post(
             f"/organizations/{org.uuid}/invite",
-            data={"csrf_token": csrf_token, "username": "", "role": "viewer"},
+            data={"csrf_token": csrf_token, "email": "", "role": "viewer"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -331,7 +331,7 @@ class TestOrganizationAccessDenied:
     def test_invite_not_found_org(self, auth_client, csrf_token):
         response = auth_client.post(
             "/organizations/nonexistent/invite",
-            data={"csrf_token": csrf_token, "username": "x", "role": "viewer"},
+            data={"csrf_token": csrf_token, "email": "x@example.com", "role": "viewer"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -344,7 +344,7 @@ class TestOrganizationAccessDenied:
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.post(
             f"/organizations/{org.uuid}/invite",
-            data={"csrf_token": csrf_token, "username": "x", "role": "viewer"},
+            data={"csrf_token": csrf_token, "email": "x@example.com", "role": "viewer"},
             follow_redirects=False,
         )
         assert response.status_code == 302
@@ -409,7 +409,7 @@ class TestOrganizationTransferBilling:
         # Create billing owned by another user
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            other = user_repo.create(User(username="other_transfer", password_hash="h"))
+            other = user_repo.create(User(email="other_transfer@example.com", password_hash="h"))
         other_billing = create_billing_in_db(test_engine, name="Other Billing", owner_type="user", owner_id=other.id)
         response = auth_client.post(
             f"/organizations/{org.uuid}/transfer-billing",
@@ -428,7 +428,7 @@ class TestInviteReturnsNone:
 
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            user_repo.create(User(username="invite_target", password_hash="h"))
+            user_repo.create(User(email="invite_target@example.com", password_hash="h"))
 
         with patch("web.routes.organization.get_invite_service") as mock_invite_svc_fn:
             mock_invite_svc = MagicMock()
@@ -436,7 +436,7 @@ class TestInviteReturnsNone:
             mock_invite_svc_fn.return_value = mock_invite_svc
             response = auth_client.post(
                 f"/organizations/{org.uuid}/invite",
-                data={"csrf_token": csrf_token, "username": "invite_target", "role": "viewer"},
+                data={"csrf_token": csrf_token, "email": "invite_target@example.com", "role": "viewer"},
                 follow_redirects=False,
             )
         assert response.status_code == 302

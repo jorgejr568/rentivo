@@ -19,7 +19,7 @@ class TestResolveForBilling:
         service = _make_service(
             user=User(
                 id=1,
-                username="u",
+                email="u@example.com",
                 pix_key="owner@pix",
                 pix_merchant_name="Owner",
                 pix_merchant_city="Sao Paulo",
@@ -41,7 +41,7 @@ class TestResolveForBilling:
         service = _make_service(
             user=User(
                 id=1,
-                username="u",
+                email="u@example.com",
                 pix_key="owner@pix",
                 pix_merchant_name="Owner",
                 pix_merchant_city="Sao Paulo",
@@ -66,7 +66,7 @@ class TestResolveForBilling:
         assert result == PixConfig("org@pix", "Org", "Campinas")
 
     def test_returns_none_when_billing_partial_and_owner_empty(self):
-        service = _make_service(user=User(id=1, username="u"))
+        service = _make_service(user=User(id=1, email="u@example.com"))
         billing = Billing(
             id=10,
             name="Apt",
@@ -78,7 +78,7 @@ class TestResolveForBilling:
 
     def test_partial_owner_not_used(self):
         service = _make_service(
-            user=User(id=1, username="u", pix_key="owner@pix")  # missing merchant fields
+            user=User(id=1, email="u@example.com", pix_key="owner@pix")  # missing merchant fields
         )
         billing = Billing(id=10, name="Apt", owner_type="user", owner_id=1)
         assert service.resolve_for_billing(billing) is None
@@ -99,7 +99,7 @@ class TestNeedsSetup:
         service = _make_service(
             user=User(
                 id=1,
-                username="u",
+                email="u@example.com",
                 pix_key="owner@pix",
                 pix_merchant_name="Owner",
                 pix_merchant_city="Sao Paulo",

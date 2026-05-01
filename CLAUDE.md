@@ -210,6 +210,29 @@ When the user asks you to open a PR, you are responsible for filling out the PR 
 
 **Use HEREDOC when creating the PR** to preserve newlines — see the `gh pr create` pattern in the main instructions.
 
+## Email (SES)
+
+- Backend selected via `RENTIVO_EMAIL_BACKEND` (`local` | `ses`).
+- Local backend writes `.eml` files to `RENTIVO_EMAIL_LOCAL_PATH` (default `./outbox`) so dev runs never call AWS.
+- SES backend uses `RENTIVO_SES_*` env vars (mirror of S3 credentials). Optional `RENTIVO_SES_ENDPOINT_URL` for LocalStack and `RENTIVO_SES_CONFIGURATION_SET` for SES configuration sets.
+- Templates live in `web/templates/emails/*.html` + `*.txt`. PT-BR copy.
+- `EmailService.send_password_recovery(to_email, reset_url)` is the only consumer for now.
+
+## Password Recovery
+
+- Routes: `/forgot-password`, `/reset-password` (both public).
+- Tokens are stored hashed (SHA-256) in `password_reset_tokens`; only the raw token (URL-safe, 48 bytes) is emailed.
+- TTL: 1 hour. Single-use. On consumption all other unused tokens for the user are invalidated.
+- "Unknown email" returns the same UI as "email sent" — no enumeration.
+- Audit events: `user.password_reset_requested`, `user.password_reset_completed`.
+
+## Bot Protection (Cloudflare Turnstile)
+
+- Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).
+- Verify endpoint defaults to Cloudflare's public URL; override with `RENTIVO_TURNSTILE_VERIFY_URL` if you need a self-hosted gateway.
+- Service: `rentivo/services/turnstile_service.py:TurnstileService` exposes `is_enabled` and `async verify(token, remote_ip)`.
+- Wired on: `/login`, `/signup`, `/forgot-password`. The form field name set by Cloudflare's widget is `cf-turnstile-response`.
+
 ## Key Rules
 
 - **NEVER delete `invoices/`** without explicit user confirmation

@@ -23,7 +23,7 @@
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Usuário</th>
+                    <th>E-mail</th>
                     <th class="text-center">Papel</th>
                     {% if member_role == "admin" %}
                     <th class="text-right">Ações</th>
@@ -33,7 +33,7 @@
             <tbody>
                 {% for m in members %}
                 <tr>
-                    <td>{{ m.username }}</td>
+                    <td>{{ m.email }}</td>
                     <td class="text-center">
                         {% if m.role == "admin" %}
                         <span class="tag tag--fixed">Admin</span>
@@ -80,8 +80,8 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="item-grid">
                 <div class="field mb-0">
-                    <label class="field-label">Usuário</label>
-                    <input type="text" class="field-input" name="username" required>
+                    <label class="field-label">E-mail</label>
+                    <input type="email" class="field-input" name="email" required>
                 </div>
                 <div class="field mb-0">
                     <label class="field-label">Papel</label>
@@ -135,7 +135,7 @@
         <table class="data-table">
             <thead>
                 <tr>
-                    <th>Usuário</th>
+                    <th>E-mail</th>
                     <th class="text-center">Papel</th>
                     <th class="text-center">Status</th>
                 </tr>
@@ -143,7 +143,7 @@
             <tbody>
                 {% for inv in invites %}
                 <tr>
-                    <td>{{ inv.invited_username }}</td>
+                    <td>{{ inv.invited_email }}</td>
                     <td class="text-center">{{ inv.role }}</td>
                     <td class="text-center">
                         {% if inv.status == "pending" %}

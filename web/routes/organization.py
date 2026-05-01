@@ -54,7 +54,7 @@ async def organization_create(request: Request):
     audit.safe_log(
         AuditEventType.ORGANIZATION_CREATE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="organization",
         entity_id=org.id,
@@ -169,7 +169,7 @@ async def organization_edit(request: Request, org_uuid: str):
     audit.safe_log(
         AuditEventType.ORGANIZATION_UPDATE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="organization",
         entity_id=updated.id,
@@ -205,7 +205,7 @@ async def organization_delete(request: Request, org_uuid: str):
     audit.safe_log(
         AuditEventType.ORGANIZATION_DELETE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="organization",
         entity_id=org.id,
@@ -259,7 +259,7 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
     audit.safe_log(
         AuditEventType.ORGANIZATION_UPDATE_MEMBER_ROLE,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="organization",
         entity_id=org.id,
@@ -301,7 +301,7 @@ async def member_remove(request: Request, org_uuid: str, member_user_id: int):
     audit.safe_log(
         AuditEventType.ORGANIZATION_REMOVE_MEMBER,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="organization",
         entity_id=org.id,
@@ -330,19 +330,19 @@ async def organization_invite(request: Request, org_uuid: str):
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     form = await request.form()
-    username = str(form.get("username", "")).strip()
+    email = str(form.get("email", "")).strip().lower()
     role = str(form.get("role", "viewer")).strip()
 
-    if not username:
-        logger.warning("invite_rejected", org_uuid=org_uuid, reason="empty_username")
-        flash(request, "Nome de usuário é obrigatório.", "danger")
+    if not email:
+        logger.warning("invite_rejected", org_uuid=org_uuid, reason="empty_email")
+        flash(request, "Informe o e-mail.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     invite_service = get_invite_service(request)
     try:
-        invite = invite_service.send_invite(org.id, username, role, user_id)
+        invite = invite_service.send_invite(org.id, email, role, user_id)
     except ValueError as e:
-        logger.warning("invite_failed", org_uuid=org_uuid, username=username, error=str(e))
+        logger.warning("invite_failed", org_uuid=org_uuid, email=email, error=str(e))
         flash(request, str(e), "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -351,7 +351,7 @@ async def organization_invite(request: Request, org_uuid: str):
         audit.safe_log(
             AuditEventType.INVITE_SEND,
             actor_id=user_id,
-            actor_username=request.session.get("username", ""),
+            actor_username=request.session.get("email", ""),
             source="web",
             entity_type="invite",
             entity_id=invite.id,
@@ -359,7 +359,7 @@ async def organization_invite(request: Request, org_uuid: str):
             new_state=serialize_invite(invite),
         )
 
-    flash(request, f"Convite enviado para '{username}'!", "success")
+    flash(request, f"Convite enviado para '{email}'!", "success")
     push_event(request, {"event": "rentivo_invite_sent", "org_id_hash": analytics_hash(org_uuid)})
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -385,7 +385,7 @@ async def organization_toggle_mfa(request: Request, org_uuid: str):
     audit.safe_log(
         AuditEventType.ORGANIZATION_UPDATE_MFA,
         actor_id=user_id,
-        actor_username=request.session.get("username", ""),
+        actor_username=request.session.get("email", ""),
         source="web",
         entity_type="organization",
         entity_id=org.id,

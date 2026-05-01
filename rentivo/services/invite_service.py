@@ -26,33 +26,33 @@ class InviteService:
     def send_invite(
         self,
         org_id: int,
-        username: str,
+        email: str,
         role: str,
         invited_by_user_id: int,
     ) -> Invite:
-        user = self.user_repo.get_by_username(username)
+        user = self.user_repo.get_by_email(email)
         if user is None:
-            logger.warning("invite_send_failed", username=username, reason="user_not_found")
-            raise ValueError(f"User '{username}' not found")
+            logger.warning("invite_send_failed", email=email, reason="user_not_found")
+            raise ValueError(f"User with email '{email}' not found")
 
         existing_member = self.org_repo.get_member(org_id, user.id)
         if existing_member is not None:
             logger.warning(
                 "invite_send_failed",
-                username=username,
+                email=email,
                 org_id=org_id,
                 reason="already_member",
             )
-            raise ValueError(f"User '{username}' is already a member")
+            raise ValueError(f"User with email '{email}' is already a member")
 
         if self.invite_repo.has_pending_invite(org_id, user.id):
             logger.warning(
                 "invite_send_failed",
-                username=username,
+                email=email,
                 org_id=org_id,
                 reason="pending_invite_exists",
             )
-            raise ValueError(f"User '{username}' already has a pending invite")
+            raise ValueError(f"User with email '{email}' already has a pending invite")
 
         invite = Invite(
             organization_id=org_id,
@@ -62,7 +62,7 @@ class InviteService:
             status=InviteStatus.PENDING.value,
         )
         created = self.invite_repo.create(invite)
-        logger.info("invite_sent", org_id=org_id, username=username, role=role)
+        logger.info("invite_sent", org_id=org_id, email=email, role=role)
         return created
 
     def accept_invite(self, invite_uuid: str, user_id: int) -> None:

@@ -12,8 +12,8 @@ from rentivo.repositories.sqlalchemy import (
 )
 
 
-def _create_user(user_repo, username="mfa_user"):
-    return user_repo.create(User(username=username, password_hash="hash"))
+def _create_user(user_repo, email="mfa_user@example.com"):
+    return user_repo.create(User(email=email, password_hash="hash"))
 
 
 @pytest.fixture()
@@ -129,8 +129,8 @@ class TestRecoveryCodeRepository:
         recovery_repo.delete_all_by_user(9999)
 
     def test_mark_used_does_not_affect_others(self, recovery_repo, user_repo):
-        user1 = _create_user(user_repo, "user1")
-        user2 = _create_user(user_repo, "user2")
+        user1 = _create_user(user_repo, "user1@example.com")
+        user2 = _create_user(user_repo, "user2@example.com")
         recovery_repo.create_batch(user1.id, ["h1"])
         recovery_repo.create_batch(user2.id, ["h2"])
 
@@ -269,8 +269,8 @@ class TestPasskeyRepository:
                 passkey_repo.create(passkey)
 
     def test_list_by_user_different_users(self, passkey_repo, user_repo):
-        user1 = _create_user(user_repo, "pk_user1")
-        user2 = _create_user(user_repo, "pk_user2")
+        user1 = _create_user(user_repo, "pk_user1@example.com")
+        user2 = _create_user(user_repo, "pk_user2@example.com")
         passkey_repo.create(UserPasskey(user_id=user1.id, credential_id="c1", public_key="p1", sign_count=0, name="K1"))
         passkey_repo.create(UserPasskey(user_id=user2.id, credential_id="c2", public_key="p2", sign_count=0, name="K2"))
 

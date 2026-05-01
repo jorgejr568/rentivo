@@ -2,7 +2,7 @@ import re
 import secrets
 
 import structlog
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = structlog.get_logger(__name__)
@@ -56,6 +56,38 @@ class Settings(BaseSettings):
         if v not in ("production", "staging", "dev"):
             raise ValueError("RENTIVO_ENVIRONMENT must be one of: production, staging, dev")
         return v
+
+    email_backend: str = "local"
+    email_local_path: str = "./outbox"
+
+    ses_region: str = ""
+    ses_access_key_id: str = ""
+    ses_secret_access_key: str = ""
+    ses_endpoint_url: str = ""
+    ses_from_email: str = ""
+    ses_configuration_set: str = ""
+    public_app_url: str = "http://localhost:8000"
+
+    turnstile_site_key: str = ""
+    turnstile_secret_key: str = ""
+    turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+    @field_validator("email_backend")
+    @classmethod
+    def _validate_email_backend(cls, v: str) -> str:
+        if v not in ("local", "ses"):
+            raise ValueError("RENTIVO_EMAIL_BACKEND must be one of: local, ses")
+        return v
+
+    @model_validator(mode="after")
+    def _validate_turnstile_pair(self) -> "Settings":
+        site = bool(self.turnstile_site_key)
+        secret = bool(self.turnstile_secret_key)
+        if site != secret:
+            raise ValueError(
+                "RENTIVO_TURNSTILE_SITE_KEY and RENTIVO_TURNSTILE_SECRET_KEY must both be set or both empty"
+            )
+        return self
 
     def get_secret_key(self) -> str:
         if self.secret_key == _INSECURE_DEFAULT_KEY:

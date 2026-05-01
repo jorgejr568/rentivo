@@ -27,6 +27,7 @@ from web.routes.billing import router as billing_router
 from web.routes.health import router as health_router
 from web.routes.invite import router as invite_router
 from web.routes.organization import router as organization_router
+from web.routes.password_reset import router as password_reset_router
 from web.routes.security import router as security_router
 from web.routes.seo import router as seo_router
 from web.routes.theme import router as theme_router
@@ -84,6 +85,7 @@ app.include_router(billing_router)
 app.include_router(bill_router)
 app.include_router(organization_router)
 app.include_router(invite_router)
+app.include_router(password_reset_router)
 app.include_router(security_router)
 app.include_router(theme_router)
 app.include_router(seo_router)
@@ -98,7 +100,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         from web.flash import get_flashed_messages
 
         ctx = {
-            "user": request.session.get("username"),
+            "user": request.session.get("email"),
             "user_id": request.session.get("user_id"),
             "messages": get_flashed_messages(request),
             "csrf_token": get_csrf_token(request),
@@ -125,7 +127,7 @@ async def home(request: Request):
 
     ctx = {
         "asset_version": ASSET_VERSION,
-        "user": request.session.get("username"),
+        "user": request.session.get("email"),
     }
     ctx["gtm_initial_push"] = build_page_context(request, "landing.html", ctx)
     ctx["gtm_pending_events"] = pop_events(request)

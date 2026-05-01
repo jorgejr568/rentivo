@@ -9,6 +9,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from rentivo.db import get_engine
+from rentivo.email.factory import get_email_backend
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
@@ -17,6 +18,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasskeyRepository,
+    SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyReceiptRepository,
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyThemeRepository,
@@ -26,19 +28,31 @@ from rentivo.services.audit_service import AuditService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
+from rentivo.services.email_service import EmailService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
+from rentivo.services.password_reset_service import PasswordResetService
 from rentivo.services.pix_service import PixService
 from rentivo.services.theme_service import ThemeService
+from rentivo.services.turnstile_service import TurnstileService
 from rentivo.services.user_service import UserService
+from rentivo.settings import settings
 from rentivo.storage.factory import get_storage
 from web.analytics import build_page_context, pop_events
 from web.flash import get_flashed_messages
 
 logger = structlog.get_logger(__name__)
 
-PUBLIC_PREFIX_PATHS = {"/login", "/signup", "/static", "/mfa-verify", "/security/passkeys/auth"}
+PUBLIC_PREFIX_PATHS = {
+    "/login",
+    "/signup",
+    "/static",
+    "/mfa-verify",
+    "/security/passkeys/auth",
+    "/forgot-password",
+    "/reset-password",
+}
 PUBLIC_EXACT_PATHS = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
 # Paths that MFA-enforcement redirect allows even when mfa_setup_required is set
@@ -94,7 +108,7 @@ class AuthMiddleware:
         # Bind identity for all downstream logs in this request.
         structlog.contextvars.bind_contextvars(
             user_id=user_id,
-            username=request.session.get("username"),
+            email=request.session.get("email"),
         )
         await self.app(scope, receive, send)
 
@@ -224,6 +238,44 @@ def get_mfa_service(request: Request) -> MFAService:
     )
 
 
+def get_email_service(request: Request) -> EmailService:
+    return EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
+
+
+def get_turnstile_service(request: Request) -> TurnstileService:
+    return TurnstileService(
+        site_key=settings.turnstile_site_key,
+        secret_key=settings.turnstile_secret_key,
+        verify_url=settings.turnstile_verify_url,
+    )
+
+
+def get_password_reset_service(request: Request) -> PasswordResetService:
+    conn = _get_conn(request)
+    user_repo = SQLAlchemyUserRepository(conn)
+    return PasswordResetService(
+        user_repo=user_repo,
+        token_repo=SQLAlchemyPasswordResetTokenRepository(conn),
+        email_service=get_email_service(request),
+        user_service=UserService(user_repo),
+        public_app_url=settings.public_app_url,
+    )
+
+
+def _hydrate_legacy_session_email(request: Request, user_id: int | None) -> str | None:
+    """Pre-migration sessions had `username` but no `email`. Backfill once from the DB so
+    existing browsers keep rendering the navbar without forcing a logout."""
+    email = request.session.get("email")
+    if not user_id or email:
+        return email
+    user = SQLAlchemyUserRepository(_get_conn(request)).get_by_id(user_id)
+    if user is not None:
+        email = user.email
+        request.session["email"] = email
+    request.session.pop("username", None)
+    return email
+
+
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:
     from web.app import templates
     from web.csrf import get_csrf_token
@@ -231,12 +283,13 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     logger.debug("template_render", template=template_name)
     ctx = context or {}
     ctx["request"] = request
-    ctx["user"] = request.session.get("username")
-    ctx["user_id"] = request.session.get("user_id")
+    user_id = request.session.get("user_id")
+    email = _hydrate_legacy_session_email(request, user_id)
+    ctx["user"] = email
+    ctx["user_id"] = user_id
     ctx["messages"] = get_flashed_messages(request)
     ctx["csrf_token"] = get_csrf_token(request)
 
-    user_id = request.session.get("user_id")
     if user_id and "pending_invite_count" not in ctx:
         try:
             conn = _get_conn(request)
@@ -249,5 +302,6 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
 
     ctx["gtm_initial_push"] = build_page_context(request, template_name, ctx)
     ctx["gtm_pending_events"] = pop_events(request)
+    ctx["turnstile_site_key"] = settings.turnstile_site_key
 
     return templates.TemplateResponse(request, template_name, ctx)

@@ -8,6 +8,7 @@ from rentivo.repositories.factory import (
     get_mfa_totp_repository,
     get_organization_repository,
     get_passkey_repository,
+    get_password_reset_token_repository,
     get_receipt_repository,
     get_recovery_code_repository,
     get_theme_repository,
@@ -21,6 +22,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasskeyRepository,
+    SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyReceiptRepository,
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyThemeRepository,
@@ -94,3 +96,9 @@ class TestRepoFactory:
         mock_conn.return_value = MagicMock()
         repo = get_theme_repository()
         assert isinstance(repo, SQLAlchemyThemeRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_password_reset_token_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_password_reset_token_repository()
+        assert isinstance(repo, SQLAlchemyPasswordResetTokenRepository)

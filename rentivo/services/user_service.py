@@ -14,21 +14,21 @@ class UserService:
     def __init__(self, repo: UserRepository) -> None:
         self.repo = repo
 
-    def create_user(self, username: str, password: str) -> User:
+    def create_user(self, email: str, password: str) -> User:
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        user = User(username=username, password_hash=password_hash)
+        user = User(email=email, password_hash=password_hash)
         result = self.repo.create(user)
-        logger.info("user_created", username=username)
+        logger.info("user_created", email=email)
         return result
 
-    def register_user(self, username: str, email: str, password: str) -> User:
-        existing = self.repo.get_by_username(username)
+    def register_user(self, email: str, password: str) -> User:
+        existing = self.repo.get_by_email(email)
         if existing is not None:
-            raise ValueError(f"Username '{username}' already exists")
+            raise ValueError(f"Email '{email}' is already registered")
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        user = User(username=username, email=email, password_hash=password_hash)
+        user = User(email=email, password_hash=password_hash)
         result = self.repo.create(user)
-        logger.info("user_registered", username=username)
+        logger.info("user_registered", email=email)
         return result
 
     def get_by_id(self, user_id: int) -> User | None:
@@ -36,21 +36,24 @@ class UserService:
         logger.debug("user_get_by_id", user_id=user_id, found=result is not None)
         return result
 
-    def authenticate(self, username: str, password: str) -> User | None:
-        user = self.repo.get_by_username(username)
+    def get_by_email(self, email: str) -> User | None:
+        return self.repo.get_by_email(email)
+
+    def authenticate(self, email: str, password: str) -> User | None:
+        user = self.repo.get_by_email(email)
         if user is None:
-            logger.warning("auth_failed", username=username, reason="user_not_found")
+            logger.warning("auth_failed", email=email, reason="user_not_found")
             return None
         if bcrypt.checkpw(password.encode(), user.password_hash.encode()):
-            logger.info("user_authenticated", username=username)
+            logger.info("user_authenticated", email=email)
             return user
-        logger.warning("auth_failed", username=username, reason="invalid_password")
+        logger.warning("auth_failed", email=email, reason="invalid_password")
         return None
 
-    def change_password(self, username: str, new_password: str) -> None:
+    def change_password(self, user_id: int, new_password: str) -> None:
         password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-        self.repo.update_password_hash(username, password_hash)
-        logger.info("password_changed", username=username)
+        self.repo.update_password_hash(user_id, password_hash)
+        logger.info("password_changed", user_id=user_id)
 
     def list_users(self) -> list[User]:
         result = self.repo.list_all()

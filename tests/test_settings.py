@@ -90,3 +90,65 @@ def test_environment_rejects_unknown():
     with pytest.raises(ValidationError) as exc_info:
         Settings(_env_file=None, environment="qa")
     assert "must be one of" in str(exc_info.value)
+
+
+def test_settings_email_defaults(monkeypatch):
+    for k in (
+        "RENTIVO_EMAIL_BACKEND",
+        "RENTIVO_SES_REGION",
+        "RENTIVO_SES_ACCESS_KEY_ID",
+        "RENTIVO_SES_SECRET_ACCESS_KEY",
+        "RENTIVO_SES_FROM_EMAIL",
+        "RENTIVO_SES_CONFIGURATION_SET",
+        "RENTIVO_EMAIL_LOCAL_PATH",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.email_backend == "local"
+    assert s.email_local_path == "./outbox"
+    assert s.ses_region == ""
+    assert s.ses_from_email == ""
+
+
+def test_settings_email_backend_validation(monkeypatch):
+    monkeypatch.setenv("RENTIVO_EMAIL_BACKEND", "smoke-signals")
+    import pytest as _pytest
+
+    from rentivo.settings import Settings
+
+    with _pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_turnstile_defaults(monkeypatch):
+    for k in ("RENTIVO_TURNSTILE_SITE_KEY", "RENTIVO_TURNSTILE_SECRET_KEY", "RENTIVO_TURNSTILE_VERIFY_URL"):
+        monkeypatch.delenv(k, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.turnstile_site_key == ""
+    assert s.turnstile_secret_key == ""
+    assert s.turnstile_verify_url == "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def test_settings_turnstile_requires_both_keys(monkeypatch):
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+    monkeypatch.delenv("RENTIVO_TURNSTILE_SECRET_KEY", raising=False)
+    import pytest as _pytest
+
+    from rentivo.settings import Settings
+
+    with _pytest.raises(ValueError, match="both .* set or both empty"):
+        Settings()
+
+
+def test_settings_turnstile_accepts_paired_keys(monkeypatch):
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA")
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.turnstile_site_key == "1x00000000000000000000AA"
+    assert s.turnstile_secret_key == "1x0000000000000000000000000000000AA"

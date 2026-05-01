@@ -6,6 +6,7 @@ from rentivo.repositories.base import (
     MFATOTPRepository,
     OrganizationRepository,
     PasskeyRepository,
+    PasswordResetTokenRepository,
     ReceiptRepository,
     RecoveryCodeRepository,
     ThemeRepository,
@@ -88,3 +89,10 @@ def get_theme_repository() -> ThemeRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyThemeRepository
 
     return SQLAlchemyThemeRepository(get_connection())
+
+
+def get_password_reset_token_repository() -> PasswordResetTokenRepository:
+    from rentivo.db import get_connection
+    from rentivo.repositories.sqlalchemy import SQLAlchemyPasswordResetTokenRepository
+
+    return SQLAlchemyPasswordResetTokenRepository(get_connection())

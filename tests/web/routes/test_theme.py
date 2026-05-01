@@ -120,7 +120,7 @@ class TestOrgThemeForm:
         """Create org with a different user, add testuser as viewer. GET should redirect."""
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            other = user_repo.create(User(username="org_owner_theme", password_hash="h"))
+            other = user_repo.create(User(email="org_owner_theme@example.com", password_hash="h"))
         org = create_org_in_db(test_engine, "Other Org", other.id)
         test_user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
@@ -170,7 +170,7 @@ class TestOrgThemeSave:
     def test_save_org_theme_denied(self, auth_client, test_engine, csrf_token):
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            other = user_repo.create(User(username="org_save_other", password_hash="h"))
+            other = user_repo.create(User(email="org_save_other@example.com", password_hash="h"))
         org = create_org_in_db(test_engine, "Other Org Save", other.id)
         response = auth_client.post(
             f"/themes/organization/{org.uuid}",
@@ -223,7 +223,7 @@ class TestOrgThemeDelete:
     def test_delete_org_theme_denied(self, auth_client, test_engine, csrf_token):
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            other = user_repo.create(User(username="org_del_other", password_hash="h"))
+            other = user_repo.create(User(email="org_del_other@example.com", password_hash="h"))
         org = create_org_in_db(test_engine, "Other Org Del", other.id)
         response = auth_client.post(
             f"/themes/organization/{org.uuid}/delete",
@@ -242,7 +242,7 @@ class TestBillingThemeForm:
     def test_billing_theme_form_non_owner_denied(self, auth_client, test_engine):
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            other = user_repo.create(User(username="billing_theme_other", password_hash="h"))
+            other = user_repo.create(User(email="billing_theme_other@example.com", password_hash="h"))
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
         response = auth_client.get(
             f"/themes/billing/{billing.uuid}",
@@ -324,7 +324,7 @@ class TestBillingThemeSave:
     def test_save_billing_theme_denied(self, auth_client, test_engine, csrf_token):
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            other = user_repo.create(User(username="billing_save_other", password_hash="h"))
+            other = user_repo.create(User(email="billing_save_other@example.com", password_hash="h"))
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
         response = auth_client.post(
             f"/themes/billing/{billing.uuid}",
@@ -373,7 +373,7 @@ class TestBillingThemeDelete:
     def test_delete_billing_theme_denied(self, auth_client, test_engine, csrf_token):
         with test_engine.connect() as conn:
             user_repo = SQLAlchemyUserRepository(conn)
-            other = user_repo.create(User(username="billing_del_other", password_hash="h"))
+            other = user_repo.create(User(email="billing_del_other@example.com", password_hash="h"))
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
         response = auth_client.post(
             f"/themes/billing/{billing.uuid}/delete",
