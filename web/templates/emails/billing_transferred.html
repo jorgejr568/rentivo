@@ -1,0 +1,13 @@
+{% extends "_email_layout.html" %}
+{% block title %}Transferência de cobrança — Rentivo{% endblock %}
+{% block content %}
+<h1 style="margin:0 0 18px;font-family:'Space Grotesk','Inter',sans-serif;font-weight:700;font-size:32px;line-height:1.15;letter-spacing:-0.5px;color:#1a1a2e;">
+    Transferência de cobrança
+</h1>
+<p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    A cobrança <strong style="font-weight:600;">"{{ billing_name }}"</strong> {{ change_message }}.
+</p>
+<div style="background:#f5f0e8;border:2px solid #1a1a2e;padding:14px 16px;margin:0 0 16px;font-size:14px;">
+    <div><strong>Quem fez a transferência:</strong> {{ actor_email }}</div>
+</div>
+{% endblock %}

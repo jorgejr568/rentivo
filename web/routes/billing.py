@@ -13,8 +13,10 @@ from web.deps import (
     get_authorization_service,
     get_bill_service,
     get_billing_service,
+    get_email_service,
     get_organization_service,
     get_pix_service,
+    get_user_service,
     render,
 )
 from web.flash import flash
@@ -317,6 +319,31 @@ async def billing_transfer(request: Request, billing_uuid: str):
         previous_state=previous_owner,
         new_state={"owner_type": "organization", "owner_id": org_id},
     )
+
+    actor_email = request.session.get("email", "")
+    user_service = get_user_service(request)
+    email_service = get_email_service(request)
+
+    # Notify the previous owner if they were a user (orgs don't have a single inbox).
+    if previous_owner["owner_type"] == "user":
+        prev_user = user_service.get_by_id(previous_owner["owner_id"])
+        if prev_user is not None:
+            email_service.safe_send_billing_transferred(
+                to_email=prev_user.email,
+                billing_name=billing.name,
+                change_message="foi transferida para outro proprietário",
+                actor_email=actor_email,
+            )
+
+    # Notify admin/owner members of the destination organization.
+    for member in org_service.list_members(org_id):
+        if member.role in ("owner", "admin"):
+            email_service.safe_send_billing_transferred(
+                to_email=member.email,
+                billing_name=billing.name,
+                change_message="foi transferida para sua organização",
+                actor_email=actor_email,
+            )
 
     flash(request, "Cobrança transferida com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_transferred", "billing_uuid_hash": analytics_hash(billing_uuid)})

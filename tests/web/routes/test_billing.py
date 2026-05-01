@@ -457,6 +457,45 @@ class TestBillingTransfer:
             )
         assert response.status_code == 302
 
+    def test_transfer_notifies_previous_user_owner_and_org_admins(
+        self, auth_client, csrf_token, monkeypatch, test_engine
+    ):
+        from rentivo.models.organization import OrgRole
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, billing_name, change_message, actor_email):
+            sent.append({"to": to_email, "msg": change_message})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_billing_transferred", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        billing = create_billing_in_db(test_engine)
+        org = create_org_in_db(test_engine, "Target Org", user_id)
+
+        # Add a second admin to the destination org so we can assert org-admin notifications.
+        target_admin_email = "admin2@example.com"
+        with test_engine.connect() as conn:
+            extra_admin = SQLAlchemyUserRepository(conn).create(User(email=target_admin_email, password_hash="h"))
+            SQLAlchemyOrganizationRepository(conn).add_member(org.id, extra_admin.id, OrgRole.ADMIN.value)
+
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/transfer",
+            data={"organization_id": str(org.id), "csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 302)
+
+        # The previous owner (test user) gets a "outro proprietário" message.
+        prev_owner_msgs = [s["msg"] for s in sent if s["to"] == "testuser@example.com"]
+        assert any("outro proprietário" in m for m in prev_owner_msgs)
+        # The extra org admin gets a "para sua organização" message.
+        admin_msgs = [s["msg"] for s in sent if s["to"] == target_admin_email]
+        assert any("para sua organização" in m for m in admin_msgs)
+
 
 class TestBillingDetailIdNone:
     def test_detail_billing_id_none(self, auth_client, test_engine, csrf_token):

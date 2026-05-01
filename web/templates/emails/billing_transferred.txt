@@ -1,0 +1,9 @@
+RENTIVO — TRANSFERÊNCIA DE COBRANÇA
+=====================================
+
+A cobrança "{{ billing_name }}" {{ change_message }}.
+
+Quem fez a transferência: {{ actor_email }}
+
+—
+Rentivo · Cobranças sem dor de cabeça

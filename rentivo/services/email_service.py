@@ -175,3 +175,21 @@ class EmailService:
                 "actor_email": actor_email,
             },
         )
+
+    def safe_send_billing_transferred(
+        self,
+        to_email: str,
+        billing_name: str,
+        change_message: str,
+        actor_email: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject="Transferência de cobrança — Rentivo",
+            template_stem="billing_transferred",
+            ctx={
+                "billing_name": billing_name,
+                "change_message": change_message,
+                "actor_email": actor_email,
+            },
+        )
