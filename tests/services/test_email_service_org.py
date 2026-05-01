@@ -1,0 +1,27 @@
+from unittest.mock import MagicMock
+
+from rentivo.services.email_service import EmailService
+
+
+def _service():
+    backend = MagicMock()
+    backend.send.return_value = "id"
+    return EmailService(backend, from_address="noreply@rentivo.app"), backend
+
+
+def test_send_invite_received_renders_inviter_org_role_and_link():
+    service, backend = _service()
+    service.safe_send_invite_received(
+        to_email="alice@example.com",
+        inviter_email="bob@example.com",
+        org_name="Acme",
+        role_label="Administrador",
+        invites_url="http://x/invites/",
+    )
+    sent = backend.send.call_args[0][0]
+    assert sent.to == "alice@example.com"
+    assert "Acme" in sent.html_body
+    assert "bob@example.com" in sent.html_body
+    assert "Administrador" in sent.html_body
+    assert "x/invites/" in sent.text_body
+    assert "Convite" in sent.subject

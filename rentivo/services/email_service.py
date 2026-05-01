@@ -119,3 +119,23 @@ class EmailService:
                 "reset_url": reset_url,
             },
         )
+
+    def safe_send_invite_received(
+        self,
+        to_email: str,
+        inviter_email: str,
+        org_name: str,
+        role_label: str,
+        invites_url: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject=f'Convite para "{org_name}" — Rentivo',
+            template_stem="invite_received",
+            ctx={
+                "inviter_email": inviter_email,
+                "org_name": org_name,
+                "role_label": role_label,
+                "invites_url": invites_url,
+            },
+        )

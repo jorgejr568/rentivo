@@ -7,11 +7,13 @@ from fastapi.responses import RedirectResponse
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.organization import OrgRole
 from rentivo.services.audit_serializers import serialize_invite, serialize_organization
+from rentivo.settings import settings
 from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
     get_billing_service,
+    get_email_service,
     get_invite_service,
     get_mfa_service,
     get_organization_service,
@@ -358,6 +360,17 @@ async def organization_invite(request: Request, org_uuid: str):
             entity_uuid=invite.uuid,
             new_state=serialize_invite(invite),
         )
+
+    role_labels = {"admin": "Administrador", "manager": "Gerente", "viewer": "Visualizador", "owner": "Dono"}
+    inviter_email = request.session.get("email", "")
+    invites_url = f"{settings.public_app_url.rstrip('/')}/invites/"
+    get_email_service(request).safe_send_invite_received(
+        to_email=email,
+        inviter_email=inviter_email,
+        org_name=org.name,
+        role_label=role_labels.get(role, role),
+        invites_url=invites_url,
+    )
 
     flash(request, f"Convite enviado para '{email}'!", "success")
     push_event(request, {"event": "rentivo_invite_sent", "org_id_hash": analytics_hash(org_uuid)})

@@ -1,0 +1,11 @@
+RENTIVO — VOCÊ FOI CONVIDADO
+=============================
+
+{{ inviter_email }} convidou você para a organização "{{ org_name }}" como {{ role_label }}.
+
+Acesse seus convites para aceitar ou recusar:
+
+  {{ invites_url }}
+
+—
+Rentivo · Cobranças sem dor de cabeça

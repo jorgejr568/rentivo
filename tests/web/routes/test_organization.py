@@ -227,6 +227,43 @@ class TestOrganizationInvite:
         )
         assert response.status_code == 302
 
+    def test_invite_post_sends_invite_received_email(self, auth_client, test_engine, csrf_token, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, inviter_email, org_name, role_label, invites_url):
+            sent.append(
+                {
+                    "to": to_email,
+                    "inviter": inviter_email,
+                    "org": org_name,
+                    "role": role_label,
+                    "url": invites_url,
+                }
+            )
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_invite_received", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        org = create_org_in_db(test_engine, "Acme", user_id)
+
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo.create(User(email="invited@example.com", password_hash="h"))
+
+        response = auth_client.post(
+            f"/organizations/{org.uuid}/invite",
+            data={"csrf_token": csrf_token, "email": "invited@example.com", "role": "viewer"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent and sent[0]["to"] == "invited@example.com"
+        assert sent[0]["org"] == "Acme"
+        assert sent[0]["role"] == "Visualizador"
+        assert sent[0]["url"].endswith("/invites/")
+
 
 class TestOrganizationAccessDenied:
     """Test access denied paths for organizations."""
