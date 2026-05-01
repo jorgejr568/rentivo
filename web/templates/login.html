@@ -24,6 +24,11 @@
                 <p style="text-align: right; margin: 0 0 .75rem; font-size: .875rem;">
                     <a href="/forgot-password">Esqueceu sua senha?</a>
                 </p>
+                {% if turnstile_site_key %}
+                <div class="field">
+                    <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
+                </div>
+                {% endif %}
                 <button type="submit" class="btn btn--primary" style="width: 100%; margin-top: 0.5rem;">Entrar</button>
             </form>
             <p style="text-align: center; margin-top: 1rem;">

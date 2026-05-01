@@ -9,7 +9,13 @@ from fastapi.responses import RedirectResponse
 from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
 from web.analytics import push_event
-from web.deps import get_audit_service, get_mfa_service, get_user_service, render
+from web.deps import (
+    get_audit_service,
+    get_mfa_service,
+    get_turnstile_service,
+    get_user_service,
+    render,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -146,6 +152,12 @@ async def login(request: Request):
     form = await request.form()
     email = str(form.get("email", "")).strip()
     password = form.get("password", "")
+    turnstile_token = str(form.get("cf-turnstile-response", ""))
+
+    turnstile = get_turnstile_service(request)
+    if not await turnstile.verify(turnstile_token, client_ip):
+        logger.warning("login_turnstile_failed", email=email, client_ip=client_ip)
+        return render(request, "login.html", {"error": "Verificação de segurança falhou. Tente novamente."})
 
     user_service = get_user_service(request)
     user = user_service.authenticate(email, str(password))

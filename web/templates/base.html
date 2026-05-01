@@ -76,5 +76,8 @@
     <script src="{{ url_for('static', path='core/js/tracking.js') }}?v={{ asset_version }}"></script>
     {% endif %}
     {% block scripts %}{% endblock %}
+    {% if turnstile_site_key %}
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    {% endif %}
 </body>
 </html>
