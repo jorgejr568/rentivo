@@ -158,3 +158,62 @@ def test_reset_password_post_unknown_token_renders_invalid(client, csrf_token):
     )
     assert response.status_code == 200
     assert "inválido" in response.text.lower() or "expirado" in response.text.lower()
+
+
+def test_forgot_password_renders_widget_when_configured(client, monkeypatch):
+    from rentivo.settings import settings
+
+    monkeypatch.setattr(settings, "turnstile_site_key", "sk-public-1")
+    monkeypatch.setattr(settings, "turnstile_secret_key", "sk-secret-1")
+
+    response = client.get("/forgot-password")
+    assert response.status_code == 200
+    assert 'class="cf-turnstile"' in response.text
+    assert 'data-sitekey="sk-public-1"' in response.text
+
+
+def test_forgot_password_unconfigured_does_not_render_widget(client):
+    response = client.get("/forgot-password")
+    assert response.status_code == 200
+    assert 'class="cf-turnstile"' not in response.text
+
+
+def test_forgot_password_rejects_when_turnstile_fails(client, csrf_token, monkeypatch):
+    from rentivo.services.turnstile_service import TurnstileService
+    from rentivo.settings import settings
+
+    monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+    monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+    async def _fail(self, token, remote_ip):
+        return False
+
+    monkeypatch.setattr(TurnstileService, "verify", _fail)
+
+    response = client.post(
+        "/forgot-password",
+        data={"email": "x@example.com", "csrf_token": csrf_token, "cf-turnstile-response": "bad"},
+    )
+    assert response.status_code == 200
+    assert "Verificação de segurança" in response.text
+
+
+def test_forgot_password_succeeds_when_turnstile_passes(client, csrf_token, monkeypatch):
+    from rentivo.services.turnstile_service import TurnstileService
+    from rentivo.settings import settings
+
+    monkeypatch.setattr(settings, "turnstile_site_key", "sk")
+    monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
+
+    async def _pass(self, token, remote_ip):
+        return True
+
+    monkeypatch.setattr(TurnstileService, "verify", _pass)
+
+    response = client.post(
+        "/forgot-password",
+        data={"email": "x@example.com", "csrf_token": csrf_token, "cf-turnstile-response": "good"},
+    )
+    # Silent success — same UI as "email sent".
+    assert response.status_code == 200
+    assert "instruções" in response.text.lower()

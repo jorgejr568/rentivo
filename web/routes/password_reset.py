@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from web.analytics import push_event
-from web.deps import get_audit_service, get_password_reset_service, render
+from web.deps import get_audit_service, get_password_reset_service, get_turnstile_service, render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -24,6 +24,12 @@ async def forgot_password_page(request: Request):
 async def forgot_password(request: Request):
     form = await request.form()
     email = str(form.get("email", "")).strip().lower()
+    turnstile_token = str(form.get("cf-turnstile-response", ""))
+    client_ip = request.client.host if request.client else "unknown"
+    turnstile = get_turnstile_service(request)
+    if not await turnstile.verify(turnstile_token, client_ip):
+        logger.warning("forgot_password_turnstile_failed", email=email, client_ip=client_ip)
+        return render(request, "forgot_password.html", {"error": "Verificação de segurança falhou. Tente novamente."})
     if not email:
         return render(request, "forgot_password.html", {"error": "Informe um e-mail."})
 
