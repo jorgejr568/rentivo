@@ -226,6 +226,13 @@ When the user asks you to open a PR, you are responsible for filling out the PR 
 - "Unknown email" returns the same UI as "email sent" — no enumeration.
 - Audit events: `user.password_reset_requested`, `user.password_reset_completed`.
 
+## Bot Protection (Cloudflare Turnstile)
+
+- Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).
+- Verify endpoint defaults to Cloudflare's public URL; override with `RENTIVO_TURNSTILE_VERIFY_URL` if you need a self-hosted gateway.
+- Service: `rentivo/services/turnstile_service.py:TurnstileService` exposes `is_enabled` and `async verify(token, remote_ip)`.
+- Wired on: `/login`, `/signup`, `/forgot-password`. The form field name set by Cloudflare's widget is `cf-turnstile-response`.
+
 ## Key Rules
 
 - **NEVER delete `invoices/`** without explicit user confirmation
