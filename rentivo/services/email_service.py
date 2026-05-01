@@ -50,3 +50,11 @@ class EmailService:
             template_stem="password_reset",
             ctx={"email": to_email, "reset_url": reset_url},
         )
+
+    def safe_send_welcome(self, to_email: str, pix_setup_url: str) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject="Bem-vindo à Rentivo",
+            template_stem="welcome",
+            ctx={"email": to_email, "pix_setup_url": pix_setup_url},
+        )

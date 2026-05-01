@@ -8,9 +8,11 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
+from rentivo.settings import settings
 from web.analytics import push_event
 from web.deps import (
     get_audit_service,
+    get_email_service,
     get_mfa_service,
     get_turnstile_service,
     get_user_service,
@@ -131,6 +133,9 @@ async def signup(request: Request):
     )
 
     push_event(request, {"event": "rentivo_signup_completed"})
+
+    pix_setup_url = f"{settings.public_app_url.rstrip('/')}/security/pix"
+    get_email_service(request).safe_send_welcome(to_email=user.email, pix_setup_url=pix_setup_url)
     return RedirectResponse("/billings/", status_code=302)
 
 

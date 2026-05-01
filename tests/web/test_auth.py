@@ -754,3 +754,27 @@ class TestSignupTurnstile:
         )
         assert response.status_code == 302
         assert "/billings" in response.headers["location"]
+
+
+class TestSignupSendsWelcomeEmail:
+    def test_signup_dispatches_welcome_email(self, client, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, pix_setup_url):
+            sent.append({"to": to_email, "url": pix_setup_url})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_welcome", _capture)
+        response = client.post(
+            "/signup",
+            data={
+                "email": "newuser@example.com",
+                "password": "secret",
+                "confirm_password": "secret",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent == [{"to": "newuser@example.com", "url": "http://localhost:8000/security/pix"}]

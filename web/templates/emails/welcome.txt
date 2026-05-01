@@ -1,0 +1,15 @@
+RENTIVO — BOAS-VINDAS
+======================
+
+Olá,
+
+Sua conta Rentivo foi criada ({{ email }}).
+
+Para começar, configure sua chave PIX para que seus inquilinos possam pagar diretamente do boleto:
+
+  {{ pix_setup_url }}
+
+Se você não criou esta conta, ignore esta mensagem.
+
+—
+Rentivo · Cobranças sem dor de cabeça
