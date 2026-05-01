@@ -30,6 +30,24 @@ router = APIRouter(prefix="/security")
 
 WEBAUTHN_CHALLENGE_TIMEOUT = 300  # 5 minutes
 
+_MFA_CHANGE_LABELS = {
+    "totp_enabled": "TOTP ativado",
+    "totp_disabled": "TOTP desativado",
+    "passkey_registered": "Passkey registrado",
+    "passkey_deleted": "Passkey removido",
+}
+
+
+def _send_mfa_changed_email(request: Request, email: str, change_kind: str) -> None:
+    forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
+    get_email_service(request).safe_send_mfa_changed(
+        to_email=email,
+        change_label=_MFA_CHANGE_LABELS[change_kind],
+        changed_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
+        source_ip=request.client.host if request.client else "unknown",
+        reset_url=forgot_url,
+    )
+
 
 @router.get("/")
 async def security_settings(request: Request):
@@ -197,6 +215,7 @@ async def totp_confirm(request: Request):
         entity_type="user",
         entity_id=user_id,
     )
+    _send_mfa_changed_email(request, request.session.get("email", ""), "totp_enabled")
 
     push_event(request, {"event": "rentivo_mfa_enabled", "method": "totp"})
     return render(
@@ -238,6 +257,7 @@ async def totp_disable(request: Request):
         entity_type="user",
         entity_id=user_id,
     )
+    _send_mfa_changed_email(request, email, "totp_disabled")
 
     flash(request, "TOTP desativado com sucesso.", "success")
     push_event(request, {"event": "rentivo_mfa_disabled"})
@@ -361,6 +381,7 @@ async def passkey_register_complete(request: Request):
         entity_id=user_id,
         metadata={"passkey_name": passkey_name},
     )
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_registered")
 
     push_event(request, {"event": "rentivo_passkey_added"})
     return JSONResponse({"status": "ok", "name": passkey_name})
@@ -387,6 +408,7 @@ async def passkey_delete(request: Request, passkey_uuid: str):
         entity_id=user_id,
         metadata={"passkey_uuid": passkey_uuid},
     )
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_deleted")
 
     flash(request, "Passkey removida.", "success")
     push_event(request, {"event": "rentivo_passkey_removed"})

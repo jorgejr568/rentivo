@@ -32,3 +32,18 @@ def test_send_password_changed_includes_metadata():
     assert "01/05/2026 14:30" in sent.html_body
     assert "203.0.113.5" in sent.text_body
     assert "Senha alterada" in sent.subject
+
+
+def test_send_mfa_changed_renders_label_and_meta():
+    service, backend = _service()
+    service.safe_send_mfa_changed(
+        to_email="alice@example.com",
+        change_label="TOTP ativado",
+        changed_at="01/05/2026 14:30",
+        source_ip="203.0.113.5",
+        reset_url="http://x/forgot-password",
+    )
+    sent = backend.send.call_args[0][0]
+    assert "TOTP ativado" in sent.html_body
+    assert "TOTP ativado" in sent.text_body
+    assert "203.0.113.5" in sent.html_body

@@ -77,3 +77,24 @@ class EmailService:
                 "reset_url": reset_url,
             },
         )
+
+    def safe_send_mfa_changed(
+        self,
+        to_email: str,
+        change_label: str,
+        changed_at: str,
+        source_ip: str,
+        reset_url: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject="Alteração de MFA — Rentivo",
+            template_stem="mfa_changed",
+            ctx={
+                "email": to_email,
+                "change_label": change_label,
+                "changed_at": changed_at,
+                "source_ip": source_ip,
+                "reset_url": reset_url,
+            },
+        )
