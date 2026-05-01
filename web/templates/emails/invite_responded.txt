@@ -1,0 +1,7 @@
+RENTIVO — RESPOSTA AO CONVITE
+==============================
+
+{{ invitee_email }} {{ response_label }} o convite para a organização "{{ org_name }}".
+
+—
+Rentivo · Cobranças sem dor de cabeça

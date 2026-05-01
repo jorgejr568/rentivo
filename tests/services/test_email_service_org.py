@@ -25,3 +25,17 @@ def test_send_invite_received_renders_inviter_org_role_and_link():
     assert "Administrador" in sent.html_body
     assert "x/invites/" in sent.text_body
     assert "Convite" in sent.subject
+
+
+def test_send_invite_responded_renders_invitee_and_response():
+    service, backend = _service()
+    service.safe_send_invite_responded(
+        to_email="bob@example.com",
+        invitee_email="alice@example.com",
+        org_name="Acme",
+        response_label="aceitou",
+    )
+    sent = backend.send.call_args[0][0]
+    assert "alice@example.com" in sent.html_body
+    assert "aceitou" in sent.html_body
+    assert "Acme" in sent.text_body

@@ -139,3 +139,21 @@ class EmailService:
                 "invites_url": invites_url,
             },
         )
+
+    def safe_send_invite_responded(
+        self,
+        to_email: str,
+        invitee_email: str,
+        org_name: str,
+        response_label: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject="Resposta ao convite — Rentivo",
+            template_stem="invite_responded",
+            ctx={
+                "invitee_email": invitee_email,
+                "org_name": org_name,
+                "response_label": response_label,
+            },
+        )
