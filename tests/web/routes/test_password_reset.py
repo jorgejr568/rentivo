@@ -95,3 +95,66 @@ def test_reset_password_rejects_mismatched_passwords(client, csrf_token):
     )
     assert response.status_code == 200
     assert "coincidem" in response.text.lower()
+
+
+def test_forgot_password_get_redirects_when_logged_in(auth_client):
+    response = auth_client.get("/forgot-password", follow_redirects=False)
+    assert response.status_code == 302
+    assert "/billings" in response.headers["location"]
+
+
+def test_forgot_password_post_rejects_empty_email(client, csrf_token):
+    response = client.post(
+        "/forgot-password",
+        data={"email": "  ", "csrf_token": csrf_token},
+    )
+    assert response.status_code == 200
+    assert "Informe um e-mail" in response.text
+
+
+def test_forgot_password_swallows_dispatch_exception(client, csrf_token):
+    with patch(
+        "rentivo.services.password_reset_service.PasswordResetService.request_reset",
+        side_effect=RuntimeError("boom"),
+    ):
+        response = client.post(
+            "/forgot-password",
+            data={"email": "anyone@example.com", "csrf_token": csrf_token},
+        )
+    assert response.status_code == 200
+    assert "instruções" in response.text.lower()
+
+
+def test_reset_password_get_with_token_renders_form(client):
+    response = client.get("/reset-password?token=abc")
+    assert response.status_code == 200
+    assert "Nova senha" in response.text
+    assert 'value="abc"' in response.text
+
+
+def test_reset_password_post_empty_token_renders_invalid(client, csrf_token):
+    response = client.post(
+        "/reset-password",
+        data={
+            "token": "",
+            "password": "x",
+            "confirm_password": "x",
+            "csrf_token": csrf_token,
+        },
+    )
+    assert response.status_code == 200
+    assert "inválido" in response.text.lower() or "expirado" in response.text.lower()
+
+
+def test_reset_password_post_unknown_token_renders_invalid(client, csrf_token):
+    response = client.post(
+        "/reset-password",
+        data={
+            "token": "no-such-token",
+            "password": "new-password",
+            "confirm_password": "new-password",
+            "csrf_token": csrf_token,
+        },
+    )
+    assert response.status_code == 200
+    assert "inválido" in response.text.lower() or "expirado" in response.text.lower()

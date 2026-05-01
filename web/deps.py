@@ -253,6 +253,20 @@ def get_password_reset_service(request: Request) -> PasswordResetService:
     )
 
 
+def _hydrate_legacy_session_email(request: Request, user_id: int | None) -> str | None:
+    """Pre-migration sessions had `username` but no `email`. Backfill once from the DB so
+    existing browsers keep rendering the navbar without forcing a logout."""
+    email = request.session.get("email")
+    if not user_id or email:
+        return email
+    user = SQLAlchemyUserRepository(_get_conn(request)).get_by_id(user_id)
+    if user is not None:
+        email = user.email
+        request.session["email"] = email
+    request.session.pop("username", None)
+    return email
+
+
 def render(request: Request, template_name: str, context: dict | None = None) -> Response:
     from web.app import templates
     from web.csrf import get_csrf_token
@@ -261,13 +275,7 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     ctx = context or {}
     ctx["request"] = request
     user_id = request.session.get("user_id")
-    email = request.session.get("email")
-    if user_id and not email:
-        user = SQLAlchemyUserRepository(_get_conn(request)).get_by_id(user_id)
-        if user is not None:
-            email = user.email
-            request.session["email"] = email
-        request.session.pop("username", None)
+    email = _hydrate_legacy_session_email(request, user_id)
     ctx["user"] = email
     ctx["user_id"] = user_id
     ctx["messages"] = get_flashed_messages(request)

@@ -93,11 +93,7 @@ def _change_password(user_service: UserService, audit_service: AuditService) -> 
         console.print("[red]As senhas não coincidem.[/red]")
         return
 
-    target_user = next((u for u in users if u.email == email), None)
-    if target_user is None:
-        console.print("[red]Usuário não encontrado.[/red]")
-        return
-
+    target_user = next(u for u in users if u.email == email)
     user_service.change_password(target_user.id, password)
     audit_service.safe_log(
         AuditEventType.USER_CHANGE_PASSWORD,

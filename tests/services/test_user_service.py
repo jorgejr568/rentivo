@@ -63,3 +63,8 @@ class TestUserService:
         self.mock_repo.get_by_email.return_value = User(email="dup@b.com")
         with pytest.raises(ValueError):
             self.service.register_user("dup@b.com", "pw")
+
+    def test_update_pix_raises_when_user_disappears(self):
+        self.mock_repo.get_by_id.return_value = None
+        with pytest.raises(ValueError, match="não encontrado"):
+            self.service.update_pix(1, "key@example.com", "Merchant", "Sao Paulo")

@@ -45,3 +45,70 @@ class TestRenderInviteCountException:
         ):
             response = auth_client.get("/billings/")
         assert response.status_code == 200
+
+
+class TestLegacySessionEmailHydration:
+    """Pre-migration sessions had `username` but no `email`; render() backfills email
+    from the DB so the navbar keeps rendering for existing users without a forced logout."""
+
+    def test_hydrates_email_for_legacy_session(self, test_engine):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.user_service import UserService
+        from web.deps import _hydrate_legacy_session_email
+
+        with test_engine.connect() as conn:
+            user = UserService(SQLAlchemyUserRepository(conn)).create_user("legacy@example.com", "secret")
+
+        session = {"user_id": user.id, "username": "legacy@example.com"}
+        request = _fake_request(session, db_conn=test_engine.connect())
+        try:
+            email = _hydrate_legacy_session_email(request, user.id)
+        finally:
+            request.state.db_conn.close()
+
+        assert email == "legacy@example.com"
+        assert session["email"] == "legacy@example.com"
+        assert "username" not in session
+
+    def test_returns_existing_email_without_db_lookup(self):
+        from web.deps import _hydrate_legacy_session_email
+
+        session = {"user_id": 7, "email": "current@example.com"}
+        request = _fake_request(session)
+        # No connection needed — this path must not touch the DB.
+        assert _hydrate_legacy_session_email(request, 7) == "current@example.com"
+
+    def test_returns_none_for_anonymous(self):
+        from web.deps import _hydrate_legacy_session_email
+
+        session: dict = {}
+        request = _fake_request(session)
+        assert _hydrate_legacy_session_email(request, None) is None
+
+    def test_handles_missing_user_record(self, test_engine):
+        from web.deps import _hydrate_legacy_session_email
+
+        session = {"user_id": 9999, "username": "ghost@example.com"}
+        request = _fake_request(session, db_conn=test_engine.connect())
+        try:
+            email = _hydrate_legacy_session_email(request, 9999)
+        finally:
+            request.state.db_conn.close()
+        assert email is None
+        assert "username" not in session
+
+
+def _fake_request(session: dict, db_conn=None):
+    from starlette.requests import Request
+
+    scope = {
+        "type": "http",
+        "headers": [],
+        "method": "GET",
+        "path": "/",
+        "query_string": b"",
+        "session": session,
+    }
+    request = Request(scope)
+    request.state.db_conn = db_conn
+    return request
