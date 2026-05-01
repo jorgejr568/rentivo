@@ -35,6 +35,7 @@ from rentivo.services.organization_service import OrganizationService
 from rentivo.services.password_reset_service import PasswordResetService
 from rentivo.services.pix_service import PixService
 from rentivo.services.theme_service import ThemeService
+from rentivo.services.turnstile_service import TurnstileService
 from rentivo.services.user_service import UserService
 from rentivo.settings import settings
 from rentivo.storage.factory import get_storage
@@ -241,6 +242,14 @@ def get_email_service(request: Request) -> EmailService:
     return EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
 
 
+def get_turnstile_service(request: Request) -> TurnstileService:
+    return TurnstileService(
+        site_key=settings.turnstile_site_key,
+        secret_key=settings.turnstile_secret_key,
+        verify_url=settings.turnstile_verify_url,
+    )
+
+
 def get_password_reset_service(request: Request) -> PasswordResetService:
     conn = _get_conn(request)
     user_repo = SQLAlchemyUserRepository(conn)
@@ -293,5 +302,6 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
 
     ctx["gtm_initial_push"] = build_page_context(request, template_name, ctx)
     ctx["gtm_pending_events"] = pop_events(request)
+    ctx["turnstile_site_key"] = settings.turnstile_site_key
 
     return templates.TemplateResponse(request, template_name, ctx)

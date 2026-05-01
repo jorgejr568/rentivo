@@ -98,6 +98,25 @@ class TestLegacySessionEmailHydration:
         assert "username" not in session
 
 
+class TestTurnstileServiceFactory:
+    def test_get_turnstile_service_uses_settings(self, monkeypatch):
+        from rentivo.settings import settings
+        from web.deps import get_turnstile_service
+
+        monkeypatch.setattr(settings, "turnstile_site_key", "factory-site")
+        monkeypatch.setattr(settings, "turnstile_secret_key", "factory-secret")
+        monkeypatch.setattr(settings, "turnstile_verify_url", "https://verify.invalid/x")
+
+        # Build a fake Request just to satisfy the signature.
+        class _Req:
+            pass
+
+        service = get_turnstile_service(_Req())
+        assert service.site_key == "factory-site"
+        assert service.secret_key == "factory-secret"
+        assert service.verify_url == "https://verify.invalid/x"
+
+
 def _fake_request(session: dict, db_conn=None):
     from starlette.requests import Request
 
