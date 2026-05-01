@@ -17,17 +17,36 @@ class EmailService:
             autoescape=select_autoescape(["html"]),
         )
 
-    def send_password_recovery(self, to_email: str, reset_url: str) -> str:
-        ctx = {"email": to_email, "reset_url": reset_url}
-        html_body = self._env.get_template("password_reset.html").render(**ctx)
-        text_body = self._env.get_template("password_reset.txt").render(**ctx)
+    def _render(self, template_stem: str, ctx: dict) -> tuple[str, str]:
+        html = self._env.get_template(f"{template_stem}.html").render(**ctx)
+        text = self._env.get_template(f"{template_stem}.txt").render(**ctx)
+        return html, text
+
+    def _send(self, to_email: str, subject: str, template_stem: str, ctx: dict) -> str:
+        html_body, text_body = self._render(template_stem, ctx)
         message = EmailMessage(
             to=to_email,
-            subject="Redefinir senha — Rentivo",
+            subject=subject,
             text_body=text_body,
             html_body=html_body,
             from_address=self.from_address,
         )
-        result = self.backend.send(message)
-        logger.info("password_recovery_email_sent", to=to_email)
-        return result
+        return self.backend.send(message)
+
+    def safe_send(self, to_email: str, subject: str, template_stem: str, ctx: dict) -> str | None:
+        """Dispatch and swallow exceptions so an email failure never blocks the caller."""
+        try:
+            result = self._send(to_email, subject, template_stem, ctx)
+            logger.info("email_sent", to=to_email, template=template_stem)
+            return result
+        except Exception as exc:
+            logger.warning("email_send_failed", to=to_email, template=template_stem, error=str(exc))
+            return None
+
+    def send_password_recovery(self, to_email: str, reset_url: str) -> str:
+        return self._send(
+            to_email=to_email,
+            subject="Redefinir senha — Rentivo",
+            template_stem="password_reset",
+            ctx={"email": to_email, "reset_url": reset_url},
+        )
