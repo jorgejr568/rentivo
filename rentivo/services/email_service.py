@@ -157,3 +157,21 @@ class EmailService:
                 "response_label": response_label,
             },
         )
+
+    def safe_send_member_changed(
+        self,
+        to_email: str,
+        change_message: str,
+        org_name: str,
+        actor_email: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject=f'Alteração em "{org_name}" — Rentivo',
+            template_stem="member_changed",
+            ctx={
+                "change_message": change_message,
+                "org_name": org_name,
+                "actor_email": actor_email,
+            },
+        )

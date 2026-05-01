@@ -177,6 +177,36 @@ class TestMemberManagement:
         )
         assert response.status_code == 302
 
+    def test_role_change_notifies_member(self, auth_client, test_engine, csrf_token, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, change_message, org_name, actor_email):
+            sent.append({"to": to_email, "msg": change_message, "actor": actor_email, "org": org_name})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_member_changed", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        org = create_org_in_db(test_engine, "RoleNotifyOrg", user_id)
+
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            target = user_repo.create(User(email="target@example.com", password_hash="h"))
+            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo.add_member(org.id, target.id, "viewer")
+
+        response = auth_client.post(
+            f"/organizations/{org.uuid}/members/{target.id}/role",
+            data={"csrf_token": csrf_token, "role": "admin"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent and sent[0]["to"] == "target@example.com"
+        assert "para Administrador" in sent[0]["msg"]
+        assert sent[0]["org"] == "RoleNotifyOrg"
+
     def test_cannot_remove_self(self, auth_client, test_engine, csrf_token):
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "My Org", user_id)

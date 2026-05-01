@@ -39,3 +39,17 @@ def test_send_invite_responded_renders_invitee_and_response():
     assert "alice@example.com" in sent.html_body
     assert "aceitou" in sent.html_body
     assert "Acme" in sent.text_body
+
+
+def test_send_member_changed_renders_message_org_and_actor():
+    service, backend = _service()
+    service.safe_send_member_changed(
+        to_email="alice@example.com",
+        change_message="Sua função mudou de Visualizador para Administrador.",
+        org_name="Acme",
+        actor_email="bob@example.com",
+    )
+    sent = backend.send.call_args[0][0]
+    assert "Sua função mudou" in sent.html_body
+    assert "Acme" in sent.text_body
+    assert "bob@example.com" in sent.html_body

@@ -1,0 +1,10 @@
+RENTIVO — ALTERAÇÃO NA ORGANIZAÇÃO
+====================================
+
+{{ change_message }}
+
+Organização: {{ org_name }}
+Quem fez: {{ actor_email }}
+
+—
+Rentivo · Cobranças sem dor de cabeça

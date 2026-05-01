@@ -17,6 +17,7 @@ from web.deps import (
     get_invite_service,
     get_mfa_service,
     get_organization_service,
+    get_user_service,
     render,
 )
 from web.flash import flash
@@ -269,6 +270,18 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
         previous_state={"role": old_role},
         new_state={"role": new_role},
     )
+
+    role_labels = {"admin": "Administrador", "manager": "Gerente", "viewer": "Visualizador", "owner": "Dono"}
+    member_user = get_user_service(request).get_by_id(member_user_id)
+    if member_user is not None:
+        old_label = role_labels.get(old_role, old_role) if old_role else "—"
+        new_label = role_labels.get(new_role, new_role)
+        get_email_service(request).safe_send_member_changed(
+            to_email=member_user.email,
+            change_message=f"Sua função mudou de {old_label} para {new_label}.",
+            org_name=org.name,
+            actor_email=request.session.get("email", ""),
+        )
 
     flash(request, "Papel atualizado com sucesso!", "success")
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
