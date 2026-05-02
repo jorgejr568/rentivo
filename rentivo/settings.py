@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     turnstile_secret_key: str = ""
     turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
+    job_worker_batch_size: int = 10
+    job_worker_idle_sleep_seconds: float = 5.0
+    job_worker_stuck_after_seconds: int = 600
+
     @field_validator("email_backend")
     @classmethod
     def _validate_email_backend(cls, v: str) -> str:
