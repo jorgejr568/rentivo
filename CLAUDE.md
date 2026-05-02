@@ -218,6 +218,16 @@ When the user asks you to open a PR, you are responsible for filling out the PR 
 - Templates live in `web/templates/emails/*.html` + `*.txt`. PT-BR copy.
 - `EmailService.send_password_recovery(to_email, reset_url)` is the only consumer for now.
 
+## Password Recovery
+
+- Routes: `/forgot-password`, `/reset-password` (both public).
+- Tokens are stored hashed (SHA-256) in `password_reset_tokens`; only the raw token (URL-safe, 48 bytes) is emailed.
+- TTL: 1 hour. Single-use. On consumption all other unused tokens for the user are invalidated.
+- "Unknown email" returns the same UI as "email sent" — no enumeration.
+- Audit events: `user.password_reset_requested`, `user.password_reset_completed`.
+
+## Transactional Emails
+
 ### Account & security emails
 
 All dispatched via `EmailService.safe_send_*` (swallow failures, never block the auth flow):
@@ -233,14 +243,6 @@ All dispatched via `EmailService.safe_send_*` (swallow failures, never block the
 - `invite_responded` — to the original inviter when the invitee accepts or declines (`web/routes/invite.py`). `response_label` is `"aceitou"` or `"recusou"`.
 - `member_changed` — to the affected user when their role changes in an org (`web/routes/organization.py:member_change_role`).
 - `billing_transferred` — fires from `web/routes/billing.py` transfer handler. Notifies the previous user-owner (if any) and every `admin`/`owner` member of the destination organization.
-
-## Password Recovery
-
-- Routes: `/forgot-password`, `/reset-password` (both public).
-- Tokens are stored hashed (SHA-256) in `password_reset_tokens`; only the raw token (URL-safe, 48 bytes) is emailed.
-- TTL: 1 hour. Single-use. On consumption all other unused tokens for the user are invalidated.
-- "Unknown email" returns the same UI as "email sent" — no enumeration.
-- Audit events: `user.password_reset_requested`, `user.password_reset_completed`.
 
 ## Bot Protection (Cloudflare Turnstile)
 

@@ -44,12 +44,14 @@ class EmailService:
             return None
 
     def send_password_recovery(self, to_email: str, reset_url: str) -> str:
-        return self._send(
+        result = self._send(
             to_email=to_email,
             subject="Redefinir senha — Rentivo",
             template_stem="password_reset",
             ctx={"email": to_email, "reset_url": reset_url},
         )
+        logger.info("password_recovery_email_sent", to=to_email)
+        return result
 
     def safe_send_welcome(self, to_email: str, pix_setup_url: str) -> str | None:
         return self.safe_send(
