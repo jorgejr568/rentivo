@@ -12,6 +12,7 @@ from rentivo.pdf.invoice import InvoicePDF
 from rentivo.pdf.merger import merge_receipts
 from rentivo.pix import generate_pix_payload, generate_pix_qrcode_png
 from rentivo.repositories.base import BillRepository, ReceiptRepository
+from rentivo.services.job_service import JobService
 from rentivo.services.pix_service import PixConfig, PixService
 from rentivo.settings import settings
 from rentivo.storage.base import StorageBackend
@@ -51,12 +52,20 @@ class BillService:
         receipt_repo: ReceiptRepository | None = None,
         theme_service: object | None = None,
         pix_service: PixService | None = None,
+        job_service: JobService | None = None,
+        actor_source: str = "",
+        actor_id: int | None = None,
+        actor_username: str = "",
     ) -> None:
         self.bill_repo = bill_repo
         self.storage = storage
         self.receipt_repo = receipt_repo
         self.theme_service = theme_service
         self.pix_service = pix_service
+        self.job_service = job_service
+        self._actor_source = actor_source
+        self._actor_id = actor_id
+        self._actor_username = actor_username
         self.pdf_generator = InvoicePDF()
 
     def _resolve_pix(self, billing: Billing) -> PixConfig:
@@ -115,11 +124,14 @@ class BillService:
                 )
         return data, ordered
 
-    def _generate_and_store_pdf(self, bill: Bill, billing: Billing) -> tuple[str, list[str]]:
+    def _render_pdf_sync(self, bill: Bill, billing: Billing) -> tuple[str, list[str]]:
         """Generate PDF, save to storage, and update bill's pdf_path.
 
-        Returns (storage_path, failed_receipt_uuids) where failed_receipt_uuids
-        lists receipts that could not be merged into the PDF.
+        Sets pdf_render_status='succeeded' on success. Used by the
+        first-render path (generate_bill), the CLI (no JobService),
+        and the pdf.render handler.
+
+        Returns (storage_path, failed_receipt_uuids).
         """
         theme = None
         if self.theme_service is not None:
@@ -154,8 +166,34 @@ class BillService:
         if bill.id is None:
             raise ValueError("Cannot update pdf_path for bill without an id")
         self.bill_repo.update_pdf_path(bill.id, path)
+        self.bill_repo.update_pdf_render_status(bill.id, "succeeded")
         bill.pdf_path = path
+        bill.pdf_render_status = "succeeded"
         return path, failed_uuids
+
+    def _render_or_enqueue(self, bill: Bill, billing: Billing) -> tuple[str | None, list[str]]:
+        """Render synchronously when no JobService is configured (CLI),
+        or enqueue a pdf.render job when one is (web).
+
+        Returns (path, failed_uuids). In the enqueue branch path is None
+        and failed_uuids is empty (the worker reports merge failures
+        through the audit log).
+        """
+        if bill.id is None:
+            raise ValueError("Cannot render or enqueue for bill without an id")
+        if self.job_service is None:
+            return self._render_pdf_sync(bill, billing)
+        self.bill_repo.update_pdf_render_status(bill.id, "pending")
+        bill.pdf_render_status = "pending"
+        self.job_service.enqueue(
+            "pdf.render",
+            {"bill_id": bill.id},
+            source=self._actor_source,
+            actor_id=self._actor_id,
+            actor_username=self._actor_username,
+            max_attempts=3,
+        )
+        return None, []
 
     def generate_bill(
         self,
@@ -219,7 +257,7 @@ class BillService:
             total_centavos=total,
         )
 
-        self._generate_and_store_pdf(bill, billing)
+        self._render_pdf_sync(bill, billing)
 
         return bill
 
@@ -239,14 +277,19 @@ class BillService:
         bill = self.bill_repo.update(bill)
         logger.info("bill_updated", bill_id=bill.id, total_centavos=bill.total_amount)
 
-        self._generate_and_store_pdf(bill, billing)
+        self._render_or_enqueue(bill, billing)
 
         return bill
 
     def regenerate_pdf(self, bill: Bill, billing: Billing) -> Bill:
-        """Regenerate the PDF using current billing info (PIX key, etc.)."""
+        """Regenerate the PDF using current billing info (PIX key, etc.).
+
+        With a JobService configured (web), enqueues a pdf.render job
+        and returns immediately; bill.pdf_render_status is set to
+        'pending'. Without one (CLI), renders synchronously.
+        """
         logger.info("bill_pdf_regenerate", bill_uuid=bill.uuid)
-        self._generate_and_store_pdf(bill, billing)
+        self._render_or_enqueue(bill, billing)
         return bill
 
     def get_invoice_url(self, pdf_path: str | None) -> str:
@@ -350,7 +393,7 @@ class BillService:
             filename=filename,
         )
 
-        _, failed_uuids = self._generate_and_store_pdf(bill, billing)
+        _, failed_uuids = self._render_or_enqueue(bill, billing)
         return receipt, failed_uuids
 
     def delete_receipt(self, receipt: Receipt, bill: Bill, billing: Billing) -> None:
@@ -364,7 +407,7 @@ class BillService:
         logger.info("receipt_deleted", receipt_uuid=receipt.uuid, bill_uuid=bill.uuid)
 
         # Regenerate PDF without this receipt
-        self._generate_and_store_pdf(bill, billing)
+        self._render_or_enqueue(bill, billing)
 
     def list_receipts(self, bill_id: int) -> list[Receipt]:
         """List receipts for a bill."""
@@ -398,4 +441,4 @@ class BillService:
         self.receipt_repo.update_sort_orders(updates)
         logger.info("receipts_reordered", bill_uuid=bill.uuid, count=len(updates))
 
-        self._generate_and_store_pdf(bill, billing)
+        self._render_or_enqueue(bill, billing)

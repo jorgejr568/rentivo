@@ -24,6 +24,11 @@
         <p class="page-subtitle">Cobrança: {{ billing.name }}</p>
     </div>
     <div class="page-actions">
+        {% if bill.pdf_render_status == "pending" %}
+        <span class="tag tag--draft" title="O PDF está sendo regenerado em segundo plano.">Renderizando...</span>
+        {% elif bill.pdf_render_status == "failed" %}
+        <span class="tag tag--cancelled" title="Falha ao gerar o PDF. Tente regenerar manualmente.">Falha na geração do PDF</span>
+        {% endif %}
         {% if bill.pdf_path %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
         {% endif %}

@@ -108,6 +108,12 @@ class Worker:
             previous_state=None,
             new_state={"job_type": job.job_type, "ulid": job.ulid, "attempts": job.attempts, "error": err},
         )
+        hook = registry.get_fail_hook(job.job_type)
+        if hook is not None:
+            try:
+                hook(job.payload)
+            except Exception:
+                logger.exception("job_fail_hook_failed", ulid=job.ulid, job_type=job.job_type)
         logger.warning("job_failed", ulid=job.ulid, attempts=job.attempts, error=err)
 
     def _fail_permanent(self, job: Job, err: str) -> None:

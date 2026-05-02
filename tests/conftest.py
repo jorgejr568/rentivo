@@ -56,6 +56,7 @@ CREATE TABLE bills (
     due_date TEXT,
     status TEXT NOT NULL DEFAULT 'draft',
     status_updated_at DATETIME,
+    pdf_render_status VARCHAR(16),
     created_at DATETIME NOT NULL,
     deleted_at DATETIME
 );

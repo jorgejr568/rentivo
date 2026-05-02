@@ -342,7 +342,7 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
         new_state=serialize_bill(bill),
     )
 
-    flash(request, "Fatura atualizada com sucesso!", "success")
+    flash(request, "Fatura atualizada. O PDF será atualizado em segundo plano.", "success")
     push_event(request, {"event": "rentivo_bill_edited", "bill_uuid_hash": analytics_hash(bill_uuid)})
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
@@ -379,7 +379,7 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
         )
         return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill_uuid}", status_code=302)
 
-    old_pdf_path = bill.pdf_path
+    old_render_status = bill.pdf_render_status
     bill_service.regenerate_pdf(bill, billing)
 
     audit = get_audit_service(request)
@@ -391,11 +391,15 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
-        previous_state={"pdf_path": old_pdf_path},
-        new_state={"pdf_path": bill.pdf_path},
+        previous_state={"pdf_render_status": old_render_status},
+        new_state={"pdf_render_status": bill.pdf_render_status},
     )
 
-    flash(request, "PDF regenerado com sucesso!", "success")
+    flash(
+        request,
+        "Regeneração do PDF iniciada. O download estará disponível em alguns segundos.",
+        "success",
+    )
     push_event(request, {"event": "rentivo_bill_regenerated", "bill_uuid_hash": analytics_hash(bill_uuid)})
     return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
 
@@ -630,7 +634,6 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
     attached = 0
     skipped = 0
     total_bytes = 0
-    accumulated_failed: set[str] = set()
     audit = get_audit_service(request)
     for upload in valid_uploads:
         file_bytes = await upload.read()
@@ -648,7 +651,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
             continue
 
         total_bytes += len(file_bytes)
-        receipt, failed_uuids = bill_service.add_receipt(
+        receipt, _ = bill_service.add_receipt(
             bill=bill,
             billing=billing,
             filename=upload.filename,
@@ -657,7 +660,6 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         )
 
         attached += 1
-        accumulated_failed.update(failed_uuids)
 
         audit.safe_log(
             AuditEventType.RECEIPT_UPLOAD,
@@ -677,17 +679,15 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
         )
 
     if attached == 1:
-        flash(request, "Comprovante anexado com sucesso!", "success")
+        flash(request, "Comprovante anexado. O PDF será atualizado em segundo plano.", "success")
     elif attached > 1:
-        flash(request, f"{attached} comprovantes anexados com sucesso!", "success")
-    if skipped:
-        flash(request, f"{skipped} arquivo(s) ignorado(s) (tipo inválido, vazio ou muito grande).", "warning")
-    if accumulated_failed:
         flash(
             request,
-            f"{len(accumulated_failed)} comprovante(s) não puderam ser incluídos no PDF. Tente enviar novamente.",
-            "warning",
+            f"{attached} comprovantes anexados. O PDF será atualizado em segundo plano.",
+            "success",
         )
+    if skipped:
+        flash(request, f"{skipped} arquivo(s) ignorado(s) (tipo inválido, vazio ou muito grande).", "warning")
     if attached > 0:
         push_event(
             request,
@@ -774,7 +774,7 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
         previous_state=previous_state,
     )
 
-    flash(request, "Comprovante removido.", "success")
+    flash(request, "Comprovante removido. O PDF será atualizado em segundo plano.", "success")
     push_event(request, {"event": "rentivo_receipt_deleted", "bill_uuid_hash": analytics_hash(bill_uuid)})
     return RedirectResponse(redirect_url, status_code=302)
 

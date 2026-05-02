@@ -9,6 +9,12 @@
     Referencia: <strong>{{ format_month(bill.reference_month) }}</strong>
 </p>
 
+{% if bill.pdf_render_status == "pending" %}
+<p class="text-muted">O PDF desta fatura está sendo regenerado em segundo plano.</p>
+{% elif bill.pdf_render_status == "failed" %}
+<p class="text-muted"><strong>Atenção:</strong> a última tentativa de gerar o PDF falhou. Use "Regenerar PDF" para tentar novamente.</p>
+{% endif %}
+
 <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
