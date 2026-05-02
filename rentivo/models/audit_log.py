@@ -68,6 +68,12 @@ class AuditEventType:
     THEME_UPDATE = "theme.update"
     THEME_DELETE = "theme.delete"
 
+    # Job queue events
+    JOB_ENQUEUED = "job.enqueued"
+    JOB_SUCCEEDED = "job.succeeded"
+    JOB_RETRY_SCHEDULED = "job.retry_scheduled"
+    JOB_FAILED = "job.failed"
+
 
 class AuditLog(BaseModel):
     id: int | None = None
