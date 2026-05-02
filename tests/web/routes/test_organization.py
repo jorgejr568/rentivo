@@ -496,20 +496,28 @@ class TestOrganizationTransferBilling:
 
     def test_transfer_billing_notifies_and_audits(self, auth_client, test_engine, csrf_token, monkeypatch):
         """Issue #1: org-side transfer must email admins + previous owner AND audit-log BILLING_TRANSFER."""
+        from rentivo.jobs.base import Job
         from rentivo.models.audit_log import AuditEventType
         from rentivo.models.organization import OrgRole
         from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
-        from rentivo.services.email_service import EmailService
+        from rentivo.services.job_service import JobService
         from tests.web.conftest import get_audit_logs
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "billing_transferred":
-                sent.append({"to": to_email, "role": ctx["recipient_role"]})
-            return "id"
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "billing_transferred":
+                sent.append({"to": payload["to_email"], "role": payload["ctx"]["recipient_role"]})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         user_id = get_test_user_id(test_engine)
         # Billing previously owned by another user — so they should be notified.
