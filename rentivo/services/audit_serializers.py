@@ -141,8 +141,9 @@ def serialize_job_payload(payload: dict) -> dict:
 
     For email.send: keeps ``event`` and ``to_email`` (the row's whole purpose) and
     a count of ctx keys, but drops every ctx value (templates can carry org
-    names, IPs, reset URLs — none belong in audit rows). For unknown job types
-    we keep only a sorted index of top-level keys.
+    names, IPs, reset URLs — none belong in audit rows). For s3.delete: keeps
+    ``key`` (a ULID-only storage path; safe to log). For unknown job types we
+    keep only a sorted index of top-level keys.
     """
     job_type = payload.get("job_type", "")
     if job_type == "email.send":
@@ -151,6 +152,8 @@ def serialize_job_payload(payload: dict) -> dict:
             "to_email": payload.get("to_email"),
             "ctx_keys_count": len(payload.get("ctx") or {}),
         }
+    if job_type == "s3.delete":
+        return {"key": payload.get("key", "")}
     return {
         "job_type": job_type,
         "keys": sorted(k for k in payload.keys() if not _is_disallowed_key(k)),

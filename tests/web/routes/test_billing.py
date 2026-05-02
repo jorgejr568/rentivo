@@ -622,3 +622,130 @@ class TestBillingDeleteIdNone:
                 follow_redirects=False,
             )
         assert response.status_code == 302
+
+
+class TestBillingDeleteEnqueuesS3Delete:
+    def _setup_billing_with_bills_and_receipts(
+        self,
+        auth_client,
+        csrf_token,
+        test_engine,
+        tmp_path,
+        bill_count,
+        receipts_per_bill,
+    ):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import (
+            SQLAlchemyBillRepository,
+            SQLAlchemyReceiptRepository,
+        )
+        from rentivo.storage.local import LocalStorage
+        from tests.web.conftest import generate_bill_in_db
+
+        billing = create_billing_in_db(test_engine)
+        bills = []
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            for i in range(bill_count):
+                bill = generate_bill_in_db(test_engine, billing, tmp_path)
+                # generate_bill_in_db reuses the same reference_month; bump it so we don't collide
+                if i > 0:
+                    with test_engine.connect() as conn:
+                        conn.execute(
+                            text("UPDATE bills SET reference_month = :rm WHERE id = :id"),
+                            {"rm": f"2025-{i + 4:02d}", "id": bill.id},
+                        )
+                        conn.commit()
+                for j in range(receipts_per_bill):
+                    auth_client.post(
+                        f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                        data={"csrf_token": csrf_token},
+                        files={
+                            "receipt_files": (
+                                f"r{i}_{j}.pdf",
+                                b"%PDF-test",
+                                "application/pdf",
+                            )
+                        },
+                        follow_redirects=False,
+                    )
+                bills.append(bill)
+        # Reload bills to pick up the latest pdf_path after each upload regenerates the PDF.
+        with test_engine.connect() as conn:
+            bill_repo = SQLAlchemyBillRepository(conn)
+            bills = [bill_repo.get_by_uuid(b.uuid) for b in bills]
+            receipt_repo = SQLAlchemyReceiptRepository(conn)
+            receipts_by_bill = {b.id: receipt_repo.list_by_bill(b.id) for b in bills}
+        return billing, bills, receipts_by_bill
+
+    def test_billing_delete_enqueues_full_cascade(self, auth_client, csrf_token, monkeypatch, test_engine, tmp_path):
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
+        from rentivo.storage.local import LocalStorage
+
+        billing, bills, receipts_by_bill = self._setup_billing_with_bills_and_receipts(
+            auth_client, csrf_token, test_engine, tmp_path, bill_count=2, receipts_per_bill=1
+        )
+        assert len(bills) == 2
+
+        sent: list[dict] = []
+
+        def _capture(self, job_type, payload, **kwargs):
+            sent.append({"job_type": job_type, "payload": payload})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
+
+        monkeypatch.setattr(JobService, "enqueue", _capture)
+
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/delete",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code in (200, 302)
+
+        s3_keys = {s["payload"]["key"] for s in sent if s["job_type"] == "s3.delete"}
+        for bill in bills:
+            assert bill.pdf_path in s3_keys
+            for receipt in receipts_by_bill[bill.id]:
+                assert receipt.storage_key in s3_keys
+        # 2 bills x (1 receipt + 1 PDF) = 4 jobs
+        assert len(s3_keys) == 4
+
+    def test_billing_delete_with_no_bills_enqueues_nothing(self, auth_client, csrf_token, monkeypatch, test_engine):
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
+
+        sent: list[dict] = []
+
+        def _capture(self, job_type, payload, **kwargs):
+            sent.append({"job_type": job_type, "payload": payload})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
+
+        monkeypatch.setattr(JobService, "enqueue", _capture)
+
+        billing = create_billing_in_db(test_engine)
+
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code in (200, 302)
+
+        s3_jobs = [s for s in sent if s["job_type"] == "s3.delete"]
+        assert s3_jobs == []

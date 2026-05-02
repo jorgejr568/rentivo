@@ -19,6 +19,7 @@ from web.deps import (
     get_bill_service,
     get_billing_service,
     get_pix_service,
+    get_storage_cleanup_service,
     render,
 )
 from web.flash import flash
@@ -485,6 +486,15 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
         flash(request, "Fatura inválida.", "danger")
         return RedirectResponse("/", status_code=302)
     previous_state = serialize_bill(bill)
+
+    cleanup = get_storage_cleanup_service(request)
+    cleanup.enqueue_bill_delete_cascade(
+        bill,
+        source="web",
+        actor_id=user_id,
+        actor_username=request.session.get("email", ""),
+    )
+
     bill_service.delete_bill(bill.id)
 
     audit = get_audit_service(request)
@@ -743,6 +753,14 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
         "billing_uuid": billing_uuid,
     }
     bill_service.delete_receipt(receipt, bill, billing)
+
+    cleanup = get_storage_cleanup_service(request)
+    cleanup.enqueue_receipt_delete(
+        receipt,
+        source="web",
+        actor_id=user_id,
+        actor_username=request.session.get("email", ""),
+    )
 
     audit = get_audit_service(request)
     audit.safe_log(

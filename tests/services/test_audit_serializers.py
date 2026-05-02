@@ -305,3 +305,20 @@ class TestSerializeJobPayload:
         result = serialize_job_payload({"foo": "bar"})
 
         assert result == {"job_type": "", "keys": ["foo"]}
+
+    def test_s3_delete_keeps_key(self):
+        result = serialize_job_payload({"job_type": "s3.delete", "key": "01HX/01HZ.pdf"})
+
+        assert result == {"key": "01HX/01HZ.pdf"}
+
+    def test_s3_delete_missing_key_yields_empty_string(self):
+        result = serialize_job_payload({"job_type": "s3.delete"})
+
+        assert result == {"key": ""}
+
+    def test_s3_delete_with_extra_payload_keys_ignores_them(self):
+        # Forward compatibility: if a caller adds metadata to the payload,
+        # the audit serializer keeps only `key` to avoid leaking unknown values.
+        result = serialize_job_payload({"job_type": "s3.delete", "key": "k", "bucket": "secret", "actor": "x"})
+
+        assert result == {"key": "k"}
