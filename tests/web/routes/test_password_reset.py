@@ -231,11 +231,12 @@ def test_reset_password_sends_completion_notification(client, csrf_token, test_e
 
     sent: list[dict] = []
 
-    def _capture(self, to_email, changed_at, source_ip):
-        sent.append({"to": to_email})
+    def _capture(self, to_email, event, ctx):
+        if event == "password_reset_completed":
+            sent.append({"to": to_email})
         return "id"
 
-    monkeypatch.setattr(EmailService, "safe_send_password_reset_completed", _capture)
+    monkeypatch.setattr(EmailService, "safe_send", _capture)
 
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)

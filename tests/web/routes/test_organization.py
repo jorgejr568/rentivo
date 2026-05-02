@@ -182,11 +182,19 @@ class TestMemberManagement:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, change_message, org_name, actor_email):
-            sent.append({"to": to_email, "msg": change_message, "actor": actor_email, "org": org_name})
+        def _capture(self, to_email, event, ctx):
+            if event == "member_changed":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "msg": ctx["change_message"],
+                        "actor": ctx["actor_email"],
+                        "org": ctx["org_name"],
+                    }
+                )
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_member_changed", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "RoleNotifyOrg", user_id)
@@ -262,19 +270,20 @@ class TestOrganizationInvite:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, inviter_email, org_name, role_label, invites_url):
-            sent.append(
-                {
-                    "to": to_email,
-                    "inviter": inviter_email,
-                    "org": org_name,
-                    "role": role_label,
-                    "url": invites_url,
-                }
-            )
+        def _capture(self, to_email, event, ctx):
+            if event == "invite_received":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "inviter": ctx["inviter_email"],
+                        "org": ctx["org_name"],
+                        "role": ctx["role_label"],
+                        "url": ctx["invites_url"],
+                    }
+                )
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_invite_received", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "Acme", user_id)
@@ -495,11 +504,12 @@ class TestOrganizationTransferBilling:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, billing_name, recipient_role, actor_email):
-            sent.append({"to": to_email, "role": recipient_role})
+        def _capture(self, to_email, event, ctx):
+            if event == "billing_transferred":
+                sent.append({"to": to_email, "role": ctx["recipient_role"]})
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_billing_transferred", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         user_id = get_test_user_id(test_engine)
         # Billing previously owned by another user — so they should be notified.

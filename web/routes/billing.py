@@ -50,11 +50,14 @@ def _notify_billing_transferred(
     if previous_owner["owner_type"] == "user":
         prev_user = user_service.get_by_id(previous_owner["owner_id"])
         if prev_user is not None and prev_user.id != actor_user_id:
-            email_service.safe_send_billing_transferred(
+            email_service.safe_send(
                 to_email=prev_user.email,
-                billing_name=billing.name,
-                recipient_role="previous_owner",
-                actor_email=actor_email,
+                event="billing_transferred",
+                ctx={
+                    "billing_name": billing.name,
+                    "recipient_role": "previous_owner",
+                    "actor_email": actor_email,
+                },
             )
 
     # Notify admin members of the destination organization (excluding the actor).
@@ -62,11 +65,14 @@ def _notify_billing_transferred(
         if member.user_id == actor_user_id:
             continue
         if member.role == OrgRole.ADMIN.value:
-            email_service.safe_send_billing_transferred(
+            email_service.safe_send(
                 to_email=member.email,
-                billing_name=billing.name,
-                recipient_role="destination_admin",
-                actor_email=actor_email,
+                event="billing_transferred",
+                ctx={
+                    "billing_name": billing.name,
+                    "recipient_role": "destination_admin",
+                    "actor_email": actor_email,
+                },
             )
 
 

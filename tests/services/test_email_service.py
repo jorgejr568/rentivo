@@ -31,8 +31,7 @@ def test_safe_send_swallows_backend_exceptions():
     service = EmailService(BlowingBackend(), from_address="noreply@x")
     result = service.safe_send(
         to_email="alice@example.com",
-        subject="t",
-        template_stem="password_reset",
+        event="password_reset",
         ctx={"email": "alice@example.com", "reset_url": "http://x/y"},
     )
     assert result is None  # exception swallowed
@@ -48,8 +47,7 @@ def test_safe_send_returns_message_id_on_success():
     service = EmailService(backend, from_address="noreply@x")
     result = service.safe_send(
         to_email="alice@example.com",
-        subject="t",
-        template_stem="password_reset",
+        event="password_reset",
         ctx={"email": "alice@example.com", "reset_url": "http://x/y"},
     )
     assert result == "id-1"

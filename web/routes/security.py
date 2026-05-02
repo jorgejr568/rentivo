@@ -41,12 +41,16 @@ _MFA_CHANGE_LABELS = {
 
 def _send_mfa_changed_email(request: Request, email: str, change_kind: str) -> None:
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_email_service(request).safe_send_mfa_changed(
+    get_email_service(request).safe_send(
         to_email=email,
-        change_label=_MFA_CHANGE_LABELS[change_kind],
-        changed_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
-        source_ip=request.client.host if request.client else "unknown",
-        reset_url=forgot_url,
+        event="mfa_changed",
+        ctx={
+            "email": email,
+            "change_label": _MFA_CHANGE_LABELS[change_kind],
+            "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "source_ip": request.client.host if request.client else "unknown",
+            "reset_url": forgot_url,
+        },
     )
 
 
@@ -156,11 +160,15 @@ async def change_password(request: Request):
     )
 
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_email_service(request).safe_send_password_changed(
+    get_email_service(request).safe_send(
         to_email=email,
-        changed_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
-        source_ip=request.client.host if request.client else "unknown",
-        reset_url=forgot_url,
+        event="password_changed",
+        ctx={
+            "email": email,
+            "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "source_ip": request.client.host if request.client else "unknown",
+            "reset_url": forgot_url,
+        },
     )
 
     flash(request, "Senha alterada com sucesso!", "success")

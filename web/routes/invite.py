@@ -54,11 +54,14 @@ async def invite_accept(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_email_service(request).safe_send_invite_responded(
+        get_email_service(request).safe_send(
             to_email=invite_record.invited_by_email,
-            invitee_email=invite_record.invited_email,
-            org_name=invite_record.organization_name,
-            response_label="aceitou",
+            event="invite_responded",
+            ctx={
+                "invitee_email": invite_record.invited_email,
+                "org_name": invite_record.organization_name,
+                "response_label": "aceitou",
+            },
         )
 
     # Check if user now needs MFA setup (accepted invite from enforcing org)
@@ -96,11 +99,14 @@ async def invite_decline(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_email_service(request).safe_send_invite_responded(
+        get_email_service(request).safe_send(
             to_email=invite_record.invited_by_email,
-            invitee_email=invite_record.invited_email,
-            org_name=invite_record.organization_name,
-            response_label="recusou",
+            event="invite_responded",
+            ctx={
+                "invitee_email": invite_record.invited_email,
+                "org_name": invite_record.organization_name,
+                "response_label": "recusou",
+            },
         )
 
     flash(request, "Convite recusado.", "info")

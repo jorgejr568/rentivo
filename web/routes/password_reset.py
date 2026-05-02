@@ -91,10 +91,14 @@ async def reset_password(request: Request):
 
     user = get_user_service(request).get_by_id(user_id)
     if user is not None:
-        get_email_service(request).safe_send_password_reset_completed(
+        get_email_service(request).safe_send(
             to_email=user.email,
-            changed_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
-            source_ip=request.client.host if request.client else "unknown",
+            event="password_reset_completed",
+            ctx={
+                "email": user.email,
+                "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "source_ip": request.client.host if request.client else "unknown",
+            },
         )
 
     audit = get_audit_service(request)

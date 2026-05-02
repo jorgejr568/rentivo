@@ -89,18 +89,19 @@ class TestInviteResponseNotifications:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, invitee_email, org_name, response_label):
-            sent.append(
-                {
-                    "to": to_email,
-                    "invitee": invitee_email,
-                    "org": org_name,
-                    "label": response_label,
-                }
-            )
+        def _capture(self, to_email, event, ctx):
+            if event == "invite_responded":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "invitee": ctx["invitee_email"],
+                        "org": ctx["org_name"],
+                        "label": ctx["response_label"],
+                    }
+                )
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_invite_responded", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         org, invite = _setup_invite(test_engine)
         response = auth_client.post(
@@ -118,18 +119,19 @@ class TestInviteResponseNotifications:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, invitee_email, org_name, response_label):
-            sent.append(
-                {
-                    "to": to_email,
-                    "invitee": invitee_email,
-                    "org": org_name,
-                    "label": response_label,
-                }
-            )
+        def _capture(self, to_email, event, ctx):
+            if event == "invite_responded":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "invitee": ctx["invitee_email"],
+                        "org": ctx["org_name"],
+                        "label": ctx["response_label"],
+                    }
+                )
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_invite_responded", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         org, invite = _setup_invite(test_engine)
         response = auth_client.post(

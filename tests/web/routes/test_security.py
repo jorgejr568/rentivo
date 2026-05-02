@@ -692,11 +692,12 @@ class TestPasskeyAuthComplete:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, logged_in_at, source_ip, user_agent, reset_url):
-            sent.append({"to": to_email})
+        def _capture(self, to_email, event, ctx):
+            if event == "new_device_login":
+                sent.append({"to": to_email})
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_new_device_login", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         with patch("web.routes.security.webauthn") as mock_wa:
             mock_wa.base64url_to_bytes.return_value = b"pk_bytes"
@@ -769,11 +770,12 @@ def test_change_password_sends_email(auth_client, csrf_token, monkeypatch):
 
     sent: list[dict] = []
 
-    def _capture(self, to_email, changed_at, source_ip, reset_url):
-        sent.append({"to": to_email, "ip": source_ip, "url": reset_url})
+    def _capture(self, to_email, event, ctx):
+        if event == "password_changed":
+            sent.append({"to": to_email, "ip": ctx["source_ip"], "url": ctx["reset_url"]})
         return "id"
 
-    monkeypatch.setattr(EmailService, "safe_send_password_changed", _capture)
+    monkeypatch.setattr(EmailService, "safe_send", _capture)
     response = auth_client.post(
         "/security/change-password",
         data={
@@ -792,11 +794,12 @@ def _capture_mfa_email(monkeypatch):
 
     sent: list[dict] = []
 
-    def _capture(self, to_email, change_label, changed_at, source_ip, reset_url):
-        sent.append({"label": change_label, "to": to_email})
+    def _capture(self, to_email, event, ctx):
+        if event == "mfa_changed":
+            sent.append({"label": ctx["change_label"], "to": to_email})
         return "id"
 
-    monkeypatch.setattr(EmailService, "safe_send_mfa_changed", _capture)
+    monkeypatch.setattr(EmailService, "safe_send", _capture)
     return sent
 
 

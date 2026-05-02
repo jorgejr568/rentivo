@@ -86,12 +86,16 @@ def _check_and_send_new_device_email(request: Request, user) -> None:
     if kd_service.register_login(user.id, user_agent, client_ip):
         return
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_email_service(request).safe_send_new_device_login(
+    get_email_service(request).safe_send(
         to_email=user.email,
-        logged_in_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
-        source_ip=client_ip,
-        user_agent=user_agent,
-        reset_url=forgot_url,
+        event="new_device_login",
+        ctx={
+            "email": user.email,
+            "logged_in_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "source_ip": client_ip,
+            "user_agent": user_agent,
+            "reset_url": forgot_url,
+        },
     )
 
 
@@ -153,7 +157,11 @@ async def signup(request: Request):
     push_event(request, {"event": "rentivo_signup_completed"})
 
     pix_setup_url = f"{settings.public_app_url.rstrip('/')}/security/pix"
-    get_email_service(request).safe_send_welcome(to_email=user.email, pix_setup_url=pix_setup_url)
+    get_email_service(request).safe_send(
+        to_email=user.email,
+        event="welcome",
+        ctx={"email": user.email, "pix_setup_url": pix_setup_url},
+    )
     return RedirectResponse("/billings/", status_code=302)
 
 

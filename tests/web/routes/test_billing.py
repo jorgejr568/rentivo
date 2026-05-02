@@ -466,11 +466,12 @@ class TestBillingTransfer:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, billing_name, recipient_role, actor_email):
-            sent.append({"to": to_email, "role": recipient_role})
+        def _capture(self, to_email, event, ctx):
+            if event == "billing_transferred":
+                sent.append({"to": to_email, "role": ctx["recipient_role"]})
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_billing_transferred", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         user_id = get_test_user_id(test_engine)
         billing = create_billing_in_db(test_engine)
@@ -515,11 +516,12 @@ class TestBillingTransfer:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, billing_name, recipient_role, actor_email):
-            sent.append({"to": to_email, "role": recipient_role})
+        def _capture(self, to_email, event, ctx):
+            if event == "billing_transferred":
+                sent.append({"to": to_email, "role": ctx["recipient_role"]})
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_billing_transferred", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         user_id = get_test_user_id(test_engine)
         # Create a billing owned by another user so the actor is NOT the previous owner.

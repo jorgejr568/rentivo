@@ -762,11 +762,12 @@ class TestSignupSendsWelcomeEmail:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, pix_setup_url):
-            sent.append({"to": to_email, "url": pix_setup_url})
+        def _capture(self, to_email, event, ctx):
+            if event == "welcome":
+                sent.append({"to": to_email, "url": ctx["pix_setup_url"]})
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_welcome", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
         response = client.post(
             "/signup",
             data={
@@ -791,11 +792,12 @@ class TestNewDeviceLoginEmail:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, logged_in_at, source_ip, user_agent, reset_url):
-            sent.append({"to": to_email, "ip": source_ip})
+        def _capture(self, to_email, event, ctx):
+            if event == "new_device_login":
+                sent.append({"to": to_email, "ip": ctx["source_ip"]})
             return "id"
 
-        monkeypatch.setattr(EmailService, "safe_send_new_device_login", _capture)
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
 
         # First login -> email expected.
         client.post("/login", data={"email": "nd@example.com", "password": "secret"})

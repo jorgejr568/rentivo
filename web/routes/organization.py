@@ -275,11 +275,14 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
     if member_user is not None:
         old_label = OrgRole.label(old_role) if old_role else "—"
         new_label = OrgRole.label(new_role)
-        get_email_service(request).safe_send_member_changed(
+        get_email_service(request).safe_send(
             to_email=member_user.email,
-            change_message=f"Sua função mudou de {old_label} para {new_label}.",
-            org_name=org.name,
-            actor_email=request.session.get("email", ""),
+            event="member_changed",
+            ctx={
+                "change_message": f"Sua função mudou de {old_label} para {new_label}.",
+                "org_name": org.name,
+                "actor_email": request.session.get("email", ""),
+            },
         )
 
     flash(request, "Papel atualizado com sucesso!", "success")
@@ -375,12 +378,15 @@ async def organization_invite(request: Request, org_uuid: str):
 
     inviter_email = request.session.get("email", "")
     invites_url = f"{settings.public_app_url.rstrip('/')}/invites/"
-    get_email_service(request).safe_send_invite_received(
+    get_email_service(request).safe_send(
         to_email=email,
-        inviter_email=inviter_email,
-        org_name=org.name,
-        role_label=OrgRole.label(role),
-        invites_url=invites_url,
+        event="invite_received",
+        ctx={
+            "inviter_email": inviter_email,
+            "org_name": org.name,
+            "role_label": OrgRole.label(role),
+            "invites_url": invites_url,
+        },
     )
 
     flash(request, f"Convite enviado para '{email}'!", "success")

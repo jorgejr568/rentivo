@@ -11,7 +11,11 @@ def _service():
 
 def test_send_welcome_renders_email_and_pix_url():
     service, backend = _service()
-    service.safe_send_welcome(to_email="alice@example.com", pix_setup_url="http://x/security/pix")
+    service.safe_send(
+        to_email="alice@example.com",
+        event="welcome",
+        ctx={"email": "alice@example.com", "pix_setup_url": "http://x/security/pix"},
+    )
     sent = backend.send.call_args[0][0]
     assert sent.to == "alice@example.com"
     assert "Bem-vindo" in sent.subject
@@ -22,11 +26,15 @@ def test_send_welcome_renders_email_and_pix_url():
 
 def test_send_password_changed_includes_metadata():
     service, backend = _service()
-    service.safe_send_password_changed(
+    service.safe_send(
         to_email="alice@example.com",
-        changed_at="01/05/2026 14:30",
-        source_ip="203.0.113.5",
-        reset_url="http://x/forgot-password",
+        event="password_changed",
+        ctx={
+            "email": "alice@example.com",
+            "changed_at": "01/05/2026 14:30",
+            "source_ip": "203.0.113.5",
+            "reset_url": "http://x/forgot-password",
+        },
     )
     sent = backend.send.call_args[0][0]
     assert "01/05/2026 14:30" in sent.html_body
@@ -36,12 +44,16 @@ def test_send_password_changed_includes_metadata():
 
 def test_send_mfa_changed_renders_label_and_meta():
     service, backend = _service()
-    service.safe_send_mfa_changed(
+    service.safe_send(
         to_email="alice@example.com",
-        change_label="TOTP ativado",
-        changed_at="01/05/2026 14:30",
-        source_ip="203.0.113.5",
-        reset_url="http://x/forgot-password",
+        event="mfa_changed",
+        ctx={
+            "email": "alice@example.com",
+            "change_label": "TOTP ativado",
+            "changed_at": "01/05/2026 14:30",
+            "source_ip": "203.0.113.5",
+            "reset_url": "http://x/forgot-password",
+        },
     )
     sent = backend.send.call_args[0][0]
     assert "TOTP ativado" in sent.html_body
@@ -51,10 +63,14 @@ def test_send_mfa_changed_renders_label_and_meta():
 
 def test_send_password_reset_completed_renders_metadata():
     service, backend = _service()
-    service.safe_send_password_reset_completed(
+    service.safe_send(
         to_email="alice@example.com",
-        changed_at="01/05/2026 14:30",
-        source_ip="203.0.113.5",
+        event="password_reset_completed",
+        ctx={
+            "email": "alice@example.com",
+            "changed_at": "01/05/2026 14:30",
+            "source_ip": "203.0.113.5",
+        },
     )
     sent = backend.send.call_args[0][0]
     assert "Senha redefinida" in sent.subject
@@ -64,12 +80,16 @@ def test_send_password_reset_completed_renders_metadata():
 
 def test_send_new_device_login_renders_metadata():
     service, backend = _service()
-    service.safe_send_new_device_login(
+    service.safe_send(
         to_email="alice@example.com",
-        logged_in_at="01/05/2026 14:30",
-        source_ip="203.0.113.5",
-        user_agent="Mozilla/5.0 ...",
-        reset_url="http://x/forgot-password",
+        event="new_device_login",
+        ctx={
+            "email": "alice@example.com",
+            "logged_in_at": "01/05/2026 14:30",
+            "source_ip": "203.0.113.5",
+            "user_agent": "Mozilla/5.0 ...",
+            "reset_url": "http://x/forgot-password",
+        },
     )
     sent = backend.send.call_args[0][0]
     assert "Novo acesso" in sent.subject
