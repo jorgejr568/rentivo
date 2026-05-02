@@ -1,8 +1,18 @@
-"""List all invoices and regenerate their PDFs with the current template.
+"""List all invoices and enqueue a `pdf.render` job for each one.
 
 Usage:
     python -m rentivo.scripts.regenerate_pdfs
     python -m rentivo.scripts.regenerate_pdfs --dry-run
+
+Behavior:
+- Walks every billing and every bill.
+- Skips bills whose billing has no PIX configured (the worker would only
+  dead-letter them after 5 retries).
+- For every remaining bill, enqueues a single ``pdf.render`` job and
+  prints the resulting ULID.
+- Prints a final summary: how many were enqueued, plus how many
+  ``pdf.render`` jobs are still pending or running. The script does NOT
+  wait for the worker to drain.
 """
 
 from __future__ import annotations
@@ -18,13 +28,16 @@ from rentivo.models import format_brl
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.repositories.factory import (
+    get_audit_log_repository,
     get_bill_repository,
     get_billing_repository,
+    get_job_repository,
     get_organization_repository,
-    get_receipt_repository,
+    get_receipt_repository,  # noqa: F401 — kept so existing test mocks still bind cleanly
     get_user_repository,
 )
-from rentivo.services.bill_service import BillService
+from rentivo.services.audit_service import AuditService
+from rentivo.services.job_service import JobService
 from rentivo.services.pix_service import PixService
 from rentivo.storage.factory import get_storage
 
@@ -39,13 +52,15 @@ def main() -> None:
 
     billing_repo = get_billing_repository()
     bill_repo = get_bill_repository()
-    receipt_repo = get_receipt_repository()
     user_repo = get_user_repository()
     org_repo = get_organization_repository()
+    audit_repo = get_audit_log_repository()
+    job_repo = get_job_repository()
     storage = get_storage()
 
     pix_service = PixService(user_repo, org_repo)
-    bill_service = BillService(bill_repo, storage, receipt_repo, pix_service=pix_service)
+    audit_service = AuditService(audit_repo)
+    job_service = JobService(job_repo, audit_service)
 
     billings = billing_repo.list_all()
 
@@ -85,27 +100,34 @@ def main() -> None:
     console.print(f"\nTotal de faturas: [bold]{len(all_bills)}[/bold]")
 
     if dry_run:
-        console.print("\n[yellow]--dry-run: nenhum PDF foi regenerado.[/yellow]")
+        console.print("\n[yellow]--dry-run: nenhuma fatura foi enfileirada.[/yellow]")
         return
 
-    console.print("\n[cyan]Regenerando PDFs...[/cyan]\n")
+    console.print("\n[cyan]Enfileirando jobs pdf.render...[/cyan]\n")
 
-    regenerated = 0
+    enqueued = 0
     skipped: list[tuple[str, str, str]] = []
     for billing, bill in all_bills:
-        try:
-            bill_service.regenerate_pdf(bill, billing)
-        except ValueError as e:
-            skipped.append((billing.name, bill.reference_month, str(e)))
-            console.print(f"  [yellow]\u2717[/yellow] {billing.name} - {bill.reference_month}: {e}")
+        # Pre-flight PIX check — bills without PIX would just dead-letter
+        # in the worker after 5 retries, so we filter them here.
+        if pix_service.resolve_for_billing(billing) is None:
+            skipped.append((billing.name, bill.reference_month, "PIX nao configurado"))
+            console.print(f"  [yellow]✗[/yellow] {billing.name} - {bill.reference_month}: PIX nao configurado")
             continue
-        regenerated += 1
-        url = storage.get_url(bill.pdf_path) if bill.pdf_path else "-"
-        console.print(f"  [green]\u2713[/green] {billing.name} - {bill.reference_month} \u2192 {url}")
 
-    console.print(f"\n[green bold]{regenerated} fatura(s) regenerada(s) com sucesso![/green bold]")
+        job = job_service.enqueue(
+            "pdf.render",
+            {"bill_id": bill.id},
+            source="cli",
+        )
+        enqueued += 1
+        console.print(f"  [green]✓[/green] {billing.name} - {bill.reference_month} → enqueued ulid={job.ulid}")
+
+    pending_or_running = job_repo.count_by_type_and_statuses("pdf.render", ("pending", "running"))
+    console.print(f"\n[green bold]{enqueued} fatura(s) enfileirada(s) com sucesso![/green bold]")
+    console.print(f"[dim]{pending_or_running} job(s) pdf.render aguardando o worker (pending+running).[/dim]")
     if skipped:
-        console.print(f"[yellow]{len(skipped)} fatura(s) ignorada(s) por falta de configuração de PIX.[/yellow]")
+        console.print(f"[yellow]{len(skipped)} fatura(s) ignorada(s) por falta de configuracao de PIX.[/yellow]")
 
 
 if __name__ == "__main__":  # pragma: no cover

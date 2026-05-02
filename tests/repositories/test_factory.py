@@ -1,10 +1,12 @@
 from unittest.mock import MagicMock, patch
 
+from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
 from rentivo.repositories.factory import (
     get_audit_log_repository,
     get_bill_repository,
     get_billing_repository,
     get_invite_repository,
+    get_job_repository,
     get_known_device_repository,
     get_mfa_totp_repository,
     get_organization_repository,
@@ -110,3 +112,9 @@ class TestRepoFactory:
         mock_conn.return_value = MagicMock()
         repo = get_known_device_repository()
         assert isinstance(repo, SQLAlchemyKnownDeviceRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_job_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_job_repository()
+        assert isinstance(repo, SQLAlchemyJobRepository)
