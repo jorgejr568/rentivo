@@ -13,7 +13,7 @@ from rentivo.settings import settings
 from web.analytics import push_event
 from web.deps import (
     get_audit_service,
-    get_email_service,
+    get_job_service,
     get_known_device_service,
     get_mfa_service,
     get_turnstile_service,
@@ -86,16 +86,22 @@ def _check_and_send_new_device_email(request: Request, user) -> None:
     if kd_service.register_login(user.id, user_agent, client_ip):
         return
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_email_service(request).safe_send(
-        to_email=user.email,
-        event="new_device_login",
-        ctx={
-            "email": user.email,
-            "logged_in_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "source_ip": client_ip,
-            "user_agent": user_agent,
-            "reset_url": forgot_url,
+    get_job_service(request).enqueue(
+        "email.send",
+        {
+            "event": "new_device_login",
+            "to_email": user.email,
+            "ctx": {
+                "email": user.email,
+                "logged_in_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "source_ip": client_ip,
+                "user_agent": user_agent,
+                "reset_url": forgot_url,
+            },
         },
+        source="web",
+        actor_id=user.id,
+        actor_username=user.email,
     )
 
 
@@ -157,10 +163,16 @@ async def signup(request: Request):
     push_event(request, {"event": "rentivo_signup_completed"})
 
     pix_setup_url = f"{settings.public_app_url.rstrip('/')}/security/pix"
-    get_email_service(request).safe_send(
-        to_email=user.email,
-        event="welcome",
-        ctx={"email": user.email, "pix_setup_url": pix_setup_url},
+    get_job_service(request).enqueue(
+        "email.send",
+        {
+            "event": "welcome",
+            "to_email": user.email,
+            "ctx": {"email": user.email, "pix_setup_url": pix_setup_url},
+        },
+        source="web",
+        actor_id=user.id,
+        actor_username=user.email,
     )
     return RedirectResponse("/billings/", status_code=302)
 

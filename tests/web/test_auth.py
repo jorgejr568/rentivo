@@ -758,16 +758,24 @@ class TestSignupTurnstile:
 
 class TestSignupSendsWelcomeEmail:
     def test_signup_dispatches_welcome_email(self, client, monkeypatch):
-        from rentivo.services.email_service import EmailService
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "welcome":
-                sent.append({"to": to_email, "url": ctx["pix_setup_url"]})
-            return "id"
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "welcome":
+                sent.append({"to": payload["to_email"], "url": payload["ctx"]["pix_setup_url"]})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
         response = client.post(
             "/signup",
             data={
@@ -783,8 +791,9 @@ class TestSignupSendsWelcomeEmail:
 
 class TestNewDeviceLoginEmail:
     def test_first_login_sends_email_subsequent_does_not(self, client, test_engine, monkeypatch):
+        from rentivo.jobs.base import Job
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
-        from rentivo.services.email_service import EmailService
+        from rentivo.services.job_service import JobService
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
@@ -792,12 +801,19 @@ class TestNewDeviceLoginEmail:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "new_device_login":
-                sent.append({"to": to_email, "ip": ctx["source_ip"]})
-            return "id"
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "new_device_login":
+                sent.append({"to": payload["to_email"], "ip": payload["ctx"]["source_ip"]})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         # First login -> email expected.
         client.post("/login", data={"email": "nd@example.com", "password": "secret"})
