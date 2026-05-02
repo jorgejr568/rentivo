@@ -95,7 +95,7 @@ class Worker:
             )
             logger.info("job_succeeded", ulid=job.ulid, attempts=job.attempts)
 
-    def _fail_permanent(self, job: Job, err: str) -> None:
+    def _fail(self, job: Job, err: str) -> None:
         err = _truncate(err, _MAX_ERROR_LEN)
         self.repo.mark_failed(job.id, err)
         self.audit.safe_log(
@@ -110,23 +110,15 @@ class Worker:
         )
         logger.warning("job_failed", ulid=job.ulid, attempts=job.attempts, error=err)
 
+    def _fail_permanent(self, job: Job, err: str) -> None:
+        self._fail(job, err)
+
     def _reschedule_or_fail(self, job: Job, exc: Exception) -> None:
         err = _truncate(repr(exc), _MAX_ERROR_LEN)
         if job.attempts >= job.max_attempts:
-            self.repo.mark_failed(job.id, err)
-            self.audit.safe_log(
-                event_type=AuditEventType.JOB_FAILED,
-                source="worker",
-                actor_id=None,
-                actor_username="",
-                entity_type="job",
-                entity_uuid=job.ulid,
-                previous_state=None,
-                new_state={"job_type": job.job_type, "ulid": job.ulid, "attempts": job.attempts, "error": err},
-            )
-            logger.warning("job_failed", ulid=job.ulid, attempts=job.attempts, error=err)
+            self._fail(job, err)
             return
-        next_run = next_run_after(job.attempts, datetime.now(UTC).replace(tzinfo=None))
+        next_run = next_run_after(job.attempts, datetime.now(UTC))
         self.repo.reschedule(job.id, next_run, err)
         self.audit.safe_log(
             event_type=AuditEventType.JOB_RETRY_SCHEDULED,

@@ -143,6 +143,25 @@ class TestWorkerTick:
         err = repo.mark_failed.call_args.args[1]
         assert "missing.handler" in err
 
+    def test_tick_reschedules_with_timezone_aware_datetime(self):
+        """Regression: the worker must pass an aware datetime to repo.reschedule
+        so the repository's SP_TZ conversion runs. Naive UTC would be interpreted
+        as SP_TZ wall-clock by the repo and misfire retries by ~3h."""
+
+        @registry.register("t.test")
+        def handler(payload):
+            raise RuntimeError("boom")
+
+        job = _make_job(attempts=1)
+        repo = MagicMock()
+        repo.claim_batch.return_value = [job]
+        w = Worker(repo, MagicMock(), worker_id="t:1")
+
+        w.tick()
+
+        next_run = repo.reschedule.call_args.args[1]
+        assert next_run.tzinfo is not None, "next_run must be timezone-aware"
+
     def test_tick_truncates_extremely_long_errors(self):
         @registry.register("t.test")
         def handler(payload):
