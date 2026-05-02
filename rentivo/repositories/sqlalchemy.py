@@ -329,6 +329,7 @@ class SQLAlchemyBillRepository(BillRepository):
             due_date=row["due_date"],
             status=row.get("status", "draft"),
             status_updated_at=row.get("status_updated_at"),
+            pdf_render_status=row.get("pdf_render_status"),
             created_at=row["created_at"],
             deleted_at=row["deleted_at"],
         )
@@ -451,6 +452,13 @@ class SQLAlchemyBillRepository(BillRepository):
         self.conn.execute(
             text("UPDATE bills SET status = :status, status_updated_at = :status_updated_at WHERE id = :id"),
             {"status": status, "status_updated_at": status_updated_at, "id": bill_id},
+        )
+        self.conn.commit()
+
+    def update_pdf_render_status(self, bill_id: int, status: str | None) -> None:
+        self.conn.execute(
+            text("UPDATE bills SET pdf_render_status = :status WHERE id = :id"),
+            {"status": status, "id": bill_id},
         )
         self.conn.commit()
 

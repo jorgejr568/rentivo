@@ -63,6 +63,9 @@ class BillRepository(ABC):
     def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None: ...
 
     @abstractmethod
+    def update_pdf_render_status(self, bill_id: int, status: str | None) -> None: ...
+
+    @abstractmethod
     def delete(self, bill_id: int) -> None: ...
 
 

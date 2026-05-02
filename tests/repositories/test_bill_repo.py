@@ -124,3 +124,41 @@ class TestBillRepoEdgeCases:
         with patch.object(bill_repo, "get_by_id", return_value=None):
             with pytest.raises(RuntimeError, match="Failed to retrieve bill after update"):
                 bill_repo.update(created)
+
+
+class TestBillRepoPdfRenderStatus:
+    def _create_billing(self, billing_repo, sample_billing):
+        return billing_repo.create(sample_billing())
+
+    def test_update_pdf_render_status_sets_pending(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        created = bill_repo.create(sample_bill(billing_id=billing.id))
+        bill_repo.update_pdf_render_status(created.id, "pending")
+
+        fetched = bill_repo.get_by_id(created.id)
+        assert fetched is not None
+        assert fetched.pdf_render_status == "pending"
+
+    def test_update_pdf_render_status_can_set_to_null(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        created = bill_repo.create(sample_bill(billing_id=billing.id))
+        bill_repo.update_pdf_render_status(created.id, "pending")
+        bill_repo.update_pdf_render_status(created.id, None)
+
+        fetched = bill_repo.get_by_id(created.id)
+        assert fetched is not None
+        assert fetched.pdf_render_status is None
+
+    def test_get_by_id_returns_pdf_render_status(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        created = bill_repo.create(sample_bill(billing_id=billing.id))
+        bill_repo.update_pdf_render_status(created.id, "succeeded")
+
+        fetched = bill_repo.get_by_id(created.id)
+        assert fetched is not None
+        assert fetched.pdf_render_status == "succeeded"
+
+    def test_default_pdf_render_status_is_none(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        created = bill_repo.create(sample_bill(billing_id=billing.id))
+        assert created.pdf_render_status is None
