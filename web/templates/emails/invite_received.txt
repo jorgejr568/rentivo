@@ -7,5 +7,4 @@ Acesse seus convites para aceitar ou recusar:
 
   {{ invites_url }}
 
-—
-Rentivo · Cobranças sem dor de cabeça
+{% include "_email_footer.txt" %}

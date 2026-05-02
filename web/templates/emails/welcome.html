@@ -1,9 +1,8 @@
 {% extends "_email_layout.html" %}
+{% import "_email_macros.html" as m %}
 {% block title %}Bem-vindo à Rentivo{% endblock %}
 {% block content %}
-<h1 style="margin:0 0 18px;font-family:'Space Grotesk','Inter',sans-serif;font-weight:700;font-size:32px;line-height:1.15;letter-spacing:-0.5px;color:#1a1a2e;">
-    Bem-vindo à Rentivo
-</h1>
+{{ m.heading("Bem-vindo à Rentivo") }}
 <p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1a1a2e;">
     Sua conta foi criada com o e-mail
     <strong style="font-weight:600;">{{ email }}</strong>.
@@ -11,16 +10,7 @@
 <p style="margin:0 0 28px;font-size:16px;line-height:1.55;color:#1a1a2e;">
     Para que seus inquilinos consigam pagar direto do boleto, configure sua chave PIX agora.
 </p>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 28px;">
-    <tr>
-        <td style="background:#27ae60;border:2.5px solid #1a1a2e;box-shadow:4px 4px 0 #1a1a2e;">
-            <a href="{{ pix_setup_url }}"
-               style="display:inline-block;padding:14px 28px;font-family:'Space Grotesk','Inter',sans-serif;font-weight:700;font-size:16px;letter-spacing:0.3px;text-transform:uppercase;color:#ffffff;text-decoration:none;">
-                Configurar PIX →
-            </a>
-        </td>
-    </tr>
-</table>
+{{ m.cta_button(pix_setup_url, "Configurar PIX") }}
 <p style="margin:0;font-size:14px;line-height:1.5;color:#7f8c8d;">
     Se você não criou esta conta, pode ignorar esta mensagem.
 </p>

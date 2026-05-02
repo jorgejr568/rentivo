@@ -1,30 +1,14 @@
 {% extends "_email_layout.html" %}
+{% import "_email_macros.html" as m %}
 {% block title %}Alteração de MFA — Rentivo{% endblock %}
 {% block accent_color %}#f39c12{% endblock %}
 {% block content %}
-<h1 style="margin:0 0 18px;font-family:'Space Grotesk','Inter',sans-serif;font-weight:700;font-size:32px;line-height:1.15;letter-spacing:-0.5px;color:#1a1a2e;">
-    Alteração de MFA
-</h1>
+{{ m.heading("Alteração de MFA") }}
 <p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1a1a2e;">
     A configuração de autenticação em duas etapas da conta
     <strong style="font-weight:600;">{{ email }}</strong> mudou:
     <strong style="font-weight:600;">{{ change_label }}</strong>.
 </p>
-<div style="background:#f5f0e8;border:2px solid #1a1a2e;padding:14px 16px;margin:0 0 24px;font-size:14px;">
-    <div><strong>Quando:</strong> {{ changed_at }}</div>
-    <div><strong>Origem:</strong> <code style="font-family:'SF Mono',monospace;">{{ source_ip }}</code></div>
-</div>
-<p style="margin:0 0 24px;font-size:16px;line-height:1.55;color:#1a1a2e;">
-    Se <strong>não</strong> foi você, redefina sua senha agora:
-</p>
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
-    <tr>
-        <td style="background:#e74c3c;border:2.5px solid #1a1a2e;box-shadow:4px 4px 0 #1a1a2e;">
-            <a href="{{ reset_url }}"
-               style="display:inline-block;padding:14px 28px;font-family:'Space Grotesk','Inter',sans-serif;font-weight:700;font-size:16px;letter-spacing:0.3px;text-transform:uppercase;color:#ffffff;text-decoration:none;">
-                Redefinir senha →
-            </a>
-        </td>
-    </tr>
-</table>
+{{ m.metadata_box([("Quando", changed_at), ("Origem", source_ip)]) }}
+{{ m.security_callout(reset_url) }}
 {% endblock %}

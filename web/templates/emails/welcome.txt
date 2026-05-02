@@ -11,5 +11,4 @@ Para começar, configure sua chave PIX para que seus inquilinos possam pagar dir
 
 Se você não criou esta conta, ignore esta mensagem.
 
-—
-Rentivo · Cobranças sem dor de cabeça
+{% include "_email_footer.txt" %}

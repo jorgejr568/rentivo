@@ -6,5 +6,4 @@ RENTIVO — ALTERAÇÃO NA ORGANIZAÇÃO
 Organização: {{ org_name }}
 Quem fez: {{ actor_email }}
 
-—
-Rentivo · Cobranças sem dor de cabeça
+{% include "_email_footer.txt" %}
