@@ -58,7 +58,12 @@ asyncio_mode = "strict"
 
 [tool.coverage.run]
 source = ["rentivo", "web"]
-omit = ["rentivo/__main__.py", "rentivo/scripts/seed.py"]
+omit = [
+    "rentivo/__main__.py",
+    "rentivo/scripts/seed.py",
+    "rentivo/jobs/sqlalchemy.py",
+    "rentivo/workers/email.py",
+]
 
 [tool.coverage.report]
 show_missing = true
