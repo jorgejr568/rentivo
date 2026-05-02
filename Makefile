@@ -176,6 +176,33 @@ rentivo:
 shell-cli:
 	docker exec -it $(CONTAINER_CLI) bash
 
+# --- Docker: Worker (standalone) ---
+
+IMAGE_NAME_WORKER := rentivo-worker
+CONTAINER_WORKER  := rentivo-worker
+
+.PHONY: build-worker
+build-worker:
+	docker build -f Dockerfile.worker -t $(IMAGE_NAME_WORKER) .
+
+.PHONY: up-worker
+up-worker:
+	docker run -d --name $(CONTAINER_WORKER) \
+		--env-file .env \
+		$(IMAGE_NAME_WORKER)
+
+.PHONY: down-worker
+down-worker:
+	docker rm -f $(CONTAINER_WORKER) 2>/dev/null || true
+
+.PHONY: logs-worker
+logs-worker:
+	docker logs -f $(CONTAINER_WORKER)
+
+.PHONY: shell-worker
+shell-worker:
+	docker exec -it $(CONTAINER_WORKER) bash
+
 # --- Docker Compose ---
 
 .PHONY: compose-up
@@ -202,6 +229,14 @@ compose-shell-cli:
 .PHONY: compose-rentivo
 compose-rentivo:
 	docker compose exec cli python -m rentivo
+
+.PHONY: compose-worker
+compose-worker:
+	docker compose up -d --build worker
+
+.PHONY: compose-logs-worker
+compose-logs-worker:
+	docker compose logs -f worker
 
 .PHONY: compose-migrate
 compose-migrate:
