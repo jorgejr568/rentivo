@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import structlog
@@ -15,6 +15,17 @@ from rentivo.services.user_service import UserService
 logger = structlog.get_logger(__name__)
 
 
+def _utcnow_naive() -> datetime:
+    """Return current UTC time as a naive datetime.
+
+    The persisted `password_reset_tokens.expires_at` column stores naive
+    ISO timestamps; mixing tz-aware values would raise on comparison after
+    SQLAlchemy reads them back. Strip tzinfo to keep current behavior while
+    avoiding the deprecated `datetime.utcnow()` call.
+    """
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 class PasswordResetService:
     def __init__(
         self,
@@ -23,7 +34,7 @@ class PasswordResetService:
         job_service: JobService,
         user_service: UserService,
         public_app_url: str,
-        now: Callable[[], datetime] = datetime.utcnow,
+        now: Callable[[], datetime] = _utcnow_naive,
         ttl_seconds: int = 3600,
     ) -> None:
         self.user_repo = user_repo
