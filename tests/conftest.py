@@ -208,6 +208,24 @@ CREATE TABLE known_devices (
     last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, device_hash)
 );
+
+CREATE TABLE jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ulid VARCHAR(26) NOT NULL UNIQUE,
+    job_type VARCHAR(64) NOT NULL,
+    payload TEXT NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    run_after DATETIME NOT NULL,
+    claimed_at DATETIME,
+    claimed_by VARCHAR(64),
+    last_error TEXT,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    succeeded_at DATETIME,
+    failed_at DATETIME
+);
 """
 
 
