@@ -7,19 +7,34 @@ from rentivo.email.base import EmailBackend, EmailMessage
 
 logger = structlog.get_logger(__name__)
 
+_env: Environment | None = None
+
+
+def _jinja_env() -> Environment:
+    """Lazy-initialized module-level Jinja Environment singleton.
+
+    The Environment is expensive to build but cheap to share, and EmailService
+    is constructed per request via web.deps.get_email_service. Hoisting the
+    Environment out of __init__ keeps the per-request hot path tight.
+    """
+    global _env
+    if _env is None:
+        _env = Environment(
+            loader=PackageLoader("web", "templates/emails"),
+            autoescape=select_autoescape(["html"]),
+        )
+    return _env
+
 
 class EmailService:
     def __init__(self, backend: EmailBackend, from_address: str) -> None:
         self.backend = backend
         self.from_address = from_address
-        self._env = Environment(
-            loader=PackageLoader("web", "templates/emails"),
-            autoescape=select_autoescape(["html"]),
-        )
 
     def _render(self, template_stem: str, ctx: dict) -> tuple[str, str]:
-        html = self._env.get_template(f"{template_stem}.html").render(**ctx)
-        text = self._env.get_template(f"{template_stem}.txt").render(**ctx)
+        env = _jinja_env()
+        html = env.get_template(f"{template_stem}.html").render(**ctx)
+        text = env.get_template(f"{template_stem}.txt").render(**ctx)
         return html, text
 
     def _send(self, to_email: str, subject: str, template_stem: str, ctx: dict) -> str:

@@ -83,10 +83,8 @@ def _check_and_send_new_device_email(request: Request, user) -> None:
     user_agent = request.headers.get("user-agent", "")
     client_ip = request.client.host if request.client else "unknown"
     kd_service = get_known_device_service(request)
-    if kd_service.is_known(user.id, user_agent, client_ip):
-        kd_service.remember(user.id, user_agent, client_ip)
+    if kd_service.register_login(user.id, user_agent, client_ip):
         return
-    kd_service.remember(user.id, user_agent, client_ip)
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
     get_email_service(request).safe_send_new_device_login(
         to_email=user.email,

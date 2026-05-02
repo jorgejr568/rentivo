@@ -19,24 +19,42 @@ def test_fingerprint_handles_non_ipv4():
     assert len(h) == 64
 
 
-def test_is_known_delegates_to_repo():
-    repo = MagicMock()
-    repo.get.return_value = KnownDevice(id=1, user_id=7, device_hash="x")
-    svc = KnownDeviceService(repo)
-    assert svc.is_known(7, "Firefox", "1.2.3.4") is True
-
-
-def test_is_known_false_when_repo_empty():
+def test_register_login_returns_false_for_new_device():
     repo = MagicMock()
     repo.get.return_value = None
-    svc = KnownDeviceService(repo)
-    assert svc.is_known(7, "Firefox", "1.2.3.4") is False
-
-
-def test_remember_truncates_long_user_agent():
-    repo = MagicMock()
     repo.upsert.side_effect = lambda d: d
     svc = KnownDeviceService(repo)
-    svc.remember(1, "U" * 1000, "1.2.3.4")
+    assert svc.register_login(1, "Firefox", "1.2.3.4") is False
+    repo.upsert.assert_called_once()
+
+
+def test_register_login_returns_true_for_known_device():
+    repo = MagicMock()
+    repo.get.return_value = KnownDevice(id=1, user_id=7, device_hash="x")
+    repo.upsert.side_effect = lambda d: d
+    svc = KnownDeviceService(repo)
+    assert svc.register_login(7, "Firefox", "1.2.3.4") is True
+    repo.upsert.assert_called_once()  # still touches last_seen
+
+
+def test_register_login_truncates_long_user_agent():
+    repo = MagicMock()
+    repo.get.return_value = None
+    repo.upsert.side_effect = lambda d: d
+    svc = KnownDeviceService(repo)
+    svc.register_login(1, "U" * 1000, "1.2.3.4")
     saved = repo.upsert.call_args[0][0]
     assert len(saved.user_agent_snippet) == 255
+
+
+def test_register_login_uses_ipv4_24_grouping():
+    repo = MagicMock()
+    repo.get.return_value = None
+    repo.upsert.side_effect = lambda d: d
+    svc = KnownDeviceService(repo)
+    svc.register_login(1, "Firefox", "203.0.113.42")
+    fp_a = repo.upsert.call_args[0][0].device_hash
+    repo.upsert.reset_mock()
+    svc.register_login(1, "Firefox", "203.0.113.99")
+    fp_b = repo.upsert.call_args[0][0].device_hash
+    assert fp_a == fp_b

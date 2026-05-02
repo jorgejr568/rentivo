@@ -16,8 +16,14 @@ class KnownDeviceService:
 
     @staticmethod
     def fingerprint(user_agent: str, remote_ip: str) -> str:
-        # IP is grouped to /24 (IPv4) so the same browser at the same site doesn't
-        # repeatedly trigger an alert when the user's last octet rotates.
+        """SHA-256 fingerprint of (user-agent, IPv4 /24 subnet).
+
+        For IPv4 the last octet is dropped to /24, so the same browser at the same
+        site doesn't repeatedly trigger an alert when the carrier rotates the user's
+        last octet. IPv6 (or any non-dotted-quad input) is hashed verbatim, which
+        means clients with rotating SLAACs WILL alert per address change. If that
+        becomes noisy, group IPv6 to /64 by extracting the first four hextets.
+        """
         subnet = remote_ip
         parts = remote_ip.split(".")
         if len(parts) == 4:
@@ -25,14 +31,19 @@ class KnownDeviceService:
         joined = f"{user_agent.strip()}|{subnet}"
         return hashlib.sha256(joined.encode()).hexdigest()
 
-    def is_known(self, user_id: int, user_agent: str, remote_ip: str) -> bool:
-        return self.repo.get(user_id, self.fingerprint(user_agent, remote_ip)) is not None
+    def register_login(self, user_id: int, user_agent: str, remote_ip: str) -> bool:
+        """Record this login. Returns True if the device was already known, False otherwise.
 
-    def remember(self, user_id: int, user_agent: str, remote_ip: str) -> KnownDevice:
-        return self.repo.upsert(
+        Single round-trip: one repo.get followed by one repo.upsert (which either
+        touches last_seen on the existing row or inserts a new one).
+        """
+        device_hash = self.fingerprint(user_agent, remote_ip)
+        existing = self.repo.get(user_id, device_hash)
+        self.repo.upsert(
             KnownDevice(
                 user_id=user_id,
-                device_hash=self.fingerprint(user_agent, remote_ip),
+                device_hash=device_hash,
                 user_agent_snippet=user_agent[:255],
             )
         )
+        return existing is not None
