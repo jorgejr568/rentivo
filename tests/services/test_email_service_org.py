@@ -11,7 +11,7 @@ def _service():
 
 def test_send_invite_received_renders_inviter_org_role_and_link():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="invite_received",
         ctx={
@@ -32,7 +32,7 @@ def test_send_invite_received_renders_inviter_org_role_and_link():
 
 def test_send_invite_responded_renders_invitee_and_response():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="bob@example.com",
         event="invite_responded",
         ctx={
@@ -49,7 +49,7 @@ def test_send_invite_responded_renders_invitee_and_response():
 
 def test_send_member_changed_renders_message_org_and_actor():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="member_changed",
         ctx={
@@ -67,7 +67,7 @@ def test_send_member_changed_renders_message_org_and_actor():
 
 def test_send_billing_transferred_renders_name_message_and_actor():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="billing_transferred",
         ctx={

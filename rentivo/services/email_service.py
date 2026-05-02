@@ -16,8 +16,8 @@ def _jinja_env() -> Environment:
     """Lazy-initialized module-level Jinja Environment singleton.
 
     The Environment is expensive to build but cheap to share, and EmailService
-    is constructed per request via web.deps.get_email_service. Hoisting the
-    Environment out of __init__ keeps the per-request hot path tight.
+    is constructed per job by the worker. Hoisting the Environment out of
+    __init__ keeps the dispatch hot path tight.
     """
     global _env
     if _env is None:
@@ -80,40 +80,4 @@ class EmailService:
         message = self._build_message(to_email, subject, event, ctx)
         result = self.backend.send(message)
         logger.info("email_sent", to=to_email, email_event=event)
-        return result
-
-    def safe_send(self, to_email: str, event: str, ctx: dict) -> str | None:
-        """Render and dispatch a transactional email, swallowing exceptions.
-
-        ``event`` is a key into ``EMAIL_SUBJECTS`` and also the template stem
-        (we render ``{event}.html`` / ``{event}.txt``). Failures never block
-        the caller — a warning is logged and ``None`` is returned.
-        """
-        subject_spec = EMAIL_SUBJECTS[event]
-        subject = subject_spec(ctx) if callable(subject_spec) else subject_spec
-        try:
-            message = self._build_message(to_email, subject, event, ctx)
-            result = self.backend.send(message)
-            logger.info("email_sent", to=to_email, email_event=event)
-            return result
-        except Exception as exc:
-            logger.warning("email_send_failed", to=to_email, email_event=event, error=str(exc))
-            return None
-
-    def send_password_recovery(self, to_email: str, reset_url: str) -> str:
-        """Raise-on-error variant used by the password-reset flow.
-
-        Distinct from ``safe_send`` because the caller wants the exception to
-        propagate so the request can surface a failure to the user.
-        """
-        subject_spec = EMAIL_SUBJECTS["password_reset"]
-        assert isinstance(subject_spec, str)
-        message = self._build_message(
-            to_email=to_email,
-            subject=subject_spec,
-            template_stem="password_reset",
-            ctx={"email": to_email, "reset_url": reset_url},
-        )
-        result = self.backend.send(message)
-        logger.info("password_recovery_email_sent", to=to_email)
         return result

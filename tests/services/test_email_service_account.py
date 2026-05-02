@@ -11,7 +11,7 @@ def _service():
 
 def test_send_welcome_renders_email_and_pix_url():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="welcome",
         ctx={"email": "alice@example.com", "pix_setup_url": "http://x/security/pix"},
@@ -26,7 +26,7 @@ def test_send_welcome_renders_email_and_pix_url():
 
 def test_send_password_changed_includes_metadata():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="password_changed",
         ctx={
@@ -44,7 +44,7 @@ def test_send_password_changed_includes_metadata():
 
 def test_send_mfa_changed_renders_label_and_meta():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="mfa_changed",
         ctx={
@@ -63,7 +63,7 @@ def test_send_mfa_changed_renders_label_and_meta():
 
 def test_send_password_reset_completed_renders_metadata():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="password_reset_completed",
         ctx={
@@ -80,7 +80,7 @@ def test_send_password_reset_completed_renders_metadata():
 
 def test_send_new_device_login_renders_metadata():
     service, backend = _service()
-    service.safe_send(
+    service.send(
         to_email="alice@example.com",
         event="new_device_login",
         ctx={
