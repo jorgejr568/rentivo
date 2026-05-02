@@ -5,6 +5,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyInviteRepository,
+    SQLAlchemyKnownDeviceRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyThemeRepository,
@@ -45,3 +46,8 @@ def theme_repo(db_connection: Connection) -> SQLAlchemyThemeRepository:
 @pytest.fixture()
 def password_reset_token_repo(db_connection: Connection) -> SQLAlchemyPasswordResetTokenRepository:
     return SQLAlchemyPasswordResetTokenRepository(db_connection)
+
+
+@pytest.fixture()
+def known_device_repo(db_connection: Connection) -> SQLAlchemyKnownDeviceRepository:
+    return SQLAlchemyKnownDeviceRepository(db_connection)

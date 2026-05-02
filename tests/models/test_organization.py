@@ -10,6 +10,16 @@ class TestOrgRole:
     def test_from_string(self):
         assert OrgRole("admin") is OrgRole.ADMIN
 
+    def test_label_returns_pt_br_for_each_value(self):
+        assert OrgRole.label("admin") == "Administrador"
+        assert OrgRole.label("manager") == "Gerente"
+        assert OrgRole.label("viewer") == "Visualizador"
+        # forward-compat: "owner" is not a current OrgRole but the dict carries it
+        assert OrgRole.label("owner") == "Dono"
+
+    def test_label_falls_back_to_raw_value_for_unknown(self):
+        assert OrgRole.label("unknown-role") == "unknown-role"
+
 
 class TestOrganization:
     def test_defaults(self):

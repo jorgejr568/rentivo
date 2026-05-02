@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import time
+from datetime import datetime
 
 import structlog
 import webauthn
@@ -20,7 +21,8 @@ from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
-from web.deps import get_audit_service, get_mfa_service, get_user_service, render
+from web.auth import _check_and_send_new_device_email
+from web.deps import get_audit_service, get_email_service, get_mfa_service, get_user_service, render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -28,6 +30,28 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/security")
 
 WEBAUTHN_CHALLENGE_TIMEOUT = 300  # 5 minutes
+
+_MFA_CHANGE_LABELS = {
+    "totp_enabled": "TOTP ativado",
+    "totp_disabled": "TOTP desativado",
+    "passkey_registered": "Passkey registrado",
+    "passkey_deleted": "Passkey removido",
+}
+
+
+def _send_mfa_changed_email(request: Request, email: str, change_kind: str) -> None:
+    forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
+    get_email_service(request).safe_send(
+        to_email=email,
+        event="mfa_changed",
+        ctx={
+            "email": email,
+            "change_label": _MFA_CHANGE_LABELS[change_kind],
+            "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "source_ip": request.client.host if request.client else "unknown",
+            "reset_url": forgot_url,
+        },
+    )
 
 
 @router.get("/")
@@ -135,6 +159,18 @@ async def change_password(request: Request):
         new_state={"email": email},
     )
 
+    forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
+    get_email_service(request).safe_send(
+        to_email=email,
+        event="password_changed",
+        ctx={
+            "email": email,
+            "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "source_ip": request.client.host if request.client else "unknown",
+            "reset_url": forgot_url,
+        },
+    )
+
     flash(request, "Senha alterada com sucesso!", "success")
     push_event(request, {"event": "rentivo_password_changed"})
     return RedirectResponse("/security", status_code=302)
@@ -188,6 +224,7 @@ async def totp_confirm(request: Request):
         entity_type="user",
         entity_id=user_id,
     )
+    _send_mfa_changed_email(request, request.session.get("email", ""), "totp_enabled")
 
     push_event(request, {"event": "rentivo_mfa_enabled", "method": "totp"})
     return render(
@@ -229,6 +266,7 @@ async def totp_disable(request: Request):
         entity_type="user",
         entity_id=user_id,
     )
+    _send_mfa_changed_email(request, email, "totp_disabled")
 
     flash(request, "TOTP desativado com sucesso.", "success")
     push_event(request, {"event": "rentivo_mfa_disabled"})
@@ -352,6 +390,7 @@ async def passkey_register_complete(request: Request):
         entity_id=user_id,
         metadata={"passkey_name": passkey_name},
     )
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_registered")
 
     push_event(request, {"event": "rentivo_passkey_added"})
     return JSONResponse({"status": "ok", "name": passkey_name})
@@ -378,6 +417,7 @@ async def passkey_delete(request: Request, passkey_uuid: str):
         entity_id=user_id,
         metadata={"passkey_uuid": passkey_uuid},
     )
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_deleted")
 
     flash(request, "Passkey removida.", "success")
     push_event(request, {"event": "rentivo_passkey_removed"})
@@ -496,4 +536,9 @@ async def passkey_auth_complete(request: Request):
 
     logger.info("passkey_auth_verified", email=email)
     push_event(request, {"event": "rentivo_login_success", "via": "passkey"})
+
+    user = get_user_service(request).get_by_id(user_id)
+    if user is not None:
+        _check_and_send_new_device_email(request, user)
+
     return JSONResponse({"status": "ok", "redirect": "/billings/"})

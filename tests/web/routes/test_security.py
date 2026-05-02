@@ -683,6 +683,37 @@ class TestPasskeyAuthComplete:
         assert response.status_code == 302
         assert "/security/totp/setup" in response.headers["location"]
 
+    def test_passkey_login_sends_new_device_email_first_time(self, client, test_engine, monkeypatch):
+        """A successful passkey login from a never-seen device fires the new-device alert."""
+        from rentivo.services.email_service import EmailService
+
+        user, passkey = self._setup_mfa_pending_with_passkey(client, test_engine)
+        self._begin_auth(client)
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "new_device_login":
+                sent.append({"to": to_email})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+
+        with patch("web.routes.security.webauthn") as mock_wa:
+            mock_wa.base64url_to_bytes.return_value = b"pk_bytes"
+            mock_verification = MagicMock()
+            mock_verification.new_sign_count = 1
+            mock_wa.verify_authentication_response.return_value = mock_verification
+
+            response = client.post(
+                "/security/passkeys/auth/complete",
+                json={"id": passkey.credential_id},
+            )
+            assert response.status_code == 200
+
+        assert len(sent) == 1
+        assert sent[0]["to"] == user.email
+
 
 class TestSecurityPixUpdate:
     def test_update_pix_success(self, auth_client, csrf_token):
@@ -732,3 +763,124 @@ class TestSecurityPixUpdate:
             )
         assert r.status_code == 302
         assert r.headers["location"] == "/security"
+
+
+def test_change_password_sends_email(auth_client, csrf_token, monkeypatch):
+    from rentivo.services.email_service import EmailService
+
+    sent: list[dict] = []
+
+    def _capture(self, to_email, event, ctx):
+        if event == "password_changed":
+            sent.append({"to": to_email, "ip": ctx["source_ip"], "url": ctx["reset_url"]})
+        return "id"
+
+    monkeypatch.setattr(EmailService, "safe_send", _capture)
+    response = auth_client.post(
+        "/security/change-password",
+        data={
+            "current_password": "testpass",
+            "new_password": "new-strong-pw",
+            "confirm_password": "new-strong-pw",
+            "csrf_token": csrf_token,
+        },
+        follow_redirects=False,
+    )
+    assert response.status_code in (200, 302)
+
+
+def _capture_mfa_email(monkeypatch):
+    from rentivo.services.email_service import EmailService
+
+    sent: list[dict] = []
+
+    def _capture(self, to_email, event, ctx):
+        if event == "mfa_changed":
+            sent.append({"label": ctx["change_label"], "to": to_email})
+        return "id"
+
+    monkeypatch.setattr(EmailService, "safe_send", _capture)
+    return sent
+
+
+def test_totp_enable_sends_mfa_changed_email(auth_client, csrf_token, monkeypatch, test_engine):
+    sent = _capture_mfa_email(monkeypatch)
+
+    setup_response = auth_client.get("/security/totp/setup")
+    secret_match = re.search(
+        r'(?:name="secret"|id="secret"|data-secret=")?\s*value="([A-Z2-7]{32})"', setup_response.text
+    )
+    if not secret_match:
+        secret_match = re.search(r"([A-Z2-7]{32})", setup_response.text)
+    assert secret_match
+    secret = secret_match.group(1)
+    code = pyotp.TOTP(secret).now()
+
+    csrf = _get_csrf_from_page(setup_response) or csrf_token
+
+    response = auth_client.post(
+        "/security/totp/confirm",
+        data={"csrf_token": csrf, "code": code},
+        follow_redirects=False,
+    )
+    assert response.status_code in (200, 302)
+    assert any(s["label"] == "TOTP ativado" for s in sent)
+    assert any(s["to"] == "testuser@example.com" for s in sent)
+
+
+def test_totp_disable_sends_mfa_changed_email(auth_client, csrf_token, monkeypatch, test_engine):
+    sent = _capture_mfa_email(monkeypatch)
+    user_id = get_test_user_id(test_engine)
+    _setup_confirmed_totp(test_engine, user_id)
+
+    response = auth_client.post(
+        "/security/totp/disable",
+        data={"csrf_token": csrf_token, "password": "testpass"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert any(s["label"] == "TOTP desativado" for s in sent)
+    assert any(s["to"] == "testuser@example.com" for s in sent)
+
+
+def test_passkey_register_sends_mfa_changed_email(auth_client, monkeypatch, test_engine):
+    sent = _capture_mfa_email(monkeypatch)
+
+    # Begin registration to seed the challenge in session.
+    with patch("web.routes.security.webauthn") as mock_wa:
+        mock_options = MagicMock()
+        mock_options.challenge = b"test_challenge"
+        mock_wa.generate_registration_options.return_value = mock_options
+        mock_wa.options_to_json.return_value = '{"publicKey": {}}'
+        auth_client.post("/security/passkeys/register/begin")
+
+    with patch("web.routes.security.webauthn") as mock_wa:
+        mock_verification = MagicMock()
+        mock_verification.credential_id = b"new_cred_id"
+        mock_verification.credential_public_key = b"new_public_key"
+        mock_verification.sign_count = 0
+        mock_wa.verify_registration_response.return_value = mock_verification
+
+        response = auth_client.post(
+            "/security/passkeys/register/complete",
+            json={"id": "test", "name": "My Key"},
+        )
+    assert response.status_code == 200
+    assert any(s["label"] == "Passkey registrado" for s in sent)
+    assert any(s["to"] == "testuser@example.com" for s in sent)
+
+
+def test_passkey_delete_sends_mfa_changed_email(auth_client, csrf_token, monkeypatch, test_engine):
+    sent = _capture_mfa_email(monkeypatch)
+    user_id = get_test_user_id(test_engine)
+    passkey = _setup_passkey(test_engine, user_id)
+
+    response = auth_client.post(
+        f"/security/passkeys/{passkey.uuid}/delete",
+        data={"csrf_token": csrf_token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+    assert any(s["label"] == "Passkey removido" for s in sent)
+    assert any(s["to"] == "testuser@example.com" for s in sent)
+    assert sent and sent[0]["to"] == "testuser@example.com"

@@ -6,6 +6,7 @@ dist/
 build/
 .env
 invoices/
+outbox/
 .coverage
 .pytest_cache/
 docs/superpowers/

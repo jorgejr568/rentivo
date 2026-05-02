@@ -1,0 +1,9 @@
+RENTIVO — ALTERAÇÃO NA ORGANIZAÇÃO
+====================================
+
+{{ change_message }}
+
+Organização: {{ org_name }}
+Quem fez: {{ actor_email }}
+
+{% include "_email_footer.txt" %}

@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import structlog
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from web.analytics import push_event
-from web.deps import get_audit_service, get_password_reset_service, get_turnstile_service, render
+from web.deps import (
+    get_audit_service,
+    get_email_service,
+    get_password_reset_service,
+    get_turnstile_service,
+    get_user_service,
+    render,
+)
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -79,6 +88,18 @@ async def reset_password(request: Request):
     user_id = service.consume(token, new_password=password)
     if user_id is None:
         return render(request, "reset_password.html", {"invalid": True})
+
+    user = get_user_service(request).get_by_id(user_id)
+    if user is not None:
+        get_email_service(request).safe_send(
+            to_email=user.email,
+            event="password_reset_completed",
+            ctx={
+                "email": user.email,
+                "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "source_ip": request.client.host if request.client else "unknown",
+            },
+        )
 
     audit = get_audit_service(request)
     audit.safe_log(

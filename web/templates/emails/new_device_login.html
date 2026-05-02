@@ -1,0 +1,12 @@
+{% extends "_email_layout.html" %}
+{% import "_email_macros.html" as m %}
+{% block title %}Novo acesso detectado — Rentivo{% endblock %}
+{% block accent_color %}#f39c12{% endblock %}
+{% block content %}
+{{ m.heading("Novo acesso detectado") }}
+<p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    A conta <strong style="font-weight:600;">{{ email }}</strong> foi acessada por um dispositivo que nunca tínhamos visto.
+</p>
+{{ m.metadata_box([("Quando", logged_in_at), ("Origem", source_ip), ("Navegador", user_agent[:120])]) }}
+{{ m.security_callout(reset_url) }}
+{% endblock %}

@@ -3,6 +3,7 @@ from rentivo.repositories.base import (
     BillingRepository,
     BillRepository,
     InviteRepository,
+    KnownDeviceRepository,
     MFATOTPRepository,
     OrganizationRepository,
     PasskeyRepository,
@@ -96,3 +97,10 @@ def get_password_reset_token_repository() -> PasswordResetTokenRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyPasswordResetTokenRepository
 
     return SQLAlchemyPasswordResetTokenRepository(get_connection())
+
+
+def get_known_device_repository() -> KnownDeviceRepository:
+    from rentivo.db import get_connection
+    from rentivo.repositories.sqlalchemy import SQLAlchemyKnownDeviceRepository
+
+    return SQLAlchemyKnownDeviceRepository(get_connection())

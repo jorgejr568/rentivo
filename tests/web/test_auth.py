@@ -754,3 +754,57 @@ class TestSignupTurnstile:
         )
         assert response.status_code == 302
         assert "/billings" in response.headers["location"]
+
+
+class TestSignupSendsWelcomeEmail:
+    def test_signup_dispatches_welcome_email(self, client, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "welcome":
+                sent.append({"to": to_email, "url": ctx["pix_setup_url"]})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        response = client.post(
+            "/signup",
+            data={
+                "email": "newuser@example.com",
+                "password": "secret",
+                "confirm_password": "secret",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent == [{"to": "newuser@example.com", "url": "http://localhost:8000/security/pix"}]
+
+
+class TestNewDeviceLoginEmail:
+    def test_first_login_sends_email_subsequent_does_not(self, client, test_engine, monkeypatch):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+        from rentivo.services.email_service import EmailService
+        from rentivo.services.user_service import UserService
+
+        with test_engine.connect() as conn:
+            UserService(SQLAlchemyUserRepository(conn)).create_user("nd@example.com", "secret")
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "new_device_login":
+                sent.append({"to": to_email, "ip": ctx["source_ip"]})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+
+        # First login -> email expected.
+        client.post("/login", data={"email": "nd@example.com", "password": "secret"})
+        assert len(sent) == 1
+        assert sent[0]["to"] == "nd@example.com"
+
+        # Clear session cookies, log in again from same client -> already known -> no second email.
+        client.cookies.clear()
+        client.post("/login", data={"email": "nd@example.com", "password": "secret"})
+        assert len(sent) == 1

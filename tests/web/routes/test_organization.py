@@ -177,6 +177,44 @@ class TestMemberManagement:
         )
         assert response.status_code == 302
 
+    def test_role_change_notifies_member(self, auth_client, test_engine, csrf_token, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "member_changed":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "msg": ctx["change_message"],
+                        "actor": ctx["actor_email"],
+                        "org": ctx["org_name"],
+                    }
+                )
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        org = create_org_in_db(test_engine, "RoleNotifyOrg", user_id)
+
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            target = user_repo.create(User(email="target@example.com", password_hash="h"))
+            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo.add_member(org.id, target.id, "viewer")
+
+        response = auth_client.post(
+            f"/organizations/{org.uuid}/members/{target.id}/role",
+            data={"csrf_token": csrf_token, "role": "admin"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent and sent[0]["to"] == "target@example.com"
+        assert "para Administrador" in sent[0]["msg"]
+        assert sent[0]["org"] == "RoleNotifyOrg"
+
     def test_cannot_remove_self(self, auth_client, test_engine, csrf_token):
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "My Org", user_id)
@@ -226,6 +264,44 @@ class TestOrganizationInvite:
             follow_redirects=False,
         )
         assert response.status_code == 302
+
+    def test_invite_post_sends_invite_received_email(self, auth_client, test_engine, csrf_token, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "invite_received":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "inviter": ctx["inviter_email"],
+                        "org": ctx["org_name"],
+                        "role": ctx["role_label"],
+                        "url": ctx["invites_url"],
+                    }
+                )
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        org = create_org_in_db(test_engine, "Acme", user_id)
+
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo.create(User(email="invited@example.com", password_hash="h"))
+
+        response = auth_client.post(
+            f"/organizations/{org.uuid}/invite",
+            data={"csrf_token": csrf_token, "email": "invited@example.com", "role": "viewer"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent and sent[0]["to"] == "invited@example.com"
+        assert sent[0]["org"] == "Acme"
+        assert sent[0]["role"] == "Visualizador"
+        assert sent[0]["url"].endswith("/invites/")
 
 
 class TestOrganizationAccessDenied:
@@ -417,6 +493,63 @@ class TestOrganizationTransferBilling:
             follow_redirects=False,
         )
         assert response.status_code == 302
+
+    def test_transfer_billing_notifies_and_audits(self, auth_client, test_engine, csrf_token, monkeypatch):
+        """Issue #1: org-side transfer must email admins + previous owner AND audit-log BILLING_TRANSFER."""
+        from rentivo.models.audit_log import AuditEventType
+        from rentivo.models.organization import OrgRole
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+        from rentivo.services.email_service import EmailService
+        from tests.web.conftest import get_audit_logs
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "billing_transferred":
+                sent.append({"to": to_email, "role": ctx["recipient_role"]})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        # Billing previously owned by another user — so they should be notified.
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            prev_owner = user_repo.create(User(email="prev_owner_org@example.com", password_hash="h"))
+        billing = create_billing_in_db(test_engine, owner_type="user", owner_id=prev_owner.id)
+
+        # Actor is admin of the destination org. Add a second admin.
+        org = create_org_in_db(test_engine, "Notif Org", user_id)
+        other_admin_email = "second_admin@example.com"
+        with test_engine.connect() as conn:
+            org_repo = SQLAlchemyOrganizationRepository(conn)
+            other_admin = SQLAlchemyUserRepository(conn).create(User(email=other_admin_email, password_hash="h"))
+            org_repo.add_member(org.id, other_admin.id, OrgRole.ADMIN.value)
+
+        with patch(
+            "web.routes.organization.get_authorization_service",
+        ) as mock_auth_fn:
+            mock_auth = MagicMock()
+            mock_auth.can_transfer_billing.return_value = True
+            mock_auth_fn.return_value = mock_auth
+            response = auth_client.post(
+                f"/organizations/{org.uuid}/transfer-billing",
+                data={"csrf_token": csrf_token, "billing_uuid": billing.uuid},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+        # Previous owner emailed with previous_owner role.
+        assert any(s["to"] == "prev_owner_org@example.com" and s["role"] == "previous_owner" for s in sent)
+        # Second admin emailed with destination_admin role.
+        assert any(s["to"] == other_admin_email and s["role"] == "destination_admin" for s in sent)
+        # Actor (test user) NOT emailed.
+        assert not any(s["to"] == "testuser@example.com" for s in sent)
+
+        # BILLING_TRANSFER audit logged.
+        logs = get_audit_logs(test_engine, event_type=AuditEventType.BILLING_TRANSFER)
+        assert len(logs) >= 1
+        assert any(log.entity_uuid == billing.uuid for log in logs)
 
 
 class TestInviteReturnsNone:

@@ -226,6 +226,24 @@ When the user asks you to open a PR, you are responsible for filling out the PR 
 - "Unknown email" returns the same UI as "email sent" — no enumeration.
 - Audit events: `user.password_reset_requested`, `user.password_reset_completed`.
 
+## Transactional Emails
+
+### Account & security emails
+
+All dispatched via `EmailService.safe_send_*` (swallow failures, never block the auth flow):
+
+- `welcome` — on signup. Links to PIX setup (`/security/pix`).
+- `password_changed` — fires from `/security/change-password` and from successful `/reset-password`. Body shows time + `request.client.host` + a "redefinir senha" CTA pointing at `/forgot-password`.
+- `mfa_changed` — fires from TOTP enable/disable and passkey register/delete in `web/routes/security.py`. Distinct `change_label` per kind (TOTP ativado / desativado, Passkey registrado / removido).
+- `new_device_login` — fires on the first login from an unseen `(user_agent, IPv4 /24)` pair. Backed by `known_devices` (Alembic `9a1c5b3f7e62`) and `KnownDeviceService.fingerprint(user_agent, remote_ip)` which SHA-256s `"<UA>|<subnet>"`.
+
+### Organization & collaboration emails
+
+- `invite_received` — to the invitee when an org admin sends an invite (`web/routes/organization.py`). Links to `/invites/`.
+- `invite_responded` — to the original inviter when the invitee accepts or declines (`web/routes/invite.py`). `response_label` is `"aceitou"` or `"recusou"`.
+- `member_changed` — to the affected user when their role changes in an org (`web/routes/organization.py:member_change_role`).
+- `billing_transferred` — fires from `web/routes/billing.py` transfer handler. Notifies the previous user-owner (if any) and every `admin`/`owner` member of the destination organization.
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).

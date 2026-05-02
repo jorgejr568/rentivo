@@ -83,6 +83,68 @@ class TestInviteDecline:
         assert response.status_code == 302
 
 
+class TestInviteResponseNotifications:
+    def test_accept_notifies_inviter(self, auth_client, test_engine, csrf_token, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "invite_responded":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "invitee": ctx["invitee_email"],
+                        "org": ctx["org_name"],
+                        "label": ctx["response_label"],
+                    }
+                )
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+
+        org, invite = _setup_invite(test_engine)
+        response = auth_client.post(
+            f"/invites/{invite.uuid}/accept",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent and sent[0]["label"] == "aceitou"
+        assert sent[0]["to"] == "inv@t.com"
+        assert sent[0]["org"] == "Test Org"
+
+    def test_decline_notifies_inviter(self, auth_client, test_engine, csrf_token, monkeypatch):
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, event, ctx):
+            if event == "invite_responded":
+                sent.append(
+                    {
+                        "to": to_email,
+                        "invitee": ctx["invitee_email"],
+                        "org": ctx["org_name"],
+                        "label": ctx["response_label"],
+                    }
+                )
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send", _capture)
+
+        org, invite = _setup_invite(test_engine)
+        response = auth_client.post(
+            f"/invites/{invite.uuid}/decline",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent and sent[0]["label"] == "recusou"
+        assert sent[0]["to"] == "inv@t.com"
+        assert sent[0]["org"] == "Test Org"
+
+
 class TestInviteAcceptMFAEnforcement:
     def test_accept_from_enforcing_org_sets_mfa_flag(self, auth_client, test_engine, csrf_token):
         """Accepting invite from MFA-enforcing org sets mfa_setup_required."""

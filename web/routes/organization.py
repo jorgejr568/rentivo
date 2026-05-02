@@ -7,14 +7,17 @@ from fastapi.responses import RedirectResponse
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.organization import OrgRole
 from rentivo.services.audit_serializers import serialize_invite, serialize_organization
+from rentivo.settings import settings
 from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
     get_billing_service,
+    get_email_service,
     get_invite_service,
     get_mfa_service,
     get_organization_service,
+    get_user_service,
     render,
 )
 from web.flash import flash
@@ -268,6 +271,20 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
         new_state={"role": new_role},
     )
 
+    member_user = get_user_service(request).get_by_id(member_user_id)
+    if member_user is not None:
+        old_label = OrgRole.label(old_role) if old_role else "—"
+        new_label = OrgRole.label(new_role)
+        get_email_service(request).safe_send(
+            to_email=member_user.email,
+            event="member_changed",
+            ctx={
+                "change_message": f"Sua função mudou de {old_label} para {new_label}.",
+                "org_name": org.name,
+                "actor_email": request.session.get("email", ""),
+            },
+        )
+
     flash(request, "Papel atualizado com sucesso!", "success")
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
@@ -359,6 +376,19 @@ async def organization_invite(request: Request, org_uuid: str):
             new_state=serialize_invite(invite),
         )
 
+    inviter_email = request.session.get("email", "")
+    invites_url = f"{settings.public_app_url.rstrip('/')}/invites/"
+    get_email_service(request).safe_send(
+        to_email=email,
+        event="invite_received",
+        ctx={
+            "inviter_email": inviter_email,
+            "org_name": org.name,
+            "role_label": OrgRole.label(role),
+            "invites_url": invites_url,
+        },
+    )
+
     flash(request, f"Convite enviado para '{email}'!", "success")
     push_event(request, {"event": "rentivo_invite_sent", "org_id_hash": analytics_hash(org_uuid)})
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
@@ -442,12 +472,30 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
+    previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
         billing_service.transfer_to_organization(billing.id, org.id)
     except ValueError as e:
         logger.warning("transfer_billing_failed", billing_uuid=billing_uuid, org_uuid=org_uuid, error=str(e))
         flash(request, str(e), "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+
+    audit = get_audit_service(request)
+    audit.safe_log(
+        AuditEventType.BILLING_TRANSFER,
+        actor_id=user_id,
+        actor_username=request.session.get("email", ""),
+        source="web",
+        entity_type="billing",
+        entity_id=billing.id,
+        entity_uuid=billing.uuid,
+        previous_state=previous_owner,
+        new_state={"owner_type": "organization", "owner_id": org.id},
+    )
+
+    from web.routes.billing import _notify_billing_transferred
+
+    _notify_billing_transferred(request, billing, previous_owner, org.id, user_id)
 
     flash(request, "Cobrança transferida com sucesso!", "success")
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)

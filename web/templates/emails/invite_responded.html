@@ -1,0 +1,11 @@
+{% extends "_email_layout.html" %}
+{% import "_email_macros.html" as m %}
+{% block title %}Resposta ao convite — Rentivo{% endblock %}
+{% block content %}
+{{ m.heading("Resposta ao convite") }}
+<p style="margin:0;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    <strong style="font-weight:600;">{{ invitee_email }}</strong>
+    {{ response_label }} o convite para a organização
+    <strong style="font-weight:600;">"{{ org_name }}"</strong>.
+</p>
+{% endblock %}

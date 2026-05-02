@@ -1,0 +1,17 @@
+{% extends "_email_layout.html" %}
+{% import "_email_macros.html" as m %}
+{% block title %}Bem-vindo à Rentivo{% endblock %}
+{% block content %}
+{{ m.heading("Bem-vindo à Rentivo") }}
+<p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    Sua conta foi criada com o e-mail
+    <strong style="font-weight:600;">{{ email }}</strong>.
+</p>
+<p style="margin:0 0 28px;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    Para que seus inquilinos consigam pagar direto do boleto, configure sua chave PIX agora.
+</p>
+{{ m.cta_button(pix_setup_url, "Configurar PIX") }}
+<p style="margin:0;font-size:14px;line-height:1.5;color:#7f8c8d;">
+    Se você não criou esta conta, pode ignorar esta mensagem.
+</p>
+{% endblock %}

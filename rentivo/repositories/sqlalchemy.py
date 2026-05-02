@@ -11,6 +11,7 @@ from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.invite import Invite
+from rentivo.models.known_device import KnownDevice
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.models.password_reset_token import PasswordResetToken
@@ -22,6 +23,7 @@ from rentivo.repositories.base import (
     BillingRepository,
     BillRepository,
     InviteRepository,
+    KnownDeviceRepository,
     MFATOTPRepository,
     OrganizationRepository,
     PasskeyRepository,
@@ -1480,3 +1482,51 @@ class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
             {"now": _now(), "uid": user_id},
         )
         self.conn.commit()
+
+
+class SQLAlchemyKnownDeviceRepository(KnownDeviceRepository):
+    def __init__(self, conn: Connection) -> None:
+        self.conn = conn
+
+    def get(self, user_id: int, device_hash: str) -> KnownDevice | None:
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM known_devices WHERE user_id = :uid AND device_hash = :h"),
+                {"uid": user_id, "h": device_hash},
+            )
+            .mappings()
+            .fetchone()
+        )
+        if row is None:
+            return None
+        return KnownDevice(
+            id=row["id"],
+            user_id=row["user_id"],
+            device_hash=row["device_hash"],
+            user_agent_snippet=row.get("user_agent_snippet", "") or "",
+            first_seen_at=row.get("first_seen_at"),
+            last_seen_at=row.get("last_seen_at"),
+        )
+
+    def upsert(self, device: KnownDevice) -> KnownDevice:
+        existing = self.get(device.user_id, device.device_hash)
+        now = _now()
+        if existing is None:
+            self.conn.execute(
+                text(
+                    "INSERT INTO known_devices (user_id, device_hash, user_agent_snippet, "
+                    "first_seen_at, last_seen_at) "
+                    "VALUES (:uid, :h, :ua, :now, :now)"
+                ),
+                {"uid": device.user_id, "h": device.device_hash, "ua": device.user_agent_snippet, "now": now},
+            )
+        else:
+            self.conn.execute(
+                text("UPDATE known_devices SET last_seen_at = :now WHERE id = :id"),
+                {"now": now, "id": existing.id},
+            )
+        self.conn.commit()
+        result = self.get(device.user_id, device.device_hash)
+        if result is None:
+            raise RuntimeError("Failed to upsert known_device")
+        return result

@@ -198,6 +198,16 @@ CREATE TABLE themes (
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
 );
+
+CREATE TABLE known_devices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_hash VARCHAR(64) NOT NULL,
+    user_agent_snippet VARCHAR(255) NOT NULL DEFAULT '',
+    first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, device_hash)
+);
 """
 
 

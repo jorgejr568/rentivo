@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 
 import structlog
 from fastapi import APIRouter, Request
@@ -8,9 +9,12 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
+from rentivo.settings import settings
 from web.analytics import push_event
 from web.deps import (
     get_audit_service,
+    get_email_service,
+    get_known_device_service,
     get_mfa_service,
     get_turnstile_service,
     get_user_service,
@@ -75,6 +79,26 @@ def _clear_mfa_attempts(ip: str) -> None:
     _mfa_attempts.pop(ip, None)
 
 
+def _check_and_send_new_device_email(request: Request, user) -> None:
+    user_agent = request.headers.get("user-agent", "")
+    client_ip = request.client.host if request.client else "unknown"
+    kd_service = get_known_device_service(request)
+    if kd_service.register_login(user.id, user_agent, client_ip):
+        return
+    forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
+    get_email_service(request).safe_send(
+        to_email=user.email,
+        event="new_device_login",
+        ctx={
+            "email": user.email,
+            "logged_in_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "source_ip": client_ip,
+            "user_agent": user_agent,
+            "reset_url": forgot_url,
+        },
+    )
+
+
 @router.get("/signup")
 async def signup_page(request: Request):
     if request.session.get("user_id"):
@@ -131,6 +155,13 @@ async def signup(request: Request):
     )
 
     push_event(request, {"event": "rentivo_signup_completed"})
+
+    pix_setup_url = f"{settings.public_app_url.rstrip('/')}/security/pix"
+    get_email_service(request).safe_send(
+        to_email=user.email,
+        event="welcome",
+        ctx={"email": user.email, "pix_setup_url": pix_setup_url},
+    )
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -232,6 +263,7 @@ async def login(request: Request):
     )
 
     push_event(request, {"event": "rentivo_login_success", "via": "password"})
+    _check_and_send_new_device_email(request, user)
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -343,6 +375,9 @@ async def mfa_verify(request: Request):
 
     logger.info("mfa_verified", email=email, method=method)
     push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
+    user = get_user_service(request).get_by_id(user_id)
+    if user is not None:
+        _check_and_send_new_device_email(request, user)
     return RedirectResponse("/billings/", status_code=302)
 
 

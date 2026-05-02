@@ -6,7 +6,13 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from web.analytics import analytics_hash, push_event
-from web.deps import get_audit_service, get_invite_service, get_mfa_service, render
+from web.deps import (
+    get_audit_service,
+    get_email_service,
+    get_invite_service,
+    get_mfa_service,
+    render,
+)
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -27,6 +33,7 @@ async def invite_list(request: Request):
 async def invite_accept(request: Request, invite_uuid: str):
     user_id = request.session.get("user_id")
     service = get_invite_service(request)
+    invite_record = service.invite_repo.get_by_uuid(invite_uuid)
     try:
         service.accept_invite(invite_uuid, user_id)
     except ValueError as e:
@@ -46,6 +53,17 @@ async def invite_accept(request: Request, invite_uuid: str):
         new_state={"status": "accepted"},
     )
 
+    if invite_record is not None:
+        get_email_service(request).safe_send(
+            to_email=invite_record.invited_by_email,
+            event="invite_responded",
+            ctx={
+                "invitee_email": invite_record.invited_email,
+                "org_name": invite_record.organization_name,
+                "response_label": "aceitou",
+            },
+        )
+
     # Check if user now needs MFA setup (accepted invite from enforcing org)
     mfa_service = get_mfa_service(request)
     if mfa_service.user_requires_mfa_setup(user_id):
@@ -60,6 +78,7 @@ async def invite_accept(request: Request, invite_uuid: str):
 async def invite_decline(request: Request, invite_uuid: str):
     user_id = request.session.get("user_id")
     service = get_invite_service(request)
+    invite_record = service.invite_repo.get_by_uuid(invite_uuid)
     try:
         service.decline_invite(invite_uuid, user_id)
     except ValueError as e:
@@ -78,6 +97,17 @@ async def invite_decline(request: Request, invite_uuid: str):
         previous_state={"status": "pending"},
         new_state={"status": "declined"},
     )
+
+    if invite_record is not None:
+        get_email_service(request).safe_send(
+            to_email=invite_record.invited_by_email,
+            event="invite_responded",
+            ctx={
+                "invitee_email": invite_record.invited_email,
+                "org_name": invite_record.organization_name,
+                "response_label": "recusou",
+            },
+        )
 
     flash(request, "Convite recusado.", "info")
     push_event(request, {"event": "rentivo_invite_declined"})
