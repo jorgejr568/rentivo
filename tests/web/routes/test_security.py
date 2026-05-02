@@ -774,16 +774,25 @@ class TestSecurityPixUpdate:
 
 
 def test_change_password_sends_email(auth_client, csrf_token, monkeypatch):
-    from rentivo.services.email_service import EmailService
+    from rentivo.jobs.base import Job
+    from rentivo.services.job_service import JobService
 
     sent: list[dict] = []
 
-    def _capture(self, to_email, event, ctx):
-        if event == "password_changed":
-            sent.append({"to": to_email, "ip": ctx["source_ip"], "url": ctx["reset_url"]})
-        return "id"
+    def _capture(self, job_type, payload, **kwargs):
+        if payload.get("event") == "password_changed":
+            ctx = payload["ctx"]
+            sent.append({"to": payload["to_email"], "ip": ctx["source_ip"], "url": ctx["reset_url"]})
+        return Job(
+            id=1,
+            ulid="01HXYZ",
+            job_type=job_type,
+            payload=payload,
+            attempts=0,
+            max_attempts=5,
+        )
 
-    monkeypatch.setattr(EmailService, "safe_send", _capture)
+    monkeypatch.setattr(JobService, "enqueue", _capture)
     response = auth_client.post(
         "/security/change-password",
         data={
@@ -798,16 +807,24 @@ def test_change_password_sends_email(auth_client, csrf_token, monkeypatch):
 
 
 def _capture_mfa_email(monkeypatch):
-    from rentivo.services.email_service import EmailService
+    from rentivo.jobs.base import Job
+    from rentivo.services.job_service import JobService
 
     sent: list[dict] = []
 
-    def _capture(self, to_email, event, ctx):
-        if event == "mfa_changed":
-            sent.append({"label": ctx["change_label"], "to": to_email})
-        return "id"
+    def _capture(self, job_type, payload, **kwargs):
+        if payload.get("event") == "mfa_changed":
+            sent.append({"label": payload["ctx"]["change_label"], "to": payload["to_email"]})
+        return Job(
+            id=1,
+            ulid="01HXYZ",
+            job_type=job_type,
+            payload=payload,
+            attempts=0,
+            max_attempts=5,
+        )
 
-    monkeypatch.setattr(EmailService, "safe_send", _capture)
+    monkeypatch.setattr(JobService, "enqueue", _capture)
     return sent
 
 
