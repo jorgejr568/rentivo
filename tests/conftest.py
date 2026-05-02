@@ -240,7 +240,8 @@ def db_engine() -> Engine:
         cursor.execute("PRAGMA foreign_keys = ON")
         cursor.close()
 
-    return engine
+    yield engine
+    engine.dispose()
 
 
 @pytest.fixture()
