@@ -123,12 +123,15 @@ def serialize_invite(invite: Invite) -> dict:
 
 
 _DISALLOWED_KEY_PATTERNS = ("password", "token", "secret")
-_DISALLOWED_KEYS_EXACT = {"pix_key", "pix_merchant_name", "pix_merchant_city"}
+_DISALLOWED_KEY_PREFIXES = ("pix_merchant_",)
+_DISALLOWED_KEYS_EXACT = {"pix_key"}
 
 
 def _is_disallowed_key(key: str) -> bool:
     lower = key.lower()
     if lower in _DISALLOWED_KEYS_EXACT:
+        return True
+    if any(lower.startswith(p) for p in _DISALLOWED_KEY_PREFIXES):
         return True
     return any(pat in lower for pat in _DISALLOWED_KEY_PATTERNS)
 
@@ -146,7 +149,7 @@ def serialize_job_payload(payload: dict) -> dict:
         return {
             "event": payload.get("event"),
             "to_email": payload.get("to_email"),
-            "ctx_keys_count": len(payload.get("ctx", {})),
+            "ctx_keys_count": len(payload.get("ctx") or {}),
         }
     return {
         "job_type": job_type,

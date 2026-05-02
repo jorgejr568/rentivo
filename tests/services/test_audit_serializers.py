@@ -9,6 +9,7 @@ from rentivo.services.audit_serializers import (
     serialize_bill,
     serialize_billing,
     serialize_invite,
+    serialize_job_payload,
     serialize_organization,
     serialize_user,
 )
@@ -228,8 +229,6 @@ class TestSerializeInvite:
 
 class TestSerializeJobPayload:
     def test_email_send_keeps_event_and_to_email_drops_ctx_values(self):
-        from rentivo.services.audit_serializers import serialize_job_payload
-
         result = serialize_job_payload(
             {
                 "job_type": "email.send",
@@ -245,9 +244,12 @@ class TestSerializeJobPayload:
         assert "ctx" not in result  # raw ctx values stripped
         assert "pix_setup_url" not in result
 
-    def test_strips_disallowed_keys(self):
-        from rentivo.services.audit_serializers import serialize_job_payload
+    def test_email_send_with_ctx_none_does_not_raise(self):
+        result = serialize_job_payload({"job_type": "email.send", "ctx": None})
 
+        assert result["ctx_keys_count"] == 0
+
+    def test_strips_disallowed_keys(self):
         result = serialize_job_payload(
             {
                 "job_type": "email.send",
@@ -266,15 +268,11 @@ class TestSerializeJobPayload:
             assert stripped not in result
 
     def test_unknown_job_type_keeps_only_keys_index(self):
-        from rentivo.services.audit_serializers import serialize_job_payload
-
         result = serialize_job_payload({"job_type": "pdf.render", "bill_id": 7, "force": True})
 
         assert result == {"job_type": "pdf.render", "keys": ["bill_id", "force", "job_type"]}
 
     def test_unknown_job_type_strips_disallowed_keys_from_index(self):
-        from rentivo.services.audit_serializers import serialize_job_payload
-
         result = serialize_job_payload(
             {
                 "job_type": "pdf.render",
@@ -290,9 +288,20 @@ class TestSerializeJobPayload:
 
         assert result == {"job_type": "pdf.render", "keys": ["bill_id", "job_type"]}
 
-    def test_missing_job_type_falls_through_to_unknown_branch(self):
-        from rentivo.services.audit_serializers import serialize_job_payload
+    def test_unknown_job_type_strips_pix_merchant_wildcard(self):
+        result = serialize_job_payload(
+            {
+                "job_type": "pdf.render",
+                "bill_id": 7,
+                "pix_merchant_id": "abc-123",
+                "pix_merchant_email": "alice@x",
+                "pix_merchant_anything_else": "x",
+            }
+        )
 
+        assert result == {"job_type": "pdf.render", "keys": ["bill_id", "job_type"]}
+
+    def test_missing_job_type_falls_through_to_unknown_branch(self):
         result = serialize_job_payload({"foo": "bar"})
 
         assert result == {"job_type": "", "keys": ["foo"]}
