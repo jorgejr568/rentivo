@@ -25,7 +25,7 @@
                     <a href="/forgot-password">Esqueceu sua senha?</a>
                 </p>
                 {% if turnstile_site_key %}
-                <div class="field">
+                <div class="field" style="display: flex; justify-content: center;">
                     <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                 </div>
                 {% endif %}
