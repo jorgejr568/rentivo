@@ -271,11 +271,10 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
         new_state={"role": new_role},
     )
 
-    role_labels = {"admin": "Administrador", "manager": "Gerente", "viewer": "Visualizador", "owner": "Dono"}
     member_user = get_user_service(request).get_by_id(member_user_id)
     if member_user is not None:
-        old_label = role_labels.get(old_role, old_role) if old_role else "—"
-        new_label = role_labels.get(new_role, new_role)
+        old_label = OrgRole.label(old_role) if old_role else "—"
+        new_label = OrgRole.label(new_role)
         get_email_service(request).safe_send_member_changed(
             to_email=member_user.email,
             change_message=f"Sua função mudou de {old_label} para {new_label}.",
@@ -374,14 +373,13 @@ async def organization_invite(request: Request, org_uuid: str):
             new_state=serialize_invite(invite),
         )
 
-    role_labels = {"admin": "Administrador", "manager": "Gerente", "viewer": "Visualizador", "owner": "Dono"}
     inviter_email = request.session.get("email", "")
     invites_url = f"{settings.public_app_url.rstrip('/')}/invites/"
     get_email_service(request).safe_send_invite_received(
         to_email=email,
         inviter_email=inviter_email,
         org_name=org.name,
-        role_label=role_labels.get(role, role),
+        role_label=OrgRole.label(role),
         invites_url=invites_url,
     )
 

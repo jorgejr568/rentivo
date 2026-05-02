@@ -11,6 +11,20 @@ class OrgRole(str, Enum):
     MANAGER = "manager"
     VIEWER = "viewer"
 
+    @classmethod
+    def label(cls, value: str) -> str:
+        """Return the PT-BR label for a role value, or the raw value as a fallback."""
+        return _ROLE_LABELS.get(value, value)
+
+
+# Module-level so the dict can be imported directly if a caller wants it.
+_ROLE_LABELS = {
+    OrgRole.ADMIN.value: "Administrador",
+    OrgRole.MANAGER.value: "Gerente",
+    OrgRole.VIEWER.value: "Visualizador",
+    "owner": "Dono",  # not a current OrgRole value but kept for forward-compat with the existing inline dicts
+}
+
 
 class Organization(BaseModel):
     id: int | None = None
