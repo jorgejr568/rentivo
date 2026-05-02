@@ -15,6 +15,7 @@ from rentivo.db import get_engine
 from rentivo.jobs import handlers  # noqa: F401 — registers handlers
 from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
 from rentivo.jobs.worker import Worker
+from rentivo.logging import configure_logging
 from rentivo.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
 from rentivo.services.audit_service import AuditService
 from rentivo.settings import settings
@@ -23,6 +24,7 @@ logger = structlog.get_logger(__name__)
 
 
 def main() -> None:
+    configure_logging()
     logger.info(
         "worker_boot",
         batch_size=settings.job_worker_batch_size,
