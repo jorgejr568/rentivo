@@ -1567,3 +1567,52 @@ class TestBillDeleteCrossBilling:
 
         with test_engine.connect() as conn:
             assert SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid) is not None
+
+
+class TestReceiptDeleteEnqueuesS3Delete:
+    def test_receipt_delete_enqueues_s3_delete_job(self, auth_client, csrf_token, monkeypatch, test_engine, tmp_path):
+        """Receipt-delete must enqueue exactly one s3.delete job for the receipt's storage_key."""
+        from rentivo.jobs.base import Job
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+        from rentivo.services.job_service import JobService
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_files": ("r.pdf", b"%PDF-test", "application/pdf")},
+                follow_redirects=False,
+            )
+            with test_engine.connect() as conn:
+                receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
+            assert len(receipts) == 1
+            receipt = receipts[0]
+
+            sent: list[dict] = []
+
+            def _capture(self, job_type, payload, **kwargs):
+                sent.append({"job_type": job_type, "payload": payload, "kwargs": kwargs})
+                return Job(
+                    id=1,
+                    ulid="01HXYZ",
+                    job_type=job_type,
+                    payload=payload,
+                    attempts=0,
+                    max_attempts=5,
+                )
+
+            monkeypatch.setattr(JobService, "enqueue", _capture)
+
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}/delete",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code in (200, 302)
+
+        s3_jobs = [s for s in sent if s["job_type"] == "s3.delete"]
+        assert len(s3_jobs) == 1
+        assert s3_jobs[0]["payload"]["key"] == receipt.storage_key
+        assert s3_jobs[0]["kwargs"]["source"] == "web"
