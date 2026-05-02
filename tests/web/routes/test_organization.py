@@ -485,6 +485,62 @@ class TestOrganizationTransferBilling:
         )
         assert response.status_code == 302
 
+    def test_transfer_billing_notifies_and_audits(self, auth_client, test_engine, csrf_token, monkeypatch):
+        """Issue #1: org-side transfer must email admins + previous owner AND audit-log BILLING_TRANSFER."""
+        from rentivo.models.audit_log import AuditEventType
+        from rentivo.models.organization import OrgRole
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+        from rentivo.services.email_service import EmailService
+        from tests.web.conftest import get_audit_logs
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, billing_name, recipient_role, actor_email):
+            sent.append({"to": to_email, "role": recipient_role})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_billing_transferred", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        # Billing previously owned by another user — so they should be notified.
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            prev_owner = user_repo.create(User(email="prev_owner_org@example.com", password_hash="h"))
+        billing = create_billing_in_db(test_engine, owner_type="user", owner_id=prev_owner.id)
+
+        # Actor is admin of the destination org. Add a second admin.
+        org = create_org_in_db(test_engine, "Notif Org", user_id)
+        other_admin_email = "second_admin@example.com"
+        with test_engine.connect() as conn:
+            org_repo = SQLAlchemyOrganizationRepository(conn)
+            other_admin = SQLAlchemyUserRepository(conn).create(User(email=other_admin_email, password_hash="h"))
+            org_repo.add_member(org.id, other_admin.id, OrgRole.ADMIN.value)
+
+        with patch(
+            "web.routes.organization.get_authorization_service",
+        ) as mock_auth_fn:
+            mock_auth = MagicMock()
+            mock_auth.can_transfer_billing.return_value = True
+            mock_auth_fn.return_value = mock_auth
+            response = auth_client.post(
+                f"/organizations/{org.uuid}/transfer-billing",
+                data={"csrf_token": csrf_token, "billing_uuid": billing.uuid},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+
+        # Previous owner emailed with previous_owner role.
+        assert any(s["to"] == "prev_owner_org@example.com" and s["role"] == "previous_owner" for s in sent)
+        # Second admin emailed with destination_admin role.
+        assert any(s["to"] == other_admin_email and s["role"] == "destination_admin" for s in sent)
+        # Actor (test user) NOT emailed.
+        assert not any(s["to"] == "testuser@example.com" for s in sent)
+
+        # BILLING_TRANSFER audit logged.
+        logs = get_audit_logs(test_engine, event_type=AuditEventType.BILLING_TRANSFER)
+        assert len(logs) >= 1
+        assert any(log.entity_uuid == billing.uuid for log in logs)
+
 
 class TestInviteReturnsNone:
     """Cover branch 378->390: invite_service.send_invite returns None."""

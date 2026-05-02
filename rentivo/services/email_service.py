@@ -95,6 +95,23 @@ class EmailService:
             },
         )
 
+    def safe_send_password_reset_completed(
+        self,
+        to_email: str,
+        changed_at: str,
+        source_ip: str,
+    ) -> str | None:
+        return self.safe_send(
+            to_email=to_email,
+            subject="Senha redefinida — Rentivo",
+            template_stem="password_reset_completed",
+            ctx={
+                "email": to_email,
+                "changed_at": changed_at,
+                "source_ip": source_ip,
+            },
+        )
+
     def safe_send_mfa_changed(
         self,
         to_email: str,
@@ -197,7 +214,7 @@ class EmailService:
         self,
         to_email: str,
         billing_name: str,
-        change_message: str,
+        recipient_role: str,
         actor_email: str,
     ) -> str | None:
         return self.safe_send(
@@ -206,7 +223,7 @@ class EmailService:
             template_stem="billing_transferred",
             ctx={
                 "billing_name": billing_name,
-                "change_message": change_message,
+                "recipient_role": recipient_role,
                 "actor_email": actor_email,
             },
         )

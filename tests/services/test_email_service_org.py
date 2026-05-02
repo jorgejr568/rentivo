@@ -60,10 +60,10 @@ def test_send_billing_transferred_renders_name_message_and_actor():
     service.safe_send_billing_transferred(
         to_email="alice@example.com",
         billing_name="Apto 301",
-        change_message="foi transferida para você",
+        recipient_role="destination_admin",
         actor_email="bob@example.com",
     )
     sent = backend.send.call_args[0][0]
     assert "Apto 301" in sent.html_body
-    assert "transferida para você" in sent.html_body
+    assert "transferida para sua organização" in sent.html_body
     assert "bob@example.com" in sent.text_body

@@ -466,12 +466,30 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         flash(request, "Acesso negado.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
+    previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
         billing_service.transfer_to_organization(billing.id, org.id)
     except ValueError as e:
         logger.warning("transfer_billing_failed", billing_uuid=billing_uuid, org_uuid=org_uuid, error=str(e))
         flash(request, str(e), "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+
+    audit = get_audit_service(request)
+    audit.safe_log(
+        AuditEventType.BILLING_TRANSFER,
+        actor_id=user_id,
+        actor_username=request.session.get("email", ""),
+        source="web",
+        entity_type="billing",
+        entity_id=billing.id,
+        entity_uuid=billing.uuid,
+        previous_state=previous_owner,
+        new_state={"owner_type": "organization", "owner_id": org.id},
+    )
+
+    from web.routes.billing import _notify_billing_transferred
+
+    _notify_billing_transferred(request, billing, previous_owner, org.id, user_id)
 
     flash(request, "Cobrança transferida com sucesso!", "success")
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)

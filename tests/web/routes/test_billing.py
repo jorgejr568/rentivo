@@ -466,21 +466,28 @@ class TestBillingTransfer:
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, billing_name, change_message, actor_email):
-            sent.append({"to": to_email, "msg": change_message})
+        def _capture(self, to_email, billing_name, recipient_role, actor_email):
+            sent.append({"to": to_email, "role": recipient_role})
             return "id"
 
         monkeypatch.setattr(EmailService, "safe_send_billing_transferred", _capture)
 
         user_id = get_test_user_id(test_engine)
         billing = create_billing_in_db(test_engine)
-        org = create_org_in_db(test_engine, "Target Org", user_id)
+        # Create the target org with a different "creator" so the actor isn't already an admin.
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            other_creator = user_repo.create(User(email="org_creator@example.com", password_hash="h"))
+        org = create_org_in_db(test_engine, "Target Org", other_creator.id)
 
+        # Add the actor (test user) as a viewer so they can transfer to the org.
         # Add a second admin to the destination org so we can assert org-admin notifications.
         target_admin_email = "admin2@example.com"
         with test_engine.connect() as conn:
+            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo.add_member(org.id, user_id, OrgRole.ADMIN.value)
             extra_admin = SQLAlchemyUserRepository(conn).create(User(email=target_admin_email, password_hash="h"))
-            SQLAlchemyOrganizationRepository(conn).add_member(org.id, extra_admin.id, OrgRole.ADMIN.value)
+            org_repo.add_member(org.id, extra_admin.id, OrgRole.ADMIN.value)
 
         response = auth_client.post(
             f"/billings/{billing.uuid}/transfer",
@@ -489,12 +496,67 @@ class TestBillingTransfer:
         )
         assert response.status_code in (200, 302)
 
-        # The previous owner (test user) gets a "outro proprietário" message.
-        prev_owner_msgs = [s["msg"] for s in sent if s["to"] == "testuser@example.com"]
-        assert any("outro proprietário" in m for m in prev_owner_msgs)
-        # The extra org admin gets a "para sua organização" message.
-        admin_msgs = [s["msg"] for s in sent if s["to"] == target_admin_email]
-        assert any("para sua organização" in m for m in admin_msgs)
+        # The previous owner (test user) does NOT receive an email because they are the actor.
+        assert not any(s["to"] == "testuser@example.com" for s in sent)
+        # The extra org admin gets a "destination_admin" notification.
+        admin_roles = [s["role"] for s in sent if s["to"] == target_admin_email]
+        assert "destination_admin" in admin_roles
+        # The org creator (also an admin) gets the "destination_admin" notification too.
+        creator_roles = [s["role"] for s in sent if s["to"] == "org_creator@example.com"]
+        assert "destination_admin" in creator_roles
+
+    def test_transfer_excludes_actor_from_destination_admin_notifications(
+        self, auth_client, csrf_token, monkeypatch, test_engine
+    ):
+        """Issue #2: actor performing the transfer must not receive their own notification."""
+        from rentivo.models.organization import OrgRole
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+        from rentivo.services.email_service import EmailService
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, billing_name, recipient_role, actor_email):
+            sent.append({"to": to_email, "role": recipient_role})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_billing_transferred", _capture)
+
+        user_id = get_test_user_id(test_engine)
+        # Create a billing owned by another user so the actor is NOT the previous owner.
+        with test_engine.connect() as conn:
+            user_repo = SQLAlchemyUserRepository(conn)
+            other_owner = user_repo.create(User(email="prev_owner@example.com", password_hash="h"))
+        billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other_owner.id)
+
+        # Org where the actor (test user) is an admin — they must not be emailed.
+        org = create_org_in_db(test_engine, "Self Org", user_id)
+        # Add a second admin to verify other admins still get notified.
+        other_admin_email = "other_admin@example.com"
+        with test_engine.connect() as conn:
+            org_repo = SQLAlchemyOrganizationRepository(conn)
+            other_admin = SQLAlchemyUserRepository(conn).create(User(email=other_admin_email, password_hash="h"))
+            org_repo.add_member(org.id, other_admin.id, OrgRole.ADMIN.value)
+
+        # The actor must be allowed to transfer this billing — patch authorization.
+        with patch(
+            "web.routes.billing.get_authorization_service",
+        ) as mock_auth_fn:
+            mock_auth = MagicMock()
+            mock_auth.can_transfer_billing.return_value = True
+            mock_auth_fn.return_value = mock_auth
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/transfer",
+                data={"organization_id": str(org.id), "csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code in (200, 302)
+
+        # Actor (testuser@example.com) must NOT be in the recipient list.
+        assert not any(s["to"] == "testuser@example.com" for s in sent)
+        # Previous owner (prev_owner@example.com) was a different user — they get emailed.
+        assert any(s["to"] == "prev_owner@example.com" and s["role"] == "previous_owner" for s in sent)
+        # The other admin still gets emailed.
+        assert any(s["to"] == other_admin_email and s["role"] == "destination_admin" for s in sent)
 
 
 class TestBillingDetailIdNone:
