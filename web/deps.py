@@ -36,6 +36,7 @@ from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.password_reset_service import PasswordResetService
 from rentivo.services.pix_service import PixService
+from rentivo.services.storage_cleanup_service import StorageCleanupService
 from rentivo.services.theme_service import ThemeService
 from rentivo.services.turnstile_service import TurnstileService
 from rentivo.services.user_service import UserService
@@ -245,6 +246,15 @@ def get_job_service(request: Request) -> JobService:
     return JobService(
         SQLAlchemyJobRepository(conn, stuck_after_seconds=settings.job_worker_stuck_after_seconds),
         AuditService(SQLAlchemyAuditLogRepository(conn)),
+    )
+
+
+def get_storage_cleanup_service(request: Request) -> StorageCleanupService:
+    conn = _get_conn(request)
+    return StorageCleanupService(
+        job_service=get_job_service(request),
+        bill_repo=SQLAlchemyBillRepository(conn),
+        receipt_repo=SQLAlchemyReceiptRepository(conn),
     )
 
 
