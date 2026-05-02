@@ -243,7 +243,7 @@ class TestBillServiceValueErrors:
         self.mock_storage = MagicMock()
         self.service = BillService(self.mock_repo, self.mock_storage, pix_service=_pix_service_with())
 
-    def test_generate_and_store_pdf_bill_id_none(self):
+    def test_render_pdf_sync_bill_id_none(self):
         import pytest
 
         bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03", total_amount=100)
@@ -252,7 +252,7 @@ class TestBillServiceValueErrors:
             mock_pdf.generate.return_value = b"%PDF"
             self.mock_storage.save.return_value = "/path.pdf"
             with pytest.raises(ValueError, match="Cannot update pdf_path"):
-                self.service._generate_and_store_pdf(bill, billing)
+                self.service._render_pdf_sync(bill, billing)
 
     def test_generate_bill_billing_id_none(self):
         import pytest
@@ -565,7 +565,7 @@ class TestReceiptMethods:
 
 
 class TestPdfGenerationWithReceipts:
-    """Test that _generate_and_store_pdf merges receipts."""
+    """Test that _render_pdf_sync merges receipts."""
 
     def setup_method(self):
         self.mock_repo = MagicMock()
@@ -598,7 +598,7 @@ class TestPdfGenerationWithReceipts:
             mock_pdf.generate.return_value = b"%PDF-invoice"
             with patch("rentivo.services.bill_service.merge_receipts") as mock_merge:
                 mock_merge.return_value = (b"%PDF-merged", [])
-                self.service._generate_and_store_pdf(bill, billing)
+                self.service._render_pdf_sync(bill, billing)
 
         mock_merge.assert_called_once()
         self.mock_storage.get.assert_called_once_with("key/r.pdf")
@@ -619,7 +619,7 @@ class TestPdfGenerationWithReceipts:
         with patch.object(self.service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF-invoice"
             with patch("rentivo.services.bill_service.merge_receipts") as mock_merge:
-                self.service._generate_and_store_pdf(bill, billing)
+                self.service._render_pdf_sync(bill, billing)
 
         mock_merge.assert_not_called()
 
@@ -652,3 +652,205 @@ class TestPdfGenerationWithReceipts:
         data, ordered = self.service._fetch_receipt_data(bill)
         assert data == []
         assert ordered == []
+
+
+class TestRenderOrEnqueue:
+    def setup_method(self):
+        self.bill_repo = MagicMock()
+        self.storage = MagicMock()
+        self.receipt_repo = MagicMock()
+        self.receipt_repo.list_by_bill.return_value = []
+        self.storage.save.return_value = "/path.pdf"
+        self.pix = _pix_service_with()
+        self.job_service = MagicMock()
+
+    def _bill(self):
+        return Bill(id=42, uuid="b-uuid", billing_id=1, reference_month="2026-05", total_amount=10000)
+
+    def _billing(self):
+        return Billing(id=1, uuid="bg-uuid", name="Apt 101")
+
+    def test_no_job_service_renders_synchronously(self):
+        service = BillService(self.bill_repo, self.storage, self.receipt_repo, pix_service=self.pix)
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF"
+            path, failed = service._render_or_enqueue(self._bill(), self._billing())
+
+        assert path == "/path.pdf"
+        assert failed == []
+        # Sync path: pdf_render_status set to "succeeded" (inside _render_pdf_sync)
+        self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "succeeded")
+
+    def test_job_service_enqueues_and_marks_pending(self):
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+            actor_source="web",
+            actor_id=7,
+            actor_username="alice@example.com",
+        )
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            path, failed = service._render_or_enqueue(self._bill(), self._billing())
+
+        # Async path: no actual render
+        mock_pdf.generate.assert_not_called()
+        # Bill marked pending and job enqueued
+        self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "pending")
+        self.job_service.enqueue.assert_called_once_with(
+            "pdf.render",
+            {"bill_id": 42},
+            source="web",
+            actor_id=7,
+            actor_username="alice@example.com",
+            max_attempts=3,
+        )
+        assert path is None
+        assert failed == []
+
+    def test_render_or_enqueue_raises_when_bill_id_missing(self):
+        service = BillService(self.bill_repo, self.storage, pix_service=self.pix)
+        bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2026-05", total_amount=10000)
+        with pytest.raises(ValueError, match="render or enqueue"):
+            service._render_or_enqueue(bill, self._billing())
+
+    def test_update_bill_uses_render_or_enqueue(self):
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+            actor_source="web",
+            actor_id=7,
+            actor_username="a@x",
+        )
+        self.bill_repo.update.return_value = self._bill()
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            service.update_bill(self._bill(), self._billing(), [], "notes", "")
+
+        mock_pdf.generate.assert_not_called()
+        self.job_service.enqueue.assert_called_once()
+
+    def test_regenerate_pdf_uses_render_or_enqueue(self):
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+            actor_source="web",
+            actor_id=7,
+            actor_username="a@x",
+        )
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            service.regenerate_pdf(self._bill(), self._billing())
+
+        mock_pdf.generate.assert_not_called()
+        self.job_service.enqueue.assert_called_once()
+
+    def test_add_receipt_uses_render_or_enqueue_in_async_mode(self):
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+            actor_source="web",
+            actor_id=7,
+            actor_username="a@x",
+        )
+        bill = self._bill()
+        self.receipt_repo.create.return_value = Receipt(
+            id=11,
+            uuid="r-uuid",
+            bill_id=42,
+            filename="r.pdf",
+            storage_key="key",
+            content_type="application/pdf",
+            file_size=10,
+        )
+        receipt, failed = service.add_receipt(bill, self._billing(), "r.pdf", b"data", "application/pdf")
+
+        assert receipt.filename == "r.pdf"
+        assert failed == []
+        # In async mode the worker will report receipt-merge failures separately.
+        self.job_service.enqueue.assert_called_once()
+
+    def test_delete_receipt_uses_render_or_enqueue_in_async_mode(self):
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+            actor_source="web",
+            actor_id=7,
+            actor_username="a@x",
+        )
+        bill = self._bill()
+        receipt = Receipt(id=5, bill_id=42, filename="r.pdf", uuid="r-uuid")
+        service.delete_receipt(receipt, bill, self._billing())
+
+        self.receipt_repo.delete.assert_called_once_with(5)
+        self.job_service.enqueue.assert_called_once()
+
+    def test_reorder_receipts_uses_render_or_enqueue_in_async_mode(self):
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+            actor_source="web",
+            actor_id=7,
+            actor_username="a@x",
+        )
+        bill = self._bill()
+        existing = [
+            Receipt(id=1, uuid="a", bill_id=42, filename="x.pdf", sort_order=0),
+            Receipt(id=2, uuid="b", bill_id=42, filename="y.pdf", sort_order=1),
+        ]
+        self.receipt_repo.list_by_bill.return_value = existing
+        service.reorder_receipts(bill, self._billing(), ["b", "a"])
+
+        self.receipt_repo.update_sort_orders.assert_called_once()
+        self.job_service.enqueue.assert_called_once()
+
+    def test_generate_bill_always_renders_synchronously_even_with_job_service(self):
+        """First-render path must remain synchronous so a fresh bill has a downloadable PDF."""
+        billing = Billing(
+            id=1,
+            uuid="bg-uuid",
+            name="Apt 101",
+            items=[BillingItem(id=1, description="Rent", amount=10000, item_type=ItemType.FIXED)],
+        )
+        self.bill_repo.create.return_value = Bill(
+            id=42,
+            uuid="b-uuid",
+            billing_id=1,
+            reference_month="2026-05",
+            total_amount=10000,
+            line_items=[BillLineItem(description="Rent", amount=10000, item_type=ItemType.FIXED, sort_order=0)],
+        )
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+            actor_source="web",
+            actor_id=7,
+            actor_username="a@x",
+        )
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF"
+            service.generate_bill(billing, "2026-05", {}, [])
+
+        # generate_bill must call the PDF generator inline AND must not enqueue.
+        mock_pdf.generate.assert_called_once()
+        self.job_service.enqueue.assert_not_called()
+        # And it must mark the row "succeeded" via the sync path.
+        self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "succeeded")
