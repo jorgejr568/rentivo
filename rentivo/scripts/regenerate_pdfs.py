@@ -111,8 +111,8 @@ def main() -> None:
         # Pre-flight PIX check — bills without PIX would just dead-letter
         # in the worker after 5 retries, so we filter them here.
         if pix_service.resolve_for_billing(billing) is None:
-            skipped.append((billing.name, bill.reference_month, "PIX nao configurado"))
-            console.print(f"  [yellow]✗[/yellow] {billing.name} - {bill.reference_month}: PIX nao configurado")
+            skipped.append((billing.name, bill.reference_month, "PIX não configurado"))
+            console.print(f"  [yellow]✗[/yellow] {billing.name} - {bill.reference_month}: PIX não configurado")
             continue
 
         job = job_service.enqueue(
@@ -127,7 +127,7 @@ def main() -> None:
     console.print(f"\n[green bold]{enqueued} fatura(s) enfileirada(s) com sucesso![/green bold]")
     console.print(f"[dim]{pending_or_running} job(s) pdf.render aguardando o worker (pending+running).[/dim]")
     if skipped:
-        console.print(f"[yellow]{len(skipped)} fatura(s) ignorada(s) por falta de configuracao de PIX.[/yellow]")
+        console.print(f"[yellow]{len(skipped)} fatura(s) ignorada(s) por falta de configuração de PIX.[/yellow]")
 
 
 if __name__ == "__main__":  # pragma: no cover
