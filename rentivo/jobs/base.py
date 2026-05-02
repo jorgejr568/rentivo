@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -36,6 +37,13 @@ class JobRepository(ABC):
 
     @abstractmethod
     def mark_failed(self, job_id: int, last_error: str) -> None: ...
+
+    @abstractmethod
+    def count_by_type_and_statuses(
+        self,
+        job_type: str,
+        statuses: Sequence[str],
+    ) -> int: ...
 
 
 class PermanentJobError(Exception):

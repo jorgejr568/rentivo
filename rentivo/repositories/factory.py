@@ -104,3 +104,14 @@ def get_known_device_repository() -> KnownDeviceRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyKnownDeviceRepository
 
     return SQLAlchemyKnownDeviceRepository(get_connection())
+
+
+def get_job_repository():
+    from rentivo.db import get_connection
+    from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
+    from rentivo.settings import settings
+
+    return SQLAlchemyJobRepository(
+        get_connection(),
+        stuck_after_seconds=settings.job_worker_stuck_after_seconds,
+    )
