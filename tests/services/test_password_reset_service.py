@@ -106,3 +106,28 @@ def test_consume_resets_password_and_marks_used():
     user_service.change_password.assert_called_once_with(42, "brand-new")
     token_repo.mark_used.assert_called_once_with(5)
     token_repo.invalidate_all_for_user.assert_called_once_with(42)
+
+
+def test_default_now_does_not_emit_deprecation_warning():
+    """Regression: default `now` callable must not call deprecated datetime.utcnow."""
+    import warnings
+    from unittest.mock import MagicMock
+
+    user_repo = MagicMock()
+    token_repo = MagicMock()
+    job_service = MagicMock(spec=JobService)
+    user_service = MagicMock()
+
+    service = PasswordResetService(
+        user_repo=user_repo,
+        token_repo=token_repo,
+        job_service=job_service,
+        user_service=user_service,
+        public_app_url="http://example.com",
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        result = service.now()
+
+    assert result.tzinfo is None  # naive datetime preserves DB-column compatibility
