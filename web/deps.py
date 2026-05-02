@@ -10,6 +10,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 from rentivo.db import get_engine
 from rentivo.email.factory import get_email_backend
+from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
@@ -31,6 +32,7 @@ from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
 from rentivo.services.email_service import EmailService
 from rentivo.services.invite_service import InviteService
+from rentivo.services.job_service import JobService
 from rentivo.services.known_device_service import KnownDeviceService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
@@ -242,6 +244,14 @@ def get_mfa_service(request: Request) -> MFAService:
 
 def get_email_service(request: Request) -> EmailService:
     return EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
+
+
+def get_job_service(request: Request) -> JobService:
+    conn = _get_conn(request)
+    return JobService(
+        SQLAlchemyJobRepository(conn, stuck_after_seconds=settings.job_worker_stuck_after_seconds),
+        AuditService(SQLAlchemyAuditLogRepository(conn)),
+    )
 
 
 def get_known_device_service(request: Request) -> KnownDeviceService:

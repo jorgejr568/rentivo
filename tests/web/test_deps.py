@@ -117,6 +117,22 @@ class TestTurnstileServiceFactory:
         assert service.verify_url == "https://verify.invalid/x"
 
 
+class TestJobServiceFactory:
+    """Coverage for the factory until web routes call it (Tasks 11-15)."""
+
+    def test_get_job_service_returns_job_service(self, test_engine):
+        from rentivo.services.job_service import JobService
+        from web.deps import get_job_service
+
+        request = _fake_request({}, db_conn=test_engine.connect())
+        try:
+            service = get_job_service(request)
+        finally:
+            request.state.db_conn.close()
+
+        assert isinstance(service, JobService)
+
+
 def _fake_request(session: dict, db_conn=None):
     from starlette.requests import Request
 
