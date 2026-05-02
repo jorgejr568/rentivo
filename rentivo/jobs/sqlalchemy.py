@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
 
 from sqlalchemy import Connection, bindparam, text
@@ -134,3 +135,14 @@ class SQLAlchemyJobRepository(JobRepository):
             {"id": job_id, "err": last_error},
         )
         self.conn.commit()
+
+    def count_by_type_and_statuses(
+        self,
+        job_type: str,
+        statuses: Sequence[str],
+    ) -> int:
+        stmt = text("SELECT COUNT(*) FROM jobs WHERE job_type = :job_type AND status IN :statuses").bindparams(
+            bindparam("statuses", expanding=True)
+        )
+        result = self.conn.execute(stmt, {"job_type": job_type, "statuses": list(statuses)}).scalar()
+        return int(result or 0)

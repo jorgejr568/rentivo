@@ -30,3 +30,27 @@ def test_permanent_job_error_is_an_exception():
 def test_job_repository_abc_cannot_be_instantiated_directly():
     with pytest.raises(TypeError):
         JobRepository()  # type: ignore[abstract]
+
+
+def test_job_repository_abc_requires_count_by_type_and_statuses():
+    """Subclasses must implement count_by_type_and_statuses."""
+
+    class Incomplete(JobRepository):
+        def enqueue(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def claim_batch(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def mark_succeeded(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def reschedule(self, *args, **kwargs):
+            raise NotImplementedError
+
+        def mark_failed(self, *args, **kwargs):
+            raise NotImplementedError
+
+    # Missing count_by_type_and_statuses → cannot instantiate.
+    with pytest.raises(TypeError):
+        Incomplete()  # type: ignore[abstract]
