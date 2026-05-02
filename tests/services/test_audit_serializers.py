@@ -9,6 +9,7 @@ from rentivo.services.audit_serializers import (
     serialize_bill,
     serialize_billing,
     serialize_invite,
+    serialize_job_payload,
     serialize_organization,
     serialize_user,
 )
@@ -224,3 +225,83 @@ class TestSerializeInvite:
         )
         result = serialize_invite(invite)
         assert result["responded_at"] == now.isoformat()
+
+
+class TestSerializeJobPayload:
+    def test_email_send_keeps_event_and_to_email_drops_ctx_values(self):
+        result = serialize_job_payload(
+            {
+                "job_type": "email.send",
+                "event": "welcome",
+                "to_email": "alice@example.com",
+                "ctx": {"email": "alice@example.com", "pix_setup_url": "http://x/pix"},
+            }
+        )
+
+        assert result["event"] == "welcome"
+        assert result["to_email"] == "alice@example.com"
+        assert result["ctx_keys_count"] == 2
+        assert "ctx" not in result  # raw ctx values stripped
+        assert "pix_setup_url" not in result
+
+    def test_email_send_with_ctx_none_does_not_raise(self):
+        result = serialize_job_payload({"job_type": "email.send", "ctx": None})
+
+        assert result["ctx_keys_count"] == 0
+
+    def test_strips_disallowed_keys(self):
+        result = serialize_job_payload(
+            {
+                "job_type": "email.send",
+                "event": "password_reset",
+                "to_email": "alice@example.com",
+                "ctx": {"reset_url": "http://x/r"},
+                "password": "hunter2",
+                "auth_token": "deadbeef",
+                "secret_key": "shh",
+                "pix_key": "alice@bank",
+                "pix_merchant_name": "Alice",
+            }
+        )
+
+        for stripped in ("password", "auth_token", "secret_key", "pix_key", "pix_merchant_name"):
+            assert stripped not in result
+
+    def test_unknown_job_type_keeps_only_keys_index(self):
+        result = serialize_job_payload({"job_type": "pdf.render", "bill_id": 7, "force": True})
+
+        assert result == {"job_type": "pdf.render", "keys": ["bill_id", "force", "job_type"]}
+
+    def test_unknown_job_type_strips_disallowed_keys_from_index(self):
+        result = serialize_job_payload(
+            {
+                "job_type": "pdf.render",
+                "bill_id": 7,
+                "password": "secret",
+                "auth_token": "deadbeef",
+                "secret_key": "shh",
+                "pix_key": "alice@bank",
+                "pix_merchant_name": "Alice",
+                "pix_merchant_city": "SP",
+            }
+        )
+
+        assert result == {"job_type": "pdf.render", "keys": ["bill_id", "job_type"]}
+
+    def test_unknown_job_type_strips_pix_merchant_wildcard(self):
+        result = serialize_job_payload(
+            {
+                "job_type": "pdf.render",
+                "bill_id": 7,
+                "pix_merchant_id": "abc-123",
+                "pix_merchant_email": "alice@x",
+                "pix_merchant_anything_else": "x",
+            }
+        )
+
+        assert result == {"job_type": "pdf.render", "keys": ["bill_id", "job_type"]}
+
+    def test_missing_job_type_falls_through_to_unknown_branch(self):
+        result = serialize_job_payload({"foo": "bar"})
+
+        assert result == {"job_type": "", "keys": ["foo"]}

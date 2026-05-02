@@ -10,7 +10,7 @@ from rentivo.models.audit_log import AuditEventType
 from web.analytics import push_event
 from web.deps import (
     get_audit_service,
-    get_email_service,
+    get_job_service,
     get_password_reset_service,
     get_turnstile_service,
     get_user_service,
@@ -91,14 +91,20 @@ async def reset_password(request: Request):
 
     user = get_user_service(request).get_by_id(user_id)
     if user is not None:
-        get_email_service(request).safe_send(
-            to_email=user.email,
-            event="password_reset_completed",
-            ctx={
-                "email": user.email,
-                "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "source_ip": request.client.host if request.client else "unknown",
+        get_job_service(request).enqueue(
+            "email.send",
+            {
+                "event": "password_reset_completed",
+                "to_email": user.email,
+                "ctx": {
+                    "email": user.email,
+                    "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "source_ip": request.client.host if request.client else "unknown",
+                },
             },
+            source="web",
+            actor_id=user.id,
+            actor_username=user.email,
         )
 
     audit = get_audit_service(request)

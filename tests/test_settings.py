@@ -152,3 +152,25 @@ def test_settings_turnstile_accepts_paired_keys(monkeypatch):
     s = Settings()
     assert s.turnstile_site_key == "1x00000000000000000000AA"
     assert s.turnstile_secret_key == "1x0000000000000000000000000000000AA"
+
+
+def test_default_job_worker_settings():
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.job_worker_batch_size == 10
+    assert s.job_worker_idle_sleep_seconds == 5.0
+    assert s.job_worker_stuck_after_seconds == 600
+
+
+def test_job_worker_settings_overrides_via_env(monkeypatch):
+    monkeypatch.setenv("RENTIVO_JOB_WORKER_BATCH_SIZE", "25")
+    monkeypatch.setenv("RENTIVO_JOB_WORKER_IDLE_SLEEP_SECONDS", "1.5")
+    monkeypatch.setenv("RENTIVO_JOB_WORKER_STUCK_AFTER_SECONDS", "120")
+
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.job_worker_batch_size == 25
+    assert s.job_worker_idle_sleep_seconds == 1.5
+    assert s.job_worker_stuck_after_seconds == 120

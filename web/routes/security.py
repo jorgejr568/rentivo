@@ -22,7 +22,7 @@ from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
 from web.auth import _check_and_send_new_device_email
-from web.deps import get_audit_service, get_email_service, get_mfa_service, get_user_service, render
+from web.deps import get_audit_service, get_job_service, get_mfa_service, get_user_service, render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -39,18 +39,24 @@ _MFA_CHANGE_LABELS = {
 }
 
 
-def _send_mfa_changed_email(request: Request, email: str, change_kind: str) -> None:
+def _send_mfa_changed_email(request: Request, email: str, change_kind: str, *, user_id: int) -> None:
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_email_service(request).safe_send(
-        to_email=email,
-        event="mfa_changed",
-        ctx={
-            "email": email,
-            "change_label": _MFA_CHANGE_LABELS[change_kind],
-            "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "source_ip": request.client.host if request.client else "unknown",
-            "reset_url": forgot_url,
+    get_job_service(request).enqueue(
+        "email.send",
+        {
+            "event": "mfa_changed",
+            "to_email": email,
+            "ctx": {
+                "email": email,
+                "change_label": _MFA_CHANGE_LABELS[change_kind],
+                "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "source_ip": request.client.host if request.client else "unknown",
+                "reset_url": forgot_url,
+            },
         },
+        source="web",
+        actor_id=user_id,
+        actor_username=email,
     )
 
 
@@ -160,15 +166,21 @@ async def change_password(request: Request):
     )
 
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_email_service(request).safe_send(
-        to_email=email,
-        event="password_changed",
-        ctx={
-            "email": email,
-            "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            "source_ip": request.client.host if request.client else "unknown",
-            "reset_url": forgot_url,
+    get_job_service(request).enqueue(
+        "email.send",
+        {
+            "event": "password_changed",
+            "to_email": email,
+            "ctx": {
+                "email": email,
+                "changed_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                "source_ip": request.client.host if request.client else "unknown",
+                "reset_url": forgot_url,
+            },
         },
+        source="web",
+        actor_id=user_id,
+        actor_username=email,
     )
 
     flash(request, "Senha alterada com sucesso!", "success")
@@ -224,7 +236,7 @@ async def totp_confirm(request: Request):
         entity_type="user",
         entity_id=user_id,
     )
-    _send_mfa_changed_email(request, request.session.get("email", ""), "totp_enabled")
+    _send_mfa_changed_email(request, request.session.get("email", ""), "totp_enabled", user_id=user_id)
 
     push_event(request, {"event": "rentivo_mfa_enabled", "method": "totp"})
     return render(
@@ -266,7 +278,7 @@ async def totp_disable(request: Request):
         entity_type="user",
         entity_id=user_id,
     )
-    _send_mfa_changed_email(request, email, "totp_disabled")
+    _send_mfa_changed_email(request, email, "totp_disabled", user_id=user_id)
 
     flash(request, "TOTP desativado com sucesso.", "success")
     push_event(request, {"event": "rentivo_mfa_disabled"})
@@ -390,7 +402,7 @@ async def passkey_register_complete(request: Request):
         entity_id=user_id,
         metadata={"passkey_name": passkey_name},
     )
-    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_registered")
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_registered", user_id=user_id)
 
     push_event(request, {"event": "rentivo_passkey_added"})
     return JSONResponse({"status": "ok", "name": passkey_name})
@@ -417,7 +429,7 @@ async def passkey_delete(request: Request, passkey_uuid: str):
         entity_id=user_id,
         metadata={"passkey_uuid": passkey_uuid},
     )
-    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_deleted")
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_deleted", user_id=user_id)
 
     flash(request, "Passkey removida.", "success")
     push_event(request, {"event": "rentivo_passkey_removed"})

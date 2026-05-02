@@ -120,3 +120,38 @@ def serialize_invite(invite: Invite) -> dict:
         "created_at": _dt(invite.created_at),
         "responded_at": _dt(invite.responded_at),
     }
+
+
+_DISALLOWED_KEY_PATTERNS = ("password", "token", "secret")
+_DISALLOWED_KEY_PREFIXES = ("pix_merchant_",)
+_DISALLOWED_KEYS_EXACT = {"pix_key"}
+
+
+def _is_disallowed_key(key: str) -> bool:
+    lower = key.lower()
+    if lower in _DISALLOWED_KEYS_EXACT:
+        return True
+    if any(lower.startswith(p) for p in _DISALLOWED_KEY_PREFIXES):
+        return True
+    return any(pat in lower for pat in _DISALLOWED_KEY_PATTERNS)
+
+
+def serialize_job_payload(payload: dict) -> dict:
+    """Audit-safe view of a queued job's payload.
+
+    For email.send: keeps ``event`` and ``to_email`` (the row's whole purpose) and
+    a count of ctx keys, but drops every ctx value (templates can carry org
+    names, IPs, reset URLs — none belong in audit rows). For unknown job types
+    we keep only a sorted index of top-level keys.
+    """
+    job_type = payload.get("job_type", "")
+    if job_type == "email.send":
+        return {
+            "event": payload.get("event"),
+            "to_email": payload.get("to_email"),
+            "ctx_keys_count": len(payload.get("ctx") or {}),
+        }
+    return {
+        "job_type": job_type,
+        "keys": sorted(k for k in payload.keys() if not _is_disallowed_key(k)),
+    }

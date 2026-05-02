@@ -8,8 +8,8 @@ from rentivo.models.audit_log import AuditEventType
 from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
-    get_email_service,
     get_invite_service,
+    get_job_service,
     get_mfa_service,
     render,
 )
@@ -54,14 +54,20 @@ async def invite_accept(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_email_service(request).safe_send(
-            to_email=invite_record.invited_by_email,
-            event="invite_responded",
-            ctx={
-                "invitee_email": invite_record.invited_email,
-                "org_name": invite_record.organization_name,
-                "response_label": "aceitou",
+        get_job_service(request).enqueue(
+            "email.send",
+            {
+                "event": "invite_responded",
+                "to_email": invite_record.invited_by_email,
+                "ctx": {
+                    "invitee_email": invite_record.invited_email,
+                    "org_name": invite_record.organization_name,
+                    "response_label": "aceitou",
+                },
             },
+            source="web",
+            actor_id=user_id,
+            actor_username=request.session.get("email", ""),
         )
 
     # Check if user now needs MFA setup (accepted invite from enforcing org)
@@ -99,14 +105,20 @@ async def invite_decline(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_email_service(request).safe_send(
-            to_email=invite_record.invited_by_email,
-            event="invite_responded",
-            ctx={
-                "invitee_email": invite_record.invited_email,
-                "org_name": invite_record.organization_name,
-                "response_label": "recusou",
+        get_job_service(request).enqueue(
+            "email.send",
+            {
+                "event": "invite_responded",
+                "to_email": invite_record.invited_by_email,
+                "ctx": {
+                    "invitee_email": invite_record.invited_email,
+                    "org_name": invite_record.organization_name,
+                    "response_label": "recusou",
+                },
             },
+            source="web",
+            actor_id=user_id,
+            actor_username=request.session.get("email", ""),
         )
 
     flash(request, "Convite recusado.", "info")

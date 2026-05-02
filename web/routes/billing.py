@@ -14,7 +14,7 @@ from web.deps import (
     get_authorization_service,
     get_bill_service,
     get_billing_service,
-    get_email_service,
+    get_job_service,
     get_organization_service,
     get_pix_service,
     get_user_service,
@@ -38,26 +38,33 @@ def _notify_billing_transferred(
     """Email previous user-owner (if any) + every admin of the destination org.
 
     The actor (`actor_user_id`) is excluded so the user who clicked the transfer button
-    doesn't receive a notification about their own action. Failures are swallowed by
-    safe_send so this never blocks the redirect.
+    doesn't receive a notification about their own action. Each notification is enqueued
+    as an email.send job; the worker handles it asynchronously, so this never blocks the
+    redirect.
     """
     actor_email = request.session.get("email", "")
     user_service = get_user_service(request)
-    email_service = get_email_service(request)
+    job_service = get_job_service(request)
     org_service = get_organization_service(request)
 
     # Notify the previous owner if they were a user (orgs have no single inbox).
     if previous_owner["owner_type"] == "user":
         prev_user = user_service.get_by_id(previous_owner["owner_id"])
         if prev_user is not None and prev_user.id != actor_user_id:
-            email_service.safe_send(
-                to_email=prev_user.email,
-                event="billing_transferred",
-                ctx={
-                    "billing_name": billing.name,
-                    "recipient_role": "previous_owner",
-                    "actor_email": actor_email,
+            job_service.enqueue(
+                "email.send",
+                {
+                    "event": "billing_transferred",
+                    "to_email": prev_user.email,
+                    "ctx": {
+                        "billing_name": billing.name,
+                        "recipient_role": "previous_owner",
+                        "actor_email": actor_email,
+                    },
                 },
+                source="web",
+                actor_id=actor_user_id,
+                actor_username=actor_email,
             )
 
     # Notify admin members of the destination organization (excluding the actor).
@@ -65,14 +72,20 @@ def _notify_billing_transferred(
         if member.user_id == actor_user_id:
             continue
         if member.role == OrgRole.ADMIN.value:
-            email_service.safe_send(
-                to_email=member.email,
-                event="billing_transferred",
-                ctx={
-                    "billing_name": billing.name,
-                    "recipient_role": "destination_admin",
-                    "actor_email": actor_email,
+            job_service.enqueue(
+                "email.send",
+                {
+                    "event": "billing_transferred",
+                    "to_email": member.email,
+                    "ctx": {
+                        "billing_name": billing.name,
+                        "recipient_role": "destination_admin",
+                        "actor_email": actor_email,
+                    },
                 },
+                source="web",
+                actor_id=actor_user_id,
+                actor_username=actor_email,
             )
 
 

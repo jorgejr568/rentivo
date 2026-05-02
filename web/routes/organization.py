@@ -13,8 +13,8 @@ from web.deps import (
     get_audit_service,
     get_authorization_service,
     get_billing_service,
-    get_email_service,
     get_invite_service,
+    get_job_service,
     get_mfa_service,
     get_organization_service,
     get_user_service,
@@ -275,14 +275,20 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
     if member_user is not None:
         old_label = OrgRole.label(old_role) if old_role else "—"
         new_label = OrgRole.label(new_role)
-        get_email_service(request).safe_send(
-            to_email=member_user.email,
-            event="member_changed",
-            ctx={
-                "change_message": f"Sua função mudou de {old_label} para {new_label}.",
-                "org_name": org.name,
-                "actor_email": request.session.get("email", ""),
+        get_job_service(request).enqueue(
+            "email.send",
+            {
+                "event": "member_changed",
+                "to_email": member_user.email,
+                "ctx": {
+                    "change_message": f"Sua função mudou de {old_label} para {new_label}.",
+                    "org_name": org.name,
+                    "actor_email": request.session.get("email", ""),
+                },
             },
+            source="web",
+            actor_id=request.session.get("user_id"),
+            actor_username=request.session.get("email", ""),
         )
 
     flash(request, "Papel atualizado com sucesso!", "success")
@@ -378,15 +384,21 @@ async def organization_invite(request: Request, org_uuid: str):
 
     inviter_email = request.session.get("email", "")
     invites_url = f"{settings.public_app_url.rstrip('/')}/invites/"
-    get_email_service(request).safe_send(
-        to_email=email,
-        event="invite_received",
-        ctx={
-            "inviter_email": inviter_email,
-            "org_name": org.name,
-            "role_label": OrgRole.label(role),
-            "invites_url": invites_url,
+    get_job_service(request).enqueue(
+        "email.send",
+        {
+            "event": "invite_received",
+            "to_email": email,
+            "ctx": {
+                "inviter_email": inviter_email,
+                "org_name": org.name,
+                "role_label": OrgRole.label(role),
+                "invites_url": invites_url,
+            },
         },
+        source="web",
+        actor_id=user_id,
+        actor_username=request.session.get("email", ""),
     )
 
     flash(request, f"Convite enviado para '{email}'!", "success")

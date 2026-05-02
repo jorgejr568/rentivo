@@ -9,7 +9,7 @@ from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from rentivo.db import get_engine
-from rentivo.email.factory import get_email_backend
+from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
@@ -29,8 +29,8 @@ from rentivo.services.audit_service import AuditService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
-from rentivo.services.email_service import EmailService
 from rentivo.services.invite_service import InviteService
+from rentivo.services.job_service import JobService
 from rentivo.services.known_device_service import KnownDeviceService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
@@ -240,8 +240,12 @@ def get_mfa_service(request: Request) -> MFAService:
     )
 
 
-def get_email_service(request: Request) -> EmailService:
-    return EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
+def get_job_service(request: Request) -> JobService:
+    conn = _get_conn(request)
+    return JobService(
+        SQLAlchemyJobRepository(conn, stuck_after_seconds=settings.job_worker_stuck_after_seconds),
+        AuditService(SQLAlchemyAuditLogRepository(conn)),
+    )
 
 
 def get_known_device_service(request: Request) -> KnownDeviceService:
@@ -262,7 +266,7 @@ def get_password_reset_service(request: Request) -> PasswordResetService:
     return PasswordResetService(
         user_repo=user_repo,
         token_repo=SQLAlchemyPasswordResetTokenRepository(conn),
-        email_service=get_email_service(request),
+        job_service=get_job_service(request),
         user_service=UserService(user_repo),
         public_app_url=settings.public_app_url,
     )

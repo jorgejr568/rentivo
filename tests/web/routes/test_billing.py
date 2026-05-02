@@ -460,18 +460,26 @@ class TestBillingTransfer:
     def test_transfer_notifies_previous_user_owner_and_org_admins(
         self, auth_client, csrf_token, monkeypatch, test_engine
     ):
+        from rentivo.jobs.base import Job
         from rentivo.models.organization import OrgRole
         from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
-        from rentivo.services.email_service import EmailService
+        from rentivo.services.job_service import JobService
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "billing_transferred":
-                sent.append({"to": to_email, "role": ctx["recipient_role"]})
-            return "id"
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "billing_transferred":
+                sent.append({"to": payload["to_email"], "role": payload["ctx"]["recipient_role"]})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         user_id = get_test_user_id(test_engine)
         billing = create_billing_in_db(test_engine)
@@ -510,18 +518,26 @@ class TestBillingTransfer:
         self, auth_client, csrf_token, monkeypatch, test_engine
     ):
         """Issue #2: actor performing the transfer must not receive their own notification."""
+        from rentivo.jobs.base import Job
         from rentivo.models.organization import OrgRole
         from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
-        from rentivo.services.email_service import EmailService
+        from rentivo.services.job_service import JobService
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "billing_transferred":
-                sent.append({"to": to_email, "role": ctx["recipient_role"]})
-            return "id"
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "billing_transferred":
+                sent.append({"to": payload["to_email"], "role": payload["ctx"]["recipient_role"]})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         user_id = get_test_user_id(test_engine)
         # Create a billing owned by another user so the actor is NOT the previous owner.

@@ -85,23 +85,31 @@ class TestInviteDecline:
 
 class TestInviteResponseNotifications:
     def test_accept_notifies_inviter(self, auth_client, test_engine, csrf_token, monkeypatch):
-        from rentivo.services.email_service import EmailService
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "invite_responded":
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "invite_responded":
                 sent.append(
                     {
-                        "to": to_email,
-                        "invitee": ctx["invitee_email"],
-                        "org": ctx["org_name"],
-                        "label": ctx["response_label"],
+                        "to": payload["to_email"],
+                        "invitee": payload["ctx"]["invitee_email"],
+                        "org": payload["ctx"]["org_name"],
+                        "label": payload["ctx"]["response_label"],
                     }
                 )
-            return "id"
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         org, invite = _setup_invite(test_engine)
         response = auth_client.post(
@@ -115,23 +123,31 @@ class TestInviteResponseNotifications:
         assert sent[0]["org"] == "Test Org"
 
     def test_decline_notifies_inviter(self, auth_client, test_engine, csrf_token, monkeypatch):
-        from rentivo.services.email_service import EmailService
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "invite_responded":
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "invite_responded":
                 sent.append(
                     {
-                        "to": to_email,
-                        "invitee": ctx["invitee_email"],
-                        "org": ctx["org_name"],
-                        "label": ctx["response_label"],
+                        "to": payload["to_email"],
+                        "invitee": payload["ctx"]["invitee_email"],
+                        "org": payload["ctx"]["org_name"],
+                        "label": payload["ctx"]["response_label"],
                     }
                 )
-            return "id"
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         org, invite = _setup_invite(test_engine)
         response = auth_client.post(

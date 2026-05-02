@@ -178,23 +178,31 @@ class TestMemberManagement:
         assert response.status_code == 302
 
     def test_role_change_notifies_member(self, auth_client, test_engine, csrf_token, monkeypatch):
-        from rentivo.services.email_service import EmailService
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "member_changed":
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "member_changed":
                 sent.append(
                     {
-                        "to": to_email,
-                        "msg": ctx["change_message"],
-                        "actor": ctx["actor_email"],
-                        "org": ctx["org_name"],
+                        "to": payload["to_email"],
+                        "msg": payload["ctx"]["change_message"],
+                        "actor": payload["ctx"]["actor_email"],
+                        "org": payload["ctx"]["org_name"],
                     }
                 )
-            return "id"
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "RoleNotifyOrg", user_id)
@@ -266,24 +274,32 @@ class TestOrganizationInvite:
         assert response.status_code == 302
 
     def test_invite_post_sends_invite_received_email(self, auth_client, test_engine, csrf_token, monkeypatch):
-        from rentivo.services.email_service import EmailService
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "invite_received":
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "invite_received":
                 sent.append(
                     {
-                        "to": to_email,
-                        "inviter": ctx["inviter_email"],
-                        "org": ctx["org_name"],
-                        "role": ctx["role_label"],
-                        "url": ctx["invites_url"],
+                        "to": payload["to_email"],
+                        "inviter": payload["ctx"]["inviter_email"],
+                        "org": payload["ctx"]["org_name"],
+                        "role": payload["ctx"]["role_label"],
+                        "url": payload["ctx"]["invites_url"],
                     }
                 )
-            return "id"
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "Acme", user_id)
@@ -496,20 +512,28 @@ class TestOrganizationTransferBilling:
 
     def test_transfer_billing_notifies_and_audits(self, auth_client, test_engine, csrf_token, monkeypatch):
         """Issue #1: org-side transfer must email admins + previous owner AND audit-log BILLING_TRANSFER."""
+        from rentivo.jobs.base import Job
         from rentivo.models.audit_log import AuditEventType
         from rentivo.models.organization import OrgRole
         from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
-        from rentivo.services.email_service import EmailService
+        from rentivo.services.job_service import JobService
         from tests.web.conftest import get_audit_logs
 
         sent: list[dict] = []
 
-        def _capture(self, to_email, event, ctx):
-            if event == "billing_transferred":
-                sent.append({"to": to_email, "role": ctx["recipient_role"]})
-            return "id"
+        def _capture(self, job_type, payload, **kwargs):
+            if payload.get("event") == "billing_transferred":
+                sent.append({"to": payload["to_email"], "role": payload["ctx"]["recipient_role"]})
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
 
-        monkeypatch.setattr(EmailService, "safe_send", _capture)
+        monkeypatch.setattr(JobService, "enqueue", _capture)
 
         user_id = get_test_user_id(test_engine)
         # Billing previously owned by another user — so they should be notified.
