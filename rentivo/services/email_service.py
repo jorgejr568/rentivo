@@ -68,6 +68,20 @@ class EmailService:
             from_address=self.from_address,
         )
 
+    def send(self, to_email: str, event: str, ctx: dict) -> str:
+        """Render and dispatch a transactional email, raising on failure.
+
+        Used inside the background worker so transient errors propagate and
+        trigger retry. Web routes should not call this directly — they enqueue
+        a job and let the worker run it.
+        """
+        subject_spec = EMAIL_SUBJECTS[event]
+        subject = subject_spec(ctx) if callable(subject_spec) else subject_spec
+        message = self._build_message(to_email, subject, event, ctx)
+        result = self.backend.send(message)
+        logger.info("email_sent", to=to_email, email_event=event)
+        return result
+
     def safe_send(self, to_email: str, event: str, ctx: dict) -> str | None:
         """Render and dispatch a transactional email, swallowing exceptions.
 
