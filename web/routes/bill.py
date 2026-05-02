@@ -486,6 +486,15 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
         flash(request, "Fatura inválida.", "danger")
         return RedirectResponse("/", status_code=302)
     previous_state = serialize_bill(bill)
+
+    cleanup = get_storage_cleanup_service(request)
+    cleanup.enqueue_bill_delete_cascade(
+        bill,
+        source="web",
+        actor_id=user_id,
+        actor_username=request.session.get("email", ""),
+    )
+
     bill_service.delete_bill(bill.id)
 
     audit = get_audit_service(request)
