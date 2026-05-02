@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 def test_forgot_password_get_renders(client):
@@ -16,18 +16,39 @@ def test_forgot_password_post_silent_for_unknown_email(client, csrf_token):
     assert response.status_code in (200, 302)
 
 
-def test_forgot_password_post_sends_email_for_known_user(client, csrf_token, test_engine):
+def test_forgot_password_post_sends_email_for_known_user(client, csrf_token, test_engine, monkeypatch):
+    from rentivo.jobs.base import Job
     from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+    from rentivo.services.job_service import JobService
     from rentivo.services.user_service import UserService
 
     with test_engine.connect() as conn:
         UserService(SQLAlchemyUserRepository(conn)).register_user("known@example.com", "secret")
-    with patch("rentivo.email.local.LocalEmailBackend.send", return_value="ok") as send:
-        client.post(
-            "/forgot-password",
-            data={"email": "known@example.com", "csrf_token": csrf_token},
+
+    sent: list[dict] = []
+
+    def _capture(self, job_type, payload, **kwargs):
+        sent.append({"job_type": job_type, "payload": payload})
+        return Job(
+            id=1,
+            ulid="01HXYZ",
+            job_type=job_type,
+            payload=payload,
+            attempts=0,
+            max_attempts=5,
         )
-        assert send.called
+
+    monkeypatch.setattr(JobService, "enqueue", _capture)
+    client.post(
+        "/forgot-password",
+        data={"email": "known@example.com", "csrf_token": csrf_token},
+    )
+    assert any(
+        s["job_type"] == "email.send"
+        and s["payload"]["event"] == "password_reset"
+        and s["payload"]["to_email"] == "known@example.com"
+        for s in sent
+    )
 
 
 def test_reset_password_get_with_invalid_token_uses_invalid_template(client):
@@ -38,12 +59,11 @@ def test_reset_password_get_with_invalid_token_uses_invalid_template(client):
 
 
 def test_reset_password_full_flow_changes_password(client, csrf_token, test_engine):
-    from rentivo.email.local import LocalEmailBackend
     from rentivo.repositories.sqlalchemy import (
         SQLAlchemyPasswordResetTokenRepository,
         SQLAlchemyUserRepository,
     )
-    from rentivo.services.email_service import EmailService
+    from rentivo.services.job_service import JobService
     from rentivo.services.password_reset_service import PasswordResetService
     from rentivo.services.user_service import UserService
 
@@ -54,7 +74,7 @@ def test_reset_password_full_flow_changes_password(client, csrf_token, test_engi
         service = PasswordResetService(
             user_repo=user_repo,
             token_repo=token_repo,
-            email_service=EmailService(LocalEmailBackend("/tmp/outbox-test"), "noreply@x"),
+            job_service=MagicMock(spec=JobService),
             user_service=UserService(user_repo),
             public_app_url="http://example.com",
         )
@@ -220,23 +240,29 @@ def test_forgot_password_succeeds_when_turnstile_passes(client, csrf_token, monk
 
 
 def test_reset_password_sends_completion_notification(client, csrf_token, test_engine, monkeypatch):
-    from rentivo.email.local import LocalEmailBackend
+    from rentivo.jobs.base import Job
     from rentivo.repositories.sqlalchemy import (
         SQLAlchemyPasswordResetTokenRepository,
         SQLAlchemyUserRepository,
     )
-    from rentivo.services.email_service import EmailService
+    from rentivo.services.job_service import JobService
     from rentivo.services.password_reset_service import PasswordResetService
     from rentivo.services.user_service import UserService
 
     sent: list[dict] = []
 
-    def _capture(self, to_email, event, ctx):
-        if event == "password_reset_completed":
-            sent.append({"to": to_email})
-        return "id"
+    def _capture(self, job_type, payload, **kwargs):
+        sent.append({"job_type": job_type, "payload": payload})
+        return Job(
+            id=1,
+            ulid="01HXYZ",
+            job_type=job_type,
+            payload=payload,
+            attempts=0,
+            max_attempts=5,
+        )
 
-    monkeypatch.setattr(EmailService, "safe_send", _capture)
+    monkeypatch.setattr(JobService, "enqueue", _capture)
 
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)
@@ -245,7 +271,7 @@ def test_reset_password_sends_completion_notification(client, csrf_token, test_e
         svc = PasswordResetService(
             user_repo=user_repo,
             token_repo=token_repo,
-            email_service=EmailService(LocalEmailBackend("/tmp/outbox-test"), "noreply@x"),
+            job_service=MagicMock(spec=JobService),
             user_service=UserService(user_repo),
             public_app_url="http://example.com",
         )
@@ -262,4 +288,6 @@ def test_reset_password_sends_completion_notification(client, csrf_token, test_e
         follow_redirects=False,
     )
     assert response.status_code == 302
-    assert sent == [{"to": "flow2@example.com"}]
+    completion_events = [s for s in sent if s["payload"].get("event") == "password_reset_completed"]
+    assert len(completion_events) == 1
+    assert completion_events[0]["payload"]["to_email"] == "flow2@example.com"

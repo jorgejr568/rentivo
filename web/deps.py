@@ -272,7 +272,7 @@ def get_password_reset_service(request: Request) -> PasswordResetService:
     return PasswordResetService(
         user_repo=user_repo,
         token_repo=SQLAlchemyPasswordResetTokenRepository(conn),
-        email_service=get_email_service(request),
+        job_service=get_job_service(request),
         user_service=UserService(user_repo),
         public_app_url=settings.public_app_url,
     )

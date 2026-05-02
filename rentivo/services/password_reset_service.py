@@ -9,7 +9,7 @@ import structlog
 
 from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.repositories.base import PasswordResetTokenRepository, UserRepository
-from rentivo.services.email_service import EmailService
+from rentivo.services.job_service import JobService
 from rentivo.services.user_service import UserService
 
 logger = structlog.get_logger(__name__)
@@ -20,7 +20,7 @@ class PasswordResetService:
         self,
         user_repo: UserRepository,
         token_repo: PasswordResetTokenRepository,
-        email_service: EmailService,
+        job_service: JobService,
         user_service: UserService,
         public_app_url: str,
         now: Callable[[], datetime] = datetime.utcnow,
@@ -28,7 +28,7 @@ class PasswordResetService:
     ) -> None:
         self.user_repo = user_repo
         self.token_repo = token_repo
-        self.email_service = email_service
+        self.job_service = job_service
         self.user_service = user_service
         self.public_app_url = public_app_url.rstrip("/")
         self.now = now
@@ -52,7 +52,17 @@ class PasswordResetService:
         )
         self.token_repo.create(token)
         reset_url = f"{self.public_app_url}/reset-password?token={raw}"
-        self.email_service.send_password_recovery(to_email=user.email, reset_url=reset_url)
+        self.job_service.enqueue(
+            "email.send",
+            {
+                "event": "password_reset",
+                "to_email": user.email,
+                "ctx": {"email": user.email, "reset_url": reset_url},
+            },
+            source="web",
+            actor_id=user.id,
+            actor_username=user.email,
+        )
         logger.info("password_reset_requested", user_id=user.id)
         return raw
 

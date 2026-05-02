@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.models.user import User
+from rentivo.services.job_service import JobService
 from rentivo.services.password_reset_service import PasswordResetService
 
 
@@ -18,31 +19,32 @@ class _Frozen:
 def _build():
     user_repo = MagicMock()
     token_repo = MagicMock()
-    email_service = MagicMock()
+    job_service = MagicMock(spec=JobService)
+    job_service.enqueue.return_value = MagicMock(ulid="01HXYZ")
     user_service = MagicMock()
     now = datetime(2026, 4, 30, 12, 0, 0)
     service = PasswordResetService(
         user_repo=user_repo,
         token_repo=token_repo,
-        email_service=email_service,
+        job_service=job_service,
         user_service=user_service,
         public_app_url="http://example.com",
         now=_Frozen(now),
         ttl_seconds=3600,
     )
-    return service, user_repo, token_repo, email_service, user_service, now
+    return service, user_repo, token_repo, job_service, user_service, now
 
 
 def test_request_reset_with_unknown_email_is_silent_success():
-    service, user_repo, token_repo, email_service, _, _ = _build()
+    service, user_repo, token_repo, job_service, _, _ = _build()
     user_repo.get_by_email.return_value = None
     service.request_reset("ghost@example.com")
     token_repo.create.assert_not_called()
-    email_service.send_password_recovery.assert_not_called()
+    job_service.enqueue.assert_not_called()
 
 
 def test_request_reset_creates_token_and_sends_email():
-    service, user_repo, token_repo, email_service, _, now = _build()
+    service, user_repo, token_repo, job_service, _, now = _build()
     user_repo.get_by_email.return_value = User(id=1, email="a@b.com")
     raw = service.request_reset("a@b.com")
     assert raw is not None and len(raw) >= 32
@@ -50,9 +52,17 @@ def test_request_reset_creates_token_and_sends_email():
     assert created_token.user_id == 1
     assert created_token.token_hash == hashlib.sha256(raw.encode()).hexdigest()
     assert created_token.expires_at == now + timedelta(seconds=3600)
-    sent = email_service.send_password_recovery.call_args.kwargs
-    assert sent["to_email"] == "a@b.com"
-    assert raw in sent["reset_url"]
+    job_service.enqueue.assert_called_once()
+    args = job_service.enqueue.call_args
+    assert args.args[0] == "email.send"
+    payload = args.args[1]
+    assert payload["event"] == "password_reset"
+    assert payload["to_email"] == "a@b.com"
+    assert payload["ctx"]["email"] == "a@b.com"
+    assert raw in payload["ctx"]["reset_url"]
+    assert args.kwargs["source"] == "web"
+    assert args.kwargs["actor_id"] == 1
+    assert args.kwargs["actor_username"] == "a@b.com"
 
 
 def test_consume_rejects_unknown_token():
