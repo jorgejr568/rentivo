@@ -17,6 +17,7 @@ from web.deps import (
     get_job_service,
     get_organization_service,
     get_pix_service,
+    get_storage_cleanup_service,
     get_user_service,
     render,
 )
@@ -409,6 +410,15 @@ async def billing_delete(request: Request, billing_uuid: str):
         flash(request, "Cobrança inválida.", "danger")
         return RedirectResponse("/", status_code=302)
     previous_state = serialize_billing(billing)
+
+    cleanup = get_storage_cleanup_service(request)
+    cleanup.enqueue_billing_delete_cascade(
+        billing,
+        source="web",
+        actor_id=user_id,
+        actor_username=request.session.get("email", ""),
+    )
+
     service.delete_billing(billing.id)
 
     audit = get_audit_service(request)
