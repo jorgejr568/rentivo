@@ -7,7 +7,6 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
-from rentivo.settings import settings
 from web.analytics import push_event
 from web.deps import (
     get_audit_service,
@@ -92,12 +91,10 @@ async def reset_password(request: Request):
 
     user = get_user_service(request).get_by_id(user_id)
     if user is not None:
-        forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-        get_email_service(request).safe_send_password_changed(
+        get_email_service(request).safe_send_password_reset_completed(
             to_email=user.email,
             changed_at=datetime.now().strftime("%d/%m/%Y %H:%M"),
             source_ip=request.client.host if request.client else "unknown",
-            reset_url=forgot_url,
         )
 
     audit = get_audit_service(request)

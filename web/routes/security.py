@@ -21,6 +21,7 @@ from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
+from web.auth import _check_and_send_new_device_email
 from web.deps import get_audit_service, get_email_service, get_mfa_service, get_user_service, render
 from web.flash import flash
 
@@ -527,4 +528,9 @@ async def passkey_auth_complete(request: Request):
 
     logger.info("passkey_auth_verified", email=email)
     push_event(request, {"event": "rentivo_login_success", "via": "passkey"})
+
+    user = get_user_service(request).get_by_id(user_id)
+    if user is not None:
+        _check_and_send_new_device_email(request, user)
+
     return JSONResponse({"status": "ok", "redirect": "/billings/"})

@@ -219,7 +219,7 @@ def test_forgot_password_succeeds_when_turnstile_passes(client, csrf_token, monk
     assert "instruções" in response.text.lower()
 
 
-def test_reset_password_sends_change_notification(client, csrf_token, test_engine, monkeypatch):
+def test_reset_password_sends_completion_notification(client, csrf_token, test_engine, monkeypatch):
     from rentivo.email.local import LocalEmailBackend
     from rentivo.repositories.sqlalchemy import (
         SQLAlchemyPasswordResetTokenRepository,
@@ -231,11 +231,11 @@ def test_reset_password_sends_change_notification(client, csrf_token, test_engin
 
     sent: list[dict] = []
 
-    def _capture(self, to_email, changed_at, source_ip, reset_url):
+    def _capture(self, to_email, changed_at, source_ip):
         sent.append({"to": to_email})
         return "id"
 
-    monkeypatch.setattr(EmailService, "safe_send_password_changed", _capture)
+    monkeypatch.setattr(EmailService, "safe_send_password_reset_completed", _capture)
 
     with test_engine.connect() as conn:
         user_repo = SQLAlchemyUserRepository(conn)

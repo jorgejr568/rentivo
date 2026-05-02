@@ -683,6 +683,36 @@ class TestPasskeyAuthComplete:
         assert response.status_code == 302
         assert "/security/totp/setup" in response.headers["location"]
 
+    def test_passkey_login_sends_new_device_email_first_time(self, client, test_engine, monkeypatch):
+        """A successful passkey login from a never-seen device fires the new-device alert."""
+        from rentivo.services.email_service import EmailService
+
+        user, passkey = self._setup_mfa_pending_with_passkey(client, test_engine)
+        self._begin_auth(client)
+
+        sent: list[dict] = []
+
+        def _capture(self, to_email, logged_in_at, source_ip, user_agent, reset_url):
+            sent.append({"to": to_email})
+            return "id"
+
+        monkeypatch.setattr(EmailService, "safe_send_new_device_login", _capture)
+
+        with patch("web.routes.security.webauthn") as mock_wa:
+            mock_wa.base64url_to_bytes.return_value = b"pk_bytes"
+            mock_verification = MagicMock()
+            mock_verification.new_sign_count = 1
+            mock_wa.verify_authentication_response.return_value = mock_verification
+
+            response = client.post(
+                "/security/passkeys/auth/complete",
+                json={"id": passkey.credential_id},
+            )
+            assert response.status_code == 200
+
+        assert len(sent) == 1
+        assert sent[0]["to"] == user.email
+
 
 class TestSecurityPixUpdate:
     def test_update_pix_success(self, auth_client, csrf_token):
