@@ -62,7 +62,7 @@ omit = [
     "rentivo/__main__.py",
     "rentivo/scripts/seed.py",
     "rentivo/jobs/sqlalchemy.py",
-    "rentivo/workers/email.py",
+    "rentivo/workers/__main__.py",
 ]
 
 [tool.coverage.report]

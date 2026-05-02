@@ -1,6 +1,10 @@
 """Worker entrypoint — drains the jobs table.
 
-Run with: ``python -m rentivo.workers.email``
+Run with: ``python -m rentivo.workers``
+
+The worker is generic and dispatches any registered handler (currently
+just ``email.send``; future handlers like ``pdf.render`` plug in via the
+registry without touching this file).
 
 This module is omitted from coverage; its job is to wire the production
 DB connection into the Worker loop. The Worker class itself is fully

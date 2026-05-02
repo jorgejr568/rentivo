@@ -24,4 +24,4 @@ COPY --from=builder /app /app
 RUN chown -R appuser:appuser /app
 USER appuser
 
-CMD ["python", "-m", "rentivo.workers.email"]
+CMD ["python", "-m", "rentivo.workers"]
