@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy import Connection, bindparam, text
 from ulid import ULID
@@ -13,20 +12,6 @@ from rentivo.jobs.base import Job, JobRepository
 
 def _now() -> datetime:
     return datetime.now(SP_TZ).replace(tzinfo=None)
-
-
-def _row_to_job(row: Any) -> Job:
-    payload = row["payload"]
-    if isinstance(payload, str):
-        payload = json.loads(payload)
-    return Job(
-        id=row["id"],
-        ulid=row["ulid"],
-        job_type=row["job_type"],
-        payload=payload,
-        attempts=row["attempts"],
-        max_attempts=row["max_attempts"],
-    )
 
 
 class SQLAlchemyJobRepository(JobRepository):
@@ -43,7 +28,12 @@ class SQLAlchemyJobRepository(JobRepository):
     ) -> Job:
         ulid = str(ULID())
         now = _now()
-        run_at = run_after.replace(tzinfo=None) if run_after else now
+        if run_after is None:
+            run_at = now
+        elif run_after.tzinfo is None:
+            run_at = run_after
+        else:
+            run_at = run_after.astimezone(SP_TZ).replace(tzinfo=None)
         result = self.conn.execute(
             text(
                 "INSERT INTO jobs (ulid, job_type, payload, status, attempts, max_attempts, "
@@ -60,8 +50,8 @@ class SQLAlchemyJobRepository(JobRepository):
                 "now": now,
             },
         )
-        self.conn.commit()
         job_id = result.lastrowid
+        self.conn.commit()
         return Job(
             id=job_id,
             ulid=ulid,
@@ -123,13 +113,14 @@ class SQLAlchemyJobRepository(JobRepository):
         self.conn.commit()
 
     def reschedule(self, job_id: int, run_after: datetime, last_error: str) -> None:
+        run_at = run_after if run_after.tzinfo is None else run_after.astimezone(SP_TZ).replace(tzinfo=None)
         self.conn.execute(
             text(
                 "UPDATE jobs SET status = 'pending', run_after = :run_after, "
                 "claimed_at = NULL, claimed_by = NULL, last_error = :err, updated_at = NOW() "
                 "WHERE id = :id"
             ),
-            {"id": job_id, "run_after": run_after.replace(tzinfo=None), "err": last_error},
+            {"id": job_id, "run_after": run_at, "err": last_error},
         )
         self.conn.commit()
 
