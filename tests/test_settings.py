@@ -174,3 +174,71 @@ def test_job_worker_settings_overrides_via_env(monkeypatch):
     assert s.job_worker_batch_size == 25
     assert s.job_worker_idle_sleep_seconds == 1.5
     assert s.job_worker_stuck_after_seconds == 120
+
+
+def test_encryption_backend_default_is_base64(monkeypatch):
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("RENTIVO_"):
+            monkeypatch.delenv(key, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.encryption_backend == "base64"
+    assert s.kms_key_id == ""
+    assert s.kms_region == ""
+
+
+def test_encryption_backend_accepts_kms_when_configured(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "kms")
+    monkeypatch.setenv("RENTIVO_KMS_KEY_ID", "alias/rentivo")
+    monkeypatch.setenv("RENTIVO_KMS_REGION", "us-east-1")
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.encryption_backend == "kms"
+    assert s.kms_key_id == "alias/rentivo"
+    assert s.kms_region == "us-east-1"
+
+
+def test_encryption_backend_rejects_unknown(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "rot13")
+    from rentivo.settings import Settings
+
+    with pytest.raises(ValueError, match="must be one of: base64, kms"):
+        Settings(_env_file=None)
+
+
+def test_encryption_kms_requires_key_id(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "kms")
+    monkeypatch.delenv("RENTIVO_KMS_KEY_ID", raising=False)
+    monkeypatch.setenv("RENTIVO_KMS_REGION", "us-east-1")
+    from rentivo.settings import Settings
+
+    with pytest.raises(ValueError, match="RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION"):
+        Settings(_env_file=None)
+
+
+def test_encryption_kms_requires_region(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "kms")
+    monkeypatch.setenv("RENTIVO_KMS_KEY_ID", "alias/rentivo")
+    monkeypatch.delenv("RENTIVO_KMS_REGION", raising=False)
+    from rentivo.settings import Settings
+
+    with pytest.raises(ValueError, match="RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION"):
+        Settings(_env_file=None)
+
+
+def test_encryption_base64_does_not_require_kms_fields(monkeypatch):
+    """Default 'base64' backend ignores empty KMS settings."""
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("RENTIVO_"):
+            monkeypatch.delenv(key, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.encryption_backend == "base64"
+    assert s.kms_key_id == ""

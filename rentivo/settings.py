@@ -68,6 +68,13 @@ class Settings(BaseSettings):
     ses_configuration_set: str = ""
     public_app_url: str = "http://localhost:8000"
 
+    encryption_backend: str = "base64"
+    kms_key_id: str = ""
+    kms_region: str = ""
+    kms_access_key_id: str = ""
+    kms_secret_access_key: str = ""
+    kms_endpoint_url: str = ""
+
     turnstile_site_key: str = ""
     turnstile_secret_key: str = ""
     turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
@@ -83,6 +90,13 @@ class Settings(BaseSettings):
             raise ValueError("RENTIVO_EMAIL_BACKEND must be one of: local, ses")
         return v
 
+    @field_validator("encryption_backend")
+    @classmethod
+    def _validate_encryption_backend(cls, v: str) -> str:
+        if v not in ("base64", "kms"):
+            raise ValueError("RENTIVO_ENCRYPTION_BACKEND must be one of: base64, kms")
+        return v
+
     @model_validator(mode="after")
     def _validate_turnstile_pair(self) -> "Settings":
         site = bool(self.turnstile_site_key)
@@ -91,6 +105,15 @@ class Settings(BaseSettings):
             raise ValueError(
                 "RENTIVO_TURNSTILE_SITE_KEY and RENTIVO_TURNSTILE_SECRET_KEY must both be set or both empty"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_kms_pair(self) -> "Settings":
+        if self.encryption_backend == "kms":
+            if not self.kms_key_id or not self.kms_region:
+                raise ValueError(
+                    "RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION are required when RENTIVO_ENCRYPTION_BACKEND=kms"
+                )
         return self
 
     def get_secret_key(self) -> str:
