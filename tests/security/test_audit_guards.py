@@ -31,6 +31,24 @@ def production_files() -> list[Path]:
     return files
 
 
+def _scan_file_for_pattern(path: Path, pattern: re.Pattern[str]) -> list[str]:
+    """Return ``path:lineno: <line>`` strings for every ``pattern`` match in ``path``.
+
+    Scans the full file as a single buffer so patterns compiled with ``re.DOTALL``
+    can span newlines (e.g. a ``text(`` call whose f-string sits on a continuation
+    line). The match offset is converted back to a 1-indexed line number by
+    counting newlines up to ``match.start()``.
+    """
+    text = path.read_text(encoding="utf-8")
+    lines = text.splitlines()
+    offenders: list[str] = []
+    for match in pattern.finditer(text):
+        lineno = text.count("\n", 0, match.start()) + 1
+        line = lines[lineno - 1] if 0 < lineno <= len(lines) else match.group(0)
+        offenders.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}")
+    return offenders
+
+
 _EXTRA_ALLOW_RE = re.compile(r"""extra\s*=\s*['"]allow['"]""")
 
 
@@ -38,9 +56,7 @@ def test_no_pydantic_extra_allow(production_files: list[Path]) -> None:
     """Pydantic models with extra='allow' let arbitrary input fields collide with .dict()/.json()."""
     offenders: list[str] = []
     for path in production_files:
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            if _EXTRA_ALLOW_RE.search(line):
-                offenders.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}")
+        offenders.extend(_scan_file_for_pattern(path, _EXTRA_ALLOW_RE))
     assert not offenders, (
         "Pydantic extra='allow' is forbidden — see docs/security/2026-05-02-fastapi-audit.md\n" + "\n".join(offenders)
     )
@@ -53,17 +69,23 @@ def test_no_model_construct_in_production(production_files: list[Path]) -> None:
     """model_construct() / .construct() bypass Pydantic validation and must not be used in prod code."""
     offenders: list[str] = []
     for path in production_files:
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            if _MODEL_CONSTRUCT_RE.search(line):
-                offenders.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}")
+        offenders.extend(_scan_file_for_pattern(path, _MODEL_CONSTRUCT_RE))
     assert not offenders, (
         "model_construct() bypasses validation — see docs/security/2026-05-02-fastapi-audit.md\n" + "\n".join(offenders)
     )
 
 
+# ``re.DOTALL`` + ``\s*`` between ``text(`` and the f-string opening quote lets the
+# guard catch the codebase's dominant multi-line style:
+#
+#     text(
+#         f"SELECT * FROM users WHERE id = {x}"
+#     )
+#
+# ``{1,3}`` on the opening quote also covers triple-quoted f-strings.
 _FSTRING_SQL_RE = re.compile(
-    r"""text\(\s*f['"][^'"]*\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|VALUES)\b""",
-    re.IGNORECASE,
+    r"""text\(\s*f(['"]){1,3}[^'"]*\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|VALUES)\b""",
+    re.IGNORECASE | re.DOTALL,
 )
 
 
@@ -74,9 +96,7 @@ def test_no_fstring_text_sql_in_repositories() -> None:
     for path in repo_dir.rglob("*.py"):
         if "__pycache__" in path.parts:
             continue
-        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            if _FSTRING_SQL_RE.search(line):
-                offenders.append(f"{path.relative_to(REPO_ROOT)}:{lineno}: {line.strip()}")
+        offenders.extend(_scan_file_for_pattern(path, _FSTRING_SQL_RE))
     assert not offenders, "f-string SQL is forbidden in repositories — use bindparam(expanding=True)\n" + "\n".join(
         offenders
     )
