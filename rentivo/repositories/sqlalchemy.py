@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Connection, text
+from sqlalchemy import Connection, bindparam, text
 from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
@@ -181,16 +181,10 @@ class SQLAlchemyBillingRepository(BillingRepository):
         if not rows:
             return []
         billing_ids = [row["id"] for row in rows]
-        placeholders = ", ".join(f":id{i}" for i in range(len(billing_ids)))
-        params = {f"id{i}": bid for i, bid in enumerate(billing_ids)}
-        all_items = (
-            self.conn.execute(
-                text(f"SELECT * FROM billing_items WHERE billing_id IN ({placeholders}) ORDER BY sort_order"),
-                params,
-            )
-            .mappings()
-            .fetchall()
+        stmt = text("SELECT * FROM billing_items WHERE billing_id IN :billing_ids ORDER BY sort_order").bindparams(
+            bindparam("billing_ids", expanding=True)
         )
+        all_items = self.conn.execute(stmt, {"billing_ids": billing_ids}).mappings().fetchall()
         items_by_billing: dict[int, list[RowMapping]] = {}
         for item_row in all_items:
             items_by_billing.setdefault(item_row["billing_id"], []).append(item_row)
@@ -386,16 +380,10 @@ class SQLAlchemyBillRepository(BillRepository):
         if not rows:
             return []
         bill_ids = [row["id"] for row in rows]
-        placeholders = ", ".join(f":id{i}" for i in range(len(bill_ids)))
-        params = {f"id{i}": bid for i, bid in enumerate(bill_ids)}
-        all_items = (
-            self.conn.execute(
-                text(f"SELECT * FROM bill_line_items WHERE bill_id IN ({placeholders}) ORDER BY sort_order"),
-                params,
-            )
-            .mappings()
-            .fetchall()
+        stmt = text("SELECT * FROM bill_line_items WHERE bill_id IN :bill_ids ORDER BY sort_order").bindparams(
+            bindparam("bill_ids", expanding=True)
         )
+        all_items = self.conn.execute(stmt, {"bill_ids": bill_ids}).mappings().fetchall()
         items_by_bill: dict[int, list[RowMapping]] = {}
         for item_row in all_items:
             items_by_bill.setdefault(item_row["bill_id"], []).append(item_row)

@@ -48,6 +48,22 @@ class TestBillingRepoCRUD:
     def test_list_all_empty(self, billing_repo: SQLAlchemyBillingRepository):
         assert billing_repo.list_all() == []
 
+    def test_list_all_with_multiple_billings_loads_items(
+        self, billing_repo: SQLAlchemyBillingRepository, sample_billing
+    ):
+        """Bulk-load (IN-query) path: list_all() must hydrate items for every billing."""
+        billing_repo.create(sample_billing(name="Apt 101"))
+        billing_repo.create(sample_billing(name="Apt 102"))
+        billing_repo.create(sample_billing(name="Apt 103"))
+
+        billings = billing_repo.list_all()
+
+        assert len(billings) == 3
+        for billing in billings:
+            assert len(billing.items) == 2
+            assert all(isinstance(item, BillingItem) for item in billing.items)
+            assert {item.item_type for item in billing.items} == {ItemType.FIXED, ItemType.VARIABLE}
+
     def test_list_all_returns_items(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
         billing_repo.create(sample_billing())
         billings = billing_repo.list_all()
