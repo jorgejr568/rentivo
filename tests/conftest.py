@@ -75,8 +75,8 @@ CREATE TABLE users (
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     pix_key TEXT NOT NULL DEFAULT '',
-    pix_merchant_name VARCHAR(255) NOT NULL DEFAULT '',
-    pix_merchant_city VARCHAR(255) NOT NULL DEFAULT '',
+    pix_merchant_name TEXT NOT NULL DEFAULT '',
+    pix_merchant_city TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
