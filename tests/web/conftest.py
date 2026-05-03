@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import StaticPool
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
@@ -68,7 +69,7 @@ def create_billing_in_db(engine, **overrides):
     )
     defaults.update(overrides)
     with engine.connect() as conn:
-        repo = SQLAlchemyBillingRepository(conn)
+        repo = SQLAlchemyBillingRepository(conn, Base64Backend())
         billing = repo.create(Billing(**defaults))
     return billing
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.db import get_engine
+from rentivo.encryption.factory import get_encryption
 from rentivo.jobs.base import PermanentJobError
 from rentivo.jobs.registry import register, register_on_fail
 from rentivo.repositories.sqlalchemy import (
@@ -34,7 +35,7 @@ def handle_pdf_render(payload: dict) -> None:
     engine = get_engine()
     with engine.connect() as conn:
         bill_repo = SQLAlchemyBillRepository(conn)
-        billing_repo = SQLAlchemyBillingRepository(conn)
+        billing_repo = SQLAlchemyBillingRepository(conn, get_encryption())
         bill = bill_repo.get_by_id(bill_id)
         if bill is None:
             raise PermanentJobError(f"bill {bill_id} not found (deleted or never existed)")

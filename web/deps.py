@@ -180,7 +180,9 @@ def _get_conn(request: Request):
 
 
 def get_billing_service(request: Request) -> BillingService:
-    return BillingService(SQLAlchemyBillingRepository(_get_conn(request)))
+    from rentivo.encryption.factory import get_encryption
+
+    return BillingService(SQLAlchemyBillingRepository(_get_conn(request), get_encryption()))
 
 
 def get_bill_service(request: Request) -> BillService:

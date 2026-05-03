@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import Bill
 from rentivo.models.user import User
@@ -229,7 +230,7 @@ class TestBillChangeStatusEdgeCases:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete the billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
@@ -510,7 +511,7 @@ class TestBillOrphanedBilling:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete the billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         return billing, bill
 
@@ -772,7 +773,7 @@ class TestReceiptUpload:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
@@ -892,7 +893,7 @@ class TestReceiptDelete:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/r-uuid/delete",
@@ -1388,7 +1389,7 @@ class TestReceiptReorder:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",

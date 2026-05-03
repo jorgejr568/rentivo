@@ -17,9 +17,10 @@ from rentivo.repositories.base import (
 
 def get_billing_repository() -> BillingRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
 
-    return SQLAlchemyBillingRepository(get_connection())
+    return SQLAlchemyBillingRepository(get_connection(), get_encryption())
 
 
 def get_bill_repository() -> BillRepository:

@@ -7,6 +7,7 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from rentivo.constants import SP_TZ
+from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
@@ -40,8 +41,9 @@ def _now() -> datetime:
 
 
 class SQLAlchemyBillingRepository(BillingRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
     def create(self, billing: Billing) -> Billing:
         billing_uuid = str(ULID())
@@ -56,9 +58,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
             {
                 "name": billing.name,
                 "description": billing.description,
-                "pix_key": billing.pix_key,
-                "pix_merchant_name": billing.pix_merchant_name,
-                "pix_merchant_city": billing.pix_merchant_city,
+                "pix_key": self.encryption.encrypt(billing.pix_key),
+                "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
                 "uuid": billing_uuid,
                 "owner_type": billing.owner_type,
                 "owner_id": billing.owner_id,
@@ -87,16 +89,15 @@ class SQLAlchemyBillingRepository(BillingRepository):
             raise RuntimeError(f"Failed to retrieve billing after create (id={billing_id})")
         return result
 
-    @staticmethod
-    def _build_billing(row: RowMapping, item_rows: list[RowMapping]) -> Billing:
+    def _build_billing(self, row: RowMapping, item_rows: list[RowMapping]) -> Billing:
         return Billing(
             id=row["id"],
             uuid=row["uuid"],
             name=row["name"],
             description=row["description"],
-            pix_key=row["pix_key"],
-            pix_merchant_name=row.get("pix_merchant_name", "") or "",
-            pix_merchant_city=row.get("pix_merchant_city", "") or "",
+            pix_key=self.encryption.decrypt(row["pix_key"]),
+            pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
+            pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
             owner_type=row.get("owner_type", "user"),
             owner_id=row.get("owner_id", 0),
             items=[
@@ -200,9 +201,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
             {
                 "name": billing.name,
                 "description": billing.description,
-                "pix_key": billing.pix_key,
-                "pix_merchant_name": billing.pix_merchant_name,
-                "pix_merchant_city": billing.pix_merchant_city,
+                "pix_key": self.encryption.encrypt(billing.pix_key),
+                "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
                 "updated_at": _now(),
                 "id": billing.id,
             },

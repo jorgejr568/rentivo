@@ -418,9 +418,10 @@ class TestBillingTransfer:
         assert response.status_code == 302
         # Billing owner should be unchanged — still user-owned
         with test_engine.connect() as conn:
+            from rentivo.encryption.base64 import Base64Backend
             from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
 
-            reloaded = SQLAlchemyBillingRepository(conn).get_by_id(billing.id)
+            reloaded = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_id(billing.id)
         assert reloaded.owner_type == "user"
 
     def test_transfer_invalid_org_id(self, auth_client, test_engine, csrf_token):

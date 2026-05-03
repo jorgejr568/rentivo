@@ -16,8 +16,8 @@ from rentivo.repositories.sqlalchemy import (
 
 
 @pytest.fixture()
-def billing_repo(db_connection: Connection) -> SQLAlchemyBillingRepository:
-    return SQLAlchemyBillingRepository(db_connection)
+def billing_repo(db_connection: Connection, encryption) -> SQLAlchemyBillingRepository:
+    return SQLAlchemyBillingRepository(db_connection, encryption)
 
 
 @pytest.fixture()
