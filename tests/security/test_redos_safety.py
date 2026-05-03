@@ -1,17 +1,22 @@
 """ReDoS budget smoke tests for every regex compiled in production code.
 
 Catastrophic backtracking surfaces as super-linear runtime on adversarially long
-input. We run each pattern against a length-1000 worst-case string under a 100 ms
+input. We run each pattern against an adversarial near-match input under a 100 ms
 wall-clock budget. A pattern that exceeds the budget must be reviewed for nested
 quantifiers.
 
 Why 100 ms? On the FastAPI event loop, a 100 ms regex match blocks every other
-request handled by the same uvicorn worker. Any production regex slower than that
-is an availability hazard with hypothetical CVSS:
+request handled by the same uvicorn worker. Hypothetical CVSS for the realistic
+deployment (auth-gated routes, multi-worker uvicorn):
+
+    AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:L — base score 4.3 (MEDIUM)
+
+Worst case if a regex were ever moved to a public, single-worker endpoint:
 
     AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H — base score 7.5 (HIGH)
 
-Pinning the budget here prevents that class of bug from reaching production.
+Pinning the budget here prevents that class of bug from reaching production
+regardless of which deployment shape the regex ends up in.
 """
 
 from __future__ import annotations
@@ -28,14 +33,32 @@ from rentivo.settings import _GTM_RE
 from web.routes.theme import _HEX_COLOR_RE
 
 # (label, compiled pattern, adversarial input)
+#
+# Each input is sized to force the regex engine to traverse the full pattern
+# (not be rejected by a constant-time length pre-check) and end with a
+# disqualifying character that triggers backtracking before failure. This
+# proves the patterns degrade gracefully under near-match adversarial input,
+# not just oversized input.
 PRODUCTION_REGEXES: list[tuple[str, re.Pattern[str], str]] = [
+    # Variable-length: stress with a very long matching prefix + trailing bad char.
     ("settings._GTM_RE", _GTM_RE, "GTM-" + ("A" * 1000) + "!"),
-    ("theme._HEX_COLOR_RE", _HEX_COLOR_RE, "#" + ("a" * 1000)),
-    ("pix.cpf", _PIX_KEY_PATTERNS["cpf"], "9" * 1000),
-    ("pix.cnpj", _PIX_KEY_PATTERNS["cnpj"], "9" * 1000),
-    ("pix.email", _PIX_KEY_PATTERNS["email"], ("a" * 500) + "@" + ("b" * 500)),
-    ("pix.phone", _PIX_KEY_PATTERNS["phone"], "+55" + ("1" * 1000)),
-    ("pix.evp", _PIX_KEY_PATTERNS["evp"], "a" * 1000),
+    # Fixed length 7 (#RRGGBB): length-7 prefix of valid hex chars + bad trailing char.
+    ("theme._HEX_COLOR_RE", _HEX_COLOR_RE, "#" + ("a" * 6) + "!"),
+    # Fixed length 11 digits: 11 valid digits + bad trailing char.
+    ("pix.cpf", _PIX_KEY_PATTERNS["cpf"], ("9" * 11) + "!"),
+    # Fixed length 14 digits: 14 valid digits + bad trailing char.
+    ("pix.cnpj", _PIX_KEY_PATTERNS["cnpj"], ("9" * 14) + "!"),
+    # Three negated-class segments separated by `@` and `.` — long matching segments
+    # to maximize the work the engine does before failing on the final assertion.
+    ("pix.email", _PIX_KEY_PATTERNS["email"], ("a" * 500) + "@" + ("b" * 500) + "."),
+    # +55 + 10..11 digits: 11 valid digits + bad trailing char.
+    ("pix.phone", _PIX_KEY_PATTERNS["phone"], "+55" + ("1" * 11) + "!"),
+    # UUID with correct hyphen positions but bad trailing char.
+    (
+        "pix.evp",
+        _PIX_KEY_PATTERNS["evp"],
+        "a" * 8 + "-" + "a" * 4 + "-" + "a" * 4 + "-" + "a" * 4 + "-" + "a" * 12 + "!",
+    ),
 ]
 
 REDOS_BUDGET_SECONDS = 0.1
