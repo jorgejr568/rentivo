@@ -51,7 +51,10 @@ class TestSerializeBilling:
         assert result["uuid"] == "abc123"
         assert result["name"] == "Apt 101"
         assert result["description"] == "Monthly"
-        assert result["pix_key"] == "pix@test.com"
+        assert "pix_key" not in result
+        assert result["pix_key_set"] is True
+        assert result["pix_merchant_name_set"] is False
+        assert result["pix_merchant_city_set"] is False
         assert result["owner_type"] == "user"
         assert result["owner_id"] == 5
         assert len(result["items"]) == 2
@@ -146,6 +149,35 @@ class TestSerializeUser:
         result = serialize_user(user)
         assert result["created_at"] is None
 
+    def test_pix_redacted_to_presence_booleans(self):
+        user = User(
+            email="alice@example.com",
+            password_hash="x",
+            pix_key="alice@pix.com",
+            pix_merchant_name="Alice",
+            pix_merchant_city="Sao Paulo",
+        )
+        result = serialize_user(user)
+
+        assert "pix_key" not in result
+        assert "pix_merchant_name" not in result
+        assert "pix_merchant_city" not in result
+
+        assert result["pix_key_set"] is True
+        assert result["pix_merchant_name_set"] is True
+        assert result["pix_merchant_city_set"] is True
+
+    def test_pix_unset_yields_false_booleans(self):
+        user = User(email="bob@example.com", password_hash="x")
+        result = serialize_user(user)
+
+        assert result["pix_key_set"] is False
+        assert result["pix_merchant_name_set"] is False
+        assert result["pix_merchant_city_set"] is False
+
+        for key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
+            assert key not in result
+
 
 def test_serialize_user_uses_email():
     user = User(id=1, email="a@b.com", password_hash="x", pix_key="k")
@@ -174,12 +206,40 @@ class TestSerializeOrganization:
         assert result["created_by"] == 5
         assert result["created_at"] == now.isoformat()
         assert result["updated_at"] == now.isoformat()
+        assert result["pix_key_set"] is False
+        assert result["pix_merchant_name_set"] is False
+        assert result["pix_merchant_city_set"] is False
+        assert "pix_key" not in result
+        assert "pix_merchant_name" not in result
+        assert "pix_merchant_city" not in result
 
     def test_org_none_dates(self):
         org = Organization(name="No dates")
         result = serialize_organization(org)
         assert result["created_at"] is None
         assert result["updated_at"] is None
+
+    def test_pix_redacted_to_presence_booleans_when_configured(self):
+        now = datetime(2026, 1, 15)
+        org = Organization(
+            id=1,
+            uuid="org123",
+            name="Acme",
+            created_by=5,
+            pix_key="12345678000190",
+            pix_merchant_name="Acme",
+            pix_merchant_city="Sao Paulo",
+            created_at=now,
+            updated_at=now,
+        )
+        result = serialize_organization(org)
+
+        assert "pix_key" not in result
+        assert "pix_merchant_name" not in result
+        assert "pix_merchant_city" not in result
+        assert result["pix_key_set"] is True
+        assert result["pix_merchant_name_set"] is True
+        assert result["pix_merchant_city_set"] is True
 
 
 class TestSerializeInvite:

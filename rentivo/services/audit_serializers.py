@@ -23,15 +23,15 @@ def _dt(val: datetime | None) -> str | None:
 
 
 def serialize_billing(billing: Billing) -> dict:
-    """Serialize a Billing (with items) for audit state."""
+    """Serialize a Billing (with items) for audit state. PIX fields are redacted to presence booleans."""
     return {
         "id": billing.id,
         "uuid": billing.uuid,
         "name": billing.name,
         "description": billing.description,
-        "pix_key": billing.pix_key,
-        "pix_merchant_name": billing.pix_merchant_name,
-        "pix_merchant_city": billing.pix_merchant_city,
+        "pix_key_set": bool(billing.pix_key),
+        "pix_merchant_name_set": bool(billing.pix_merchant_name),
+        "pix_merchant_city_set": bool(billing.pix_merchant_city),
         "owner_type": billing.owner_type,
         "owner_id": billing.owner_id,
         "items": [
@@ -77,28 +77,34 @@ def serialize_bill(bill: Bill) -> dict:
 
 
 def serialize_user(user: User) -> dict:
-    """Serialize a User for audit state. Excludes password_hash."""
+    """Serialize a User for audit state.
+
+    Excludes ``password_hash``. PIX fields (``pix_key``, ``pix_merchant_name``,
+    ``pix_merchant_city``) are redacted to presence booleans (``*_set``) so the
+    audit trail records when PIX was configured / cleared without storing the
+    plaintext PIX value.
+    """
     return {
         "id": user.id,
         "email": user.email,
-        "pix_key": user.pix_key,
-        "pix_merchant_name": user.pix_merchant_name,
-        "pix_merchant_city": user.pix_merchant_city,
+        "pix_key_set": bool(user.pix_key),
+        "pix_merchant_name_set": bool(user.pix_merchant_name),
+        "pix_merchant_city_set": bool(user.pix_merchant_city),
         "created_at": _dt(user.created_at),
     }
 
 
 def serialize_organization(org: Organization) -> dict:
-    """Serialize an Organization for audit state."""
+    """Serialize an Organization for audit state. PIX fields are redacted to presence booleans."""
     return {
         "id": org.id,
         "uuid": org.uuid,
         "name": org.name,
         "created_by": org.created_by,
         "enforce_mfa": org.enforce_mfa,
-        "pix_key": org.pix_key,
-        "pix_merchant_name": org.pix_merchant_name,
-        "pix_merchant_city": org.pix_merchant_city,
+        "pix_key_set": bool(org.pix_key),
+        "pix_merchant_name_set": bool(org.pix_merchant_name),
+        "pix_merchant_city_set": bool(org.pix_merchant_city),
         "created_at": _dt(org.created_at),
         "updated_at": _dt(org.updated_at),
     }
