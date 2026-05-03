@@ -1087,15 +1087,15 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
 
 
 class SQLAlchemyMFATOTPRepository(MFATOTPRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_totp(row: RowMapping) -> UserTOTP:
+    def _row_to_totp(self, row: RowMapping) -> UserTOTP:
         return UserTOTP(
             id=row["id"],
             user_id=row["user_id"],
-            secret=row["secret"],
+            secret=self.encryption.decrypt(row["secret"]),
             confirmed=bool(row["confirmed"]),
             created_at=row["created_at"],
             confirmed_at=row.get("confirmed_at"),
@@ -1122,7 +1122,7 @@ class SQLAlchemyMFATOTPRepository(MFATOTPRepository):
             ),
             {
                 "user_id": totp.user_id,
-                "secret": totp.secret,
+                "secret": self.encryption.encrypt(totp.secret),
                 "confirmed": totp.confirmed,
                 "created_at": _now(),
             },

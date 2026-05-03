@@ -69,9 +69,10 @@ def get_audit_log_repository() -> AuditLogRepository:
 
 def get_mfa_totp_repository() -> MFATOTPRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyMFATOTPRepository
 
-    return SQLAlchemyMFATOTPRepository(get_connection())
+    return SQLAlchemyMFATOTPRepository(get_connection(), get_encryption())
 
 
 def get_recovery_code_repository() -> RecoveryCodeRepository:

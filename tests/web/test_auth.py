@@ -306,7 +306,7 @@ class TestMFALoginFlow:
             user = user_service.create_user(email, password)
 
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             from rentivo.models.mfa import UserTOTP
 
             totp_repo.create(UserTOTP(user_id=user.id, secret=secret, confirmed=False))
@@ -524,7 +524,7 @@ class TestMFAEnforcement:
             user = user_svc.create_user("mfa_enforce2@example.com", "pass")
 
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp_repo.create(UserTOTP(user_id=user.id, secret=secret, confirmed=False))
             totp_repo.confirm(user.id)
 

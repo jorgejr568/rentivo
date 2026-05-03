@@ -8,6 +8,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillRepository,
     SQLAlchemyInviteRepository,
     SQLAlchemyKnownDeviceRepository,
+    SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyThemeRepository,
@@ -53,6 +54,11 @@ def password_reset_token_repo(db_connection: Connection) -> SQLAlchemyPasswordRe
 @pytest.fixture()
 def known_device_repo(db_connection: Connection) -> SQLAlchemyKnownDeviceRepository:
     return SQLAlchemyKnownDeviceRepository(db_connection)
+
+
+@pytest.fixture()
+def mfa_totp_repo(db_connection: Connection, encryption) -> SQLAlchemyMFATOTPRepository:
+    return SQLAlchemyMFATOTPRepository(db_connection, encryption)
 
 
 class FakeEncryptingBackend(EncryptionBackend):

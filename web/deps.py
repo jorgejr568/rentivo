@@ -252,7 +252,7 @@ def get_mfa_service(request: Request) -> MFAService:
 
     conn = _get_conn(request)
     return MFAService(
-        SQLAlchemyMFATOTPRepository(conn),
+        SQLAlchemyMFATOTPRepository(conn, get_encryption()),
         SQLAlchemyRecoveryCodeRepository(conn),
         SQLAlchemyPasskeyRepository(conn),
         SQLAlchemyOrganizationRepository(conn, get_encryption()),

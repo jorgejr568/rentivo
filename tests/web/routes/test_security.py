@@ -20,7 +20,7 @@ def _setup_confirmed_totp(test_engine, user_id, secret=None):
     if secret is None:
         secret = pyotp.random_base32()
     with test_engine.connect() as conn:
-        totp_repo = SQLAlchemyMFATOTPRepository(conn)
+        totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
         # Remove any existing TOTP first
         totp_repo.delete_by_user_id(user_id)
         totp_repo.create(UserTOTP(user_id=user_id, secret=secret, confirmed=False))
@@ -153,7 +153,7 @@ class TestTOTPDisable:
 
         # Verify TOTP is disabled
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             assert totp_repo.get_by_user_id(user_id) is None
 
     def test_totp_disable_wrong_password(self, auth_client, test_engine, csrf_token):
@@ -169,7 +169,7 @@ class TestTOTPDisable:
 
         # TOTP should still be enabled
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp = totp_repo.get_by_user_id(user_id)
             assert totp is not None
             assert totp.confirmed is True
@@ -195,7 +195,7 @@ class TestTOTPDisable:
 
         # TOTP should still be enabled
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp = totp_repo.get_by_user_id(user_id)
             assert totp is not None
             assert totp.confirmed is True
@@ -499,7 +499,7 @@ class TestPasskeyAuthBegin:
             user = user_service.create_user("passkeyuser@example.com", "secret")
 
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp_repo.create(UserTOTP(user_id=user.id, secret=secret, confirmed=False))
             totp_repo.confirm(user.id)
 
@@ -545,7 +545,7 @@ class TestPasskeyAuthComplete:
             user = user_service.create_user("pkauth_user@example.com", "secret")
 
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp_repo.create(UserTOTP(user_id=user.id, secret=secret, confirmed=False))
             totp_repo.confirm(user.id)
 
