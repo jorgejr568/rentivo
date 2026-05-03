@@ -244,6 +244,55 @@ All dispatched via `EmailService.safe_send_*` (swallow failures, never block the
 - `member_changed` — to the affected user when their role changes in an org (`web/routes/organization.py:member_change_role`).
 - `billing_transferred` — fires from `web/routes/billing.py` transfer handler. Notifies the previous user-owner (if any) and every `admin`/`owner` member of the destination organization.
 
+## Field Encryption (KMS)
+
+Selected PII columns are encrypted at rest behind a pluggable backend abstraction.
+
+### Encrypted columns
+
+| Table | Columns |
+|-------|---------|
+| `users` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
+| `organizations` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
+| `billings` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
+| `user_totp` | `secret` |
+
+Other sensitive values (`password_hash`, `*_token_hash`, `*_code_hash`, `device_hash`) are already one-way hashes; passkey columns are public-by-design WebAuthn material. See `docs/superpowers/plans/2026-05-03-kms-encryption.md` for the full rationale.
+
+### Configuration
+
+- `RENTIVO_ENCRYPTION_BACKEND` — `base64` (default — local-only obfuscation, NOT encryption) or `kms`.
+- `RENTIVO_KMS_KEY_ID` — the KMS key id or alias (e.g. `alias/rentivo`).
+- `RENTIVO_KMS_REGION`, `RENTIVO_KMS_ACCESS_KEY_ID`, `RENTIVO_KMS_SECRET_ACCESS_KEY` — AWS credentials.
+- `RENTIVO_KMS_ENDPOINT_URL` — optional override for LocalStack KMS.
+
+When `RENTIVO_ENCRYPTION_BACKEND=kms`, both `RENTIVO_KMS_KEY_ID` and `RENTIVO_KMS_REGION` are required (Settings validator enforces this at startup).
+
+### Architecture
+
+- `rentivo/encryption/base.py:EncryptionBackend` — abstract `encrypt` / `decrypt` / `is_encrypted` interface. All three are idempotent: `encrypt` is a no-op on already-encrypted values, `decrypt` is a no-op on plaintext (or any value not produced by this backend).
+- `rentivo/encryption/base64.py:Base64Backend` — local-only obfuscation. NOT encryption. Ciphertext format: `b64:v1:<base64(plaintext)>`.
+- `rentivo/encryption/kms.py:KMSBackend` — calls `kms.Encrypt` / `kms.Decrypt` directly (no envelope DEK). Ciphertext format: `enc:v1:<base64-of-CiphertextBlob>`.
+- `rentivo/encryption/factory.py:get_encryption` — dispatches by `RENTIVO_ENCRYPTION_BACKEND`.
+- Wired into `SQLAlchemyBillingRepository`, `SQLAlchemyUserRepository`, `SQLAlchemyOrganizationRepository`, `SQLAlchemyMFATOTPRepository`. Encryption happens on writes; decryption on reads.
+
+### Rollout
+
+The idempotency contract — each backend's `is_encrypted` recognises only its own prefix — lets the three formats (raw plaintext from before this PR, `b64:v1:` from local dev, `enc:v1:` from prod KMS) coexist while the backfill runs:
+
+1. Deploy this code with `RENTIVO_ENCRYPTION_BACKEND=base64`. New writes get `b64:v1:` prefixes; old plaintext rows still read fine.
+2. Provision the KMS key (with deletion protection enabled).
+3. Set `RENTIVO_ENCRYPTION_BACKEND=kms` plus the four `RENTIVO_KMS_*` values; restart.
+4. Run `make backfill-encryption-dry` to preview row counts. Both raw plaintext rows AND `b64:v1:` rows are eligible (KMSBackend's `is_encrypted` returns False for both, so they get re-written through `encrypt()`).
+5. Run `make backfill-encryption` to encrypt legacy rows.
+6. Optionally re-run the dry-run; it should report 0 rewritten.
+
+### Operational risks
+
+- **KMS key deletion = permanent data loss.** Enable AWS KMS deletion protection on this key.
+- **KMS outage = read failure** for encrypted rows. Direct KMS is high-SLA but does add it as a hard dependency on the read path.
+- The migration `2f30089b2082_widen_pix_columns_for_encryption.py` widens the `pix_merchant_*` columns from `String(25)` / `String(15)` to `Text`. Run it during a low-traffic window on large tables.
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).

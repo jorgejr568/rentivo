@@ -51,6 +51,14 @@ regenerate-pdfs:
 regenerate-pdfs-dry:
 	$(PYTHON) -m rentivo.scripts.regenerate_pdfs --dry-run
 
+.PHONY: backfill-encryption
+backfill-encryption:
+	$(PYTHON) -m rentivo.scripts.backfill_encryption
+
+.PHONY: backfill-encryption-dry
+backfill-encryption-dry:
+	$(PYTHON) -m rentivo.scripts.backfill_encryption --dry-run
+
 .PHONY: seed
 seed:
 	$(PYTHON) -m rentivo.scripts.seed
