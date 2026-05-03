@@ -6,6 +6,8 @@ Datetime fields are converted to ISO 8601 strings for JSON compatibility.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import datetime
 
 from rentivo.models.bill import Bill
@@ -13,6 +15,7 @@ from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
 from rentivo.models.user import User
+from rentivo.settings import settings
 
 
 def _dt(val: datetime | None) -> str | None:
@@ -133,6 +136,25 @@ _DISALLOWED_KEY_PREFIXES = ("pix_merchant_",)
 _DISALLOWED_KEYS_EXACT = {"pix_key"}
 
 
+def _hash_email(email: str) -> str:
+    """HMAC-SHA256 of ``email`` keyed by ``settings.secret_key``, truncated to
+    16 hex chars. Empty / falsy input returns ``""``.
+
+    Used to keep ``to_email`` correlatable across audit rows (same recipient
+    yields the same hash) without storing the plaintext address. Rotating
+    ``secret_key`` invalidates correlation but does not corrupt audit history —
+    new rows simply don't correlate to old ones.
+    """
+    if not email:
+        return ""
+    digest = hmac.new(
+        settings.get_secret_key().encode("utf-8"),
+        email.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return digest[:16]
+
+
 def _is_disallowed_key(key: str) -> bool:
     lower = key.lower()
     if lower in _DISALLOWED_KEYS_EXACT:
@@ -145,8 +167,9 @@ def _is_disallowed_key(key: str) -> bool:
 def serialize_job_payload(payload: dict) -> dict:
     """Audit-safe view of a queued job's payload.
 
-    For email.send: keeps ``event`` and ``to_email`` (the row's whole purpose) and
-    a count of ctx keys, but drops every ctx value (templates can carry org
+    For email.send: keeps ``event``, an HMAC hash of ``to_email`` (so reviewers
+    can correlate "same recipient" across audit rows without seeing the address),
+    and a count of ctx keys, but drops every ctx value (templates can carry org
     names, IPs, reset URLs — none belong in audit rows). For s3.delete: keeps
     ``key`` (a ULID-only storage path; safe to log). For unknown job types we
     keep only a sorted index of top-level keys.
@@ -155,7 +178,7 @@ def serialize_job_payload(payload: dict) -> dict:
     if job_type == "email.send":
         return {
             "event": payload.get("event"),
-            "to_email": payload.get("to_email"),
+            "to_email_hash": _hash_email(payload.get("to_email", "") or ""),
             "ctx_keys_count": len(payload.get("ctx") or {}),
         }
     if job_type == "s3.delete":

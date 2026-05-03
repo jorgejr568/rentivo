@@ -20,6 +20,8 @@ deploy already have the redacted shape; this script handles the legacy backlog.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import sys
 
@@ -30,6 +32,7 @@ from sqlalchemy import Connection, text
 
 from rentivo.db import get_connection, initialize_db
 from rentivo.logging import configure_logging
+from rentivo.settings import settings
 
 logger = structlog.get_logger(__name__)
 console = Console()
@@ -38,7 +41,23 @@ console = Console()
 _PII_KEYS = ("pix_key", "pix_merchant_name", "pix_merchant_city")
 
 
-def _redact_state(state_json: str | None) -> tuple[str | None, bool]:
+def _hash_email(email: str, secret_key: str) -> str:
+    """Mirror of ``rentivo.services.audit_serializers._hash_email``.
+
+    Kept inline rather than imported to avoid creating a settings dependency
+    when the script is dispatched. Settings is imported in ``main()`` only.
+    """
+    if not email:
+        return ""
+    digest = hmac.new(
+        secret_key.encode("utf-8"),
+        email.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return digest[:16]
+
+
+def _redact_state(state_json: str | None, secret_key: str) -> tuple[str | None, bool]:
     """Return (rewritten_json, changed). ``changed`` is True iff any PII key
     was rewritten. ``state_json`` of None / empty is passed through unchanged
     with changed=False."""
@@ -61,12 +80,19 @@ def _redact_state(state_json: str | None) -> tuple[str | None, bool]:
             data[f"{key}_set"] = bool(value)
             changed = True
 
+    # email.send job payloads stored plaintext to_email before this PR.
+    # Rewrite to a deterministic HMAC hash so correlation still works.
+    if "to_email" in data:
+        value = data.pop("to_email")
+        data["to_email_hash"] = _hash_email(value or "", secret_key)
+        changed = True
+
     if not changed:
         return state_json, False
     return json.dumps(data), True
 
 
-def run(conn: Connection, *, dry_run: bool) -> None:
+def run(conn: Connection, *, dry_run: bool, secret_key: str) -> None:
     label = "[yellow]DRY-RUN[/yellow]" if dry_run else "[green]LIVE[/green]"
     console.print(f"\n[bold]Redact audit_logs[/bold] {label}\n")
 
@@ -74,8 +100,8 @@ def run(conn: Connection, *, dry_run: bool) -> None:
     rewritten = 0
     skipped = 0
     for row in rows:
-        prev_new, prev_changed = _redact_state(row["previous_state"])
-        new_new, new_changed = _redact_state(row["new_state"])
+        prev_new, prev_changed = _redact_state(row["previous_state"], secret_key)
+        new_new, new_changed = _redact_state(row["new_state"], secret_key)
         if not (prev_changed or new_changed):
             skipped += 1
             continue
@@ -111,7 +137,7 @@ def main() -> None:
     dry_run = "--dry-run" in sys.argv
     initialize_db()
     conn = get_connection()
-    run(conn, dry_run=dry_run)
+    run(conn, dry_run=dry_run, secret_key=settings.get_secret_key())
 
 
 if __name__ == "__main__":  # pragma: no cover

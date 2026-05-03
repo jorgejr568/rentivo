@@ -288,7 +288,7 @@ class TestSerializeInvite:
 
 
 class TestSerializeJobPayload:
-    def test_email_send_keeps_event_and_to_email_drops_ctx_values(self):
+    def test_email_send_hashes_to_email_drops_ctx_values(self):
         result = serialize_job_payload(
             {
                 "job_type": "email.send",
@@ -299,10 +299,36 @@ class TestSerializeJobPayload:
         )
 
         assert result["event"] == "welcome"
-        assert result["to_email"] == "alice@example.com"
+        assert "to_email" not in result  # plaintext recipient is gone
+        assert "to_email_hash" in result
+        # 16 hex chars (HMAC-SHA256 truncated)
+        assert isinstance(result["to_email_hash"], str)
+        assert len(result["to_email_hash"]) == 16
+        assert all(c in "0123456789abcdef" for c in result["to_email_hash"])
         assert result["ctx_keys_count"] == 2
-        assert "ctx" not in result  # raw ctx values stripped
+        assert "ctx" not in result
         assert "pix_setup_url" not in result
+
+    def test_email_send_to_email_hash_is_deterministic_and_correlatable(self):
+        """Same recipient under same secret_key → same hash. Lets auditors
+        correlate 'who got which emails' without exposing the address."""
+        a = serialize_job_payload({"job_type": "email.send", "event": "welcome", "to_email": "alice@example.com"})
+        b = serialize_job_payload(
+            {"job_type": "email.send", "event": "password_reset", "to_email": "alice@example.com"}
+        )
+        c = serialize_job_payload({"job_type": "email.send", "event": "welcome", "to_email": "bob@example.com"})
+
+        assert a["to_email_hash"] == b["to_email_hash"]  # same recipient, correlatable
+        assert a["to_email_hash"] != c["to_email_hash"]  # different recipient, distinct
+
+    def test_email_send_empty_to_email_yields_empty_hash(self):
+        """Missing / empty recipient is preserved as empty string, not hashed,
+        so '' (not configured) is distinguishable from a real recipient."""
+        result = serialize_job_payload({"job_type": "email.send", "event": "welcome"})
+        assert result["to_email_hash"] == ""
+
+        result_empty = serialize_job_payload({"job_type": "email.send", "event": "welcome", "to_email": ""})
+        assert result_empty["to_email_hash"] == ""
 
     def test_email_send_with_ctx_none_does_not_raise(self):
         result = serialize_job_payload({"job_type": "email.send", "ctx": None})
