@@ -32,9 +32,10 @@ def get_bill_repository() -> BillRepository:
 
 def get_user_repository() -> UserRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 
-    return SQLAlchemyUserRepository(get_connection())
+    return SQLAlchemyUserRepository(get_connection(), get_encryption())
 
 
 def get_organization_repository() -> OrganizationRepository:

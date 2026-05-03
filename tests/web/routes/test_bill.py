@@ -12,7 +12,7 @@ from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_au
 def _create_other_user_billing(test_engine):
     """Create a billing owned by a different user (not the logged-in test user)."""
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         other = user_repo.create(User(email="bill_other@example.com", password_hash="h"))
         user_repo.update_pix(other.id, "other@pix.com", "Other Merchant", "Campinas")
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
@@ -1446,7 +1446,7 @@ def _clear_test_user_pix(test_engine):
     """Wipe PIX on the logged-in test user so billing_needs_setup returns True."""
     user_id = get_test_user_id(test_engine)
     with test_engine.connect() as conn:
-        SQLAlchemyUserRepository(conn).update_pix(user_id, "", "", "")
+        SQLAlchemyUserRepository(conn, Base64Backend()).update_pix(user_id, "", "", "")
 
 
 class TestBillPixNotConfigured:

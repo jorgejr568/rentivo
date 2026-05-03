@@ -28,11 +28,12 @@ class TestLoginPage:
         assert response.status_code == 302
 
     def test_login_success(self, client, test_engine):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user_service.create_user("admin@example.com", "secret")
 
@@ -60,11 +61,12 @@ class TestLoginPage:
         assert "inválidos" in response.text.lower()
 
     def test_login_sets_session_keys(self, client, test_engine):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user_service.create_user("admin2@example.com", "secret")
 
@@ -195,11 +197,12 @@ class TestSignup:
         assert "coincidem" in response.text
 
     def test_signup_duplicate_username(self, client, test_engine):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user_service.create_user("existing@example.com", "pass")
 
@@ -269,11 +272,12 @@ class TestAuthMiddleware:
 
     def test_old_session_key_rejected(self, client, test_engine):
         """Old-style session with only 'user' key should be rejected."""
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             UserService(user_repo).create_user("olduser@example.com", "pass")
 
         # Manually set only "user" in session (old-style) - since we can't
@@ -290,13 +294,14 @@ class TestMFALoginFlow:
         """Create a user and set up a confirmed TOTP for them. Returns (user, secret)."""
         import pyotp
 
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyMFATOTPRepository, SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         secret = pyotp.random_base32()
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user = user_service.create_user(email, password)
 
@@ -472,12 +477,13 @@ class TestMFAEnforcement:
 
     def test_login_sets_mfa_setup_required_for_enforcing_org(self, client, test_engine):
         """Login without MFA when in enforcing org sets mfa_setup_required."""
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
         from tests.web.conftest import create_org_in_db
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_svc = UserService(user_repo)
             user = user_svc.create_user("enforce_user@example.com", "pass123")
 
@@ -506,13 +512,14 @@ class TestMFAEnforcement:
 
         import pyotp
 
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.models.mfa import UserTOTP
         from rentivo.repositories.sqlalchemy import SQLAlchemyMFATOTPRepository, SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         secret = pyotp.random_base32()
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_svc = UserService(user_repo)
             user = user_svc.create_user("mfa_enforce2@example.com", "pass")
 
@@ -638,13 +645,14 @@ class TestLoginTurnstile:
         assert "challenges.cloudflare.com" not in response.text
 
     def test_login_rejects_when_turnstile_verification_fails(self, client, test_engine, monkeypatch):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.turnstile_service import TurnstileService
         from rentivo.services.user_service import UserService
         from rentivo.settings import settings
 
         with test_engine.connect() as conn:
-            UserService(SQLAlchemyUserRepository(conn)).create_user("ts@example.com", "secret")
+            UserService(SQLAlchemyUserRepository(conn, Base64Backend())).create_user("ts@example.com", "secret")
 
         monkeypatch.setattr(settings, "turnstile_site_key", "sk")
         monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
@@ -663,13 +671,14 @@ class TestLoginTurnstile:
         assert "Verificação de segurança" in response.text
 
     def test_login_succeeds_when_turnstile_verification_passes(self, client, test_engine, monkeypatch):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.turnstile_service import TurnstileService
         from rentivo.services.user_service import UserService
         from rentivo.settings import settings
 
         with test_engine.connect() as conn:
-            UserService(SQLAlchemyUserRepository(conn)).create_user("ok@example.com", "secret")
+            UserService(SQLAlchemyUserRepository(conn, Base64Backend())).create_user("ok@example.com", "secret")
 
         monkeypatch.setattr(settings, "turnstile_site_key", "sk")
         monkeypatch.setattr(settings, "turnstile_secret_key", "ss")
@@ -791,13 +800,14 @@ class TestSignupSendsWelcomeEmail:
 
 class TestNewDeviceLoginEmail:
     def test_first_login_sends_email_subsequent_does_not(self, client, test_engine, monkeypatch):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.jobs.base import Job
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.job_service import JobService
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            UserService(SQLAlchemyUserRepository(conn)).create_user("nd@example.com", "secret")
+            UserService(SQLAlchemyUserRepository(conn, Base64Backend())).create_user("nd@example.com", "secret")
 
         sent: list[dict] = []
 

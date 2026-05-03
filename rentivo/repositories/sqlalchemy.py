@@ -460,18 +460,18 @@ class SQLAlchemyBillRepository(BillRepository):
 
 
 class SQLAlchemyUserRepository(UserRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_user(row: RowMapping) -> User:
+    def _row_to_user(self, row: RowMapping) -> User:
         return User(
             id=row["id"],
             email=row["email"],
             password_hash=row["password_hash"],
-            pix_key=row.get("pix_key", "") or "",
-            pix_merchant_name=row.get("pix_merchant_name", "") or "",
-            pix_merchant_city=row.get("pix_merchant_city", "") or "",
+            pix_key=self.encryption.decrypt(row.get("pix_key", "") or ""),
+            pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
+            pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
             created_at=row["created_at"],
         )
 
@@ -514,9 +514,9 @@ class SQLAlchemyUserRepository(UserRepository):
                 "pix_merchant_city = :pix_merchant_city WHERE id = :id"
             ),
             {
-                "pix_key": pix_key,
-                "pix_merchant_name": pix_merchant_name,
-                "pix_merchant_city": pix_merchant_city,
+                "pix_key": self.encryption.encrypt(pix_key),
+                "pix_merchant_name": self.encryption.encrypt(pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(pix_merchant_city),
                 "id": user_id,
             },
         )

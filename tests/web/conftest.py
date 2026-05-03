@@ -80,7 +80,7 @@ def generate_bill_in_db(engine, billing, tmp_path):
         bill_repo = SQLAlchemyBillRepository(conn)
         storage = LocalStorage(str(tmp_path))
         pix_service = PixService(
-            SQLAlchemyUserRepository(conn),
+            SQLAlchemyUserRepository(conn, Base64Backend()),
             SQLAlchemyOrganizationRepository(conn),
         )
         service = BillService(bill_repo, storage, pix_service=pix_service)
@@ -164,7 +164,7 @@ def client():
 def auth_client(client, test_engine):
     """Client that is already logged in. Seeds PIX info so bill generation is unblocked."""
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         from rentivo.services.user_service import UserService
 
         user_service = UserService(user_repo)

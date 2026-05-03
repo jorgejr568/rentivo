@@ -18,7 +18,9 @@ def _create_user(user_repo, email="mfa_user@example.com"):
 
 @pytest.fixture()
 def user_repo(db_connection):
-    return SQLAlchemyUserRepository(db_connection)
+    from rentivo.encryption.base64 import Base64Backend
+
+    return SQLAlchemyUserRepository(db_connection, Base64Backend())
 
 
 @pytest.fixture()

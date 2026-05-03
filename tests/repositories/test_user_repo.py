@@ -56,3 +56,67 @@ class TestUserRepo:
         with patch.object(user_repo, "get_by_email", return_value=None):
             with pytest.raises(RuntimeError, match="Failed to retrieve user after create"):
                 user_repo.create(User(email="admin@example.com", password_hash="hash"))
+
+
+class TestUserRepoEncryption:
+    def test_update_pix_encrypts_in_db(self, db_connection, fake_encryption):
+        from sqlalchemy import text
+
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        user = repo.create(User(email="alice@example.com", password_hash="x"))
+        repo.update_pix(user.id, "alice@pix.com", "Alice", "Sao Paulo")
+
+        row = (
+            db_connection.execute(
+                text("SELECT pix_key, pix_merchant_name, pix_merchant_city FROM users WHERE id = :id"),
+                {"id": user.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["pix_key"] == "fake:alice@pix.com"
+        assert row["pix_merchant_name"] == "fake:Alice"
+        assert row["pix_merchant_city"] == "fake:Sao Paulo"
+
+    def test_get_by_id_decrypts_pix(self, db_connection, fake_encryption):
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        user = repo.create(User(email="alice@example.com", password_hash="x"))
+        repo.update_pix(user.id, "alice@pix.com", "Alice", "Sao Paulo")
+
+        fetched = repo.get_by_id(user.id)
+        assert fetched is not None
+        assert fetched.pix_key == "alice@pix.com"
+        assert fetched.pix_merchant_name == "Alice"
+        assert fetched.pix_merchant_city == "Sao Paulo"
+
+    def test_get_handles_legacy_plaintext(self, db_connection, fake_encryption):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, password_hash, pix_key, pix_merchant_name, "
+                "pix_merchant_city) VALUES (:email, :ph, :pk, :pmn, :pmc)"
+            ),
+            {
+                "email": "legacy@example.com",
+                "ph": "x",
+                "pk": "legacy@pix.com",
+                "pmn": "Legacy",
+                "pmc": "Legacy City",
+            },
+        )
+        db_connection.commit()
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        fetched = repo.get_by_email("legacy@example.com")
+        assert fetched is not None
+        assert fetched.pix_key == "legacy@pix.com"
+        assert fetched.pix_merchant_name == "Legacy"

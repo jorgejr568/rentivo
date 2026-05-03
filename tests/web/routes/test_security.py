@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pyotp
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.mfa import UserPasskey, UserTOTP
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyMFATOTPRepository,
@@ -252,7 +253,7 @@ class TestPasskeyDelete:
     def test_delete_passkey_wrong_user(self, auth_client, test_engine, csrf_token):
         """Cannot delete a passkey belonging to another user."""
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             from rentivo.models.user import User
 
             other_user = user_repo.create(User(email="other_pk_user@example.com", password_hash="h"))
@@ -344,7 +345,7 @@ class TestOrganizationToggleMFA:
     def test_toggle_mfa_not_admin(self, auth_client, test_engine, csrf_token):
         """Non-admin members cannot toggle MFA."""
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             from rentivo.models.user import User
 
             other_user = user_repo.create(User(email="mfa_org_owner@example.com", password_hash="h"))
@@ -493,7 +494,7 @@ class TestPasskeyAuthBegin:
 
         secret = pyotp.random_base32()
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user = user_service.create_user("passkeyuser@example.com", "secret")
 
@@ -539,7 +540,7 @@ class TestPasskeyAuthComplete:
         secret = pyotp.random_base32()
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user = user_service.create_user("pkauth_user@example.com", "secret")
 

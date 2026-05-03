@@ -9,11 +9,12 @@ from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_au
 class TestAuthAuditLogs:
     def test_login_creates_audit_log(self, client, test_engine):
         """Successful login creates a user.login audit entry."""
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             svc = UserService(user_repo)
             svc.create_user("audituser@example.com", "pass123")
 

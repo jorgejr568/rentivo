@@ -1,3 +1,4 @@
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.invite import Invite
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import (
@@ -13,7 +14,7 @@ def _setup_invite(test_engine):
     user_id = get_test_user_id(test_engine)
 
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         user2 = user_repo.create(User(email="inv@t.com", password_hash="h"))
 
     # user2 owns the org (auto-added as admin), then invites the logged-in user
@@ -168,7 +169,7 @@ class TestInviteAcceptMFAEnforcement:
 
         # Create another user who owns an MFA-enforcing org
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user2 = user_repo.create(User(email="o@t.com", password_hash="h"))
 
         org = create_org_in_db(test_engine, "Enforcing Org", user2.id)

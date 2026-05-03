@@ -17,13 +17,14 @@ def test_forgot_password_post_silent_for_unknown_email(client, csrf_token):
 
 
 def test_forgot_password_post_sends_email_for_known_user(client, csrf_token, test_engine, monkeypatch):
+    from rentivo.encryption.base64 import Base64Backend
     from rentivo.jobs.base import Job
     from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
     from rentivo.services.job_service import JobService
     from rentivo.services.user_service import UserService
 
     with test_engine.connect() as conn:
-        UserService(SQLAlchemyUserRepository(conn)).register_user("known@example.com", "secret")
+        UserService(SQLAlchemyUserRepository(conn, Base64Backend())).register_user("known@example.com", "secret")
 
     sent: list[dict] = []
 
@@ -59,6 +60,7 @@ def test_reset_password_get_with_invalid_token_uses_invalid_template(client):
 
 
 def test_reset_password_full_flow_changes_password(client, csrf_token, test_engine):
+    from rentivo.encryption.base64 import Base64Backend
     from rentivo.repositories.sqlalchemy import (
         SQLAlchemyPasswordResetTokenRepository,
         SQLAlchemyUserRepository,
@@ -68,7 +70,7 @@ def test_reset_password_full_flow_changes_password(client, csrf_token, test_engi
     from rentivo.services.user_service import UserService
 
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         UserService(user_repo).register_user("flow@example.com", "old-password")
         token_repo = SQLAlchemyPasswordResetTokenRepository(conn)
         service = PasswordResetService(
@@ -240,6 +242,7 @@ def test_forgot_password_succeeds_when_turnstile_passes(client, csrf_token, monk
 
 
 def test_reset_password_sends_completion_notification(client, csrf_token, test_engine, monkeypatch):
+    from rentivo.encryption.base64 import Base64Backend
     from rentivo.jobs.base import Job
     from rentivo.repositories.sqlalchemy import (
         SQLAlchemyPasswordResetTokenRepository,
@@ -265,7 +268,7 @@ def test_reset_password_sends_completion_notification(client, csrf_token, test_e
     monkeypatch.setattr(JobService, "enqueue", _capture)
 
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         UserService(user_repo).register_user("flow2@example.com", "old-password")
         token_repo = SQLAlchemyPasswordResetTokenRepository(conn)
         svc = PasswordResetService(

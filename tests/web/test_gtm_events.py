@@ -35,11 +35,12 @@ def _find_events(html: str, event_name: str) -> list[dict]:
 
 class TestAuthEvents:
     def test_login_success_emits_event(self, enable_gtm, client, test_engine):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
 
         with test_engine.connect() as conn:
-            UserService(SQLAlchemyUserRepository(conn)).create_user("alice@example.com", "pw-alice")
+            UserService(SQLAlchemyUserRepository(conn, Base64Backend())).create_user("alice@example.com", "pw-alice")
 
         client.post("/login", data={"email": "alice@example.com", "password": "pw-alice"}, follow_redirects=False)
         response = client.get("/billings/")
