@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import Connection, create_engine, event, text
 from sqlalchemy.engine import Engine
 
+from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 
@@ -75,8 +76,8 @@ CREATE TABLE users (
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     pix_key TEXT NOT NULL DEFAULT '',
-    pix_merchant_name VARCHAR(255) NOT NULL DEFAULT '',
-    pix_merchant_city VARCHAR(255) NOT NULL DEFAULT '',
+    pix_merchant_name TEXT NOT NULL DEFAULT '',
+    pix_merchant_city TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -314,3 +315,34 @@ def sample_billing():
 @pytest.fixture()
 def sample_bill():
     return _sample_bill
+
+
+class FakeEncryptingBackend(EncryptionBackend):
+    """Test double that prefixes/strips ``fake:`` so we can assert callers
+    actually routed values through encrypt/decrypt. Distinct prefix from both
+    Base64Backend (``b64:v1:``) and KMSBackend (``enc:v1:``) so its ciphertext
+    is unambiguous in test assertions."""
+
+    PREFIX = "fake:"
+
+    def encrypt(self, plaintext: str) -> str:
+        if plaintext == "":
+            return ""
+        if self.is_encrypted(plaintext):
+            return plaintext
+        return self.PREFIX + plaintext
+
+    def decrypt(self, value: str) -> str:
+        if value == "":
+            return ""
+        if not self.is_encrypted(value):
+            return value
+        return value[len(self.PREFIX) :]
+
+    def is_encrypted(self, value: str) -> bool:
+        return value.startswith(self.PREFIX)
+
+
+@pytest.fixture()
+def fake_encryption() -> FakeEncryptingBackend:
+    return FakeEncryptingBackend()

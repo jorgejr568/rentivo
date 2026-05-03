@@ -52,12 +52,15 @@ class TestLegacySessionEmailHydration:
     from the DB so the navbar keeps rendering for existing users without a forced logout."""
 
     def test_hydrates_email_for_legacy_session(self, test_engine):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
         from web.deps import _hydrate_legacy_session_email
 
         with test_engine.connect() as conn:
-            user = UserService(SQLAlchemyUserRepository(conn)).create_user("legacy@example.com", "secret")
+            user = UserService(SQLAlchemyUserRepository(conn, Base64Backend())).create_user(
+                "legacy@example.com", "secret"
+            )
 
         session = {"user_id": user.id, "username": "legacy@example.com"}
         request = _fake_request(session, db_conn=test_engine.connect())

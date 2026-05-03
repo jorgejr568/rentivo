@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
@@ -8,7 +9,7 @@ from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_
 def _create_org_as_other_user(test_engine, org_name="Other Org"):
     """Create an org owned by a different user (not the test user)."""
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         other = user_repo.create(User(email=f"other_{org_name}@example.com", password_hash="h"))
     return create_org_in_db(test_engine, org_name, other.id)
 
@@ -137,6 +138,7 @@ class TestOrganizationDelete:
 
 class TestMemberManagement:
     def test_change_role(self, auth_client, test_engine, csrf_token):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.models.user import User
         from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
 
@@ -145,9 +147,9 @@ class TestMemberManagement:
 
         # Create another user and add as member
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user2 = user_repo.create(User(email="member@example.com", password_hash="h"))
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, user2.id, "viewer")
 
         response = auth_client.post(
@@ -158,6 +160,7 @@ class TestMemberManagement:
         assert response.status_code == 302
 
     def test_remove_member(self, auth_client, test_engine, csrf_token):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.models.user import User
         from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
 
@@ -165,9 +168,9 @@ class TestMemberManagement:
         org = create_org_in_db(test_engine, "My Org", user_id)
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user2 = user_repo.create(User(email="member2@example.com", password_hash="h"))
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, user2.id, "viewer")
 
         response = auth_client.post(
@@ -208,9 +211,9 @@ class TestMemberManagement:
         org = create_org_in_db(test_engine, "RoleNotifyOrg", user_id)
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             target = user_repo.create(User(email="target@example.com", password_hash="h"))
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, target.id, "viewer")
 
         response = auth_client.post(
@@ -236,6 +239,7 @@ class TestMemberManagement:
 
 class TestOrganizationInvite:
     def test_invite_member(self, auth_client, test_engine, csrf_token):
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.models.user import User
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 
@@ -243,7 +247,7 @@ class TestOrganizationInvite:
         org = create_org_in_db(test_engine, "My Org", user_id)
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_repo.create(User(email="invitee@example.com", password_hash="h"))
 
         response = auth_client.post(
@@ -305,7 +309,7 @@ class TestOrganizationInvite:
         org = create_org_in_db(test_engine, "Acme", user_id)
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_repo.create(User(email="invited@example.com", password_hash="h"))
 
         response = auth_client.post(
@@ -337,7 +341,7 @@ class TestOrganizationAccessDenied:
         # Add test user as viewer
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            repo = SQLAlchemyOrganizationRepository(conn)
+            repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.get(f"/organizations/{org.uuid}/edit", follow_redirects=False)
         assert response.status_code == 302
@@ -346,7 +350,7 @@ class TestOrganizationAccessDenied:
         org = _create_org_as_other_user(test_engine, "Other3")
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            repo = SQLAlchemyOrganizationRepository(conn)
+            repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.post(
             f"/organizations/{org.uuid}/edit",
@@ -359,7 +363,7 @@ class TestOrganizationAccessDenied:
         org = _create_org_as_other_user(test_engine, "Other4")
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            repo = SQLAlchemyOrganizationRepository(conn)
+            repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.post(
             f"/organizations/{org.uuid}/delete",
@@ -380,7 +384,7 @@ class TestOrganizationAccessDenied:
         org = _create_org_as_other_user(test_engine, "Other5")
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            repo = SQLAlchemyOrganizationRepository(conn)
+            repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.post(
             f"/organizations/{org.uuid}/members/1/role",
@@ -411,7 +415,7 @@ class TestOrganizationAccessDenied:
         org = _create_org_as_other_user(test_engine, "Other6")
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            repo = SQLAlchemyOrganizationRepository(conn)
+            repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.post(
             f"/organizations/{org.uuid}/members/1/remove",
@@ -432,7 +436,7 @@ class TestOrganizationAccessDenied:
         org = _create_org_as_other_user(test_engine, "Other7")
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            repo = SQLAlchemyOrganizationRepository(conn)
+            repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.post(
             f"/organizations/{org.uuid}/invite",
@@ -466,7 +470,7 @@ class TestOrganizationTransferBilling:
         org = _create_org_as_other_user(test_engine, "Other8")
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            repo = SQLAlchemyOrganizationRepository(conn)
+            repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.post(
             f"/organizations/{org.uuid}/transfer-billing",
@@ -500,7 +504,7 @@ class TestOrganizationTransferBilling:
         org = create_org_in_db(test_engine, "Org3", user_id)
         # Create billing owned by another user
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             other = user_repo.create(User(email="other_transfer@example.com", password_hash="h"))
         other_billing = create_billing_in_db(test_engine, name="Other Billing", owner_type="user", owner_id=other.id)
         response = auth_client.post(
@@ -538,7 +542,7 @@ class TestOrganizationTransferBilling:
         user_id = get_test_user_id(test_engine)
         # Billing previously owned by another user — so they should be notified.
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             prev_owner = user_repo.create(User(email="prev_owner_org@example.com", password_hash="h"))
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=prev_owner.id)
 
@@ -546,8 +550,10 @@ class TestOrganizationTransferBilling:
         org = create_org_in_db(test_engine, "Notif Org", user_id)
         other_admin_email = "second_admin@example.com"
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
-            other_admin = SQLAlchemyUserRepository(conn).create(User(email=other_admin_email, password_hash="h"))
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
+            other_admin = SQLAlchemyUserRepository(conn, Base64Backend()).create(
+                User(email=other_admin_email, password_hash="h")
+            )
             org_repo.add_member(org.id, other_admin.id, OrgRole.ADMIN.value)
 
         with patch(
@@ -584,7 +590,7 @@ class TestInviteReturnsNone:
         org = create_org_in_db(test_engine, "InviteNoneOrg", user_id)
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_repo.create(User(email="invite_target@example.com", password_hash="h"))
 
         with patch("web.routes.organization.get_invite_service") as mock_invite_svc_fn:

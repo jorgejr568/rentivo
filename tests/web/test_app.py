@@ -32,12 +32,13 @@ class TestExceptionHandler:
         """Unhandled exceptions in routes should return 500."""
         from starlette.testclient import TestClient
 
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
         from rentivo.services.user_service import UserService
         from web.app import app
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             UserService(user_repo).create_user("erruser@example.com", "errpass")
 
         client = TestClient(app, raise_server_exceptions=False)

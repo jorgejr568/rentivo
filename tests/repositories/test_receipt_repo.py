@@ -18,9 +18,9 @@ def receipt_repo(db_connection: Connection) -> SQLAlchemyReceiptRepository:
 
 
 @pytest.fixture()
-def billing_with_bill(db_connection: Connection):
+def billing_with_bill(db_connection: Connection, encryption):
     """Create a billing and a bill for testing receipts."""
-    billing_repo = SQLAlchemyBillingRepository(db_connection)
+    billing_repo = SQLAlchemyBillingRepository(db_connection, encryption)
     bill_repo = SQLAlchemyBillRepository(db_connection)
     billing = billing_repo.create(_sample_billing())
     bill = bill_repo.create(_sample_bill(billing_id=billing.id))

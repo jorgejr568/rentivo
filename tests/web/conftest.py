@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine, event, text
 from sqlalchemy.pool import StaticPool
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
@@ -68,7 +69,7 @@ def create_billing_in_db(engine, **overrides):
     )
     defaults.update(overrides)
     with engine.connect() as conn:
-        repo = SQLAlchemyBillingRepository(conn)
+        repo = SQLAlchemyBillingRepository(conn, Base64Backend())
         billing = repo.create(Billing(**defaults))
     return billing
 
@@ -79,8 +80,8 @@ def generate_bill_in_db(engine, billing, tmp_path):
         bill_repo = SQLAlchemyBillRepository(conn)
         storage = LocalStorage(str(tmp_path))
         pix_service = PixService(
-            SQLAlchemyUserRepository(conn),
-            SQLAlchemyOrganizationRepository(conn),
+            SQLAlchemyUserRepository(conn, Base64Backend()),
+            SQLAlchemyOrganizationRepository(conn, Base64Backend()),
         )
         service = BillService(bill_repo, storage, pix_service=pix_service)
         bill = service.generate_bill(
@@ -99,7 +100,7 @@ def create_org_in_db(engine, name, created_by_user_id):
     from rentivo.services.organization_service import OrganizationService
 
     with engine.connect() as conn:
-        repo = SQLAlchemyOrganizationRepository(conn)
+        repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
         service = OrganizationService(repo)
         org = service.create_organization(name, created_by_user_id)
     return org
@@ -163,7 +164,7 @@ def client():
 def auth_client(client, test_engine):
     """Client that is already logged in. Seeds PIX info so bill generation is unblocked."""
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         from rentivo.services.user_service import UserService
 
         user_service = UserService(user_repo)

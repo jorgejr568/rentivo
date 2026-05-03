@@ -17,9 +17,10 @@ from rentivo.repositories.base import (
 
 def get_billing_repository() -> BillingRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
 
-    return SQLAlchemyBillingRepository(get_connection())
+    return SQLAlchemyBillingRepository(get_connection(), get_encryption())
 
 
 def get_bill_repository() -> BillRepository:
@@ -31,16 +32,18 @@ def get_bill_repository() -> BillRepository:
 
 def get_user_repository() -> UserRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 
-    return SQLAlchemyUserRepository(get_connection())
+    return SQLAlchemyUserRepository(get_connection(), get_encryption())
 
 
 def get_organization_repository() -> OrganizationRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
 
-    return SQLAlchemyOrganizationRepository(get_connection())
+    return SQLAlchemyOrganizationRepository(get_connection(), get_encryption())
 
 
 def get_invite_repository() -> InviteRepository:
@@ -66,9 +69,10 @@ def get_audit_log_repository() -> AuditLogRepository:
 
 def get_mfa_totp_repository() -> MFATOTPRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyMFATOTPRepository
 
-    return SQLAlchemyMFATOTPRepository(get_connection())
+    return SQLAlchemyMFATOTPRepository(get_connection(), get_encryption())
 
 
 def get_recovery_code_repository() -> RecoveryCodeRepository:

@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pyotp
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.mfa import UserPasskey, UserTOTP
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyMFATOTPRepository,
@@ -19,7 +20,7 @@ def _setup_confirmed_totp(test_engine, user_id, secret=None):
     if secret is None:
         secret = pyotp.random_base32()
     with test_engine.connect() as conn:
-        totp_repo = SQLAlchemyMFATOTPRepository(conn)
+        totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
         # Remove any existing TOTP first
         totp_repo.delete_by_user_id(user_id)
         totp_repo.create(UserTOTP(user_id=user_id, secret=secret, confirmed=False))
@@ -152,7 +153,7 @@ class TestTOTPDisable:
 
         # Verify TOTP is disabled
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             assert totp_repo.get_by_user_id(user_id) is None
 
     def test_totp_disable_wrong_password(self, auth_client, test_engine, csrf_token):
@@ -168,7 +169,7 @@ class TestTOTPDisable:
 
         # TOTP should still be enabled
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp = totp_repo.get_by_user_id(user_id)
             assert totp is not None
             assert totp.confirmed is True
@@ -181,7 +182,7 @@ class TestTOTPDisable:
         # Create org with enforce_mfa=True and add user as member
         org = create_org_in_db(test_engine, "MFA Org", user_id)
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org.enforce_mfa = True
             org_repo.update(org)
 
@@ -194,7 +195,7 @@ class TestTOTPDisable:
 
         # TOTP should still be enabled
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp = totp_repo.get_by_user_id(user_id)
             assert totp is not None
             assert totp.confirmed is True
@@ -252,7 +253,7 @@ class TestPasskeyDelete:
     def test_delete_passkey_wrong_user(self, auth_client, test_engine, csrf_token):
         """Cannot delete a passkey belonging to another user."""
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             from rentivo.models.user import User
 
             other_user = user_repo.create(User(email="other_pk_user@example.com", password_hash="h"))
@@ -303,7 +304,7 @@ class TestOrganizationToggleMFA:
 
         # Verify MFA is now enabled
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             updated_org = org_repo.get_by_uuid(org.uuid)
             assert updated_org.enforce_mfa is True
 
@@ -313,7 +314,7 @@ class TestOrganizationToggleMFA:
 
         # Enable first
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org.enforce_mfa = True
             org_repo.update(org)
 
@@ -329,7 +330,7 @@ class TestOrganizationToggleMFA:
 
         # Verify MFA is now disabled
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             updated_org = org_repo.get_by_uuid(org.uuid)
             assert updated_org.enforce_mfa is False
 
@@ -344,7 +345,7 @@ class TestOrganizationToggleMFA:
     def test_toggle_mfa_not_admin(self, auth_client, test_engine, csrf_token):
         """Non-admin members cannot toggle MFA."""
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             from rentivo.models.user import User
 
             other_user = user_repo.create(User(email="mfa_org_owner@example.com", password_hash="h"))
@@ -354,7 +355,7 @@ class TestOrganizationToggleMFA:
         # Add test user as viewer
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, user_id, "viewer")
 
         response = auth_client.post(
@@ -366,7 +367,7 @@ class TestOrganizationToggleMFA:
 
         # MFA should still be off
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             updated_org = org_repo.get_by_uuid(org.uuid)
             assert updated_org.enforce_mfa is False
 
@@ -493,12 +494,12 @@ class TestPasskeyAuthBegin:
 
         secret = pyotp.random_base32()
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user = user_service.create_user("passkeyuser@example.com", "secret")
 
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp_repo.create(UserTOTP(user_id=user.id, secret=secret, confirmed=False))
             totp_repo.confirm(user.id)
 
@@ -539,12 +540,12 @@ class TestPasskeyAuthComplete:
         secret = pyotp.random_base32()
 
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_service = UserService(user_repo)
             user = user_service.create_user("pkauth_user@example.com", "secret")
 
         with test_engine.connect() as conn:
-            totp_repo = SQLAlchemyMFATOTPRepository(conn)
+            totp_repo = SQLAlchemyMFATOTPRepository(conn, Base64Backend())
             totp_repo.create(UserTOTP(user_id=user.id, secret=secret, confirmed=False))
             totp_repo.confirm(user.id)
 

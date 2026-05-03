@@ -7,6 +7,7 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from rentivo.constants import SP_TZ
+from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
@@ -40,8 +41,9 @@ def _now() -> datetime:
 
 
 class SQLAlchemyBillingRepository(BillingRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
     def create(self, billing: Billing) -> Billing:
         billing_uuid = str(ULID())
@@ -56,9 +58,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
             {
                 "name": billing.name,
                 "description": billing.description,
-                "pix_key": billing.pix_key,
-                "pix_merchant_name": billing.pix_merchant_name,
-                "pix_merchant_city": billing.pix_merchant_city,
+                "pix_key": self.encryption.encrypt(billing.pix_key),
+                "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
                 "uuid": billing_uuid,
                 "owner_type": billing.owner_type,
                 "owner_id": billing.owner_id,
@@ -87,16 +89,15 @@ class SQLAlchemyBillingRepository(BillingRepository):
             raise RuntimeError(f"Failed to retrieve billing after create (id={billing_id})")
         return result
 
-    @staticmethod
-    def _build_billing(row: RowMapping, item_rows: list[RowMapping]) -> Billing:
+    def _build_billing(self, row: RowMapping, item_rows: list[RowMapping]) -> Billing:
         return Billing(
             id=row["id"],
             uuid=row["uuid"],
             name=row["name"],
             description=row["description"],
-            pix_key=row["pix_key"],
-            pix_merchant_name=row.get("pix_merchant_name", "") or "",
-            pix_merchant_city=row.get("pix_merchant_city", "") or "",
+            pix_key=self.encryption.decrypt(row["pix_key"]),
+            pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
+            pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
             owner_type=row.get("owner_type", "user"),
             owner_id=row.get("owner_id", 0),
             items=[
@@ -200,9 +201,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
             {
                 "name": billing.name,
                 "description": billing.description,
-                "pix_key": billing.pix_key,
-                "pix_merchant_name": billing.pix_merchant_name,
-                "pix_merchant_city": billing.pix_merchant_city,
+                "pix_key": self.encryption.encrypt(billing.pix_key),
+                "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
                 "updated_at": _now(),
                 "id": billing.id,
             },
@@ -459,18 +460,18 @@ class SQLAlchemyBillRepository(BillRepository):
 
 
 class SQLAlchemyUserRepository(UserRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_user(row: RowMapping) -> User:
+    def _row_to_user(self, row: RowMapping) -> User:
         return User(
             id=row["id"],
             email=row["email"],
             password_hash=row["password_hash"],
-            pix_key=row.get("pix_key", "") or "",
-            pix_merchant_name=row.get("pix_merchant_name", "") or "",
-            pix_merchant_city=row.get("pix_merchant_city", "") or "",
+            pix_key=self.encryption.decrypt(row.get("pix_key", "") or ""),
+            pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
+            pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
             created_at=row["created_at"],
         )
 
@@ -513,9 +514,9 @@ class SQLAlchemyUserRepository(UserRepository):
                 "pix_merchant_city = :pix_merchant_city WHERE id = :id"
             ),
             {
-                "pix_key": pix_key,
-                "pix_merchant_name": pix_merchant_name,
-                "pix_merchant_city": pix_merchant_city,
+                "pix_key": self.encryption.encrypt(pix_key),
+                "pix_merchant_name": self.encryption.encrypt(pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(pix_merchant_city),
                 "id": user_id,
             },
         )
@@ -523,20 +524,20 @@ class SQLAlchemyUserRepository(UserRepository):
 
 
 class SQLAlchemyOrganizationRepository(OrganizationRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_org(row: RowMapping) -> Organization:
+    def _row_to_org(self, row: RowMapping) -> Organization:
         return Organization(
             id=row["id"],
             uuid=row["uuid"],
             name=row["name"],
             created_by=row["created_by"],
             enforce_mfa=bool(row.get("enforce_mfa", False)),
-            pix_key=row.get("pix_key", "") or "",
-            pix_merchant_name=row.get("pix_merchant_name", "") or "",
-            pix_merchant_city=row.get("pix_merchant_city", "") or "",
+            pix_key=self.encryption.decrypt(row.get("pix_key", "") or ""),
+            pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
+            pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             deleted_at=row.get("deleted_at"),
@@ -621,9 +622,9 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             {
                 "name": org.name,
                 "enforce_mfa": org.enforce_mfa,
-                "pix_key": org.pix_key,
-                "pix_merchant_name": org.pix_merchant_name,
-                "pix_merchant_city": org.pix_merchant_city,
+                "pix_key": self.encryption.encrypt(org.pix_key),
+                "pix_merchant_name": self.encryption.encrypt(org.pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(org.pix_merchant_city),
                 "updated_at": _now(),
                 "id": org.id,
             },
@@ -1086,15 +1087,15 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
 
 
 class SQLAlchemyMFATOTPRepository(MFATOTPRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_totp(row: RowMapping) -> UserTOTP:
+    def _row_to_totp(self, row: RowMapping) -> UserTOTP:
         return UserTOTP(
             id=row["id"],
             user_id=row["user_id"],
-            secret=row["secret"],
+            secret=self.encryption.decrypt(row["secret"]),
             confirmed=bool(row["confirmed"]),
             created_at=row["created_at"],
             confirmed_at=row.get("confirmed_at"),
@@ -1121,7 +1122,7 @@ class SQLAlchemyMFATOTPRepository(MFATOTPRepository):
             ),
             {
                 "user_id": totp.user_id,
-                "secret": totp.secret,
+                "secret": self.encryption.encrypt(totp.secret),
                 "confirmed": totp.confirmed,
                 "created_at": _now(),
             },

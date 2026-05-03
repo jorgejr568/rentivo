@@ -180,7 +180,9 @@ def _get_conn(request: Request):
 
 
 def get_billing_service(request: Request) -> BillingService:
-    return BillingService(SQLAlchemyBillingRepository(_get_conn(request)))
+    from rentivo.encryption.factory import get_encryption
+
+    return BillingService(SQLAlchemyBillingRepository(_get_conn(request), get_encryption()))
 
 
 def get_bill_service(request: Request) -> BillService:
@@ -203,32 +205,42 @@ def get_theme_service(request: Request) -> ThemeService:
 
 
 def get_pix_service(request: Request) -> PixService:
+    from rentivo.encryption.factory import get_encryption
+
     conn = _get_conn(request)
     return PixService(
-        SQLAlchemyUserRepository(conn),
-        SQLAlchemyOrganizationRepository(conn),
+        SQLAlchemyUserRepository(conn, get_encryption()),
+        SQLAlchemyOrganizationRepository(conn, get_encryption()),
     )
 
 
 def get_user_service(request: Request) -> UserService:
-    return UserService(SQLAlchemyUserRepository(_get_conn(request)))
+    from rentivo.encryption.factory import get_encryption
+
+    return UserService(SQLAlchemyUserRepository(_get_conn(request), get_encryption()))
 
 
 def get_organization_service(request: Request) -> OrganizationService:
-    return OrganizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+    from rentivo.encryption.factory import get_encryption
+
+    return OrganizationService(SQLAlchemyOrganizationRepository(_get_conn(request), get_encryption()))
 
 
 def get_invite_service(request: Request) -> InviteService:
+    from rentivo.encryption.factory import get_encryption
+
     conn = _get_conn(request)
     return InviteService(
         SQLAlchemyInviteRepository(conn),
-        SQLAlchemyOrganizationRepository(conn),
-        SQLAlchemyUserRepository(conn),
+        SQLAlchemyOrganizationRepository(conn, get_encryption()),
+        SQLAlchemyUserRepository(conn, get_encryption()),
     )
 
 
 def get_authorization_service(request: Request) -> AuthorizationService:
-    return AuthorizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+    from rentivo.encryption.factory import get_encryption
+
+    return AuthorizationService(SQLAlchemyOrganizationRepository(_get_conn(request), get_encryption()))
 
 
 def get_audit_service(request: Request) -> AuditService:
@@ -236,12 +248,14 @@ def get_audit_service(request: Request) -> AuditService:
 
 
 def get_mfa_service(request: Request) -> MFAService:
+    from rentivo.encryption.factory import get_encryption
+
     conn = _get_conn(request)
     return MFAService(
-        SQLAlchemyMFATOTPRepository(conn),
+        SQLAlchemyMFATOTPRepository(conn, get_encryption()),
         SQLAlchemyRecoveryCodeRepository(conn),
         SQLAlchemyPasskeyRepository(conn),
-        SQLAlchemyOrganizationRepository(conn),
+        SQLAlchemyOrganizationRepository(conn, get_encryption()),
     )
 
 
@@ -275,8 +289,10 @@ def get_turnstile_service(request: Request) -> TurnstileService:
 
 
 def get_password_reset_service(request: Request) -> PasswordResetService:
+    from rentivo.encryption.factory import get_encryption
+
     conn = _get_conn(request)
-    user_repo = SQLAlchemyUserRepository(conn)
+    user_repo = SQLAlchemyUserRepository(conn, get_encryption())
     return PasswordResetService(
         user_repo=user_repo,
         token_repo=SQLAlchemyPasswordResetTokenRepository(conn),
@@ -292,7 +308,9 @@ def _hydrate_legacy_session_email(request: Request, user_id: int | None) -> str 
     email = request.session.get("email")
     if not user_id or email:
         return email
-    user = SQLAlchemyUserRepository(_get_conn(request)).get_by_id(user_id)
+    from rentivo.encryption.factory import get_encryption
+
+    user = SQLAlchemyUserRepository(_get_conn(request), get_encryption()).get_by_id(user_id)
     if user is not None:
         email = user.email
         request.session["email"] = email

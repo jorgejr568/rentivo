@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import Bill
 from rentivo.models.user import User
@@ -11,7 +12,7 @@ from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_au
 def _create_other_user_billing(test_engine):
     """Create a billing owned by a different user (not the logged-in test user)."""
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         other = user_repo.create(User(email="bill_other@example.com", password_hash="h"))
         user_repo.update_pix(other.id, "other@pix.com", "Other Merchant", "Campinas")
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
@@ -229,7 +230,7 @@ class TestBillChangeStatusEdgeCases:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete the billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
@@ -510,7 +511,7 @@ class TestBillOrphanedBilling:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete the billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         return billing, bill
 
@@ -772,7 +773,7 @@ class TestReceiptUpload:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
@@ -892,7 +893,7 @@ class TestReceiptDelete:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/r-uuid/delete",
@@ -1388,7 +1389,7 @@ class TestReceiptReorder:
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         # Soft-delete billing
         with test_engine.connect() as conn:
-            repo = SQLAlchemyBillingRepository(conn)
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
             repo.delete(billing.id)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
@@ -1445,7 +1446,7 @@ def _clear_test_user_pix(test_engine):
     """Wipe PIX on the logged-in test user so billing_needs_setup returns True."""
     user_id = get_test_user_id(test_engine)
     with test_engine.connect() as conn:
-        SQLAlchemyUserRepository(conn).update_pix(user_id, "", "", "")
+        SQLAlchemyUserRepository(conn, Base64Backend()).update_pix(user_id, "", "", "")
 
 
 class TestBillPixNotConfigured:

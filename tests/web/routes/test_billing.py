@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.billing import Billing
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
@@ -9,7 +10,7 @@ from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_
 def _create_other_user_billing(test_engine):
     """Create a billing owned by a different user (not the logged-in test user)."""
     with test_engine.connect() as conn:
-        user_repo = SQLAlchemyUserRepository(conn)
+        user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         other = user_repo.create(User(email="other@example.com", password_hash="h"))
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
 
@@ -402,12 +403,15 @@ class TestBillingTransfer:
 
     def test_transfer_rejects_non_member(self, auth_client, test_engine, csrf_token):
         """Regression: transfer must reject orgs the user is not a member of."""
+        from rentivo.encryption.base64 import Base64Backend
         from rentivo.models.user import User
         from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 
         billing = create_billing_in_db(test_engine)
         with test_engine.connect() as conn:
-            stranger = SQLAlchemyUserRepository(conn).create(User(email="stranger@example.com", password_hash="h"))
+            stranger = SQLAlchemyUserRepository(conn, Base64Backend()).create(
+                User(email="stranger@example.com", password_hash="h")
+            )
         other_org = create_org_in_db(test_engine, "Stranger Org", stranger.id)
 
         response = auth_client.post(
@@ -418,9 +422,10 @@ class TestBillingTransfer:
         assert response.status_code == 302
         # Billing owner should be unchanged — still user-owned
         with test_engine.connect() as conn:
+            from rentivo.encryption.base64 import Base64Backend
             from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
 
-            reloaded = SQLAlchemyBillingRepository(conn).get_by_id(billing.id)
+            reloaded = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_id(billing.id)
         assert reloaded.owner_type == "user"
 
     def test_transfer_invalid_org_id(self, auth_client, test_engine, csrf_token):
@@ -485,7 +490,7 @@ class TestBillingTransfer:
         billing = create_billing_in_db(test_engine)
         # Create the target org with a different "creator" so the actor isn't already an admin.
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             other_creator = user_repo.create(User(email="org_creator@example.com", password_hash="h"))
         org = create_org_in_db(test_engine, "Target Org", other_creator.id)
 
@@ -493,9 +498,11 @@ class TestBillingTransfer:
         # Add a second admin to the destination org so we can assert org-admin notifications.
         target_admin_email = "admin2@example.com"
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, user_id, OrgRole.ADMIN.value)
-            extra_admin = SQLAlchemyUserRepository(conn).create(User(email=target_admin_email, password_hash="h"))
+            extra_admin = SQLAlchemyUserRepository(conn, Base64Backend()).create(
+                User(email=target_admin_email, password_hash="h")
+            )
             org_repo.add_member(org.id, extra_admin.id, OrgRole.ADMIN.value)
 
         response = auth_client.post(
@@ -542,7 +549,7 @@ class TestBillingTransfer:
         user_id = get_test_user_id(test_engine)
         # Create a billing owned by another user so the actor is NOT the previous owner.
         with test_engine.connect() as conn:
-            user_repo = SQLAlchemyUserRepository(conn)
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             other_owner = user_repo.create(User(email="prev_owner@example.com", password_hash="h"))
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other_owner.id)
 
@@ -551,8 +558,10 @@ class TestBillingTransfer:
         # Add a second admin to verify other admins still get notified.
         other_admin_email = "other_admin@example.com"
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
-            other_admin = SQLAlchemyUserRepository(conn).create(User(email=other_admin_email, password_hash="h"))
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
+            other_admin = SQLAlchemyUserRepository(conn, Base64Backend()).create(
+                User(email=other_admin_email, password_hash="h")
+            )
             org_repo.add_member(org.id, other_admin.id, OrgRole.ADMIN.value)
 
         # The actor must be allowed to transfer this billing — patch authorization.

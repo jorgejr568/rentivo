@@ -18,12 +18,16 @@ def _create_user(user_repo, email="mfa_user@example.com"):
 
 @pytest.fixture()
 def user_repo(db_connection):
-    return SQLAlchemyUserRepository(db_connection)
+    from rentivo.encryption.base64 import Base64Backend
+
+    return SQLAlchemyUserRepository(db_connection, Base64Backend())
 
 
 @pytest.fixture()
 def totp_repo(db_connection):
-    return SQLAlchemyMFATOTPRepository(db_connection)
+    from rentivo.encryption.base64 import Base64Backend
+
+    return SQLAlchemyMFATOTPRepository(db_connection, Base64Backend())
 
 
 @pytest.fixture()
@@ -276,3 +280,58 @@ class TestPasskeyRepository:
 
         assert len(passkey_repo.list_by_user(user1.id)) == 1
         assert len(passkey_repo.list_by_user(user2.id)) == 1
+
+
+class TestMFATOTPRepoEncryption:
+    def test_create_encrypts_secret(self, db_connection, fake_encryption, user_repo):
+        from sqlalchemy import text
+
+        from rentivo.models.mfa import UserTOTP
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyMFATOTPRepository
+
+        user = user_repo.create(User(email="alice@example.com", password_hash="x"))
+        repo = SQLAlchemyMFATOTPRepository(db_connection, fake_encryption)
+        repo.create(UserTOTP(user_id=user.id, secret="JBSWY3DPEHPK3PXP", confirmed=False))
+
+        row = (
+            db_connection.execute(
+                text("SELECT secret FROM user_totp WHERE user_id = :uid"),
+                {"uid": user.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["secret"] == "fake:JBSWY3DPEHPK3PXP"
+
+    def test_get_decrypts_secret(self, db_connection, fake_encryption, user_repo):
+        from rentivo.models.mfa import UserTOTP
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyMFATOTPRepository
+
+        user = user_repo.create(User(email="alice@example.com", password_hash="x"))
+        repo = SQLAlchemyMFATOTPRepository(db_connection, fake_encryption)
+        repo.create(UserTOTP(user_id=user.id, secret="JBSWY3DPEHPK3PXP", confirmed=False))
+
+        fetched = repo.get_by_user_id(user.id)
+        assert fetched is not None
+        assert fetched.secret == "JBSWY3DPEHPK3PXP"
+
+    def test_get_handles_legacy_plaintext(self, db_connection, fake_encryption, user_repo):
+        from sqlalchemy import text
+
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyMFATOTPRepository
+
+        user = user_repo.create(User(email="alice@example.com", password_hash="x"))
+        # Insert plaintext secret directly
+        db_connection.execute(
+            text("INSERT INTO user_totp (user_id, secret, confirmed, created_at) VALUES (:uid, :s, 0, :now)"),
+            {"uid": user.id, "s": "PLAINTEXTSECRET", "now": "2026-04-01 00:00:00"},
+        )
+        db_connection.commit()
+
+        repo = SQLAlchemyMFATOTPRepository(db_connection, fake_encryption)
+        fetched = repo.get_by_user_id(user.id)
+        assert fetched is not None
+        assert fetched.secret == "PLAINTEXTSECRET"
