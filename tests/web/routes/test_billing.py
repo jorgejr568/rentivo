@@ -498,7 +498,7 @@ class TestBillingTransfer:
         # Add a second admin to the destination org so we can assert org-admin notifications.
         target_admin_email = "admin2@example.com"
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, user_id, OrgRole.ADMIN.value)
             extra_admin = SQLAlchemyUserRepository(conn, Base64Backend()).create(
                 User(email=target_admin_email, password_hash="h")
@@ -558,7 +558,7 @@ class TestBillingTransfer:
         # Add a second admin to verify other admins still get notified.
         other_admin_email = "other_admin@example.com"
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             other_admin = SQLAlchemyUserRepository(conn, Base64Backend()).create(
                 User(email=other_admin_email, password_hash="h")
             )

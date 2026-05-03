@@ -174,7 +174,7 @@ class TestInviteAcceptMFAEnforcement:
 
         org = create_org_in_db(test_engine, "Enforcing Org", user2.id)
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org.enforce_mfa = True
             org_repo.update(org)
 

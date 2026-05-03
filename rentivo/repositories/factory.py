@@ -40,9 +40,10 @@ def get_user_repository() -> UserRepository:
 
 def get_organization_repository() -> OrganizationRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
 
-    return SQLAlchemyOrganizationRepository(get_connection())
+    return SQLAlchemyOrganizationRepository(get_connection(), get_encryption())
 
 
 def get_invite_repository() -> InviteRepository:

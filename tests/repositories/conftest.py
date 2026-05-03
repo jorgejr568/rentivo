@@ -31,8 +31,8 @@ def user_repo(db_connection: Connection, encryption) -> SQLAlchemyUserRepository
 
 
 @pytest.fixture()
-def org_repo(db_connection: Connection) -> SQLAlchemyOrganizationRepository:
-    return SQLAlchemyOrganizationRepository(db_connection)
+def org_repo(db_connection: Connection, encryption) -> SQLAlchemyOrganizationRepository:
+    return SQLAlchemyOrganizationRepository(db_connection, encryption)
 
 
 @pytest.fixture()

@@ -524,20 +524,20 @@ class SQLAlchemyUserRepository(UserRepository):
 
 
 class SQLAlchemyOrganizationRepository(OrganizationRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_org(row: RowMapping) -> Organization:
+    def _row_to_org(self, row: RowMapping) -> Organization:
         return Organization(
             id=row["id"],
             uuid=row["uuid"],
             name=row["name"],
             created_by=row["created_by"],
             enforce_mfa=bool(row.get("enforce_mfa", False)),
-            pix_key=row.get("pix_key", "") or "",
-            pix_merchant_name=row.get("pix_merchant_name", "") or "",
-            pix_merchant_city=row.get("pix_merchant_city", "") or "",
+            pix_key=self.encryption.decrypt(row.get("pix_key", "") or ""),
+            pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
+            pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             deleted_at=row.get("deleted_at"),
@@ -622,9 +622,9 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             {
                 "name": org.name,
                 "enforce_mfa": org.enforce_mfa,
-                "pix_key": org.pix_key,
-                "pix_merchant_name": org.pix_merchant_name,
-                "pix_merchant_city": org.pix_merchant_city,
+                "pix_key": self.encryption.encrypt(org.pix_key),
+                "pix_merchant_name": self.encryption.encrypt(org.pix_merchant_name),
+                "pix_merchant_city": self.encryption.encrypt(org.pix_merchant_city),
                 "updated_at": _now(),
                 "id": org.id,
             },

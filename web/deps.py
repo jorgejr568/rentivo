@@ -210,7 +210,7 @@ def get_pix_service(request: Request) -> PixService:
     conn = _get_conn(request)
     return PixService(
         SQLAlchemyUserRepository(conn, get_encryption()),
-        SQLAlchemyOrganizationRepository(conn),
+        SQLAlchemyOrganizationRepository(conn, get_encryption()),
     )
 
 
@@ -221,7 +221,9 @@ def get_user_service(request: Request) -> UserService:
 
 
 def get_organization_service(request: Request) -> OrganizationService:
-    return OrganizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+    from rentivo.encryption.factory import get_encryption
+
+    return OrganizationService(SQLAlchemyOrganizationRepository(_get_conn(request), get_encryption()))
 
 
 def get_invite_service(request: Request) -> InviteService:
@@ -230,13 +232,15 @@ def get_invite_service(request: Request) -> InviteService:
     conn = _get_conn(request)
     return InviteService(
         SQLAlchemyInviteRepository(conn),
-        SQLAlchemyOrganizationRepository(conn),
+        SQLAlchemyOrganizationRepository(conn, get_encryption()),
         SQLAlchemyUserRepository(conn, get_encryption()),
     )
 
 
 def get_authorization_service(request: Request) -> AuthorizationService:
-    return AuthorizationService(SQLAlchemyOrganizationRepository(_get_conn(request)))
+    from rentivo.encryption.factory import get_encryption
+
+    return AuthorizationService(SQLAlchemyOrganizationRepository(_get_conn(request), get_encryption()))
 
 
 def get_audit_service(request: Request) -> AuditService:
@@ -244,12 +248,14 @@ def get_audit_service(request: Request) -> AuditService:
 
 
 def get_mfa_service(request: Request) -> MFAService:
+    from rentivo.encryption.factory import get_encryption
+
     conn = _get_conn(request)
     return MFAService(
         SQLAlchemyMFATOTPRepository(conn),
         SQLAlchemyRecoveryCodeRepository(conn),
         SQLAlchemyPasskeyRepository(conn),
-        SQLAlchemyOrganizationRepository(conn),
+        SQLAlchemyOrganizationRepository(conn, get_encryption()),
     )
 
 

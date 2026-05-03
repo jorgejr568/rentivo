@@ -43,7 +43,10 @@ def handle_pdf_render(payload: dict) -> None:
         if billing is None:
             raise PermanentJobError(f"billing {bill.billing_id} not found for bill {bill_id}")
 
-        pix = PixService(SQLAlchemyUserRepository(conn, get_encryption()), SQLAlchemyOrganizationRepository(conn))
+        pix = PixService(
+            SQLAlchemyUserRepository(conn, get_encryption()),
+            SQLAlchemyOrganizationRepository(conn, get_encryption()),
+        )
         theme = ThemeService(SQLAlchemyThemeRepository(conn))
         service = BillService(
             bill_repo=bill_repo,

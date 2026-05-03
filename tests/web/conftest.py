@@ -81,7 +81,7 @@ def generate_bill_in_db(engine, billing, tmp_path):
         storage = LocalStorage(str(tmp_path))
         pix_service = PixService(
             SQLAlchemyUserRepository(conn, Base64Backend()),
-            SQLAlchemyOrganizationRepository(conn),
+            SQLAlchemyOrganizationRepository(conn, Base64Backend()),
         )
         service = BillService(bill_repo, storage, pix_service=pix_service)
         bill = service.generate_bill(
@@ -100,7 +100,7 @@ def create_org_in_db(engine, name, created_by_user_id):
     from rentivo.services.organization_service import OrganizationService
 
     with engine.connect() as conn:
-        repo = SQLAlchemyOrganizationRepository(conn)
+        repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
         service = OrganizationService(repo)
         org = service.create_organization(name, created_by_user_id)
     return org

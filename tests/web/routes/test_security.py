@@ -182,7 +182,7 @@ class TestTOTPDisable:
         # Create org with enforce_mfa=True and add user as member
         org = create_org_in_db(test_engine, "MFA Org", user_id)
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org.enforce_mfa = True
             org_repo.update(org)
 
@@ -304,7 +304,7 @@ class TestOrganizationToggleMFA:
 
         # Verify MFA is now enabled
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             updated_org = org_repo.get_by_uuid(org.uuid)
             assert updated_org.enforce_mfa is True
 
@@ -314,7 +314,7 @@ class TestOrganizationToggleMFA:
 
         # Enable first
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org.enforce_mfa = True
             org_repo.update(org)
 
@@ -330,7 +330,7 @@ class TestOrganizationToggleMFA:
 
         # Verify MFA is now disabled
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             updated_org = org_repo.get_by_uuid(org.uuid)
             assert updated_org.enforce_mfa is False
 
@@ -355,7 +355,7 @@ class TestOrganizationToggleMFA:
         # Add test user as viewer
         user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, user_id, "viewer")
 
         response = auth_client.post(
@@ -367,7 +367,7 @@ class TestOrganizationToggleMFA:
 
         # MFA should still be off
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             updated_org = org_repo.get_by_uuid(org.uuid)
             assert updated_org.enforce_mfa is False
 

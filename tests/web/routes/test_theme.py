@@ -125,7 +125,7 @@ class TestOrgThemeForm:
         org = create_org_in_db(test_engine, "Other Org", other.id)
         test_user_id = get_test_user_id(test_engine)
         with test_engine.connect() as conn:
-            org_repo = SQLAlchemyOrganizationRepository(conn)
+            org_repo = SQLAlchemyOrganizationRepository(conn, Base64Backend())
             org_repo.add_member(org.id, test_user_id, "viewer")
 
         response = auth_client.get(

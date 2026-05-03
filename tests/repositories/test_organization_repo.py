@@ -126,3 +126,51 @@ class TestOrganizationRepoEdgeCases:
         with patch.object(org_repo, "get_member", return_value=None):
             with pytest.raises(RuntimeError, match="Failed to retrieve member after create"):
                 org_repo.add_member(org.id, user.id, "admin")
+
+
+class TestOrgRepoEncryption:
+    def test_update_encrypts_pix(self, db_connection, fake_encryption, user_repo):
+        from sqlalchemy import text
+
+        from rentivo.models.organization import Organization
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+
+        creator = user_repo.create(User(email="creator@example.com", password_hash="x"))
+        repo = SQLAlchemyOrganizationRepository(db_connection, fake_encryption)
+        org = repo.create(Organization(name="Acme", created_by=creator.id))
+        org.pix_key = "12345678000190"
+        org.pix_merchant_name = "Acme"
+        org.pix_merchant_city = "Sao Paulo"
+        repo.update(org)
+
+        row = (
+            db_connection.execute(
+                text("SELECT pix_key, pix_merchant_name, pix_merchant_city FROM organizations WHERE id = :id"),
+                {"id": org.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["pix_key"] == "fake:12345678000190"
+        assert row["pix_merchant_name"] == "fake:Acme"
+        assert row["pix_merchant_city"] == "fake:Sao Paulo"
+
+    def test_get_decrypts_pix(self, db_connection, fake_encryption, user_repo):
+        from rentivo.models.organization import Organization
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+
+        creator = user_repo.create(User(email="creator@example.com", password_hash="x"))
+        repo = SQLAlchemyOrganizationRepository(db_connection, fake_encryption)
+        org = repo.create(Organization(name="Acme", created_by=creator.id))
+        org.pix_key = "12345678000190"
+        org.pix_merchant_name = "Acme"
+        org.pix_merchant_city = "Sao Paulo"
+        repo.update(org)
+
+        fetched = repo.get_by_id(org.id)
+        assert fetched is not None
+        assert fetched.pix_key == "12345678000190"
+        assert fetched.pix_merchant_name == "Acme"
+        assert fetched.pix_merchant_city == "Sao Paulo"
