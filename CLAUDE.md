@@ -137,7 +137,8 @@ make web-run             # start uvicorn at http://localhost:8000
 
 - **AuditService** logs all state-changing operations across web and CLI
 - Event types defined in `rentivo/models/audit_log.py` (`AuditEventType`)
-- Serializers in `rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`)
+- Serializers in `rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`) and redact PIX values to presence booleans (`pix_key_set: bool`, `pix_merchant_name_set: bool`, `pix_merchant_city_set: bool`) so the audit trail records *when* PIX is set/cleared without storing the plaintext value.
+- Backfill: `make redact-audit-logs-dry` previews; `make redact-audit-logs` rewrites legacy `audit_logs` rows whose JSON still contains plaintext PIX. Idempotent. Run once after deploying the redacted serializers.
 - `safe_log()` swallows exceptions — audit failures never block business operations
 - Web routes: actor context comes from session (`user_id`, `username`)
 - CLI: uses `source="cli"`, `actor_id=None`, `actor_username=""`
