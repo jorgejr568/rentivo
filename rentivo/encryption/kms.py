@@ -38,7 +38,10 @@ class KMSBackend(EncryptionBackend):
         endpoint_url: str = "",
     ) -> None:
         if boto3 is None:
-            raise ImportError("boto3 is required for KMS encryption. Install it with: pip install rentivo[s3]")
+            raise ImportError(
+                "boto3 is required for KMS encryption. Install it with: pip install rentivo[s3] "
+                "(the s3 extras group also provides the boto3 client used for KMS)."
+            )
         self.key_id = key_id
 
         client_kwargs: dict = {
