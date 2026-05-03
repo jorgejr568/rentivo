@@ -49,6 +49,22 @@ class TestBillRepoCRUD:
         billing = self._create_billing(billing_repo, sample_billing)
         assert bill_repo.list_by_billing(billing.id) == []
 
+    def test_list_by_billing_with_multiple_bills_loads_line_items(
+        self, bill_repo, billing_repo, sample_billing, sample_bill
+    ):
+        """Bulk-load (IN-query) path: list_by_billing() must hydrate line items for every bill."""
+        billing = self._create_billing(billing_repo, sample_billing)
+        bill_repo.create(sample_bill(billing_id=billing.id, reference_month="2026-01"))
+        bill_repo.create(sample_bill(billing_id=billing.id, reference_month="2026-02"))
+        bill_repo.create(sample_bill(billing_id=billing.id, reference_month="2026-03"))
+
+        bills = bill_repo.list_by_billing(billing.id)
+
+        assert len(bills) == 3
+        for bill in bills:
+            assert len(bill.line_items) == 2
+            assert all(isinstance(item, BillLineItem) for item in bill.line_items)
+
     def test_update(self, bill_repo, billing_repo, sample_billing, sample_bill):
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
