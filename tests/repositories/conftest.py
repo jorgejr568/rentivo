@@ -14,6 +14,9 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
+from tests.conftest import FakeEncryptingBackend  # re-exported for backwards-compat
+
+__all__ = ["FakeEncryptingBackend"]
 
 
 @pytest.fixture()
@@ -61,37 +64,6 @@ def mfa_totp_repo(db_connection: Connection, encryption) -> SQLAlchemyMFATOTPRep
     return SQLAlchemyMFATOTPRepository(db_connection, encryption)
 
 
-class FakeEncryptingBackend(EncryptionBackend):
-    """Test double that prefixes/strips ``fake:`` so we can assert the repo
-    actually routed values through encrypt/decrypt. Distinct prefix from both
-    Base64Backend (``b64:v1:``) and KMSBackend (``enc:v1:``) so its ciphertext
-    is unambiguous in test assertions."""
-
-    PREFIX = "fake:"
-
-    def encrypt(self, plaintext: str) -> str:
-        if plaintext == "":
-            return ""
-        if self.is_encrypted(plaintext):
-            return plaintext
-        return self.PREFIX + plaintext
-
-    def decrypt(self, value: str) -> str:
-        if value == "":
-            return ""
-        if not self.is_encrypted(value):
-            return value
-        return value[len(self.PREFIX) :]
-
-    def is_encrypted(self, value: str) -> bool:
-        return value.startswith(self.PREFIX)
-
-
 @pytest.fixture()
 def encryption() -> EncryptionBackend:
     return Base64Backend()
-
-
-@pytest.fixture()
-def fake_encryption() -> FakeEncryptingBackend:
-    return FakeEncryptingBackend()
