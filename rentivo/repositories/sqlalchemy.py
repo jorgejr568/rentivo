@@ -57,7 +57,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 ":uuid, :owner_type, :owner_id, :created_at, :updated_at)"
             ),
             {
-                "name": billing.name,
+                "name": self.encryption.encrypt(billing.name),
                 "description": self.encryption.encrypt(billing.description),
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
@@ -97,7 +97,8 @@ class SQLAlchemyBillingRepository(BillingRepository):
         plaintexts: Iterator[str],
     ) -> Billing:
         # Consumes plaintexts in the order produced by ``_gather_billing_ciphertexts``:
-        # description, pix_key, pix_merchant_name, pix_merchant_city, then one per item.
+        # name, description, pix_key, pix_merchant_name, pix_merchant_city, then one per item.
+        name = next(plaintexts)
         description = next(plaintexts)
         pix_key = next(plaintexts)
         pix_merchant_name = next(plaintexts)
@@ -116,7 +117,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         return Billing(
             id=row["id"],
             uuid=row["uuid"],
-            name=row["name"],
+            name=name,
             description=description,
             pix_key=pix_key,
             pix_merchant_name=pix_merchant_name,
@@ -136,6 +137,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
     ) -> list[str]:
         ciphertexts: list[str] = []
         for row in rows:
+            ciphertexts.append(row["name"] or "")
             ciphertexts.append(row["description"] or "")
             ciphertexts.append(row["pix_key"] or "")
             ciphertexts.append(row.get("pix_merchant_name", "") or "")
@@ -232,7 +234,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "pix_merchant_city = :pix_merchant_city, updated_at = :updated_at WHERE id = :id"
             ),
             {
-                "name": billing.name,
+                "name": self.encryption.encrypt(billing.name),
                 "description": self.encryption.encrypt(billing.description),
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),

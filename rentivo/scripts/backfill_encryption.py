@@ -40,7 +40,7 @@ console = Console()
 _TARGETS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("users", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city")),
     ("organizations", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city")),
-    ("billings", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city", "description")),
+    ("billings", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city", "description", "name")),
     ("billing_items", "id", ("description",)),
     ("bills", "id", ("notes",)),
     ("bill_line_items", "id", ("description",)),

@@ -313,3 +313,75 @@ class TestBillingRepoEncryption:
         assert fetched is not None
         assert fetched.description == "legacy plaintext desc"
         assert fetched.items[0].description == "legacy item plaintext"
+
+    def test_create_encrypts_billing_name(self, db_connection, fake_encryption, sample_billing):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        created = repo.create(sample_billing(name="Apt 101 - Rua Augusta, 1234"))
+
+        row = (
+            db_connection.execute(
+                text("SELECT name FROM billings WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["name"] == "fake:Apt 101 - Rua Augusta, 1234"
+
+    def test_get_decrypts_billing_name(self, db_connection, fake_encryption, sample_billing):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        created = repo.create(sample_billing(name="Apt 101 - Rua Augusta"))
+        fetched = repo.get_by_id(created.id)
+        assert fetched is not None
+        assert fetched.name == "Apt 101 - Rua Augusta"
+
+    def test_update_re_encrypts_billing_name(self, db_connection, fake_encryption, sample_billing):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        created = repo.create(sample_billing(name="Apt 101"))
+        created.name = "Apt 202"
+        repo.update(created)
+
+        row = (
+            db_connection.execute(
+                text("SELECT name FROM billings WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["name"] == "fake:Apt 202"
+
+    def test_get_handles_legacy_plaintext_name(self, db_connection, fake_encryption):
+        """Pre-encryption rows must read back plaintext via the no-op decrypt path."""
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        db_connection.execute(
+            text(
+                "INSERT INTO billings (name, description, pix_key, pix_merchant_name, "
+                "pix_merchant_city, uuid, owner_type, owner_id, created_at, updated_at) "
+                "VALUES ('legacy plaintext name', '', '', '', '', "
+                "'01HXLEGACYNAME0000000000000', 'user', 0, "
+                "'2026-04-01 00:00:00', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        billing_id = db_connection.execute(
+            text("SELECT id FROM billings WHERE uuid = '01HXLEGACYNAME0000000000000'")
+        ).scalar_one()
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        fetched = repo.get_by_id(billing_id)
+        assert fetched is not None
+        assert fetched.name == "legacy plaintext name"
