@@ -876,13 +876,12 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
         self.conn = conn
         self.encryption = encryption
 
-    @staticmethod
-    def _row_to_receipt(row: RowMapping) -> Receipt:
+    def _row_to_receipt(self, row: RowMapping) -> Receipt:
         return Receipt(
             id=row["id"],
             uuid=row["uuid"],
             bill_id=row["bill_id"],
-            filename=row["filename"],
+            filename=self.encryption.decrypt(row["filename"]),
             storage_key=row["storage_key"],
             content_type=row["content_type"],
             file_size=row["file_size"],
@@ -903,7 +902,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             {
                 "uuid": receipt_uuid,
                 "bill_id": receipt.bill_id,
-                "filename": receipt.filename,
+                "filename": self.encryption.encrypt(receipt.filename),
                 "storage_key": receipt.storage_key,
                 "content_type": receipt.content_type,
                 "file_size": receipt.file_size,
