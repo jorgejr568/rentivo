@@ -819,8 +819,15 @@ class TestRenderOrEnqueue:
         self.receipt_repo.update_sort_orders.assert_called_once()
         self.job_service.enqueue.assert_called_once()
 
-    def test_generate_bill_always_renders_synchronously_even_with_job_service(self):
-        """First-render path must remain synchronous so a fresh bill has a downloadable PDF."""
+    def test_generate_bill_enqueues_pdf_render_when_job_service_is_configured(self):
+        """First-render path must enqueue when a JobService is configured (web).
+
+        Bill creation through the web UI used to render the PDF inline,
+        blocking the HTTP request for hundreds of milliseconds. The
+        ``pdf.render`` worker + ``Renderizando`` UI badge make async render
+        the right default; the bill is returned with
+        ``pdf_render_status='pending'`` and the worker drains the job.
+        """
         billing = Billing(
             id=1,
             uuid="bg-uuid",
@@ -849,8 +856,19 @@ class TestRenderOrEnqueue:
             mock_pdf.generate.return_value = b"%PDF"
             service.generate_bill(billing, "2026-05", {}, [])
 
-        # generate_bill must call the PDF generator inline AND must not enqueue.
-        mock_pdf.generate.assert_called_once()
-        self.job_service.enqueue.assert_not_called()
-        # And it must mark the row "succeeded" via the sync path.
-        self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "succeeded")
+        # generate_bill must NOT render the PDF inline...
+        mock_pdf.generate.assert_not_called()
+        self.storage.save.assert_not_called()
+        self.bill_repo.update_pdf_path.assert_not_called()
+
+        # ...and must enqueue a pdf.render job for the new bill.
+        self.job_service.enqueue.assert_called_once()
+        call = self.job_service.enqueue.call_args
+        assert call.args[0] == "pdf.render"
+        assert call.args[1] == {"bill_id": 42}
+        assert call.kwargs.get("source") == "web"
+        assert call.kwargs.get("actor_id") == 7
+        assert call.kwargs.get("actor_username") == "a@x"
+
+        # The row is marked "pending" (not "succeeded") on the enqueue path.
+        self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "pending")
