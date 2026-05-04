@@ -257,7 +257,7 @@ class BillService:
             total_centavos=total,
         )
 
-        self._render_pdf_sync(bill, billing)
+        self._render_or_enqueue(bill, billing)
 
         return bill
 
