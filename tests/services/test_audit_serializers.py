@@ -51,10 +51,12 @@ class TestSerializeBilling:
         assert result["uuid"] == "abc123"
         assert result["name"] == "Apt 101"
         assert result["description"] == "Monthly"
-        assert "pix_key" not in result
-        assert result["pix_key_set"] is True
-        assert result["pix_merchant_name_set"] is False
-        assert result["pix_merchant_city_set"] is False
+        # PIX redaction: short non-empty values collapse to '***'.
+        # The Billing in this test has pix_key="pix@test.com" (12 chars) and
+        # empty merchant fields.
+        assert result["pix_key"] == "pix...om"  # 'pix@test.com' → first 3 + ... + last 2
+        assert result["pix_merchant_name"] == ""  # empty → empty
+        assert result["pix_merchant_city"] == ""
         assert result["owner_type"] == "user"
         assert result["owner_id"] == 5
         assert len(result["items"]) == 2
@@ -149,34 +151,49 @@ class TestSerializeUser:
         result = serialize_user(user)
         assert result["created_at"] is None
 
-    def test_pix_redacted_to_presence_booleans(self):
+    def test_pix_redacted_to_partial_mask(self):
         user = User(
             email="alice@example.com",
             password_hash="x",
             pix_key="alice@pix.com",
-            pix_merchant_name="Alice",
+            pix_merchant_name="Alice da Silva",
             pix_merchant_city="Sao Paulo",
         )
         result = serialize_user(user)
 
-        assert "pix_key" not in result
-        assert "pix_merchant_name" not in result
-        assert "pix_merchant_city" not in result
+        # All PIX fields use the PIX mask (first 3 + '...' + last 2).
+        assert result["pix_key"] == "ali...om"  # 'alice@pix.com' (13 chars)
+        assert result["pix_merchant_name"] == "Ali...va"  # 'Alice da Silva' (14 chars)
+        assert result["pix_merchant_city"] == "Sao...lo"  # 'Sao Paulo' (9 chars)
 
-        assert result["pix_key_set"] is True
-        assert result["pix_merchant_name_set"] is True
-        assert result["pix_merchant_city_set"] is True
+        # Plaintext, *_set, and *_hash forms are all gone.
+        for prefix_key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
+            assert f"{prefix_key}_set" not in result
+            assert f"{prefix_key}_hash" not in result
 
-    def test_pix_unset_yields_false_booleans(self):
-        user = User(email="bob@example.com", password_hash="x")
+    def test_pix_unset_yields_empty_strings(self):
+        user = User(email="bob@example.com", password_hash="x")  # no PIX
         result = serialize_user(user)
 
-        assert result["pix_key_set"] is False
-        assert result["pix_merchant_name_set"] is False
-        assert result["pix_merchant_city_set"] is False
+        assert result["pix_key"] == ""
+        assert result["pix_merchant_name"] == ""
+        assert result["pix_merchant_city"] == ""
 
-        for key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
-            assert key not in result
+    def test_pix_short_value_collapses_to_stars(self):
+        # Less than 6 chars can't be partial-masked without exposing the value.
+        user = User(email="x@x", password_hash="x", pix_key="Eve")  # 3 chars
+        result = serialize_user(user)
+        assert result["pix_key"] == "***"
+
+    def test_pix_redaction_is_deterministic(self):
+        """Same plaintext → same redacted form. Identity follows from the
+        function being key-less and pure; no settings dependency."""
+        a = serialize_user(User(email="a@x", password_hash="x", pix_key="alice@pix.com"))
+        b = serialize_user(User(email="b@x", password_hash="x", pix_key="alice@pix.com"))
+        c = serialize_user(User(email="c@x", password_hash="x", pix_key="bob@pix.com"))
+
+        assert a["pix_key"] == b["pix_key"] == "ali...om"
+        assert a["pix_key"] != c["pix_key"]
 
 
 def test_serialize_user_uses_email():
@@ -206,12 +223,13 @@ class TestSerializeOrganization:
         assert result["created_by"] == 5
         assert result["created_at"] == now.isoformat()
         assert result["updated_at"] == now.isoformat()
-        assert result["pix_key_set"] is False
-        assert result["pix_merchant_name_set"] is False
-        assert result["pix_merchant_city_set"] is False
-        assert "pix_key" not in result
-        assert "pix_merchant_name" not in result
-        assert "pix_merchant_city" not in result
+        # The org in this test has no PIX configured.
+        assert result["pix_key"] == ""
+        assert result["pix_merchant_name"] == ""
+        assert result["pix_merchant_city"] == ""
+        for prefix_key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
+            assert f"{prefix_key}_set" not in result
+            assert f"{prefix_key}_hash" not in result
 
     def test_org_none_dates(self):
         org = Organization(name="No dates")
@@ -219,27 +237,24 @@ class TestSerializeOrganization:
         assert result["created_at"] is None
         assert result["updated_at"] is None
 
-    def test_pix_redacted_to_presence_booleans_when_configured(self):
+    def test_pix_redacted_to_partial_mask_when_configured(self):
         now = datetime(2026, 1, 15)
         org = Organization(
             id=1,
             uuid="org123",
             name="Acme",
             created_by=5,
-            pix_key="12345678000190",
-            pix_merchant_name="Acme",
-            pix_merchant_city="Sao Paulo",
+            pix_key="12345678000190",  # 14-char CNPJ
+            pix_merchant_name="Acme Imobiliaria",  # 16 chars
+            pix_merchant_city="Sao Paulo",  # 9 chars
             created_at=now,
             updated_at=now,
         )
         result = serialize_organization(org)
 
-        assert "pix_key" not in result
-        assert "pix_merchant_name" not in result
-        assert "pix_merchant_city" not in result
-        assert result["pix_key_set"] is True
-        assert result["pix_merchant_name_set"] is True
-        assert result["pix_merchant_city_set"] is True
+        assert result["pix_key"] == "123...90"
+        assert result["pix_merchant_name"] == "Acm...ia"
+        assert result["pix_merchant_city"] == "Sao...lo"
 
 
 class TestSerializeInvite:
@@ -288,7 +303,7 @@ class TestSerializeInvite:
 
 
 class TestSerializeJobPayload:
-    def test_email_send_hashes_to_email_drops_ctx_values(self):
+    def test_email_send_partial_mask_redacts_to_email_drops_ctx_values(self):
         result = serialize_job_payload(
             {
                 "job_type": "email.send",
@@ -299,36 +314,28 @@ class TestSerializeJobPayload:
         )
 
         assert result["event"] == "welcome"
-        assert "to_email" not in result  # plaintext recipient is gone
-        assert "to_email_hash" in result
-        # 16 hex chars (HMAC-SHA256 truncated)
-        assert isinstance(result["to_email_hash"], str)
-        assert len(result["to_email_hash"]) == 16
-        assert all(c in "0123456789abcdef" for c in result["to_email_hash"])
+        assert result["to_email"] == "al...@example.com"  # first 2 + ...@ + domain
         assert result["ctx_keys_count"] == 2
         assert "ctx" not in result
         assert "pix_setup_url" not in result
+        assert "to_email_hash" not in result  # old hash form is gone
 
-    def test_email_send_to_email_hash_is_deterministic_and_correlatable(self):
-        """Same recipient under same secret_key → same hash. Lets auditors
-        correlate 'who got which emails' without exposing the address."""
+    def test_email_send_redaction_is_deterministic(self):
         a = serialize_job_payload({"job_type": "email.send", "event": "welcome", "to_email": "alice@example.com"})
         b = serialize_job_payload(
             {"job_type": "email.send", "event": "password_reset", "to_email": "alice@example.com"}
         )
         c = serialize_job_payload({"job_type": "email.send", "event": "welcome", "to_email": "bob@example.com"})
 
-        assert a["to_email_hash"] == b["to_email_hash"]  # same recipient, correlatable
-        assert a["to_email_hash"] != c["to_email_hash"]  # different recipient, distinct
+        assert a["to_email"] == b["to_email"] == "al...@example.com"
+        assert a["to_email"] != c["to_email"]
 
-    def test_email_send_empty_to_email_yields_empty_hash(self):
-        """Missing / empty recipient is preserved as empty string, not hashed,
-        so '' (not configured) is distinguishable from a real recipient."""
+    def test_email_send_empty_to_email_yields_empty_string(self):
         result = serialize_job_payload({"job_type": "email.send", "event": "welcome"})
-        assert result["to_email_hash"] == ""
+        assert result["to_email"] == ""
 
         result_empty = serialize_job_payload({"job_type": "email.send", "event": "welcome", "to_email": ""})
-        assert result_empty["to_email_hash"] == ""
+        assert result_empty["to_email"] == ""
 
     def test_email_send_with_ctx_none_does_not_raise(self):
         result = serialize_job_payload({"job_type": "email.send", "ctx": None})

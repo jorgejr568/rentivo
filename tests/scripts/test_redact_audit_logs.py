@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import text
-
-_TEST_SECRET = "test-hmac-secret"
 
 
 @pytest.fixture()
@@ -84,7 +82,7 @@ def seeded_audit_db(db_connection):
             "created_at": "2026-04-03 00:00:00",
         },
         {
-            # Already redacted (presence-boolean format) — must be skipped.
+            # Already redacted (partial-mask format) — must be skipped.
             "uuid": "01HXAUDIT0000000000000000A4",
             "event_type": "billing.update",
             "actor_id": 1,
@@ -93,8 +91,8 @@ def seeded_audit_db(db_connection):
             "entity_type": "billing",
             "entity_id": 2,
             "entity_uuid": "01HXBILLING0000000000000002",
-            "previous_state": json.dumps({"id": 2, "name": "Apt 202", "pix_key_set": True}),
-            "new_state": json.dumps({"id": 2, "name": "Apt 202 v2", "pix_key_set": True}),
+            "previous_state": json.dumps({"id": 2, "name": "Apt 202", "pix_key": "abc...xy"}),
+            "new_state": json.dumps({"id": 2, "name": "Apt 202 v2", "pix_key": "abc...xy"}),
             "metadata": "{}",
             "created_at": "2026-04-04 00:00:00",
         },
@@ -138,7 +136,7 @@ class TestRedactAuditLogs:
     def test_dry_run_does_not_write(self, seeded_audit_db, capsys):
         from rentivo.scripts import redact_audit_logs
 
-        redact_audit_logs.run(seeded_audit_db, dry_run=True, secret_key=_TEST_SECRET)
+        redact_audit_logs.run(seeded_audit_db, dry_run=True)
 
         # Plaintext is still in the DB.
         row = (
@@ -158,7 +156,7 @@ class TestRedactAuditLogs:
     def test_run_redacts_billing_state(self, seeded_audit_db):
         from rentivo.scripts import redact_audit_logs
 
-        redact_audit_logs.run(seeded_audit_db, dry_run=False, secret_key=_TEST_SECRET)
+        redact_audit_logs.run(seeded_audit_db, dry_run=False)
 
         row = (
             seeded_audit_db.execute(
@@ -172,13 +170,15 @@ class TestRedactAuditLogs:
         prev = json.loads(row["previous_state"])
         new = json.loads(row["new_state"])
 
-        # Plaintext PIX must be gone from both states.
-        for state in (prev, new):
-            for key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
-                assert key not in state
-            assert state["pix_key_set"] is True
-            assert state["pix_merchant_name_set"] is True
-            assert state["pix_merchant_city_set"] is True
+        # PIX values are partial-mask redacted in-place under their original
+        # field names. Hash and presence-boolean forms are gone.
+        assert prev["pix_key"] == "ali...om"  # 'alice@pix.com' (13 chars) → 'ali...om'
+        assert prev["pix_merchant_name"] == "***"  # 'Alice' (5 chars) collapses
+        assert prev["pix_merchant_city"] == "Sao...lo"  # 'Sao Paulo' (9 chars)
+        for prefix_key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
+            assert f"{prefix_key}_set" not in prev
+            assert f"{prefix_key}_hash" not in prev
+        assert new["pix_key"] == prev["pix_key"]  # same PIX, redaction is deterministic
 
         # Non-PIX fields are preserved untouched.
         assert prev["id"] == 1
@@ -189,7 +189,7 @@ class TestRedactAuditLogs:
     def test_run_redacts_user_new_state(self, seeded_audit_db):
         from rentivo.scripts import redact_audit_logs
 
-        redact_audit_logs.run(seeded_audit_db, dry_run=False, secret_key=_TEST_SECRET)
+        redact_audit_logs.run(seeded_audit_db, dry_run=False)
 
         row = (
             seeded_audit_db.execute(
@@ -201,16 +201,20 @@ class TestRedactAuditLogs:
         )
 
         state = json.loads(row["new_state"])
-        for key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
-            assert key not in state
-        assert state["pix_key_set"] is True
-        assert state["email"] == "alice@example.com"  # email untouched
+        assert state["pix_key"] == "ali...om"
+        assert state["pix_merchant_name"] == "***"
+        assert state["pix_merchant_city"] == "Sao...lo"
+        for prefix_key in ("pix_key", "pix_merchant_name", "pix_merchant_city"):
+            assert f"{prefix_key}_set" not in state
+            assert f"{prefix_key}_hash" not in state
+        # email field on user serialization is untouched here — this is just JSON content
+        assert state["email"] == "alice@example.com"
 
     def test_run_handles_null_states(self, seeded_audit_db):
         """Login events have null previous_state and new_state. Must not crash."""
         from rentivo.scripts import redact_audit_logs
 
-        redact_audit_logs.run(seeded_audit_db, dry_run=False, secret_key=_TEST_SECRET)
+        redact_audit_logs.run(seeded_audit_db, dry_run=False)
 
         row = (
             seeded_audit_db.execute(
@@ -227,8 +231,8 @@ class TestRedactAuditLogs:
     def test_idempotent_second_run(self, seeded_audit_db):
         from rentivo.scripts import redact_audit_logs
 
-        redact_audit_logs.run(seeded_audit_db, dry_run=False, secret_key=_TEST_SECRET)
-        redact_audit_logs.run(seeded_audit_db, dry_run=False, secret_key=_TEST_SECRET)
+        redact_audit_logs.run(seeded_audit_db, dry_run=False)
+        redact_audit_logs.run(seeded_audit_db, dry_run=False)
 
         row = (
             seeded_audit_db.execute(
@@ -239,13 +243,16 @@ class TestRedactAuditLogs:
             .fetchone()
         )
 
+        # Idempotency: second run of the backfill against rows that are
+        # already partial-mask redacted is a byte-for-byte no-op because
+        # redact(redacted_value) == redacted_value for typical inputs.
         state = json.loads(row["new_state"])
-        assert state["pix_key_set"] is True
-        # Still no plaintext key.
-        assert "pix_key" not in state
+        assert state["pix_key"] == "ali...om"
+        assert "pix_key_hash" not in state
+        assert "pix_key_set" not in state
 
     def test_skips_already_redacted_row(self, seeded_audit_db):
-        """A row whose JSON already uses presence booleans is left untouched."""
+        """A row whose JSON already uses partial-mask redaction is left untouched."""
         from rentivo.scripts import redact_audit_logs
 
         # Snapshot of the already-redacted row before run.
@@ -260,7 +267,7 @@ class TestRedactAuditLogs:
         prev_before = row_before["previous_state"]
         new_before = row_before["new_state"]
 
-        redact_audit_logs.run(seeded_audit_db, dry_run=False, secret_key=_TEST_SECRET)
+        redact_audit_logs.run(seeded_audit_db, dry_run=False)
 
         row_after = (
             seeded_audit_db.execute(
@@ -274,10 +281,10 @@ class TestRedactAuditLogs:
         assert row_after["previous_state"] == prev_before
         assert row_after["new_state"] == new_before
 
-    def test_run_hashes_to_email_in_email_send_payload(self, seeded_audit_db):
+    def test_run_redacts_to_email_in_email_send_payload(self, seeded_audit_db):
         from rentivo.scripts import redact_audit_logs
 
-        redact_audit_logs.run(seeded_audit_db, dry_run=False, secret_key=_TEST_SECRET)
+        redact_audit_logs.run(seeded_audit_db, dry_run=False)
 
         row = (
             seeded_audit_db.execute(
@@ -289,30 +296,20 @@ class TestRedactAuditLogs:
         )
 
         state = json.loads(row["new_state"])
-        assert "to_email" not in state
-        assert "to_email_hash" in state
-        assert isinstance(state["to_email_hash"], str)
-        assert len(state["to_email_hash"]) == 16
-        # Same hash should be deterministic for the same secret + plaintext.
-        from rentivo.scripts.redact_audit_logs import _hash_email
-
-        assert state["to_email_hash"] == _hash_email("alice@example.com", _TEST_SECRET)
+        # to_email is partial-mask redacted in place under its original key.
+        assert state["to_email"] == "al...@example.com"
+        assert "to_email_hash" not in state
 
         # event and ctx_keys_count are preserved unchanged.
         assert state["event"] == "welcome"
         assert state["ctx_keys_count"] == 2
 
     def test_main_invokes_run_with_factories(self, seeded_audit_db):
-        """Smoke test for the CLI entrypoint."""
         from rentivo.scripts import redact_audit_logs
-
-        fake_settings = MagicMock()
-        fake_settings.get_secret_key.return_value = _TEST_SECRET
 
         with (
             patch.object(redact_audit_logs, "initialize_db"),
             patch.object(redact_audit_logs, "get_connection", return_value=seeded_audit_db),
-            patch.object(redact_audit_logs, "settings", fake_settings),
             patch("sys.argv", ["prog"]),
         ):
             redact_audit_logs.main()
@@ -326,5 +323,6 @@ class TestRedactAuditLogs:
             .fetchone()
         )
         state = json.loads(row["new_state"])
-        assert "pix_key" not in state
-        assert state["pix_key_set"] is True
+        assert state["pix_key"] == "ali...om"
+        assert "pix_key_hash" not in state
+        assert "pix_key_set" not in state

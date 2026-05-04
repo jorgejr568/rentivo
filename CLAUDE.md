@@ -137,8 +137,8 @@ make web-run             # start uvicorn at http://localhost:8000
 
 - **AuditService** logs all state-changing operations across web and CLI
 - Event types defined in `rentivo/models/audit_log.py` (`AuditEventType`)
-- Serializers in `rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`), redact PIX values to presence booleans (`pix_key_set: bool`, `pix_merchant_name_set: bool`, `pix_merchant_city_set: bool`), and replace `to_email` in `email.send` job payloads with an HMAC-SHA256 hash truncated to 16 hex chars (`to_email_hash`). The hash is keyed by `secret_key` so reviewers can correlate "same recipient" across rows without seeing the address.
-- Backfill: `make redact-audit-logs-dry` previews; `make redact-audit-logs` rewrites legacy `audit_logs` rows whose JSON still contains plaintext PIX. Idempotent. Run once after deploying the redacted serializers.
+- Serializers in `rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`) and partial-mask redact PII via `rentivo/pii_redaction.py:redact()`. PIX fields (`pix_key`, `pix_merchant_name`, `pix_merchant_city`) and `to_email` in `email.send` job payloads are stored under their original field names with masked values: PIX fields show first 3 chars + `...` + last 2 (e.g. `123...01`); emails show first 2 chars of local + `...@` + full domain (e.g. `jo...@gmail.com`). Short values collapse to `***`. The mask is one-way, key-less, and deterministic — no `secret_key` dependency, no per-environment correlation key. Reviewers can recognize "same value across rows" via equal masked strings without seeing the plaintext.
+- Backfill: `make redact-audit-logs-dry` previews; `make redact-audit-logs` rewrites legacy `audit_logs` rows whose JSON still contains plaintext PII. Idempotent (the redaction function is its own fixed point on typical inputs). Run once after deploying the redacted serializers.
 - `safe_log()` swallows exceptions — audit failures never block business operations
 - Web routes: actor context comes from session (`user_id`, `username`)
 - CLI: uses `source="cli"`, `actor_id=None`, `actor_username=""`

@@ -8,8 +8,10 @@ Behavior:
 - Walks every ``audit_logs`` row.
 - For each row, parses ``previous_state`` and ``new_state`` JSON (each may be NULL).
 - If the parsed dict contains any of ``pix_key`` / ``pix_merchant_name`` /
-  ``pix_merchant_city`` as keys, replaces them with ``<key>_set: bool(value)``
-  presence booleans.
+  ``pix_merchant_city`` / ``to_email`` as keys, replaces the value in place
+  with a partial-mask redaction (see :mod:`rentivo.pii_redaction`).
+- The redaction is deterministic and key-less, so already-redacted rows are
+  byte-for-byte unchanged on re-run.
 - Writes back the rewritten JSON only if the dict actually changed.
 - Idempotent. Re-running on already-redacted rows is a no-op.
 
@@ -20,8 +22,6 @@ deploy already have the redacted shape; this script handles the legacy backlog.
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import sys
 
@@ -32,7 +32,7 @@ from sqlalchemy import Connection, text
 
 from rentivo.db import get_connection, initialize_db
 from rentivo.logging import configure_logging
-from rentivo.settings import settings
+from rentivo.pii_redaction import PIIKind, redact
 
 logger = structlog.get_logger(__name__)
 console = Console()
@@ -41,23 +41,7 @@ console = Console()
 _PII_KEYS = ("pix_key", "pix_merchant_name", "pix_merchant_city")
 
 
-def _hash_email(email: str, secret_key: str) -> str:
-    """Mirror of ``rentivo.services.audit_serializers._hash_email``.
-
-    Kept inline rather than imported to avoid creating a settings dependency
-    when the script is dispatched. Settings is imported in ``main()`` only.
-    """
-    if not email:
-        return ""
-    digest = hmac.new(
-        secret_key.encode("utf-8"),
-        email.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return digest[:16]
-
-
-def _redact_state(state_json: str | None, secret_key: str) -> tuple[str | None, bool]:
+def _redact_state(state_json: str | None) -> tuple[str | None, bool]:
     """Return (rewritten_json, changed). ``changed`` is True iff any PII key
     was rewritten. ``state_json`` of None / empty is passed through unchanged
     with changed=False."""
@@ -76,23 +60,26 @@ def _redact_state(state_json: str | None, secret_key: str) -> tuple[str | None, 
     changed = False
     for key in _PII_KEYS:
         if key in data:
-            value = data.pop(key)
-            data[f"{key}_set"] = bool(value)
-            changed = True
+            value = data[key]
+            redacted = redact(value or "", PIIKind.PIX)
+            if redacted != value:
+                data[key] = redacted
+                changed = True
 
     # email.send job payloads stored plaintext to_email before this PR.
-    # Rewrite to a deterministic HMAC hash so correlation still works.
     if "to_email" in data:
-        value = data.pop("to_email")
-        data["to_email_hash"] = _hash_email(value or "", secret_key)
-        changed = True
+        value = data["to_email"]
+        redacted = redact(value or "", PIIKind.EMAIL)
+        if redacted != value:
+            data["to_email"] = redacted
+            changed = True
 
     if not changed:
         return state_json, False
     return json.dumps(data), True
 
 
-def run(conn: Connection, *, dry_run: bool, secret_key: str) -> None:
+def run(conn: Connection, *, dry_run: bool) -> None:
     label = "[yellow]DRY-RUN[/yellow]" if dry_run else "[green]LIVE[/green]"
     console.print(f"\n[bold]Redact audit_logs[/bold] {label}\n")
 
@@ -100,8 +87,8 @@ def run(conn: Connection, *, dry_run: bool, secret_key: str) -> None:
     rewritten = 0
     skipped = 0
     for row in rows:
-        prev_new, prev_changed = _redact_state(row["previous_state"], secret_key)
-        new_new, new_changed = _redact_state(row["new_state"], secret_key)
+        prev_new, prev_changed = _redact_state(row["previous_state"])
+        new_new, new_changed = _redact_state(row["new_state"])
         if not (prev_changed or new_changed):
             skipped += 1
             continue
@@ -137,7 +124,7 @@ def main() -> None:
     dry_run = "--dry-run" in sys.argv
     initialize_db()
     conn = get_connection()
-    run(conn, dry_run=dry_run, secret_key=settings.get_secret_key())
+    run(conn, dry_run=dry_run)
 
 
 if __name__ == "__main__":  # pragma: no cover
