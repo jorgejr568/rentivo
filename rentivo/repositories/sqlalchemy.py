@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime
 
 from sqlalchemy import Connection, bindparam, text
@@ -89,32 +90,59 @@ class SQLAlchemyBillingRepository(BillingRepository):
             raise RuntimeError(f"Failed to retrieve billing after create (id={billing_id})")
         return result
 
-    def _build_billing(self, row: RowMapping, item_rows: list[RowMapping]) -> Billing:
+    def _build_billing(
+        self,
+        row: RowMapping,
+        item_rows: list[RowMapping],
+        plaintexts: Iterator[str],
+    ) -> Billing:
+        # Consumes plaintexts in the order produced by ``_gather_billing_ciphertexts``:
+        # description, pix_key, pix_merchant_name, pix_merchant_city, then one per item.
+        description = next(plaintexts)
+        pix_key = next(plaintexts)
+        pix_merchant_name = next(plaintexts)
+        pix_merchant_city = next(plaintexts)
+        items = [
+            BillingItem(
+                id=item_row["id"],
+                billing_id=item_row["billing_id"],
+                description=next(plaintexts),
+                amount=item_row["amount"],
+                item_type=ItemType(item_row["item_type"]),
+                sort_order=item_row["sort_order"],
+            )
+            for item_row in item_rows
+        ]
         return Billing(
             id=row["id"],
             uuid=row["uuid"],
             name=row["name"],
-            description=self.encryption.decrypt(row["description"]),
-            pix_key=self.encryption.decrypt(row["pix_key"]),
-            pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
-            pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
+            description=description,
+            pix_key=pix_key,
+            pix_merchant_name=pix_merchant_name,
+            pix_merchant_city=pix_merchant_city,
             owner_type=row.get("owner_type", "user"),
             owner_id=row.get("owner_id", 0),
-            items=[
-                BillingItem(
-                    id=item_row["id"],
-                    billing_id=item_row["billing_id"],
-                    description=self.encryption.decrypt(item_row["description"]),
-                    amount=item_row["amount"],
-                    item_type=ItemType(item_row["item_type"]),
-                    sort_order=item_row["sort_order"],
-                )
-                for item_row in item_rows
-            ],
+            items=items,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             deleted_at=row["deleted_at"],
         )
+
+    @staticmethod
+    def _gather_billing_ciphertexts(
+        rows: list[RowMapping],
+        items_by_billing: dict[int, list[RowMapping]],
+    ) -> list[str]:
+        ciphertexts: list[str] = []
+        for row in rows:
+            ciphertexts.append(row["description"] or "")
+            ciphertexts.append(row["pix_key"] or "")
+            ciphertexts.append(row.get("pix_merchant_name", "") or "")
+            ciphertexts.append(row.get("pix_merchant_city", "") or "")
+            for item_row in items_by_billing.get(row["id"], []):
+                ciphertexts.append(item_row["description"] or "")
+        return ciphertexts
 
     def _row_to_billing(self, row: RowMapping) -> Billing:
         items = (
@@ -125,7 +153,10 @@ class SQLAlchemyBillingRepository(BillingRepository):
             .mappings()
             .fetchall()
         )
-        return self._build_billing(row, list(items))
+        items_by_billing = {row["id"]: list(items)}
+        ciphertexts = self._gather_billing_ciphertexts([row], items_by_billing)
+        plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
+        return self._build_billing(row, list(items), plaintexts)
 
     def get_by_id(self, billing_id: int) -> Billing | None:
         row = (
@@ -189,7 +220,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
         items_by_billing: dict[int, list[RowMapping]] = {}
         for item_row in all_items:
             items_by_billing.setdefault(item_row["billing_id"], []).append(item_row)
-        return [self._build_billing(row, items_by_billing.get(row["id"], [])) for row in rows]
+        ciphertexts = self._gather_billing_ciphertexts(rows, items_by_billing)
+        plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
+        return [self._build_billing(row, items_by_billing.get(row["id"], []), plaintexts) for row in rows]
 
     def update(self, billing: Billing) -> Billing:
         self.conn.execute(
@@ -301,26 +334,35 @@ class SQLAlchemyBillRepository(BillRepository):
             raise RuntimeError(f"Failed to retrieve bill after create (id={bill_id})")
         return result
 
-    def _build_bill(self, row: RowMapping, item_rows: list[RowMapping]) -> Bill:
+    def _build_bill(
+        self,
+        row: RowMapping,
+        item_rows: list[RowMapping],
+        plaintexts: Iterator[str],
+    ) -> Bill:
+        # Consumes plaintexts in the order produced by ``_gather_bill_ciphertexts``:
+        # notes, then one per line item.
+        notes = next(plaintexts)
+        line_items = [
+            BillLineItem(
+                id=item_row["id"],
+                bill_id=item_row["bill_id"],
+                description=next(plaintexts),
+                amount=item_row["amount"],
+                item_type=ItemType(item_row["item_type"]),
+                sort_order=item_row["sort_order"],
+            )
+            for item_row in item_rows
+        ]
         return Bill(
             id=row["id"],
             uuid=row["uuid"],
             billing_id=row["billing_id"],
             reference_month=row["reference_month"],
             total_amount=row["total_amount"],
-            line_items=[
-                BillLineItem(
-                    id=item_row["id"],
-                    bill_id=item_row["bill_id"],
-                    description=self.encryption.decrypt(item_row["description"]),
-                    amount=item_row["amount"],
-                    item_type=ItemType(item_row["item_type"]),
-                    sort_order=item_row["sort_order"],
-                )
-                for item_row in item_rows
-            ],
+            line_items=line_items,
             pdf_path=row["pdf_path"],
-            notes=self.encryption.decrypt(row["notes"]) if row["notes"] else "",
+            notes=notes,
             due_date=row["due_date"],
             status=row.get("status", "draft"),
             status_updated_at=row.get("status_updated_at"),
@@ -329,8 +371,20 @@ class SQLAlchemyBillRepository(BillRepository):
             deleted_at=row["deleted_at"],
         )
 
+    @staticmethod
+    def _gather_bill_ciphertexts(
+        rows: list[RowMapping],
+        items_by_bill: dict[int, list[RowMapping]],
+    ) -> list[str]:
+        ciphertexts: list[str] = []
+        for row in rows:
+            ciphertexts.append(row["notes"] or "")
+            for item_row in items_by_bill.get(row["id"], []):
+                ciphertexts.append(item_row["description"] or "")
+        return ciphertexts
+
     def _row_to_bill(self, row: RowMapping) -> Bill:
-        items = (
+        items = list(
             self.conn.execute(
                 text("SELECT * FROM bill_line_items WHERE bill_id = :bill_id ORDER BY sort_order"),
                 {"bill_id": row["id"]},
@@ -338,7 +392,9 @@ class SQLAlchemyBillRepository(BillRepository):
             .mappings()
             .fetchall()
         )
-        return self._build_bill(row, list(items))
+        ciphertexts = self._gather_bill_ciphertexts([row], {row["id"]: items})
+        plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
+        return self._build_bill(row, items, plaintexts)
 
     def get_by_id(self, bill_id: int) -> Bill | None:
         row = (
@@ -388,7 +444,9 @@ class SQLAlchemyBillRepository(BillRepository):
         items_by_bill: dict[int, list[RowMapping]] = {}
         for item_row in all_items:
             items_by_bill.setdefault(item_row["bill_id"], []).append(item_row)
-        return [self._build_bill(row, items_by_bill.get(row["id"], [])) for row in rows]
+        ciphertexts = self._gather_bill_ciphertexts(rows, items_by_bill)
+        plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
+        return [self._build_bill(row, items_by_bill.get(row["id"], []), plaintexts) for row in rows]
 
     def update(self, bill: Bill) -> Bill:
         self.conn.execute(
@@ -877,17 +935,26 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
         self.encryption = encryption
 
     def _row_to_receipt(self, row: RowMapping) -> Receipt:
-        return Receipt(
-            id=row["id"],
-            uuid=row["uuid"],
-            bill_id=row["bill_id"],
-            filename=self.encryption.decrypt(row["filename"]),
-            storage_key=row["storage_key"],
-            content_type=row["content_type"],
-            file_size=row["file_size"],
-            sort_order=row["sort_order"],
-            created_at=row["created_at"],
-        )
+        return self._build_receipts([row])[0]
+
+    def _build_receipts(self, rows: list[RowMapping]) -> list[Receipt]:
+        if not rows:
+            return []
+        plaintexts = self.encryption.decrypt_many([row["filename"] or "" for row in rows])
+        return [
+            Receipt(
+                id=row["id"],
+                uuid=row["uuid"],
+                bill_id=row["bill_id"],
+                filename=plaintext,
+                storage_key=row["storage_key"],
+                content_type=row["content_type"],
+                file_size=row["file_size"],
+                sort_order=row["sort_order"],
+                created_at=row["created_at"],
+            )
+            for row, plaintext in zip(rows, plaintexts, strict=True)
+        ]
 
     def create(self, receipt: Receipt) -> Receipt:
         receipt_uuid = str(ULID())
@@ -951,7 +1018,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             .mappings()
             .fetchall()
         )
-        return [self._row_to_receipt(row) for row in rows]
+        return self._build_receipts(list(rows))
 
     def delete(self, receipt_id: int) -> None:
         self.conn.execute(

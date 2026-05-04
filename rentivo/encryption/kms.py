@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor
 
 import structlog
 
@@ -15,6 +16,7 @@ logger = structlog.get_logger(__name__)
 
 _PREFIX = "enc:v1:"
 _BASE64_PREFIX = "b64:v1:"  # transitional read-compat: see decrypt()
+_DECRYPT_MANY_MAX_WORKERS = 16
 
 
 class KMSBackend(EncryptionBackend):
@@ -87,3 +89,13 @@ class KMSBackend(EncryptionBackend):
 
     def is_encrypted(self, value: str) -> bool:
         return value.startswith(_PREFIX)
+
+    def decrypt_many(self, values: list[str]) -> list[str]:
+        if not values:
+            return []
+        # Boto3 KMS clients are thread-safe; fan out the per-value Decrypt RTTs
+        # so a list page with N×M encrypted columns finishes in ~max RTT
+        # instead of N×M × RTT.
+        max_workers = min(_DECRYPT_MANY_MAX_WORKERS, len(values))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            return list(pool.map(self.decrypt, values))

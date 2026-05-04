@@ -47,3 +47,21 @@ class TestBase64Backend:
         assert backend.is_encrypted("") is False
         # Foreign prefix from KMSBackend must not be claimed by Base64Backend.
         assert backend.is_encrypted("enc:v1:notmine") is False
+
+
+class TestBase64BackendDecryptMany:
+    def test_decrypt_many_round_trips_in_order(self):
+        from rentivo.encryption.base64 import Base64Backend
+
+        backend = Base64Backend()
+        plaintexts = ["a", "b@example.com", "Açaí — São Paulo"]
+        ciphertexts = [backend.encrypt(p) for p in plaintexts]
+        assert backend.decrypt_many(ciphertexts) == plaintexts
+
+    def test_decrypt_many_handles_mixed_inputs(self):
+        from rentivo.encryption.base64 import Base64Backend
+
+        backend = Base64Backend()
+        encrypted = backend.encrypt("encrypted")
+        result = backend.decrypt_many(["", "raw", encrypted])
+        assert result == ["", "raw", "encrypted"]
