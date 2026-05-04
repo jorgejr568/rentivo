@@ -198,8 +198,8 @@ class TestBackfillEncryption:
 
         row = (
             seeded_db.execute(
-                text("SELECT pix_key, pix_merchant_name FROM billings WHERE name = :n"),
-                {"n": "B1"},
+                text("SELECT pix_key, pix_merchant_name FROM billings WHERE uuid = :u"),
+                {"u": "01HXBILLING01000000000000000"},
             )
             .mappings()
             .fetchone()
@@ -239,6 +239,12 @@ class TestBackfillEncryptionExtendedTargets:
 
         target = next(t for t in _TARGETS if t[0] == "billings")
         assert "description" in target[2]
+
+    def test_billings_name_is_a_target(self):
+        from rentivo.scripts.backfill_encryption import _TARGETS
+
+        target = next(t for t in _TARGETS if t[0] == "billings")
+        assert "name" in target[2]
 
     def test_billing_items_description_is_a_target(self):
         from rentivo.scripts.backfill_encryption import _TARGETS
@@ -337,6 +343,12 @@ class TestBackfillEncryptionExtendedTargets:
             {"id": billing_id},
         ).scalar_one()
         assert billing_desc == "fake:plain billing desc"
+
+        billing_name = db_connection.execute(
+            text("SELECT name FROM billings WHERE id = :id"),
+            {"id": billing_id},
+        ).scalar_one()
+        assert billing_name == "fake:Apt 1"
 
         item_desc = db_connection.execute(
             text("SELECT description FROM billing_items WHERE billing_id = :id"),

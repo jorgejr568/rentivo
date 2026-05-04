@@ -255,7 +255,7 @@ Selected PII columns are encrypted at rest behind a pluggable backend abstractio
 |-------|---------|
 | `users` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
 | `organizations` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
-| `billings` | `pix_key`, `pix_merchant_name`, `pix_merchant_city`, `description` |
+| `billings` | `pix_key`, `pix_merchant_name`, `pix_merchant_city`, `name`, `description` |
 | `billing_items` | `description` |
 | `bills` | `notes` |
 | `bill_line_items` | `description` |
