@@ -208,3 +208,108 @@ class TestBillingRepoEncryption:
         assert len(billings) == 1
         assert billings[0].pix_key == "legacy@pix.com"  # passthrough
         assert billings[0].pix_merchant_name == "Legacy Name"
+
+    def test_create_encrypts_billing_description_and_items(self, db_connection, fake_encryption, sample_billing):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        billing = sample_billing(description="Apt 101 - Rua Augusta")
+        # Items have descriptions "Aluguel" / "Água" by default.
+        created = repo.create(billing)
+
+        row = (
+            db_connection.execute(
+                text("SELECT description FROM billings WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["description"] == "fake:Apt 101 - Rua Augusta"
+
+        item_rows = (
+            db_connection.execute(
+                text("SELECT description FROM billing_items WHERE billing_id = :id ORDER BY sort_order"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchall()
+        )
+        assert [r["description"] for r in item_rows] == ["fake:Aluguel", "fake:Água"]
+
+    def test_get_decrypts_billing_description_and_items(self, db_connection, fake_encryption, sample_billing):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        created = repo.create(sample_billing(description="Apt 101 - Rua Augusta"))
+
+        fetched = repo.get_by_id(created.id)
+        assert fetched is not None
+        assert fetched.description == "Apt 101 - Rua Augusta"
+        assert [item.description for item in fetched.items] == ["Aluguel", "Água"]
+
+    def test_update_re_encrypts_billing_description_and_items(self, db_connection, fake_encryption, sample_billing):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        created = repo.create(sample_billing(description="old desc"))
+        created.description = "new desc"
+        created.items[0].description = "Aluguel atualizado"
+        repo.update(created)
+
+        row = (
+            db_connection.execute(
+                text("SELECT description FROM billings WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["description"] == "fake:new desc"
+
+        item_rows = (
+            db_connection.execute(
+                text("SELECT description FROM billing_items WHERE billing_id = :id ORDER BY sort_order"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchall()
+        )
+        assert item_rows[0]["description"] == "fake:Aluguel atualizado"
+
+    def test_get_handles_legacy_plaintext_description(self, db_connection, fake_encryption):
+        """Pre-encryption rows must read back plaintext via the no-op decrypt path."""
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        db_connection.execute(
+            text(
+                "INSERT INTO billings (name, description, pix_key, pix_merchant_name, "
+                "pix_merchant_city, uuid, owner_type, owner_id, created_at, updated_at) "
+                "VALUES ('Apt 999', 'legacy plaintext desc', '', '', '', "
+                "'01HXLEGACYDESC0000000000000', 'user', 0, "
+                "'2026-04-01 00:00:00', '2026-04-01 00:00:00')"
+            )
+        )
+        billing_id = db_connection.execute(
+            text("SELECT id FROM billings WHERE uuid = '01HXLEGACYDESC0000000000000'")
+        ).scalar_one()
+        db_connection.execute(
+            text(
+                "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
+                "VALUES (:bid, 'legacy item plaintext', 100, 'fixed', 0)"
+            ),
+            {"bid": billing_id},
+        )
+        db_connection.commit()
+
+        repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        fetched = repo.get_by_id(billing_id)
+        assert fetched is not None
+        assert fetched.description == "legacy plaintext desc"
+        assert fetched.items[0].description == "legacy item plaintext"

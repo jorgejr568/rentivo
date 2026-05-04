@@ -57,7 +57,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             ),
             {
                 "name": billing.name,
-                "description": billing.description,
+                "description": self.encryption.encrypt(billing.description),
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
                 "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
@@ -77,7 +77,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 ),
                 {
                     "billing_id": billing_id,
-                    "description": item.description,
+                    "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,
                     "sort_order": i,
@@ -94,7 +94,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             id=row["id"],
             uuid=row["uuid"],
             name=row["name"],
-            description=row["description"],
+            description=self.encryption.decrypt(row["description"]),
             pix_key=self.encryption.decrypt(row["pix_key"]),
             pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
             pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
@@ -104,7 +104,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 BillingItem(
                     id=item_row["id"],
                     billing_id=item_row["billing_id"],
-                    description=item_row["description"],
+                    description=self.encryption.decrypt(item_row["description"]),
                     amount=item_row["amount"],
                     item_type=ItemType(item_row["item_type"]),
                     sort_order=item_row["sort_order"],
@@ -200,7 +200,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             ),
             {
                 "name": billing.name,
-                "description": billing.description,
+                "description": self.encryption.encrypt(billing.description),
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
                 "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
@@ -220,7 +220,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 ),
                 {
                     "billing_id": billing.id,
-                    "description": item.description,
+                    "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,
                     "sort_order": i,
