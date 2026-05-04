@@ -229,3 +229,134 @@ class TestBackfillEncryption:
             .fetchone()
         )
         assert row["pix_key"] == "fake:alice@pix.com"
+
+
+class TestBackfillEncryptionExtendedTargets:
+    """Verifies the new free-text columns and receipts.filename are covered."""
+
+    def test_billings_description_is_a_target(self):
+        from rentivo.scripts.backfill_encryption import _TARGETS
+
+        target = next(t for t in _TARGETS if t[0] == "billings")
+        assert "description" in target[2]
+
+    def test_billing_items_description_is_a_target(self):
+        from rentivo.scripts.backfill_encryption import _TARGETS
+
+        target = next((t for t in _TARGETS if t[0] == "billing_items"), None)
+        assert target is not None
+        assert target[1] == "id"
+        assert target[2] == ("description",)
+
+    def test_bills_notes_is_a_target(self):
+        from rentivo.scripts.backfill_encryption import _TARGETS
+
+        target = next((t for t in _TARGETS if t[0] == "bills"), None)
+        assert target is not None
+        assert "notes" in target[2]
+
+    def test_bill_line_items_description_is_a_target(self):
+        from rentivo.scripts.backfill_encryption import _TARGETS
+
+        target = next((t for t in _TARGETS if t[0] == "bill_line_items"), None)
+        assert target is not None
+        assert target[2] == ("description",)
+
+    def test_receipts_filename_is_a_target(self):
+        from rentivo.scripts.backfill_encryption import _TARGETS
+
+        target = next((t for t in _TARGETS if t[0] == "receipts"), None)
+        assert target is not None
+        assert target[2] == ("filename",)
+
+    def test_backfill_rewrites_plaintext_in_new_columns(self, db_connection):
+        """End-to-end: insert plaintext rows; run backfill; verify ciphertext is written."""
+        from sqlalchemy import text
+
+        from rentivo.scripts.backfill_encryption import run
+        from tests.conftest import FakeEncryptingBackend
+
+        backend = FakeEncryptingBackend()
+
+        # Insert legacy plaintext rows directly (bypass encryption).
+        db_connection.execute(
+            text(
+                "INSERT INTO billings (name, description, pix_key, pix_merchant_name, "
+                "pix_merchant_city, uuid, owner_type, owner_id, created_at, updated_at) "
+                "VALUES ('Apt 1', 'plain billing desc', '', '', '', "
+                "'01HXBACK00000000000000000001', 'user', 0, "
+                "'2026-04-01 00:00:00', '2026-04-01 00:00:00')"
+            )
+        )
+        billing_id = db_connection.execute(
+            text("SELECT id FROM billings WHERE uuid = '01HXBACK00000000000000000001'")
+        ).scalar_one()
+        db_connection.execute(
+            text(
+                "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
+                "VALUES (:bid, 'plain item', 100, 'fixed', 0)"
+            ),
+            {"bid": billing_id},
+        )
+        db_connection.execute(
+            text(
+                "INSERT INTO bills (billing_id, reference_month, total_amount, "
+                "pdf_path, notes, uuid, due_date, status, status_updated_at, created_at) "
+                "VALUES (:bid, '2025-03', 100, NULL, 'plain notes', "
+                "'01HXBACK00000000000000000002', '10/04/2025', 'draft', "
+                "'2026-04-01 00:00:00', '2026-04-01 00:00:00')"
+            ),
+            {"bid": billing_id},
+        )
+        bill_id = db_connection.execute(
+            text("SELECT id FROM bills WHERE uuid = '01HXBACK00000000000000000002'")
+        ).scalar_one()
+        db_connection.execute(
+            text(
+                "INSERT INTO bill_line_items (bill_id, description, amount, item_type, sort_order) "
+                "VALUES (:bid, 'plain bli', 100, 'fixed', 0)"
+            ),
+            {"bid": bill_id},
+        )
+        db_connection.execute(
+            text(
+                "INSERT INTO receipts (uuid, bill_id, filename, storage_key, content_type, "
+                "file_size, sort_order, created_at) "
+                "VALUES ('01HXBACK00000000000000000003', :bid, 'plain.pdf', 'k.pdf', "
+                "'application/pdf', 1, 0, '2026-04-01 00:00:00')"
+            ),
+            {"bid": bill_id},
+        )
+        db_connection.commit()
+
+        run(db_connection, backend, dry_run=False)
+
+        # Verify each target column is now encrypted.
+        billing_desc = db_connection.execute(
+            text("SELECT description FROM billings WHERE id = :id"),
+            {"id": billing_id},
+        ).scalar_one()
+        assert billing_desc == "fake:plain billing desc"
+
+        item_desc = db_connection.execute(
+            text("SELECT description FROM billing_items WHERE billing_id = :id"),
+            {"id": billing_id},
+        ).scalar_one()
+        assert item_desc == "fake:plain item"
+
+        bill_notes = db_connection.execute(
+            text("SELECT notes FROM bills WHERE id = :id"),
+            {"id": bill_id},
+        ).scalar_one()
+        assert bill_notes == "fake:plain notes"
+
+        bli_desc = db_connection.execute(
+            text("SELECT description FROM bill_line_items WHERE bill_id = :id"),
+            {"id": bill_id},
+        ).scalar_one()
+        assert bli_desc == "fake:plain bli"
+
+        receipt_filename = db_connection.execute(
+            text("SELECT filename FROM receipts WHERE uuid = '01HXBACK00000000000000000003'")
+        ).scalar_one()
+        assert receipt_filename == "fake:plain.pdf"

@@ -5,7 +5,8 @@ Usage:
     python -m rentivo.scripts.backfill_encryption --dry-run
 
 Behavior:
-- Walks every ``users``, ``organizations``, ``billings``, and ``user_totp`` row.
+- Walks every ``users``, ``organizations``, ``billings``, ``billing_items``,
+  ``bills``, ``bill_line_items``, ``receipts``, and ``user_totp`` row.
 - For each PII column: if the value is non-empty AND not already encrypted by
   the active backend, re-writes it as ciphertext.
 - Idempotent. Re-running is safe.
@@ -39,7 +40,11 @@ console = Console()
 _TARGETS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("users", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city")),
     ("organizations", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city")),
-    ("billings", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city")),
+    ("billings", "id", ("pix_key", "pix_merchant_name", "pix_merchant_city", "description")),
+    ("billing_items", "id", ("description",)),
+    ("bills", "id", ("notes",)),
+    ("bill_line_items", "id", ("description",)),
+    ("receipts", "id", ("filename",)),
     ("user_totp", "id", ("secret",)),
 )
 

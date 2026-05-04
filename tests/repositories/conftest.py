@@ -11,6 +11,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasswordResetTokenRepository,
+    SQLAlchemyReceiptRepository,
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
@@ -25,8 +26,13 @@ def billing_repo(db_connection: Connection, encryption) -> SQLAlchemyBillingRepo
 
 
 @pytest.fixture()
-def bill_repo(db_connection: Connection) -> SQLAlchemyBillRepository:
-    return SQLAlchemyBillRepository(db_connection)
+def bill_repo(db_connection: Connection, encryption) -> SQLAlchemyBillRepository:
+    return SQLAlchemyBillRepository(db_connection, encryption)
+
+
+@pytest.fixture()
+def receipt_repo(db_connection: Connection, encryption) -> SQLAlchemyReceiptRepository:
+    return SQLAlchemyReceiptRepository(db_connection, encryption)
 
 
 @pytest.fixture()

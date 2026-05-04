@@ -7,21 +7,15 @@ from rentivo.models.receipt import Receipt
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
-    SQLAlchemyReceiptRepository,
 )
 from tests.conftest import _sample_bill, _sample_billing
-
-
-@pytest.fixture()
-def receipt_repo(db_connection: Connection) -> SQLAlchemyReceiptRepository:
-    return SQLAlchemyReceiptRepository(db_connection)
 
 
 @pytest.fixture()
 def billing_with_bill(db_connection: Connection, encryption):
     """Create a billing and a bill for testing receipts."""
     billing_repo = SQLAlchemyBillingRepository(db_connection, encryption)
-    bill_repo = SQLAlchemyBillRepository(db_connection)
+    bill_repo = SQLAlchemyBillRepository(db_connection, encryption)
     billing = billing_repo.create(_sample_billing())
     bill = bill_repo.create(_sample_bill(billing_id=billing.id))
     return billing, bill
@@ -183,3 +177,131 @@ class TestReceiptRepoCRUD:
         assert results[0].filename == "c.pdf"
         assert results[1].filename == "b.pdf"
         assert results[2].filename == "a.pdf"
+
+
+class TestReceiptRepoEncryptionWiring:
+    def test_constructor_accepts_encryption_backend(self, db_connection, fake_encryption):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        repo = SQLAlchemyReceiptRepository(db_connection, fake_encryption)
+        assert repo.encryption is fake_encryption
+
+    def test_factory_passes_encryption_backend(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from rentivo.repositories.factory import get_receipt_repository
+
+        called = {}
+
+        class FakeRepo:
+            def __init__(self, conn, encryption):
+                called["conn"] = conn
+                called["encryption"] = encryption
+
+        monkeypatch.setattr("rentivo.db.get_connection", lambda: MagicMock())
+        monkeypatch.setattr(
+            "rentivo.repositories.sqlalchemy.SQLAlchemyReceiptRepository",
+            FakeRepo,
+        )
+        repo = get_receipt_repository()
+        assert repo is not None
+        assert called["encryption"] is not None
+
+
+class TestReceiptRepoEncryption:
+    def test_create_encrypts_filename(self, db_connection, fake_encryption, sample_billing, sample_bill):
+        from sqlalchemy import text
+
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import (
+            SQLAlchemyBillingRepository,
+            SQLAlchemyBillRepository,
+            SQLAlchemyReceiptRepository,
+        )
+
+        billing = SQLAlchemyBillingRepository(db_connection, fake_encryption).create(sample_billing())
+        bill = SQLAlchemyBillRepository(db_connection, fake_encryption).create(sample_bill(billing_id=billing.id))
+
+        repo = SQLAlchemyReceiptRepository(db_connection, fake_encryption)
+        created = repo.create(
+            Receipt(
+                bill_id=bill.id,
+                filename="comprovante_joao_silva.pdf",
+                storage_key="some/key.pdf",
+                content_type="application/pdf",
+                file_size=1234,
+                sort_order=0,
+            )
+        )
+
+        row = (
+            db_connection.execute(
+                text("SELECT filename FROM receipts WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["filename"] == "fake:comprovante_joao_silva.pdf"
+
+    def test_get_and_list_decrypt_filename(self, db_connection, fake_encryption, sample_billing, sample_bill):
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import (
+            SQLAlchemyBillingRepository,
+            SQLAlchemyBillRepository,
+            SQLAlchemyReceiptRepository,
+        )
+
+        billing = SQLAlchemyBillingRepository(db_connection, fake_encryption).create(sample_billing())
+        bill = SQLAlchemyBillRepository(db_connection, fake_encryption).create(sample_bill(billing_id=billing.id))
+
+        repo = SQLAlchemyReceiptRepository(db_connection, fake_encryption)
+        created = repo.create(
+            Receipt(
+                bill_id=bill.id,
+                filename="comprovante.pdf",
+                storage_key="key.pdf",
+                content_type="application/pdf",
+                file_size=10,
+                sort_order=0,
+            )
+        )
+
+        fetched_by_id = repo.get_by_id(created.id)
+        assert fetched_by_id is not None
+        assert fetched_by_id.filename == "comprovante.pdf"
+
+        fetched_by_uuid = repo.get_by_uuid(created.uuid)
+        assert fetched_by_uuid is not None
+        assert fetched_by_uuid.filename == "comprovante.pdf"
+
+        listed = repo.list_by_bill(bill.id)
+        assert [r.filename for r in listed] == ["comprovante.pdf"]
+
+    def test_get_handles_legacy_plaintext_filename(self, db_connection, fake_encryption, sample_billing, sample_bill):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import (
+            SQLAlchemyBillingRepository,
+            SQLAlchemyBillRepository,
+            SQLAlchemyReceiptRepository,
+        )
+
+        billing = SQLAlchemyBillingRepository(db_connection, fake_encryption).create(sample_billing())
+        bill = SQLAlchemyBillRepository(db_connection, fake_encryption).create(sample_bill(billing_id=billing.id))
+
+        db_connection.execute(
+            text(
+                "INSERT INTO receipts (uuid, bill_id, filename, storage_key, content_type, "
+                "file_size, sort_order, created_at) "
+                "VALUES ('01HXLEGACYRECEIPT00000000000', :bid, 'legacy.pdf', 'k.pdf', "
+                "'application/pdf', 1, 0, '2026-04-01 00:00:00')"
+            ),
+            {"bid": bill.id},
+        )
+        db_connection.commit()
+
+        repo = SQLAlchemyReceiptRepository(db_connection, fake_encryption)
+        fetched = repo.get_by_uuid("01HXLEGACYRECEIPT00000000000")
+        assert fetched is not None
+        assert fetched.filename == "legacy.pdf"

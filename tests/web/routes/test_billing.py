@@ -681,9 +681,9 @@ class TestBillingDeleteEnqueuesS3Delete:
                 bills.append(bill)
         # Reload bills to pick up the latest pdf_path after each upload regenerates the PDF.
         with test_engine.connect() as conn:
-            bill_repo = SQLAlchemyBillRepository(conn)
+            bill_repo = SQLAlchemyBillRepository(conn, Base64Backend())
             bills = [bill_repo.get_by_uuid(b.uuid) for b in bills]
-            receipt_repo = SQLAlchemyReceiptRepository(conn)
+            receipt_repo = SQLAlchemyReceiptRepository(conn, Base64Backend())
             receipts_by_bill = {b.id: receipt_repo.list_by_bill(b.id) for b in bills}
         return billing, bills, receipts_by_bill
 

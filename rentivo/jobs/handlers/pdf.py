@@ -34,7 +34,7 @@ def handle_pdf_render(payload: dict) -> None:
 
     engine = get_engine()
     with engine.connect() as conn:
-        bill_repo = SQLAlchemyBillRepository(conn)
+        bill_repo = SQLAlchemyBillRepository(conn, get_encryption())
         billing_repo = SQLAlchemyBillingRepository(conn, get_encryption())
         bill = bill_repo.get_by_id(bill_id)
         if bill is None:
@@ -51,7 +51,7 @@ def handle_pdf_render(payload: dict) -> None:
         service = BillService(
             bill_repo=bill_repo,
             storage=get_storage(),
-            receipt_repo=SQLAlchemyReceiptRepository(conn),
+            receipt_repo=SQLAlchemyReceiptRepository(conn, get_encryption()),
             theme_service=theme,
             pix_service=pix,
             # No job_service — the handler is the queue consumer; nested enqueues
@@ -82,5 +82,5 @@ def _on_pdf_render_failed(payload: dict) -> None:
         return
     engine = get_engine()
     with engine.connect() as conn:
-        SQLAlchemyBillRepository(conn).update_pdf_render_status(bill_id, "failed")
+        SQLAlchemyBillRepository(conn, get_encryption()).update_pdf_render_status(bill_id, "failed")
         logger.warning("pdf_render_marked_failed", bill_id=bill_id)

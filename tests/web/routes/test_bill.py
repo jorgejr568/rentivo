@@ -157,7 +157,7 @@ class TestBillEdit:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
         assert reloaded.notes == original_notes
 
 
@@ -197,7 +197,7 @@ class TestBillRegeneratePdf:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
         assert reloaded.pdf_path == original_pdf_path
 
 
@@ -301,7 +301,7 @@ class TestBillDelete:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
         assert reloaded is not None, "victim's bill must not be soft-deleted"
 
 
@@ -362,7 +362,7 @@ class TestBillInvoice:
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
             with test_engine.connect() as conn:
-                receipt = SQLAlchemyReceiptRepository(conn).create(
+                receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).create(
                     Receipt(
                         bill_id=bill.id,
                         filename="r.pdf",
@@ -387,7 +387,7 @@ class TestBillInvoice:
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
             with test_engine.connect() as conn:
-                receipt = SQLAlchemyReceiptRepository(conn).create(
+                receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).create(
                     Receipt(
                         bill_id=bill.id,
                         filename="r.pdf",
@@ -413,7 +413,7 @@ class TestBillInvoice:
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
             with test_engine.connect() as conn:
-                receipt = SQLAlchemyReceiptRepository(conn).create(
+                receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).create(
                     Receipt(
                         bill_id=bill.id,
                         filename="r.pdf",
@@ -799,7 +799,7 @@ class TestReceiptUpload:
         assert response.status_code == 302
         assert response.headers["location"] == "/"
         with test_engine.connect() as conn:
-            assert SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id) == []
+            assert SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill.id) == []
 
 
 class TestReceiptUploadMultiple:
@@ -853,7 +853,7 @@ class TestReceiptDelete:
             from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
             with test_engine.connect() as conn:
-                receipt_repo = SQLAlchemyReceiptRepository(conn)
+                receipt_repo = SQLAlchemyReceiptRepository(conn, Base64Backend())
                 receipts = receipt_repo.list_by_bill(bill.id)
             assert len(receipts) == 1
             receipt_uuid = receipts[0].uuid
@@ -911,7 +911,7 @@ class TestReceiptDelete:
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
         with test_engine.connect() as conn:
-            receipt_repo = SQLAlchemyReceiptRepository(conn)
+            receipt_repo = SQLAlchemyReceiptRepository(conn, Base64Backend())
             victim_receipt = receipt_repo.create(
                 Receipt(
                     bill_id=bill.id,
@@ -930,7 +930,7 @@ class TestReceiptDelete:
         assert response.status_code == 302
         assert response.headers["location"] == "/"
         with test_engine.connect() as conn:
-            assert SQLAlchemyReceiptRepository(conn).get_by_uuid(victim_receipt.uuid) is not None
+            assert SQLAlchemyReceiptRepository(conn, Base64Backend()).get_by_uuid(victim_receipt.uuid) is not None
 
     def test_delete_receipt_cross_bill_rejected(self, auth_client, test_engine, tmp_path, csrf_token):
         """Vuln 5 amplification: supplying attacker's own bill/billing uuids but a victim receipt uuid."""
@@ -944,7 +944,7 @@ class TestReceiptDelete:
             attacker_bill = generate_bill_in_db(test_engine, attacker_billing, tmp_path)
             victim_bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
         with test_engine.connect() as conn:
-            receipt_repo = SQLAlchemyReceiptRepository(conn)
+            receipt_repo = SQLAlchemyReceiptRepository(conn, Base64Backend())
             victim_receipt = receipt_repo.create(
                 Receipt(
                     bill_id=victim_bill.id,
@@ -963,7 +963,7 @@ class TestReceiptDelete:
         )
         assert response.status_code == 302
         with test_engine.connect() as conn:
-            assert SQLAlchemyReceiptRepository(conn).get_by_uuid(victim_receipt.uuid) is not None
+            assert SQLAlchemyReceiptRepository(conn, Base64Backend()).get_by_uuid(victim_receipt.uuid) is not None
 
 
 class TestReceiptRedirectSafety:
@@ -990,7 +990,7 @@ class TestReceiptRedirectSafety:
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         with test_engine.connect() as conn:
-            receipt = SQLAlchemyReceiptRepository(conn).create(
+            receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).create(
                 Receipt(
                     bill_id=bill.id,
                     filename="r.pdf",
@@ -1044,7 +1044,7 @@ class TestReceiptView:
             from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
             with test_engine.connect() as conn:
-                receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
+                receipts = SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill.id)
             assert len(receipts) == 1
             response = auth_client.get(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipts[0].uuid}",
@@ -1162,7 +1162,7 @@ class TestReceiptViewS3Redirect:
             from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
             with test_engine.connect() as conn:
-                receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
+                receipts = SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill.id)
             assert len(receipts) == 1
 
         # Mock bill_service to return a non-local URL
@@ -1357,7 +1357,7 @@ class TestReceiptReorder:
         from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
         with test_engine.connect() as conn:
-            receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill_id)
+            receipts = SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill_id)
         return [r.uuid for r in receipts]
 
     def test_reorder_success(self, auth_client, test_engine, tmp_path, csrf_token):
@@ -1518,7 +1518,7 @@ class TestBillPixNotConfigured:
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         with test_engine.connect() as conn:
-            receipt = SQLAlchemyReceiptRepository(conn).create(
+            receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).create(
                 Receipt(
                     bill_id=bill.id,
                     filename="r.pdf",
@@ -1567,7 +1567,7 @@ class TestBillDeleteCrossBilling:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            assert SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid) is not None
+            assert SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid) is not None
 
 
 class TestReceiptDeleteEnqueuesS3Delete:
@@ -1587,7 +1587,7 @@ class TestReceiptDeleteEnqueuesS3Delete:
                 follow_redirects=False,
             )
             with test_engine.connect() as conn:
-                receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
+                receipts = SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill.id)
             assert len(receipts) == 1
             receipt = receipts[0]
 
@@ -1634,7 +1634,7 @@ class TestBillDeleteEnqueuesS3Delete:
                     follow_redirects=False,
                 )
         with test_engine.connect() as conn:
-            receipts = SQLAlchemyReceiptRepository(conn).list_by_bill(bill.id)
+            receipts = SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill.id)
         return billing, bill, receipts
 
     def test_bill_delete_enqueues_pdf_and_receipts(self, auth_client, csrf_token, monkeypatch, test_engine, tmp_path):

@@ -57,7 +57,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             ),
             {
                 "name": billing.name,
-                "description": billing.description,
+                "description": self.encryption.encrypt(billing.description),
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
                 "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
@@ -77,7 +77,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 ),
                 {
                     "billing_id": billing_id,
-                    "description": item.description,
+                    "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,
                     "sort_order": i,
@@ -94,7 +94,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             id=row["id"],
             uuid=row["uuid"],
             name=row["name"],
-            description=row["description"],
+            description=self.encryption.decrypt(row["description"]),
             pix_key=self.encryption.decrypt(row["pix_key"]),
             pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
             pix_merchant_city=self.encryption.decrypt(row.get("pix_merchant_city", "") or ""),
@@ -104,7 +104,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 BillingItem(
                     id=item_row["id"],
                     billing_id=item_row["billing_id"],
-                    description=item_row["description"],
+                    description=self.encryption.decrypt(item_row["description"]),
                     amount=item_row["amount"],
                     item_type=ItemType(item_row["item_type"]),
                     sort_order=item_row["sort_order"],
@@ -200,7 +200,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             ),
             {
                 "name": billing.name,
-                "description": billing.description,
+                "description": self.encryption.encrypt(billing.description),
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
                 "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
@@ -220,7 +220,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 ),
                 {
                     "billing_id": billing.id,
-                    "description": item.description,
+                    "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,
                     "sort_order": i,
@@ -253,8 +253,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
 
 
 class SQLAlchemyBillRepository(BillRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
     def create(self, bill: Bill) -> Bill:
         bill_uuid = str(ULID())
@@ -271,7 +272,7 @@ class SQLAlchemyBillRepository(BillRepository):
                 "reference_month": bill.reference_month,
                 "total_amount": bill.total_amount,
                 "pdf_path": bill.pdf_path,
-                "notes": bill.notes,
+                "notes": self.encryption.encrypt(bill.notes),
                 "uuid": bill_uuid,
                 "due_date": bill.due_date,
                 "status": bill.status,
@@ -288,7 +289,7 @@ class SQLAlchemyBillRepository(BillRepository):
                 ),
                 {
                     "bill_id": bill_id,
-                    "description": item.description,
+                    "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,
                     "sort_order": i,
@@ -300,8 +301,7 @@ class SQLAlchemyBillRepository(BillRepository):
             raise RuntimeError(f"Failed to retrieve bill after create (id={bill_id})")
         return result
 
-    @staticmethod
-    def _build_bill(row: RowMapping, item_rows: list[RowMapping]) -> Bill:
+    def _build_bill(self, row: RowMapping, item_rows: list[RowMapping]) -> Bill:
         return Bill(
             id=row["id"],
             uuid=row["uuid"],
@@ -312,7 +312,7 @@ class SQLAlchemyBillRepository(BillRepository):
                 BillLineItem(
                     id=item_row["id"],
                     bill_id=item_row["bill_id"],
-                    description=item_row["description"],
+                    description=self.encryption.decrypt(item_row["description"]),
                     amount=item_row["amount"],
                     item_type=ItemType(item_row["item_type"]),
                     sort_order=item_row["sort_order"],
@@ -320,7 +320,7 @@ class SQLAlchemyBillRepository(BillRepository):
                 for item_row in item_rows
             ],
             pdf_path=row["pdf_path"],
-            notes=row["notes"],
+            notes=self.encryption.decrypt(row["notes"]) if row["notes"] else "",
             due_date=row["due_date"],
             status=row.get("status", "draft"),
             status_updated_at=row.get("status_updated_at"),
@@ -399,7 +399,7 @@ class SQLAlchemyBillRepository(BillRepository):
             {
                 "reference_month": bill.reference_month,
                 "total_amount": bill.total_amount,
-                "notes": bill.notes,
+                "notes": self.encryption.encrypt(bill.notes),
                 "due_date": bill.due_date,
                 "id": bill.id,
             },
@@ -416,7 +416,7 @@ class SQLAlchemyBillRepository(BillRepository):
                 ),
                 {
                     "bill_id": bill.id,
-                    "description": item.description,
+                    "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,
                     "sort_order": i,
@@ -872,16 +872,16 @@ class SQLAlchemyInviteRepository(InviteRepository):
 
 
 class SQLAlchemyReceiptRepository(ReceiptRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_receipt(row: RowMapping) -> Receipt:
+    def _row_to_receipt(self, row: RowMapping) -> Receipt:
         return Receipt(
             id=row["id"],
             uuid=row["uuid"],
             bill_id=row["bill_id"],
-            filename=row["filename"],
+            filename=self.encryption.decrypt(row["filename"]),
             storage_key=row["storage_key"],
             content_type=row["content_type"],
             file_size=row["file_size"],
@@ -902,7 +902,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             {
                 "uuid": receipt_uuid,
                 "bill_id": receipt.bill_id,
-                "filename": receipt.filename,
+                "filename": self.encryption.encrypt(receipt.filename),
                 "storage_key": receipt.storage_key,
                 "content_type": receipt.content_type,
                 "file_size": receipt.file_size,

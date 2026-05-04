@@ -186,11 +186,13 @@ def get_billing_service(request: Request) -> BillingService:
 
 
 def get_bill_service(request: Request) -> BillService:
+    from rentivo.encryption.factory import get_encryption
+
     conn = _get_conn(request)
     return BillService(
-        SQLAlchemyBillRepository(conn),
+        SQLAlchemyBillRepository(conn, get_encryption()),
         get_storage(),
-        SQLAlchemyReceiptRepository(conn),
+        SQLAlchemyReceiptRepository(conn, get_encryption()),
         theme_service=get_theme_service(request),
         pix_service=get_pix_service(request),
         job_service=get_job_service(request),
@@ -268,11 +270,13 @@ def get_job_service(request: Request) -> JobService:
 
 
 def get_storage_cleanup_service(request: Request) -> StorageCleanupService:
+    from rentivo.encryption.factory import get_encryption
+
     conn = _get_conn(request)
     return StorageCleanupService(
         job_service=get_job_service(request),
-        bill_repo=SQLAlchemyBillRepository(conn),
-        receipt_repo=SQLAlchemyReceiptRepository(conn),
+        bill_repo=SQLAlchemyBillRepository(conn, get_encryption()),
+        receipt_repo=SQLAlchemyReceiptRepository(conn, get_encryption()),
     )
 
 

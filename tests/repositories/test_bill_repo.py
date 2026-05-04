@@ -178,3 +178,172 @@ class TestBillRepoPdfRenderStatus:
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
         assert created.pdf_render_status is None
+
+
+class TestBillRepoEncryptionWiring:
+    def test_constructor_accepts_encryption_backend(self, db_connection, fake_encryption):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+        assert repo.encryption is fake_encryption
+
+    def test_factory_passes_encryption_backend(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from rentivo.repositories.factory import get_bill_repository
+
+        called = {}
+
+        class FakeRepo:
+            def __init__(self, conn, encryption):
+                called["conn"] = conn
+                called["encryption"] = encryption
+
+        monkeypatch.setattr("rentivo.db.get_connection", lambda: MagicMock())
+        monkeypatch.setattr(
+            "rentivo.repositories.sqlalchemy.SQLAlchemyBillRepository",
+            FakeRepo,
+        )
+        repo = get_bill_repository()
+        assert repo is not None
+        assert called["encryption"] is not None
+
+
+class TestBillRepoEncryption:
+    """Verifies that the repository routes notes and line-item descriptions through encryption."""
+
+    def test_create_encrypts_notes_and_line_item_descriptions(
+        self, db_connection, fake_encryption, sample_billing, sample_bill
+    ):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyBillRepository
+
+        billing_repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        billing = billing_repo.create(sample_billing())
+
+        repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+        created = repo.create(sample_bill(billing_id=billing.id, notes="Pagar até o dia 5"))
+
+        row = (
+            db_connection.execute(
+                text("SELECT notes FROM bills WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["notes"] == "fake:Pagar até o dia 5"
+
+        item_rows = (
+            db_connection.execute(
+                text("SELECT description FROM bill_line_items WHERE bill_id = :id ORDER BY sort_order"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchall()
+        )
+        assert [r["description"] for r in item_rows] == ["fake:Aluguel", "fake:Água"]
+
+    def test_get_decrypts_notes_and_line_item_descriptions(
+        self, db_connection, fake_encryption, sample_billing, sample_bill
+    ):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyBillRepository
+
+        billing_repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        billing = billing_repo.create(sample_billing())
+
+        repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+        created = repo.create(sample_bill(billing_id=billing.id, notes="Pagar até o dia 5"))
+
+        fetched = repo.get_by_id(created.id)
+        assert fetched is not None
+        assert fetched.notes == "Pagar até o dia 5"
+        assert [item.description for item in fetched.line_items] == ["Aluguel", "Água"]
+
+    def test_update_re_encrypts_notes_and_line_items(self, db_connection, fake_encryption, sample_billing, sample_bill):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyBillRepository
+
+        billing_repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        billing = billing_repo.create(sample_billing())
+
+        repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+        created = repo.create(sample_bill(billing_id=billing.id, notes="old"))
+        created.notes = "new"
+        created.line_items[0].description = "Aluguel atualizado"
+        repo.update(created)
+
+        row = (
+            db_connection.execute(
+                text("SELECT notes FROM bills WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["notes"] == "fake:new"
+
+        item_rows = (
+            db_connection.execute(
+                text("SELECT description FROM bill_line_items WHERE bill_id = :id ORDER BY sort_order"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchall()
+        )
+        assert item_rows[0]["description"] == "fake:Aluguel atualizado"
+
+    def test_list_by_billing_decrypts(self, db_connection, fake_encryption, sample_billing, sample_bill):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyBillRepository
+
+        billing_repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        billing = billing_repo.create(sample_billing())
+
+        repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+        repo.create(sample_bill(billing_id=billing.id, notes="Note A", reference_month="2025-01"))
+        repo.create(sample_bill(billing_id=billing.id, notes="Note B", reference_month="2025-02"))
+
+        bills = repo.list_by_billing(billing.id)
+        notes = sorted(b.notes for b in bills)
+        assert notes == ["Note A", "Note B"]
+        for b in bills:
+            assert [li.description for li in b.line_items] == ["Aluguel", "Água"]
+
+    def test_get_handles_legacy_plaintext_rows(self, db_connection, fake_encryption, sample_billing):
+        from sqlalchemy import text
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyBillRepository
+
+        billing_repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+        billing = billing_repo.create(sample_billing())
+
+        # Insert a plaintext bill directly to simulate a pre-backfill row.
+        db_connection.execute(
+            text(
+                "INSERT INTO bills (billing_id, reference_month, total_amount, "
+                "pdf_path, notes, uuid, due_date, status, status_updated_at, created_at) "
+                "VALUES (:bid, '2025-03', 100, NULL, 'legacy notes', "
+                "'01HXLEGACYBILL0000000000000', '10/04/2025', 'draft', "
+                "'2026-04-01 00:00:00', '2026-04-01 00:00:00')"
+            ),
+            {"bid": billing.id},
+        )
+        bill_id = db_connection.execute(
+            text("SELECT id FROM bills WHERE uuid = '01HXLEGACYBILL0000000000000'")
+        ).scalar_one()
+        db_connection.execute(
+            text(
+                "INSERT INTO bill_line_items (bill_id, description, amount, item_type, sort_order) "
+                "VALUES (:bid, 'legacy item', 100, 'fixed', 0)"
+            ),
+            {"bid": bill_id},
+        )
+        db_connection.commit()
+
+        repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+        fetched = repo.get_by_id(bill_id)
+        assert fetched is not None
+        assert fetched.notes == "legacy notes"
+        assert fetched.line_items[0].description == "legacy item"
