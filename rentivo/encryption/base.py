@@ -32,3 +32,13 @@ class EncryptionBackend(ABC):
     def is_encrypted(self, value: str) -> bool:
         """True iff ``value`` has the ciphertext shape this backend produces."""
         ...
+
+    def decrypt_many(self, values: list[str]) -> list[str]:
+        """Decrypt a batch of values, returning plaintexts in the same order.
+
+        Default implementation calls ``decrypt`` sequentially. Backends with
+        network round-trips per call (e.g. KMS) should override this to
+        parallelise the work — the repository read paths invoke this once per
+        list/detail query, so the override turns N sequential RTTs into one.
+        """
+        return [self.decrypt(v) for v in values]

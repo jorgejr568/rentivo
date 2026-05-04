@@ -241,3 +241,95 @@ class TestKMSBackend:
         )
         call_kwargs = mock_boto3.client.call_args[1]
         assert "endpoint_url" not in call_kwargs
+
+
+class TestKMSBackendDecryptMany:
+    @patch("rentivo.encryption.kms.boto3")
+    def test_decrypt_many_returns_plaintexts_in_input_order(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_client.decrypt.side_effect = lambda CiphertextBlob, KeyId: {"Plaintext": (b"PT-" + CiphertextBlob)}
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.encryption.kms import KMSBackend
+
+        backend = KMSBackend(
+            key_id="alias/rentivo",
+            region="us-east-1",
+            access_key_id="k",
+            secret_access_key="s",
+        )
+
+        ciphertexts = [
+            "enc:v1:" + base64.b64encode(b"a").decode("ascii"),
+            "enc:v1:" + base64.b64encode(b"b").decode("ascii"),
+            "enc:v1:" + base64.b64encode(b"c").decode("ascii"),
+        ]
+        result = backend.decrypt_many(ciphertexts)
+        assert result == ["PT-a", "PT-b", "PT-c"]
+        assert mock_client.decrypt.call_count == 3
+
+    @patch("rentivo.encryption.kms.boto3")
+    def test_decrypt_many_empty_returns_empty(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.encryption.kms import KMSBackend
+
+        backend = KMSBackend(
+            key_id="alias/rentivo",
+            region="us-east-1",
+            access_key_id="k",
+            secret_access_key="s",
+        )
+        assert backend.decrypt_many([]) == []
+        mock_client.decrypt.assert_not_called()
+
+    @patch("rentivo.encryption.kms.boto3")
+    def test_decrypt_many_runs_in_parallel(self, mock_boto3):
+        """All decrypt calls should be in flight concurrently — verified by
+        making each call block on a barrier until every other call has
+        started. If the implementation were sequential the first call would
+        deadlock waiting for the second to start, which never happens."""
+        import threading
+
+        n = 8
+        barrier = threading.Barrier(n, timeout=2.0)
+
+        def fake_decrypt(*, CiphertextBlob, KeyId):
+            barrier.wait()
+            return {"Plaintext": b"ok"}
+
+        mock_client = MagicMock()
+        mock_client.decrypt.side_effect = fake_decrypt
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.encryption.kms import KMSBackend
+
+        backend = KMSBackend(
+            key_id="alias/rentivo",
+            region="us-east-1",
+            access_key_id="k",
+            secret_access_key="s",
+        )
+        ciphertexts = ["enc:v1:" + base64.b64encode(b"x").decode("ascii")] * n
+        result = backend.decrypt_many(ciphertexts)
+        assert result == ["ok"] * n
+
+    @patch("rentivo.encryption.kms.boto3")
+    def test_decrypt_many_preserves_no_op_passthroughs(self, mock_boto3):
+        """Empty strings, plaintext rows, and b64:v1: rows must not invoke KMS."""
+        mock_client = MagicMock()
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.encryption.kms import KMSBackend
+
+        backend = KMSBackend(
+            key_id="alias/rentivo",
+            region="us-east-1",
+            access_key_id="k",
+            secret_access_key="s",
+        )
+        b64 = "b64:v1:" + base64.b64encode(b"hello").decode("ascii")
+        result = backend.decrypt_many(["", "raw plaintext", b64])
+        assert result == ["", "raw plaintext", "hello"]
+        mock_client.decrypt.assert_not_called()
