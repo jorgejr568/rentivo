@@ -255,10 +255,14 @@ Selected PII columns are encrypted at rest behind a pluggable backend abstractio
 |-------|---------|
 | `users` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
 | `organizations` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
-| `billings` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
+| `billings` | `pix_key`, `pix_merchant_name`, `pix_merchant_city`, `description` |
+| `billing_items` | `description` |
+| `bills` | `notes` |
+| `bill_line_items` | `description` |
+| `receipts` | `filename` |
 | `user_totp` | `secret` |
 
-Other sensitive values (`password_hash`, `*_token_hash`, `*_code_hash`, `device_hash`) are already one-way hashes; passkey columns are public-by-design WebAuthn material. See `docs/superpowers/plans/2026-05-03-kms-encryption.md` for the full rationale.
+Other sensitive values (`password_hash`, `*_token_hash`, `*_code_hash`, `device_hash`) are already one-way hashes; passkey columns are public-by-design WebAuthn material; `users.email` and `user_passkeys.credential_id` are looked up by value (`WHERE = ?`) and require a deterministic-cipher + blind-index design tracked under future work. See `docs/superpowers/plans/2026-05-03-kms-encryption.md` and `docs/superpowers/plans/2026-05-04-extend-kms-encryption.md` for the full rationale.
 
 ### Configuration
 
@@ -275,7 +279,7 @@ When `RENTIVO_ENCRYPTION_BACKEND=kms`, both `RENTIVO_KMS_KEY_ID` and `RENTIVO_KM
 - `rentivo/encryption/base64.py:Base64Backend` — local-only obfuscation. NOT encryption. Ciphertext format: `b64:v1:<base64(plaintext)>`.
 - `rentivo/encryption/kms.py:KMSBackend` — calls `kms.Encrypt` / `kms.Decrypt` directly (no envelope DEK). Ciphertext format: `enc:v1:<base64-of-CiphertextBlob>`.
 - `rentivo/encryption/factory.py:get_encryption` — dispatches by `RENTIVO_ENCRYPTION_BACKEND`.
-- Wired into `SQLAlchemyBillingRepository`, `SQLAlchemyUserRepository`, `SQLAlchemyOrganizationRepository`, `SQLAlchemyMFATOTPRepository`. Encryption happens on writes; decryption on reads.
+- Wired into `SQLAlchemyBillingRepository`, `SQLAlchemyBillRepository`, `SQLAlchemyReceiptRepository`, `SQLAlchemyUserRepository`, `SQLAlchemyOrganizationRepository`, `SQLAlchemyMFATOTPRepository`. Encryption happens on writes; decryption on reads.
 
 ### Rollout
 
