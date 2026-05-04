@@ -253,8 +253,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
 
 
 class SQLAlchemyBillRepository(BillRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
     def create(self, bill: Bill) -> Bill:
         bill_uuid = str(ULID())

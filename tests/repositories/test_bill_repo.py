@@ -178,3 +178,32 @@ class TestBillRepoPdfRenderStatus:
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
         assert created.pdf_render_status is None
+
+
+class TestBillRepoEncryptionWiring:
+    def test_constructor_accepts_encryption_backend(self, db_connection, fake_encryption):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+        assert repo.encryption is fake_encryption
+
+    def test_factory_passes_encryption_backend(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from rentivo.repositories.factory import get_bill_repository
+
+        called = {}
+
+        class FakeRepo:
+            def __init__(self, conn, encryption):
+                called["conn"] = conn
+                called["encryption"] = encryption
+
+        monkeypatch.setattr("rentivo.db.get_connection", lambda: MagicMock())
+        monkeypatch.setattr(
+            "rentivo.repositories.sqlalchemy.SQLAlchemyBillRepository",
+            FakeRepo,
+        )
+        repo = get_bill_repository()
+        assert repo is not None
+        assert called["encryption"] is not None

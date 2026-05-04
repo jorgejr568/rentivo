@@ -25,8 +25,8 @@ def billing_repo(db_connection: Connection, encryption) -> SQLAlchemyBillingRepo
 
 
 @pytest.fixture()
-def bill_repo(db_connection: Connection) -> SQLAlchemyBillRepository:
-    return SQLAlchemyBillRepository(db_connection)
+def bill_repo(db_connection: Connection, encryption) -> SQLAlchemyBillRepository:
+    return SQLAlchemyBillRepository(db_connection, encryption)
 
 
 @pytest.fixture()

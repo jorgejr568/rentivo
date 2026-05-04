@@ -157,7 +157,7 @@ class TestBillEdit:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
         assert reloaded.notes == original_notes
 
 
@@ -197,7 +197,7 @@ class TestBillRegeneratePdf:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
         assert reloaded.pdf_path == original_pdf_path
 
 
@@ -301,7 +301,7 @@ class TestBillDelete:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            reloaded = SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid)
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
         assert reloaded is not None, "victim's bill must not be soft-deleted"
 
 
@@ -1567,7 +1567,7 @@ class TestBillDeleteCrossBilling:
         from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
 
         with test_engine.connect() as conn:
-            assert SQLAlchemyBillRepository(conn).get_by_uuid(bill.uuid) is not None
+            assert SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid) is not None
 
 
 class TestReceiptDeleteEnqueuesS3Delete:
