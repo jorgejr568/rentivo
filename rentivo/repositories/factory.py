@@ -56,9 +56,10 @@ def get_invite_repository() -> InviteRepository:
 
 def get_receipt_repository() -> ReceiptRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
-    return SQLAlchemyReceiptRepository(get_connection())
+    return SQLAlchemyReceiptRepository(get_connection(), get_encryption())
 
 
 def get_audit_log_repository() -> AuditLogRepository:

@@ -192,7 +192,7 @@ def get_bill_service(request: Request) -> BillService:
     return BillService(
         SQLAlchemyBillRepository(conn, get_encryption()),
         get_storage(),
-        SQLAlchemyReceiptRepository(conn),
+        SQLAlchemyReceiptRepository(conn, get_encryption()),
         theme_service=get_theme_service(request),
         pix_service=get_pix_service(request),
         job_service=get_job_service(request),
@@ -276,7 +276,7 @@ def get_storage_cleanup_service(request: Request) -> StorageCleanupService:
     return StorageCleanupService(
         job_service=get_job_service(request),
         bill_repo=SQLAlchemyBillRepository(conn, get_encryption()),
-        receipt_repo=SQLAlchemyReceiptRepository(conn),
+        receipt_repo=SQLAlchemyReceiptRepository(conn, get_encryption()),
     )
 
 

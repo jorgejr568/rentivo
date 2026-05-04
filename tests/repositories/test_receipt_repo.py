@@ -7,14 +7,8 @@ from rentivo.models.receipt import Receipt
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
-    SQLAlchemyReceiptRepository,
 )
 from tests.conftest import _sample_bill, _sample_billing
-
-
-@pytest.fixture()
-def receipt_repo(db_connection: Connection) -> SQLAlchemyReceiptRepository:
-    return SQLAlchemyReceiptRepository(db_connection)
 
 
 @pytest.fixture()
@@ -183,3 +177,32 @@ class TestReceiptRepoCRUD:
         assert results[0].filename == "c.pdf"
         assert results[1].filename == "b.pdf"
         assert results[2].filename == "a.pdf"
+
+
+class TestReceiptRepoEncryptionWiring:
+    def test_constructor_accepts_encryption_backend(self, db_connection, fake_encryption):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        repo = SQLAlchemyReceiptRepository(db_connection, fake_encryption)
+        assert repo.encryption is fake_encryption
+
+    def test_factory_passes_encryption_backend(self, monkeypatch):
+        from unittest.mock import MagicMock
+
+        from rentivo.repositories.factory import get_receipt_repository
+
+        called = {}
+
+        class FakeRepo:
+            def __init__(self, conn, encryption):
+                called["conn"] = conn
+                called["encryption"] = encryption
+
+        monkeypatch.setattr("rentivo.db.get_connection", lambda: MagicMock())
+        monkeypatch.setattr(
+            "rentivo.repositories.sqlalchemy.SQLAlchemyReceiptRepository",
+            FakeRepo,
+        )
+        repo = get_receipt_repository()
+        assert repo is not None
+        assert called["encryption"] is not None

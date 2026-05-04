@@ -872,8 +872,9 @@ class SQLAlchemyInviteRepository(InviteRepository):
 
 
 class SQLAlchemyReceiptRepository(ReceiptRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
     @staticmethod
     def _row_to_receipt(row: RowMapping) -> Receipt:

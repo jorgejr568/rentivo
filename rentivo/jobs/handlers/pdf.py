@@ -51,7 +51,7 @@ def handle_pdf_render(payload: dict) -> None:
         service = BillService(
             bill_repo=bill_repo,
             storage=get_storage(),
-            receipt_repo=SQLAlchemyReceiptRepository(conn),
+            receipt_repo=SQLAlchemyReceiptRepository(conn, get_encryption()),
             theme_service=theme,
             pix_service=pix,
             # No job_service — the handler is the queue consumer; nested enqueues
