@@ -13,6 +13,7 @@ from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
 from rentivo.models.user import User
+from rentivo.pii_redaction import PIIKind, redact
 
 
 def _dt(val: datetime | None) -> str | None:
@@ -23,15 +24,18 @@ def _dt(val: datetime | None) -> str | None:
 
 
 def serialize_billing(billing: Billing) -> dict:
-    """Serialize a Billing (with items) for audit state."""
+    """Serialize a Billing (with items) for audit state.
+
+    PIX fields are partial-mask redacted (first 3 chars + ``...`` + last 2 chars).
+    """
     return {
         "id": billing.id,
         "uuid": billing.uuid,
         "name": billing.name,
         "description": billing.description,
-        "pix_key": billing.pix_key,
-        "pix_merchant_name": billing.pix_merchant_name,
-        "pix_merchant_city": billing.pix_merchant_city,
+        "pix_key": redact(billing.pix_key or "", PIIKind.PIX),
+        "pix_merchant_name": redact(billing.pix_merchant_name or "", PIIKind.PIX),
+        "pix_merchant_city": redact(billing.pix_merchant_city or "", PIIKind.PIX),
         "owner_type": billing.owner_type,
         "owner_id": billing.owner_id,
         "items": [
@@ -77,28 +81,37 @@ def serialize_bill(bill: Bill) -> dict:
 
 
 def serialize_user(user: User) -> dict:
-    """Serialize a User for audit state. Excludes password_hash."""
+    """Serialize a User for audit state.
+
+    Excludes ``password_hash``. PIX fields (``pix_key``, ``pix_merchant_name``,
+    ``pix_merchant_city``) are partial-mask redacted via
+    :func:`rentivo.pii_redaction.redact` — first 3 chars + ``...`` + last 2
+    chars. Empty values redact to ``""``. The mask is one-way and key-less.
+    """
     return {
         "id": user.id,
         "email": user.email,
-        "pix_key": user.pix_key,
-        "pix_merchant_name": user.pix_merchant_name,
-        "pix_merchant_city": user.pix_merchant_city,
+        "pix_key": redact(user.pix_key or "", PIIKind.PIX),
+        "pix_merchant_name": redact(user.pix_merchant_name or "", PIIKind.PIX),
+        "pix_merchant_city": redact(user.pix_merchant_city or "", PIIKind.PIX),
         "created_at": _dt(user.created_at),
     }
 
 
 def serialize_organization(org: Organization) -> dict:
-    """Serialize an Organization for audit state."""
+    """Serialize an Organization for audit state.
+
+    PIX fields are partial-mask redacted (first 3 chars + ``...`` + last 2 chars).
+    """
     return {
         "id": org.id,
         "uuid": org.uuid,
         "name": org.name,
         "created_by": org.created_by,
         "enforce_mfa": org.enforce_mfa,
-        "pix_key": org.pix_key,
-        "pix_merchant_name": org.pix_merchant_name,
-        "pix_merchant_city": org.pix_merchant_city,
+        "pix_key": redact(org.pix_key or "", PIIKind.PIX),
+        "pix_merchant_name": redact(org.pix_merchant_name or "", PIIKind.PIX),
+        "pix_merchant_city": redact(org.pix_merchant_city or "", PIIKind.PIX),
         "created_at": _dt(org.created_at),
         "updated_at": _dt(org.updated_at),
     }
@@ -139,17 +152,19 @@ def _is_disallowed_key(key: str) -> bool:
 def serialize_job_payload(payload: dict) -> dict:
     """Audit-safe view of a queued job's payload.
 
-    For email.send: keeps ``event`` and ``to_email`` (the row's whole purpose) and
-    a count of ctx keys, but drops every ctx value (templates can carry org
-    names, IPs, reset URLs — none belong in audit rows). For s3.delete: keeps
-    ``key`` (a ULID-only storage path; safe to log). For unknown job types we
-    keep only a sorted index of top-level keys.
+    For email.send: keeps ``event``, a partial-mask redaction of ``to_email``
+    (e.g. ``jo...@gmail.com`` — first 2 chars of local + full domain) so
+    reviewers can recognize the recipient domain without seeing the address,
+    and a count of ctx keys, but drops every ctx value (templates can carry
+    org names, IPs, reset URLs — none belong in audit rows). For s3.delete:
+    keeps ``key`` (a ULID-only storage path; safe to log). For unknown job
+    types we keep only a sorted index of top-level keys.
     """
     job_type = payload.get("job_type", "")
     if job_type == "email.send":
         return {
             "event": payload.get("event"),
-            "to_email": payload.get("to_email"),
+            "to_email": redact(payload.get("to_email", "") or "", PIIKind.EMAIL),
             "ctx_keys_count": len(payload.get("ctx") or {}),
         }
     if job_type == "s3.delete":

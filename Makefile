@@ -59,6 +59,14 @@ backfill-encryption:
 backfill-encryption-dry:
 	$(PYTHON) -m rentivo.scripts.backfill_encryption --dry-run
 
+.PHONY: redact-audit-logs
+redact-audit-logs:
+	$(PYTHON) -m rentivo.scripts.redact_audit_logs
+
+.PHONY: redact-audit-logs-dry
+redact-audit-logs-dry:
+	$(PYTHON) -m rentivo.scripts.redact_audit_logs --dry-run
+
 .PHONY: seed
 seed:
 	$(PYTHON) -m rentivo.scripts.seed
