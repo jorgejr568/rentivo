@@ -623,6 +623,39 @@ class TestPdfGenerationWithReceipts:
 
         mock_merge.assert_not_called()
 
+    def test_pdf_generation_resolves_theme_when_theme_service_configured(self):
+        """When a ThemeService is configured, _render_pdf_sync must resolve and pass the theme."""
+        bill = Bill(
+            id=1,
+            uuid="bill-uuid",
+            billing_id=1,
+            reference_month="2025-03",
+            total_amount=100000,
+        )
+        billing = Billing(id=1, uuid="billing-uuid", name="Apt 101")
+
+        mock_theme = MagicMock()
+        mock_theme_service = MagicMock()
+        mock_theme_service.resolve_theme_for_billing.return_value = mock_theme
+
+        service = BillService(
+            self.mock_repo,
+            self.mock_storage,
+            self.mock_receipt_repo,
+            theme_service=mock_theme_service,
+            pix_service=_pix_service_with(),
+        )
+        self.mock_receipt_repo.list_by_bill.return_value = []
+        self.mock_storage.save.return_value = "/out.pdf"
+
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            mock_pdf.generate.return_value = b"%PDF"
+            service._render_pdf_sync(bill, billing)
+
+        mock_theme_service.resolve_theme_for_billing.assert_called_once_with(billing)
+        # The resolved theme is threaded through to the PDF generator.
+        assert mock_pdf.generate.call_args.kwargs.get("theme") is mock_theme
+
     def test_fetch_receipt_data_handles_storage_error(self):
         bill = Bill(
             id=1,

@@ -326,3 +326,19 @@ class TestRedactAuditLogs:
         assert state["pix_key"] == "ali...om"
         assert "pix_key_hash" not in state
         assert "pix_key_set" not in state
+
+    def test_redact_state_passes_through_invalid_json(self, db_connection):
+        """A row whose state is not valid JSON must be left as-is, not crash."""
+        from rentivo.scripts.redact_audit_logs import _redact_state
+
+        result, changed = _redact_state("not-json-at-all{")
+        assert result == "not-json-at-all{"
+        assert changed is False
+
+    def test_redact_state_passes_through_non_dict_json(self, db_connection):
+        """A row whose state is valid JSON but not a dict (e.g. list) must be left untouched."""
+        from rentivo.scripts.redact_audit_logs import _redact_state
+
+        result, changed = _redact_state(json.dumps([1, 2, 3]))
+        assert result == json.dumps([1, 2, 3])
+        assert changed is False
