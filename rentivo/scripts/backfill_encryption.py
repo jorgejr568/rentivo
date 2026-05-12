@@ -5,17 +5,19 @@ Usage:
     python -m rentivo.scripts.backfill_encryption --dry-run
 
 Behavior:
-- Walks every ``users``, ``organizations``, ``billings``, ``billing_items``,
-  ``bills``, ``bill_line_items``, ``receipts``, and ``user_totp`` row.
+- Walks every PII-bearing row across users, organizations, billings,
+  billing_items, bills, bill_line_items, receipts, and user_totp.
 - For each PII column: if the value is non-empty AND not already encrypted by
   the active backend, re-writes it as ciphertext.
+- ``users.email`` is handled specially: alongside re-encryption, the
+  normalized HMAC-SHA256 blind index is written to ``users.email_hash``.
 - Idempotent. Re-running is safe.
 - ``--dry-run`` prints a count per (table, column) without writing.
 
 Operator note: run this immediately after switching
 ``RENTIVO_ENCRYPTION_BACKEND`` from ``base64`` to ``kms``. New rows written
-between the cutover and the backfill are already encrypted; the backfill picks
-up the legacy plaintext rows.
+between the cutover and the backfill are already encrypted; the backfill
+picks up the legacy plaintext rows.
 """
 
 from __future__ import annotations
@@ -94,6 +96,70 @@ def _encrypt_column(
     return rewritten, skipped
 
 
+def _backfill_users_email(
+    conn: Connection,
+    encryption: EncryptionBackend,
+    *,
+    dry_run: bool,
+) -> tuple[int, int]:
+    """Re-encrypt ``users.email`` and populate ``users.email_hash``.
+
+    The dual-column write is what makes this a separate helper from the
+    generic ``_encrypt_column``. Source of truth for the hash is the
+    decrypted (or already-plaintext) email value, normalised via
+    :func:`rentivo.blind_index.compute_email_hash`.
+
+    Skip path: a row is fully migrated when its email column is encrypted by
+    the active backend AND its email_hash is non-NULL. Anything short of that
+    gets rewritten.
+    """
+    from rentivo.blind_index import compute_email_hash
+
+    rows = conn.execute(text("SELECT id, email, email_hash FROM users")).mappings().fetchall()
+    rewritten = 0
+    skipped = 0
+    for row in rows:
+        value = row["email"] or ""
+        if not value:
+            skipped += 1
+            continue
+
+        already_encrypted = encryption.is_encrypted(value)
+        hash_populated = bool(row["email_hash"])
+
+        if already_encrypted and hash_populated:
+            skipped += 1
+            continue
+
+        if already_encrypted and not hash_populated:
+            # Half-migrated row: email is already ciphertext, just need to
+            # populate the hash. Decrypt once for the plaintext source; do NOT
+            # re-encrypt — under KMS that would write a new blob for no gain.
+            plaintext = encryption.decrypt(value)
+            email_hash = compute_email_hash(plaintext)
+            if not dry_run:
+                conn.execute(
+                    text("UPDATE users SET email_hash = :email_hash WHERE id = :id"),
+                    {"email_hash": email_hash, "id": row["id"]},
+                )
+            rewritten += 1
+            continue
+
+        # Plaintext row: encrypt + populate hash in one UPDATE.
+        plaintext = encryption.decrypt(value)  # no-op on raw plaintext
+        ciphertext = encryption.encrypt(plaintext)
+        email_hash = compute_email_hash(plaintext)
+        if not dry_run:
+            conn.execute(
+                text("UPDATE users SET email = :email, email_hash = :email_hash WHERE id = :id"),
+                {"email": ciphertext, "email_hash": email_hash, "id": row["id"]},
+            )
+        rewritten += 1
+    if not dry_run:
+        conn.commit()
+    return rewritten, skipped
+
+
 def run(conn: Connection, encryption: EncryptionBackend, *, dry_run: bool) -> None:
     label = "[yellow]DRY-RUN[/yellow]" if dry_run else "[green]LIVE[/green]"
     console.print(f"\n[bold]Backfill encryption[/bold] {label}\n")
@@ -127,6 +193,19 @@ def run(conn: Connection, encryption: EncryptionBackend, *, dry_run: bool) -> No
                 skipped=skipped,
                 dry_run=dry_run,
             )
+
+    # users.email requires a dual-column write (ciphertext + blind-index hash)
+    # and lives outside the generic _TARGETS loop.
+    rewritten, skipped = _backfill_users_email(conn, encryption, dry_run=dry_run)
+    table.add_row("users", "email + email_hash", str(rewritten), str(skipped))
+    grand_rewritten += rewritten
+    grand_skipped += skipped
+    logger.info(
+        "backfill_users_email_done",
+        rewritten=rewritten,
+        skipped=skipped,
+        dry_run=dry_run,
+    )
 
     console.print(table)
     console.print(f"\n[bold]Total:[/bold] {grand_rewritten} rewritten, {grand_skipped} skipped.")

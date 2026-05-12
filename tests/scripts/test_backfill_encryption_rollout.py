@@ -112,5 +112,6 @@ def test_full_rollout_base64_to_kms_via_backfill(db_connection, kms_mock):
         assert fetched_final.pix_merchant_name == "Alice"
         assert fetched_final.pix_merchant_city == "Sao Paulo"
 
-        # The KMS decrypt was called now that rows are enc:v1: (3 columns × 1 read = 3 calls).
-        assert kms_mock.decrypt.call_count == 3
+        # The KMS decrypt was called now that rows are enc:v1:.
+        # 3 PIX columns + 1 email column (also backfilled to enc:v1:) = 4 calls.
+        assert kms_mock.decrypt.call_count == 4
