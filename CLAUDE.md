@@ -253,7 +253,7 @@ Selected PII columns are encrypted at rest behind a pluggable backend abstractio
 
 | Table | Columns |
 |-------|---------|
-| `users` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
+| `users` | `email`, `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
 | `organizations` | `pix_key`, `pix_merchant_name`, `pix_merchant_city` |
 | `billings` | `pix_key`, `pix_merchant_name`, `pix_merchant_city`, `name`, `description` |
 | `billing_items` | `description` |
@@ -262,7 +262,7 @@ Selected PII columns are encrypted at rest behind a pluggable backend abstractio
 | `receipts` | `filename` |
 | `user_totp` | `secret` |
 
-Other sensitive values (`password_hash`, `*_token_hash`, `*_code_hash`, `device_hash`) are already one-way hashes; passkey columns are public-by-design WebAuthn material; `users.email` and `user_passkeys.credential_id` are looked up by value (`WHERE = ?`) and require a deterministic-cipher + blind-index design tracked under future work. See `docs/superpowers/plans/2026-05-03-kms-encryption.md` and `docs/superpowers/plans/2026-05-04-extend-kms-encryption.md` for the full rationale.
+Other sensitive values (`password_hash`, `*_token_hash`, `*_code_hash`, `device_hash`) are already one-way hashes; passkey columns are public-by-design WebAuthn material; `user_passkeys.credential_id` is looked up by value (`WHERE = ?`) and requires a deterministic-cipher + blind-index design tracked under future work. See `docs/superpowers/plans/2026-05-03-kms-encryption.md`, `docs/superpowers/plans/2026-05-04-extend-kms-encryption.md`, and `docs/superpowers/plans/2026-05-12-encrypt-user-email.md` for the full rationale.
 
 ### Configuration
 
@@ -273,13 +273,23 @@ Other sensitive values (`password_hash`, `*_token_hash`, `*_code_hash`, `device_
 
 When `RENTIVO_ENCRYPTION_BACKEND=kms`, both `RENTIVO_KMS_KEY_ID` and `RENTIVO_KMS_REGION` are required (Settings validator enforces this at startup).
 
+### Blind index for `users.email`
+
+Because KMS ciphertext is non-deterministic, `WHERE email = ?` no longer works. A second column `users.email_hash` (`CHAR(64)`, `UNIQUE`) stores `HMAC-SHA256(normalize(email), K)` where `normalize` is `.strip().lower()`. The repository computes the hash on writes and matches on `email_hash` on reads (`SQLAlchemyUserRepository.get_by_email`).
+
+The HMAC key `K` is not an env-var secret. It's 32 random bytes generated once via `make generate-blind-index-key`, sealed under the existing KMS key, and the resulting ciphertext lives in `RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT`. At app boot, `rentivo/blind_index.py` calls `kms.Decrypt` once and caches the plaintext key in memory. Local-dev (`base64` backend) derives `K` from `secret_key` so no KMS round-trip is required.
+
+The Alembic migration that adds `email_hash` also runs `UPDATE users SET email = LOWER(TRIM(email))` so legacy plaintext rows match the same normalization the hash applies. Any pre-existing case-variant duplicates (e.g. `Alice@x.com` and `alice@x.com` as separate accounts) survive the migration and are caught by the new `UNIQUE(email_hash)` at backfill time — surfaced loudly, not silently merged.
+
+Rotating the key invalidates every existing `users.email_hash` row. The fix is to regenerate the env var and re-run `make backfill-encryption`, which detects the missing hash and re-populates it. Plan for downtime or a dual-key window if the user base is large.
+
 ### Architecture
 
 - `rentivo/encryption/base.py:EncryptionBackend` — abstract `encrypt` / `decrypt` / `is_encrypted` interface. All three are idempotent: `encrypt` is a no-op on already-encrypted values, `decrypt` is a no-op on plaintext (or any value not produced by this backend).
 - `rentivo/encryption/base64.py:Base64Backend` — local-only obfuscation. NOT encryption. Ciphertext format: `b64:v1:<base64(plaintext)>`.
 - `rentivo/encryption/kms.py:KMSBackend` — calls `kms.Encrypt` / `kms.Decrypt` directly (no envelope DEK). Ciphertext format: `enc:v1:<base64-of-CiphertextBlob>`.
 - `rentivo/encryption/factory.py:get_encryption` — dispatches by `RENTIVO_ENCRYPTION_BACKEND`.
-- Wired into `SQLAlchemyBillingRepository`, `SQLAlchemyBillRepository`, `SQLAlchemyReceiptRepository`, `SQLAlchemyUserRepository`, `SQLAlchemyOrganizationRepository`, `SQLAlchemyMFATOTPRepository`. Encryption happens on writes; decryption on reads.
+- Wired into `SQLAlchemyBillingRepository`, `SQLAlchemyBillRepository`, `SQLAlchemyReceiptRepository`, `SQLAlchemyUserRepository`, `SQLAlchemyOrganizationRepository`, `SQLAlchemyMFATOTPRepository`, `SQLAlchemyInviteRepository`. Encryption happens on writes; decryption on reads.
 - `EncryptionBackend.decrypt_many(values)` — batches a list of ciphertexts. The base-class default loops sequentially; `KMSBackend` overrides with a `ThreadPoolExecutor` (max 16 workers) so a list page with N×M encrypted columns finishes in ~max RTT instead of N×M × RTT. The Billing / Bill / Receipt repositories collect every ciphertext for a list/detail query into one `decrypt_many` call before assembling the Pydantic models.
 
 ### Rollout
@@ -289,6 +299,7 @@ The idempotency contract — each backend's `is_encrypted` recognises only its o
 1. Deploy this code with `RENTIVO_ENCRYPTION_BACKEND=base64`. New writes get `b64:v1:` prefixes; old plaintext rows still read fine.
 2. Provision the KMS key (with deletion protection enabled).
 3. Set `RENTIVO_ENCRYPTION_BACKEND=kms` plus the four `RENTIVO_KMS_*` values; restart.
+3a. Run `make generate-blind-index-key`. Copy the printed value into `RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT` and restart the app.
 4. Run `make backfill-encryption-dry` to preview row counts. Both raw plaintext rows AND `b64:v1:` rows are eligible (KMSBackend's `is_encrypted` returns False for both, so they get re-written through `encrypt()`).
 5. Run `make backfill-encryption` to encrypt legacy rows.
 6. Optionally re-run the dry-run; it should report 0 rewritten.
