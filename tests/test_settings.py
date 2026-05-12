@@ -194,6 +194,7 @@ def test_encryption_backend_accepts_kms_when_configured(monkeypatch):
     monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "kms")
     monkeypatch.setenv("RENTIVO_KMS_KEY_ID", "alias/rentivo")
     monkeypatch.setenv("RENTIVO_KMS_REGION", "us-east-1")
+    monkeypatch.setenv("RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT", "AQICAHj...base64...==")
     from rentivo.settings import Settings
 
     s = Settings(_env_file=None)
@@ -242,3 +243,34 @@ def test_encryption_base64_does_not_require_kms_fields(monkeypatch):
     s = Settings(_env_file=None)
     assert s.encryption_backend == "base64"
     assert s.kms_key_id == ""
+
+
+def test_email_blind_index_key_required_when_kms():
+    from rentivo.settings import Settings
+
+    with pytest.raises(ValidationError, match="RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT"):
+        Settings(
+            encryption_backend="kms",
+            kms_key_id="alias/rentivo",
+            kms_region="us-east-1",
+            email_blind_index_key_ciphertext="",
+        )
+
+
+def test_email_blind_index_key_optional_when_base64():
+    from rentivo.settings import Settings
+
+    s = Settings(encryption_backend="base64", email_blind_index_key_ciphertext="")
+    assert s.email_blind_index_key_ciphertext == ""
+
+
+def test_email_blind_index_key_accepts_b64():
+    from rentivo.settings import Settings
+
+    s = Settings(
+        encryption_backend="kms",
+        kms_key_id="alias/rentivo",
+        kms_region="us-east-1",
+        email_blind_index_key_ciphertext="AQICAHj...base64...==",
+    )
+    assert s.email_blind_index_key_ciphertext == "AQICAHj...base64...=="
