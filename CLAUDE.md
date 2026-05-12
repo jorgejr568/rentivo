@@ -277,11 +277,11 @@ When `RENTIVO_ENCRYPTION_BACKEND=kms`, both `RENTIVO_KMS_KEY_ID` and `RENTIVO_KM
 
 Because KMS ciphertext is non-deterministic, `WHERE email = ?` no longer works. A second column `users.email_hash` (`CHAR(64)`, `UNIQUE`) stores `HMAC-SHA256(normalize(email), K)` where `normalize` is `.strip().lower()`. The repository computes the hash on writes and matches on `email_hash` on reads (`SQLAlchemyUserRepository.get_by_email`).
 
-The HMAC key `K` is not an env-var secret. It's 32 random bytes generated once via `make generate-blind-index-key`, sealed under the existing KMS key, and the resulting ciphertext lives in `RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT`. At app boot, `rentivo/blind_index.py` calls `kms.Decrypt` once and caches the plaintext key in memory. Local-dev (`base64` backend) derives `K` from `secret_key` so no KMS round-trip is required.
+The HMAC key `K` derives from `RENTIVO_SECRET_KEY` (the existing session secret) via `SHA-256` over a fixed domain-prefix. No additional env var or KMS setup is required. The trade-off is explicit: anyone with read access to the env var can recompute the index and probe "is email X a user?" against the DB, though `email` itself stays KMS-encrypted at rest.
 
 The Alembic migration that adds `email_hash` also runs `UPDATE users SET email = LOWER(TRIM(email))` so legacy plaintext rows match the same normalization the hash applies. Any pre-existing case-variant duplicates (e.g. `Alice@x.com` and `alice@x.com` as separate accounts) survive the migration and are caught by the new `UNIQUE(email_hash)` at backfill time — surfaced loudly, not silently merged.
 
-Rotating the key invalidates every existing `users.email_hash` row. To rotate without locking users out: generate a new key, set the new env var, restart, then run `make backfill-encryption-reset-blind-index` — which NULLs every existing hash and re-computes it under the new key. A plain `make backfill-encryption` would skip the stale rows and leave the entire user table indexed under the previous key. Plan for downtime or a dual-key window if the user base is large.
+Rotating `RENTIVO_SECRET_KEY` invalidates every existing `users.email_hash`. After rotation, run `make backfill-encryption-reset-blind-index` — which NULLs every hash and re-populates it under the new key. A plain `make backfill-encryption` would skip the stale rows and leave the entire user table indexed under the previous key. Note that session-secret rotation also invalidates active sessions; plan both in the same window.
 
 ### Architecture
 
@@ -299,7 +299,6 @@ The idempotency contract — each backend's `is_encrypted` recognises only its o
 1. Deploy this code with `RENTIVO_ENCRYPTION_BACKEND=base64`. New writes get `b64:v1:` prefixes; old plaintext rows still read fine.
 2. Provision the KMS key (with deletion protection enabled).
 3. Set `RENTIVO_ENCRYPTION_BACKEND=kms` plus the four `RENTIVO_KMS_*` values; restart.
-3a. Run `make generate-blind-index-key`. Copy the printed value into `RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT` and restart the app.
 4. Run `make backfill-encryption-dry` to preview row counts. Both raw plaintext rows AND `b64:v1:` rows are eligible (KMSBackend's `is_encrypted` returns False for both, so they get re-written through `encrypt()`).
 5. Run `make backfill-encryption` to encrypt legacy rows.
 6. Optionally re-run the dry-run; it should report 0 rewritten.

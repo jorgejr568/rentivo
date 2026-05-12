@@ -74,7 +74,6 @@ class Settings(BaseSettings):
     kms_access_key_id: str = ""
     kms_secret_access_key: str = ""
     kms_endpoint_url: str = ""
-    email_blind_index_key_ciphertext: str = ""
 
     turnstile_site_key: str = ""
     turnstile_secret_key: str = ""
@@ -115,16 +114,6 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION are required when RENTIVO_ENCRYPTION_BACKEND=kms"
                 )
-        return self
-
-    @model_validator(mode="after")
-    def _validate_email_blind_index_key(self) -> "Settings":
-        if self.encryption_backend == "kms" and not self.email_blind_index_key_ciphertext:
-            raise ValueError(
-                "RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT is required when "
-                "RENTIVO_ENCRYPTION_BACKEND=kms. Generate one with "
-                "`python -m rentivo.scripts.generate_blind_index_key`."
-            )
         return self
 
     def get_secret_key(self) -> str:
