@@ -232,10 +232,11 @@ def get_invite_service(request: Request) -> InviteService:
     from rentivo.encryption.factory import get_encryption
 
     conn = _get_conn(request)
+    encryption = get_encryption()
     return InviteService(
-        SQLAlchemyInviteRepository(conn),
-        SQLAlchemyOrganizationRepository(conn, get_encryption()),
-        SQLAlchemyUserRepository(conn, get_encryption()),
+        SQLAlchemyInviteRepository(conn, encryption),
+        SQLAlchemyOrganizationRepository(conn, encryption),
+        SQLAlchemyUserRepository(conn, encryption),
     )
 
 
@@ -338,8 +339,10 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
 
     if user_id and "pending_invite_count" not in ctx:
         try:
+            from rentivo.encryption.factory import get_encryption
+
             conn = _get_conn(request)
-            invite_repo = SQLAlchemyInviteRepository(conn)
+            invite_repo = SQLAlchemyInviteRepository(conn, get_encryption())
             ctx["pending_invite_count"] = invite_repo.count_pending_for_user(user_id)
         except Exception:
             ctx["pending_invite_count"] = 0

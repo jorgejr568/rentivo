@@ -527,7 +527,7 @@ class SQLAlchemyUserRepository(UserRepository):
     def _row_to_user(self, row: RowMapping) -> User:
         return User(
             id=row["id"],
-            email=row["email"],
+            email=self.encryption.decrypt(row["email"] or ""),
             password_hash=row["password_hash"],
             pix_key=self.encryption.decrypt(row.get("pix_key", "") or ""),
             pix_merchant_name=self.encryption.decrypt(row.get("pix_merchant_name", "") or ""),
@@ -536,14 +536,24 @@ class SQLAlchemyUserRepository(UserRepository):
         )
 
     def create(self, user: User) -> User:
+        from rentivo.blind_index import compute_email_hash
+
         self.conn.execute(
-            text("INSERT INTO users (email, password_hash, created_at) VALUES (:email, :password_hash, :created_at)"),
-            {"email": user.email, "password_hash": user.password_hash, "created_at": _now()},
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES (:email, :email_hash, :password_hash, :created_at)"
+            ),
+            {
+                "email": self.encryption.encrypt(user.email),
+                "email_hash": compute_email_hash(user.email),
+                "password_hash": user.password_hash,
+                "created_at": _now(),
+            },
         )
         self.conn.commit()
         result = self.get_by_email(user.email)
         if result is None:
-            raise RuntimeError(f"Failed to retrieve user after create (email={user.email})")
+            raise RuntimeError("Failed to retrieve user after create")
         return result
 
     def get_by_id(self, user_id: int) -> User | None:
@@ -551,8 +561,34 @@ class SQLAlchemyUserRepository(UserRepository):
         return None if row is None else self._row_to_user(row)
 
     def get_by_email(self, email: str) -> User | None:
+        """Look up by deterministic blind index. Falls back to plaintext for legacy rows."""
+        from rentivo.blind_index import compute_email_hash
+
+        email_hash = compute_email_hash(email)
         row = (
-            self.conn.execute(text("SELECT * FROM users WHERE email = :email"), {"email": email}).mappings().fetchone()
+            self.conn.execute(
+                text("SELECT * FROM users WHERE email_hash = :hash"),
+                {"hash": email_hash},
+            )
+            .mappings()
+            .fetchone()
+        )
+        if row is not None:
+            return self._row_to_user(row)
+
+        # Legacy fallback: a row written before the migration ran has its
+        # plaintext email and NULL hash. The migration LOWER+TRIM'd every
+        # legacy row, so the fallback compares the normalized input against
+        # the (already-normalized) stored value.
+        # TODO: remove this fallback once `make backfill-encryption` has been
+        # run in production and every row has a non-NULL email_hash.
+        row = (
+            self.conn.execute(
+                text("SELECT * FROM users WHERE email_hash IS NULL AND email = :normalized"),
+                {"normalized": email.strip().lower()},
+            )
+            .mappings()
+            .fetchone()
         )
         return None if row is None else self._row_to_user(row)
 
@@ -757,7 +793,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
                 id=row["id"],
                 organization_id=row["organization_id"],
                 user_id=row["user_id"],
-                email=row.get("email", ""),
+                email=self.encryption.decrypt(row.get("email", "") or ""),
                 role=row["role"],
                 created_at=row["created_at"],
             )
@@ -789,20 +825,20 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
 
 
 class SQLAlchemyInviteRepository(InviteRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
-    @staticmethod
-    def _row_to_invite(row: RowMapping) -> Invite:
+    def _row_to_invite(self, row: RowMapping) -> Invite:
         return Invite(
             id=row["id"],
             uuid=row["uuid"],
             organization_id=row["organization_id"],
             organization_name=row.get("org_name", ""),
             invited_user_id=row["invited_user_id"],
-            invited_email=row.get("invited_email", ""),
+            invited_email=self.encryption.decrypt(row.get("invited_email", "") or ""),
             invited_by_user_id=row["invited_by_user_id"],
-            invited_by_email=row.get("invited_by_email", ""),
+            invited_by_email=self.encryption.decrypt(row.get("invited_by_email", "") or ""),
             role=row["role"],
             status=row["status"],
             enforce_mfa=bool(row.get("enforce_mfa", False)),
