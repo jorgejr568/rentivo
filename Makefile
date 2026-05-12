@@ -71,6 +71,10 @@ redact-audit-logs-dry:
 seed:
 	$(PYTHON) -m rentivo.scripts.seed
 
+.PHONY: generate-blind-index-key
+generate-blind-index-key:
+	$(PYTHON) -m rentivo.scripts.generate_blind_index_key
+
 # --- Lint & Format ---
 
 .PHONY: fmt
