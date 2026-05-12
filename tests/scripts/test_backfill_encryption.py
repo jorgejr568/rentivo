@@ -496,3 +496,56 @@ class TestBackfillUsersEmail:
         from rentivo.blind_index import compute_email_hash
 
         assert row["email_hash"] == compute_email_hash("legacy@example.com")
+
+    def test_reset_blind_index_nulls_all_hashes(self, db_connection, monkeypatch):
+        """--reset-blind-index NULLs every users.email_hash so the backfill re-populates them.
+
+        Without this step, a key rotation leaves every user locked out.
+        """
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts.backfill_encryption import _reset_email_hash, run
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x0a" * 32)
+
+        # Seed a fully-migrated row (encrypted email + a stale hash).
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('fake:user@example.com', 'STALEHASH', 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        _reset_email_hash(db_connection, dry_run=False)
+
+        row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
+        assert row["email_hash"] is None
+
+        # Subsequent backfill repopulates the hash under the current key.
+        run(db_connection, FakeEncryptingBackend(), dry_run=False)
+        from rentivo.blind_index import compute_email_hash
+
+        row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
+        assert row["email_hash"] == compute_email_hash("user@example.com")
+
+    def test_reset_blind_index_dry_run_writes_nothing(self, db_connection):
+        """--reset-blind-index --dry-run prints the count but leaves hashes unchanged."""
+        from sqlalchemy import text
+
+        from rentivo.scripts.backfill_encryption import _reset_email_hash
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('fake:user@example.com', 'STALEHASH', 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        _reset_email_hash(db_connection, dry_run=True)
+
+        row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
+        assert row["email_hash"] == "STALEHASH"  # unchanged

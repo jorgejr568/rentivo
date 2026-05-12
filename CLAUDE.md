@@ -281,7 +281,7 @@ The HMAC key `K` is not an env-var secret. It's 32 random bytes generated once v
 
 The Alembic migration that adds `email_hash` also runs `UPDATE users SET email = LOWER(TRIM(email))` so legacy plaintext rows match the same normalization the hash applies. Any pre-existing case-variant duplicates (e.g. `Alice@x.com` and `alice@x.com` as separate accounts) survive the migration and are caught by the new `UNIQUE(email_hash)` at backfill time — surfaced loudly, not silently merged.
 
-Rotating the key invalidates every existing `users.email_hash` row. The fix is to regenerate the env var and re-run `make backfill-encryption`, which detects the missing hash and re-populates it. Plan for downtime or a dual-key window if the user base is large.
+Rotating the key invalidates every existing `users.email_hash` row. To rotate without locking users out: generate a new key, set the new env var, restart, then run `make backfill-encryption-reset-blind-index` — which NULLs every existing hash and re-computes it under the new key. A plain `make backfill-encryption` would skip the stale rows and leave the entire user table indexed under the previous key. Plan for downtime or a dual-key window if the user base is large.
 
 ### Architecture
 

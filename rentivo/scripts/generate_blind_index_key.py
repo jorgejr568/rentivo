@@ -52,7 +52,8 @@ def main() -> None:
     console.print("[bold yellow]New blind-index key generated.[/bold yellow]")
     console.print(
         "[red]This invalidates every existing users.email_hash row. "
-        "Run `make backfill-encryption` after deploying.[/red]\n"
+        "Run `make backfill-encryption-reset-blind-index` after deploying so "
+        "stale hashes are NULLed and recomputed under the new key.[/red]\n"
     )
     console.print("Set this in your environment:\n")
     console.print(

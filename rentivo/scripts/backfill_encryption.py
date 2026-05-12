@@ -3,6 +3,12 @@
 Usage:
     python -m rentivo.scripts.backfill_encryption
     python -m rentivo.scripts.backfill_encryption --dry-run
+    python -m rentivo.scripts.backfill_encryption --reset-blind-index
+
+The ``--reset-blind-index`` flag NULLs every ``users.email_hash`` before the
+backfill runs. Use it after rotating ``RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT``
+— otherwise the existing (stale) hashes would be silently skipped and every
+user would be locked out.
 
 Behavior:
 - Walks every PII-bearing row across users, organizations, billings,
@@ -213,12 +219,35 @@ def run(conn: Connection, encryption: EncryptionBackend, *, dry_run: bool) -> No
         console.print("[yellow]Re-run without --dry-run to apply.[/yellow]")
 
 
+def _reset_email_hash(conn: Connection, *, dry_run: bool) -> None:
+    """NULL every users.email_hash so the backfill re-populates them under the current key.
+
+    Required after rotating ``RENTIVO_EMAIL_BLIND_INDEX_KEY_CIPHERTEXT``. Without
+    this, the backfill's skip condition (encrypted email + populated hash) would
+    silently skip every row, leaving the entire user table indexed under the
+    previous key.
+    """
+    label = "[yellow]DRY-RUN[/yellow]" if dry_run else "[red]LIVE[/red]"
+    console.print(f"\n[bold]Resetting email_hash for all users[/bold] {label}")
+    if dry_run:
+        count = conn.execute(text("SELECT COUNT(*) FROM users WHERE email_hash IS NOT NULL")).scalar_one()
+        console.print(f"  Would NULL {count} email_hash values.")
+        return
+    result = conn.execute(text("UPDATE users SET email_hash = NULL"))
+    conn.commit()
+    console.print(f"  Reset {result.rowcount} email_hash values.")
+    logger.info("backfill_reset_email_hash", rows=result.rowcount)
+
+
 def main() -> None:
     configure_logging(cli=True)
     dry_run = "--dry-run" in sys.argv
+    reset_blind_index = "--reset-blind-index" in sys.argv
     initialize_db()
     conn = get_connection()
     encryption = get_encryption()
+    if reset_blind_index:
+        _reset_email_hash(conn, dry_run=dry_run)
     run(conn, encryption, dry_run=dry_run)
 
 
