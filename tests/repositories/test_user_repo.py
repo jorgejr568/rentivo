@@ -120,3 +120,107 @@ class TestUserRepoEncryption:
         assert fetched is not None
         assert fetched.pix_key == "legacy@pix.com"
         assert fetched.pix_merchant_name == "Legacy"
+        assert fetched.pix_merchant_city == "Legacy City"
+        assert fetched.email == "legacy@example.com"
+
+
+class TestUserRepoEmailEncryption:
+    """Email is encrypted at rest and looked up by HMAC blind index."""
+
+    def test_create_stores_ciphertext_in_email_column(self, db_connection, fake_encryption, monkeypatch):
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        # Stub the blind-index key so the hash is deterministic for assertions.
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x01" * 32)
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        created = repo.create(User(email="Alice@Example.com", password_hash="x"))
+
+        row = (
+            db_connection.execute(
+                text("SELECT email, email_hash FROM users WHERE id = :id"),
+                {"id": created.id},
+            )
+            .mappings()
+            .fetchone()
+        )
+        assert row["email"] == "fake:Alice@Example.com"
+        # Hash is hex SHA256 over lower-cased+stripped email under the stub key.
+        from rentivo.blind_index import compute_email_hash
+
+        assert row["email_hash"] == compute_email_hash("Alice@Example.com")
+        # The Pydantic model surfaces decrypted plaintext to callers.
+        assert created.email == "Alice@Example.com"
+
+    def test_get_by_email_uses_blind_index(self, db_connection, fake_encryption, monkeypatch):
+        import rentivo.blind_index
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x02" * 32)
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        repo.create(User(email="bob@example.com", password_hash="x"))
+
+        # Case + whitespace variations match the same row.
+        for variant in ("bob@example.com", "Bob@Example.COM", "  bob@example.com  "):
+            found = repo.get_by_email(variant)
+            assert found is not None
+            assert found.email == "bob@example.com"
+
+    def test_get_by_email_returns_none_for_unknown(self, db_connection, fake_encryption, monkeypatch):
+        import rentivo.blind_index
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x03" * 32)
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        assert repo.get_by_email("nobody@example.com") is None
+
+    def test_list_all_decrypts_email(self, db_connection, fake_encryption, monkeypatch):
+        import rentivo.blind_index
+        from rentivo.models.user import User
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x04" * 32)
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        repo.create(User(email="a@example.com", password_hash="x"))
+        repo.create(User(email="b@example.com", password_hash="x"))
+
+        emails = sorted(u.email for u in repo.list_all())
+        assert emails == ["a@example.com", "b@example.com"]
+
+    def test_get_by_email_handles_legacy_plaintext_row(self, db_connection, fake_encryption, monkeypatch):
+        """A row written before the migration ran has plaintext email and NULL hash.
+
+        Until the backfill runs, ``get_by_email`` must still find it. The
+        migration LOWER+TRIM'd every legacy row, so the fallback compares
+        the normalized input against the (already-normalized) stored value.
+        """
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x05" * 32)
+
+        # Simulate a post-migration legacy row: already lowercased and trimmed.
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('legacy@example.com', NULL, 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        # Case + whitespace variations all reach the normalized stored row.
+        for variant in ("legacy@example.com", "Legacy@Example.com", "  legacy@example.com  "):
+            found = repo.get_by_email(variant)
+            assert found is not None, f"variant {variant!r} did not match the legacy row"
+            assert found.email == "legacy@example.com"

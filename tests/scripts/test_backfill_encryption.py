@@ -91,10 +91,11 @@ class TestBackfillEncryption:
 
         backfill_encryption.run(seeded_db, fake_encryption, dry_run=False)
 
+        # After backfill, email is encrypted — query by the known encrypted form.
         row = (
             seeded_db.execute(
                 text("SELECT pix_key, pix_merchant_name, pix_merchant_city FROM users WHERE email = :e"),
-                {"e": "alice@example.com"},
+                {"e": "fake:alice@example.com"},
             )
             .mappings()
             .fetchone()
@@ -108,10 +109,11 @@ class TestBackfillEncryption:
 
         backfill_encryption.run(seeded_db, fake_encryption, dry_run=False)
 
+        # After backfill, email is encrypted — query by the known encrypted form.
         row = (
             seeded_db.execute(
                 text("SELECT pix_key FROM users WHERE email = :e"),
-                {"e": "already@example.com"},
+                {"e": "fake:already@example.com"},
             )
             .mappings()
             .fetchone()
@@ -124,10 +126,11 @@ class TestBackfillEncryption:
 
         backfill_encryption.run(seeded_db, fake_encryption, dry_run=False)
 
+        # After backfill, email is encrypted — query by the known encrypted form.
         row = (
             seeded_db.execute(
                 text("SELECT pix_key FROM users WHERE email = :e"),
-                {"e": "blank@example.com"},
+                {"e": "fake:blank@example.com"},
             )
             .mappings()
             .fetchone()
@@ -140,10 +143,11 @@ class TestBackfillEncryption:
         backfill_encryption.run(seeded_db, fake_encryption, dry_run=False)
         backfill_encryption.run(seeded_db, fake_encryption, dry_run=False)
 
+        # After backfill, email is encrypted — query by the known encrypted form.
         row = (
             seeded_db.execute(
                 text("SELECT pix_key FROM users WHERE email = :e"),
-                {"e": "alice@example.com"},
+                {"e": "fake:alice@example.com"},
             )
             .mappings()
             .fetchone()
@@ -180,7 +184,7 @@ class TestBackfillEncryption:
         row = (
             db_connection.execute(
                 text("SELECT pix_key FROM users WHERE email = :e"),
-                {"e": "transition@example.com"},
+                {"e": "fake:transition@example.com"},
             )
             .mappings()
             .fetchone()
@@ -219,11 +223,11 @@ class TestBackfillEncryption:
         ):
             backfill_encryption.main()
 
-        # Plaintext row got encrypted.
+        # Plaintext row got encrypted — email is also now encrypted.
         row = (
             seeded_db.execute(
                 text("SELECT pix_key FROM users WHERE email = :e"),
-                {"e": "alice@example.com"},
+                {"e": "fake:alice@example.com"},
             )
             .mappings()
             .fetchone()
@@ -372,3 +376,176 @@ class TestBackfillEncryptionExtendedTargets:
             text("SELECT filename FROM receipts WHERE uuid = '01HXBACK00000000000000000003'")
         ).scalar_one()
         assert receipt_filename == "fake:plain.pdf"
+
+
+class TestBackfillUsersEmail:
+    def test_backfill_encrypts_email_and_populates_hash(self, db_connection, monkeypatch):
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts.backfill_encryption import run
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x06" * 32)
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('legacy@example.com', NULL, 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('OTHER@example.com', NULL, 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        backend = FakeEncryptingBackend()
+        run(db_connection, backend, dry_run=False)
+
+        rows = db_connection.execute(text("SELECT email, email_hash FROM users ORDER BY id")).mappings().fetchall()
+        assert rows[0]["email"] == "fake:legacy@example.com"
+        assert rows[1]["email"] == "fake:OTHER@example.com"
+        from rentivo.blind_index import compute_email_hash
+
+        assert rows[0]["email_hash"] == compute_email_hash("legacy@example.com")
+        # Case-insensitive: the normalized form drives the hash.
+        assert rows[1]["email_hash"] == compute_email_hash("other@example.com")
+
+    def test_backfill_is_idempotent(self, db_connection, monkeypatch):
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts.backfill_encryption import run
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x07" * 32)
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('legacy@example.com', NULL, 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        backend = FakeEncryptingBackend()
+        run(db_connection, backend, dry_run=False)
+        first = db_connection.execute(text("SELECT email, email_hash FROM users")).mappings().fetchone()
+
+        # A second run must not double-encrypt — is_encrypted("fake:...") is True.
+        run(db_connection, backend, dry_run=False)
+        second = db_connection.execute(text("SELECT email, email_hash FROM users")).mappings().fetchone()
+        assert first["email"] == second["email"]
+        assert first["email_hash"] == second["email_hash"]
+
+    def test_dry_run_writes_nothing(self, db_connection, monkeypatch):
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts.backfill_encryption import run
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x08" * 32)
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('legacy@example.com', NULL, 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        backend = FakeEncryptingBackend()
+        run(db_connection, backend, dry_run=True)
+        # Dry-run does not write; email stays plaintext and hash stays NULL —
+        # querying plaintext here is intentional, not a copy-paste from the
+        # live-run tests above.
+        row = db_connection.execute(text("SELECT email, email_hash FROM users")).mappings().fetchone()
+        assert row["email"] == "legacy@example.com"
+        assert row["email_hash"] is None
+
+    def test_half_migrated_row_only_writes_hash(self, db_connection, monkeypatch):
+        """Encrypted email + NULL hash → UPDATE only email_hash, leave email blob untouched."""
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts.backfill_encryption import run
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x09" * 32)
+
+        # Seed a row where email is already ciphertext but hash is NULL.
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('fake:legacy@example.com', NULL, 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        backend = FakeEncryptingBackend()
+        run(db_connection, backend, dry_run=False)
+
+        row = db_connection.execute(text("SELECT email, email_hash FROM users")).mappings().fetchone()
+        # Email blob is unchanged.
+        assert row["email"] == "fake:legacy@example.com"
+        # Hash is populated.
+        from rentivo.blind_index import compute_email_hash
+
+        assert row["email_hash"] == compute_email_hash("legacy@example.com")
+
+    def test_reset_blind_index_nulls_all_hashes(self, db_connection, monkeypatch):
+        """--reset-blind-index NULLs every users.email_hash so the backfill re-populates them.
+
+        Without this step, a key rotation leaves every user locked out.
+        """
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts.backfill_encryption import _reset_email_hash, run
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x0a" * 32)
+
+        # Seed a fully-migrated row (encrypted email + a stale hash).
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('fake:user@example.com', 'STALEHASH', 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        _reset_email_hash(db_connection, dry_run=False)
+
+        row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
+        assert row["email_hash"] is None
+
+        # Subsequent backfill repopulates the hash under the current key.
+        run(db_connection, FakeEncryptingBackend(), dry_run=False)
+        from rentivo.blind_index import compute_email_hash
+
+        row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
+        assert row["email_hash"] == compute_email_hash("user@example.com")
+
+    def test_reset_blind_index_dry_run_writes_nothing(self, db_connection):
+        """--reset-blind-index --dry-run prints the count but leaves hashes unchanged."""
+        from sqlalchemy import text
+
+        from rentivo.scripts.backfill_encryption import _reset_email_hash
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('fake:user@example.com', 'STALEHASH', 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        _reset_email_hash(db_connection, dry_run=True)
+
+        row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
+        assert row["email_hash"] == "STALEHASH"  # unchanged

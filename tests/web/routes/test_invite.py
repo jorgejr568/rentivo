@@ -21,7 +21,7 @@ def _setup_invite(test_engine):
     org = create_org_in_db(test_engine, "Test Org", user2.id)
 
     with test_engine.connect() as conn:
-        invite_repo = SQLAlchemyInviteRepository(conn)
+        invite_repo = SQLAlchemyInviteRepository(conn, Base64Backend())
         invite = invite_repo.create(
             Invite(
                 organization_id=org.id,
@@ -180,7 +180,7 @@ class TestInviteAcceptMFAEnforcement:
 
         # Create invite for the logged-in user
         with test_engine.connect() as conn:
-            invite_repo = SQLAlchemyInviteRepository(conn)
+            invite_repo = SQLAlchemyInviteRepository(conn, Base64Backend())
             invite = invite_repo.create(
                 Invite(
                     organization_id=org.id,

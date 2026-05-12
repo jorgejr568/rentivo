@@ -141,7 +141,7 @@ class TestSerializeUser:
         result = serialize_user(user)
 
         assert result["id"] == 1
-        assert result["email"] == "admin@test.com"
+        assert result["email"] == "ad...@test.com"  # email is redacted
         assert result["created_at"] == now.isoformat()
         assert "password_hash" not in result
         assert "username" not in result
@@ -195,13 +195,48 @@ class TestSerializeUser:
         assert a["pix_key"] == b["pix_key"] == "ali...om"
         assert a["pix_key"] != c["pix_key"]
 
+    def test_email_redacted_to_partial_mask(self):
+        user = User(
+            id=1,
+            email="alice@example.com",
+            password_hash="hash",
+            pix_key="",
+            pix_merchant_name="",
+            pix_merchant_city="",
+        )
+        result = serialize_user(user)
+        # Partial-mask: first 2 chars of local + ...@ + full domain.
+        assert result["email"] == "al...@example.com"
+        # password_hash must NEVER appear.
+        assert "password_hash" not in result
 
-def test_serialize_user_uses_email():
-    user = User(id=1, email="a@b.com", password_hash="x", pix_key="k")
-    result = serialize_user(user)
-    assert result["email"] == "a@b.com"
-    assert "username" not in result
-    assert "password_hash" not in result
+    def test_email_redaction_is_deterministic(self):
+        """Same plaintext email → same redacted form."""
+        a = serialize_user(User(email="alice@example.com", password_hash="x"))
+        b = serialize_user(User(email="bob@example.com", password_hash="x"))
+        c = serialize_user(User(email="alice@example.com", password_hash="y"))
+
+        assert a["email"] == c["email"] == "al...@example.com"
+        assert a["email"] != b["email"]
+
+    def test_email_short_local_collapses_to_stars(self):
+        # Email with 1-char local part can't be partial-masked.
+        user = User(email="a@example.com", password_hash="x")
+        result = serialize_user(user)
+        assert result["email"] == "***@example.com"
+
+    def test_email_empty_serializes_to_empty(self):
+        """Empty email round-trips as empty — redact() returns "" on empty input."""
+        user = User(
+            id=1,
+            email="",
+            password_hash="x",
+            pix_key="",
+            pix_merchant_name="",
+            pix_merchant_city="",
+        )
+        result = serialize_user(user)
+        assert result["email"] == ""
 
 
 class TestSerializeOrganization:

@@ -59,6 +59,10 @@ backfill-encryption:
 backfill-encryption-dry:
 	$(PYTHON) -m rentivo.scripts.backfill_encryption --dry-run
 
+.PHONY: backfill-encryption-reset-blind-index
+backfill-encryption-reset-blind-index:
+	$(PYTHON) -m rentivo.scripts.backfill_encryption --reset-blind-index
+
 .PHONY: redact-audit-logs
 redact-audit-logs:
 	$(PYTHON) -m rentivo.scripts.redact_audit_logs
