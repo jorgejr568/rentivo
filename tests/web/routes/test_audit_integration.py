@@ -25,7 +25,7 @@ class TestAuthAuditLogs:
         log = logs[0]
         assert log.source == "web"
         assert log.entity_type == "user"
-        assert log.actor_username == "audituser@example.com"
+        assert log.actor_username == "au...@example.com"
 
     def test_failed_login_creates_audit_log(self, client, test_engine):
         """Failed login creates a user.login_failed audit entry."""
@@ -65,7 +65,7 @@ class TestAuthAuditLogs:
         log = logs[0]
         assert log.source == "web"
         assert log.entity_type == "user"
-        assert log.actor_username == "testuser@example.com"
+        assert log.actor_username == "te...@example.com"
 
 
 class TestBillingAuditLogs:
@@ -275,7 +275,7 @@ class TestAuditLogStateCapture:
         logs = get_audit_logs(test_engine, AuditEventType.BILLING_CREATE)
         assert len(logs) >= 1
         log = logs[0]
-        assert log.actor_username == "testuser@example.com"
+        assert log.actor_username == "te...@example.com"
         assert log.actor_id is not None
 
     def test_audit_log_entity_uuid_captured(self, auth_client, test_engine, csrf_token):

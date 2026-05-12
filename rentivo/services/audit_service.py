@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.audit_log import AuditLog
+from rentivo.pii_redaction import PIIKind, redact
 from rentivo.repositories.base import AuditLogRepository
 
 logger = structlog.get_logger(__name__)
@@ -26,11 +27,17 @@ class AuditService:
         new_state: dict | None = None,
         metadata: dict | None = None,
     ) -> AuditLog:
-        """Create an audit log entry. Raises on failure."""
+        """Create an audit log entry. Raises on failure.
+
+        ``actor_username`` is partial-mask redacted (``PIIKind.EMAIL``) before
+        persistence and before structlog emission so plaintext emails never
+        land in audit_logs or stdout.
+        """
+        safe_actor = redact(actor_username or "", PIIKind.EMAIL)
         audit_log = AuditLog(
             event_type=event_type,
             actor_id=actor_id,
-            actor_username=actor_username,
+            actor_username=safe_actor,
             source=source,
             entity_type=entity_type,
             entity_id=entity_id,
@@ -44,7 +51,7 @@ class AuditService:
             "audit_logged",
             event_type=event_type,
             actor_id=actor_id,
-            actor_username=actor_username,
+            actor_username=safe_actor,
             entity_type=entity_type,
             entity_id=entity_id,
         )

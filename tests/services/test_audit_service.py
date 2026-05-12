@@ -37,7 +37,7 @@ class TestAuditServiceLog:
         created_log = self.mock_repo.create.call_args[0][0]
         assert created_log.event_type == "billing.create"
         assert created_log.actor_id == 1
-        assert created_log.actor_username == "admin"
+        assert created_log.actor_username == "***"  # "admin" has no '@' → redacted to ***
         assert created_log.source == "web"
         assert created_log.entity_type == "billing"
         assert created_log.entity_id == 10
@@ -144,3 +144,30 @@ class TestAuditServiceQueries:
         self.mock_repo.list_recent.return_value = []
         self.service.list_recent()
         self.mock_repo.list_recent.assert_called_once_with(50)
+
+
+class TestActorUsernameRedaction:
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_repo.create.side_effect = lambda log: log
+        self.service = AuditService(self.mock_repo)
+
+    def test_log_redacts_email_in_actor_username(self):
+        result = self.service.log(
+            event_type="user.login",
+            actor_id=1,
+            actor_username="alice@example.com",
+        )
+        assert result.actor_username == "al...@example.com"
+
+    def test_log_keeps_empty_actor_username(self):
+        result = self.service.log(event_type="user.login", actor_username="")
+        assert result.actor_username == ""
+
+    def test_log_masks_non_email_username(self):
+        # If a non-email is ever passed, the PIIKind.EMAIL masker collapses it
+        # (no '@' is treated as a "short" value → ***). This is defensive — CLI
+        # source already uses actor_username="" — but verify the masker isn't
+        # leaking the raw value.
+        result = self.service.log(event_type="job.scheduled", actor_username="cli")
+        assert result.actor_username == "***"
