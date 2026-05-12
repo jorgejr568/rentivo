@@ -83,14 +83,16 @@ def serialize_bill(bill: Bill) -> dict:
 def serialize_user(user: User) -> dict:
     """Serialize a User for audit state.
 
-    Excludes ``password_hash``. PIX fields (``pix_key``, ``pix_merchant_name``,
-    ``pix_merchant_city``) are partial-mask redacted via
-    :func:`rentivo.pii_redaction.redact` — first 3 chars + ``...`` + last 2
-    chars. Empty values redact to ``""``. The mask is one-way and key-less.
+    Excludes ``password_hash``. Email is partial-mask redacted via
+    :func:`rentivo.pii_redaction.redact` with ``PIIKind.EMAIL`` — first 2 chars
+    of local-part + ``...@`` + full domain (e.g. ``jo...@gmail.com``). PIX fields
+    (``pix_key``, ``pix_merchant_name``, ``pix_merchant_city``) are also
+    partial-mask redacted — first 3 chars + ``...`` + last 2 chars. Empty values
+    redact to ``""``. The mask is one-way and key-less.
     """
     return {
         "id": user.id,
-        "email": user.email,
+        "email": redact(user.email or "", PIIKind.EMAIL),
         "pix_key": redact(user.pix_key or "", PIIKind.PIX),
         "pix_merchant_name": redact(user.pix_merchant_name or "", PIIKind.PIX),
         "pix_merchant_city": redact(user.pix_merchant_city or "", PIIKind.PIX),
