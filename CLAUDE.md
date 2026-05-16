@@ -316,6 +316,55 @@ The idempotency contract — each backend's `is_encrypted` recognises only its o
 - Service: `rentivo/services/turnstile_service.py:TurnstileService` exposes `is_enabled` and `async verify(token, remote_ip)`.
 - Wired on: `/login`, `/signup`, `/forgot-password`. The form field name set by Cloudflare's widget is `cf-turnstile-response`.
 
+## Versioning & Releases
+
+Rentivo follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html). Every release is a `vMAJOR.MINOR.PATCH` git tag plus a matching GitHub Release. The canonical history of releases lives in [`CHANGELOG.md`](CHANGELOG.md) using the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.
+
+### When to bump what
+
+- **PATCH (`vX.Y.Z+1`)** — backwards-compatible bug fix, dependency bump, doc-only change, perf tweak that doesn't change behaviour. Conventional-commit prefixes that map here: `fix:`, `perf:`, `chore(deps):`, `docs:`, `refactor:` (when behaviour is identical).
+- **MINOR (`vX.Y+1.0`)** — new user-visible feature or new public surface (CLI command, web route, env var, Alembic migration that *adds* a column). Backwards compatible: existing flows keep working without intervention. Prefix: `feat:`.
+- **MAJOR (`vX+1.0.0`)** — breaking change. Anything that forces an operator to read release notes before deploying: removed/renamed env var, removed/renamed route, package rename, login-mechanism change, dropped Python version, Alembic migration that *drops* a column without a deprecation window. Always pair with a `BREAKING CHANGE:` footer in the merge commit so future bots can pick it up.
+
+When in doubt, **bump higher, not lower** — an unnecessary major bump is a minor annoyance; an unexpected breaking change in a patch is an outage.
+
+### Conventional commits
+
+We use [Conventional Commits](https://www.conventionalcommits.org/) on PR titles and merge commits. The history from `feat(encryption): …` onward already follows this; older commits don't, and that's fine — `CHANGELOG.md` is authoritative.
+
+```
+<type>[(scope)]: <subject>
+
+<body>
+
+[BREAKING CHANGE: <description>]
+```
+
+Common types: `feat`, `fix`, `perf`, `refactor`, `chore`, `docs`, `test`, `ci`, `build`.
+
+### Release procedure
+
+1. Decide the bump (`patch`/`minor`/`major`) based on the rules above.
+2. On a release branch:
+   - Bump `version` in `pyproject.toml`.
+   - Prepend a new section to `CHANGELOG.md` with the new version, today's date (`YYYY-MM-DD`), and grouped bullets under `### Added` / `### Changed` / `### Fixed` / `### Removed` / `### Security` (Keep-a-Changelog headings — only include groups that have entries).
+3. Open a PR titled `chore(release): vX.Y.Z`, merge it.
+4. Tag the merge commit and push:
+   ```bash
+   git checkout main && git pull
+   git tag -a vX.Y.Z -m "Release vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
+5. `.github/workflows/release.yml` reads the matching `CHANGELOG.md` section and publishes the GitHub Release automatically.
+
+### One-time history backfill
+
+The historical 35 tags were applied via `scripts/tag_history.sh`. The script is idempotent: re-running it skips any tag/release that already exists. Do **not** delete and re-create historical tags casually — links in PRs, issues, and external docs depend on them.
+
+### Versioning the Docker images
+
+Currently the Docker images aren't published to a registry — deploy is a webhook trigger (`.github/workflows/deploy.yml`). When that changes, the release workflow should also push images tagged `:vX.Y.Z` and `:latest`. Out of scope for this rollout.
+
 ## Key Rules
 
 - **NEVER delete `invoices/`** without explicit user confirmation
