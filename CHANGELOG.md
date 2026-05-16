@@ -4,6 +4,8 @@ All notable changes to Rentivo are documented in this file.
 
 The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html). See [`CLAUDE.md` → Versioning & Releases](CLAUDE.md#versioning--releases) for the bump policy.
 
+> Note: this changelog was seeded from 187 commits of pre-SemVer history. Some pre-v3.0.0 dates are not strictly monotonic top-to-bottom (rebase artifacts) — entries are ordered by SemVer, not by date.
+
 ## [Unreleased]
 
 ## [3.9.0] - 2026-05-12
@@ -20,7 +22,7 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [3.7.0] - 2026-05-04
 ### Added
-- Extend KMS field encryption to free-text PII columns (`billings.description`, `billing_items.description`, `bills.notes`, `bill_line_items.description`, `receipts.filename`, etc.) (#46).
+- Extend KMS field encryption to free-text PII columns across `billings`, `billing_items`, `bills`, `bill_line_items`, and `receipts`. Run `make backfill-encryption` after deploy to rewrite legacy rows (#46).
 
 ## [3.6.2] - 2026-05-04
 ### Fixed
@@ -55,9 +57,11 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - Transactional emails for auth, MFA, devices, organization invites, and billing transfers (#35).
 
 ## [3.0.0] - 2026-05-01
+### Added
+- SES-backed password recovery (`/forgot-password`, `/reset-password`) (#34).
+
 ### Changed
 - **BREAKING**: login is now email-only. The `username` column is no longer used for authentication; existing users must log in with their email.
-- Adds SES-backed password recovery (`/forgot-password`, `/reset-password`) (#34).
 
 ### Migration notes
 - Run `make migrate` to apply the schema changes.
