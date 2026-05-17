@@ -26,6 +26,7 @@ dependencies = [
     "pypdf>=5.0,<7",
     "pyotp>=2.9,<3",
     "webauthn>=2.0,<3",
+    "cachetools>=5.3,<6",
 ]
 
 [tool.setuptools.packages.find]
