@@ -16,8 +16,8 @@ class MemoryDecryptCache:
     Wraps ``cachetools.TTLCache`` with an ``RLock`` because ``cachetools`` is
     not thread-safe and KMS ``decrypt_many`` fans out via a thread pool.
 
-    A daemon cleanup thread (added in a later commit) actively sweeps expired
-    entries so memory does not grow unbounded between reads.
+    A daemon cleanup thread actively sweeps expired entries so memory does
+    not grow unbounded between reads.
     """
 
     def __init__(
@@ -36,9 +36,34 @@ class MemoryDecryptCache:
             ttl=ttl_seconds,
             timer=self._timer,
         )
-        # Cleanup thread fields — populated in a later commit.
         self._stop_event: threading.Event | None = None
         self._cleanup_thread: threading.Thread | None = None
+
+        if enable_cleanup_thread:
+            interval = self._effective_cleanup_interval(ttl_seconds, cleanup_interval_seconds)
+            self._stop_event = threading.Event()
+            self._cleanup_thread = threading.Thread(
+                target=self._cleanup_loop,
+                args=(interval,),
+                name="MemoryDecryptCache-cleanup",
+                daemon=True,
+            )
+            self._cleanup_thread.start()
+
+    @staticmethod
+    def _effective_cleanup_interval(ttl_seconds: int, override: float | None) -> float:
+        if override is not None:
+            return float(override)
+        return max(1.0, ttl_seconds / 4.0)
+
+    def _cleanup_loop(self, interval: float) -> None:
+        stop = self._stop_event
+        assert stop is not None
+        while not stop.wait(interval):
+            with self._lock:
+                # cachetools TTLCache exposes ``expire()`` to drop everything
+                # whose TTL has elapsed under the configured timer.
+                self._cache.expire()
 
     def get_many(self, keys: list[str]) -> dict[str, str]:
         if not keys:
@@ -60,5 +85,9 @@ class MemoryDecryptCache:
                 self._cache[k] = v
 
     def close(self) -> None:
-        # Cleanup thread shutdown is added in a later commit; no-op for now.
-        return None
+        if self._stop_event is not None:
+            self._stop_event.set()
+        if self._cleanup_thread is not None:
+            self._cleanup_thread.join(timeout=2.0)
+        self._stop_event = None
+        self._cleanup_thread = None
