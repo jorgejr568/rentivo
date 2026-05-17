@@ -67,13 +67,12 @@ class TestEncryptionFactoryCache:
 
         from rentivo.encryption.cache.memory import MemoryDecryptCache
         from rentivo.encryption.caching import CachingEncryptionBackend
-        from rentivo.encryption.factory import _reset_for_tests, get_encryption
+        from rentivo.encryption.factory import get_encryption
 
         backend = get_encryption()
         assert isinstance(backend, CachingEncryptionBackend)
         assert isinstance(backend.inner, Base64Backend)
         assert isinstance(backend.cache, MemoryDecryptCache)
-        _reset_for_tests()  # joins the cleanup thread
 
     @patch("rentivo.encryption.factory.settings")
     def test_redis_cache_wraps_inner_backend(self, mock_settings):
