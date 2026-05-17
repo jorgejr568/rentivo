@@ -337,7 +337,7 @@ Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`pip
 ### Operational notes
 
 - Set `cache_backend=none` to revert to the pre-cache code path; no migrations or KMS impact.
-- `_reset_for_tests()` closes any cache resources (joins the daemon cleanup thread, closes the Redis client) so background threads don't leak across tests.
+- The encryption test conftest (`tests/encryption/conftest.py`) calls `cache.close()` on the active `CachingEncryptionBackend` before invoking `factory._reset_for_tests()`, so the daemon cleanup thread is joined and the Redis client is closed between tests.
 
 ## Bot Protection (Cloudflare Turnstile)
 
