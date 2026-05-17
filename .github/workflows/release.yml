@@ -29,19 +29,23 @@ jobs:
 
       - name: Extract release notes from CHANGELOG.md
         id: notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          version="${{ steps.version.outputs.version }}"
-          awk -v ver="$version" '
+          awk -v ver="$VERSION" '
             BEGIN { found = 0 }
             /^## \[/ {
               if (found) exit
               if (index($0, "[" ver "]") > 0) { found = 1; next }
             }
+            /^\[.*\]: / {
+              if (found) exit
+            }
             found { print }
           ' CHANGELOG.md > release-notes.md
 
           if [ ! -s release-notes.md ]; then
-            echo "::error::No CHANGELOG.md section found for version $version"
+            echo "::error::No CHANGELOG.md section found for version $VERSION"
             exit 1
           fi
 
@@ -50,11 +54,12 @@ jobs:
           echo "---------------------"
 
       - name: Verify pyproject.toml version matches tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           pyproject_version=$(grep -E '^version = ' pyproject.toml | head -1 | cut -d'"' -f2)
-          tag_version="${{ steps.version.outputs.version }}"
-          if [ "$pyproject_version" != "$tag_version" ]; then
-            echo "::error::pyproject.toml version ($pyproject_version) does not match tag ($tag_version)"
+          if [ "$pyproject_version" != "$VERSION" ]; then
+            echo "::error::pyproject.toml version ($pyproject_version) does not match tag ($VERSION)"
             exit 1
           fi
 
