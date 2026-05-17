@@ -8,6 +8,13 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [3.10.0] - 2026-05-17
+### Added
+- Opt-in short-lived ciphertext → plaintext cache in front of `EncryptionBackend.decrypt` / `decrypt_many`, selectable via `RENTIVO_ENCRYPTION_CACHE_BACKEND` (`none` default / `memory` / `redis`). Memory backend uses `cachetools.TTLCache` with a daemon cleanup thread; Redis backend is fail-open (`MGET` reads, pipelined `SET … EX` writes, SHA-256-hashed keys under `rentivo:enc:dec:v1:`). New env vars: `RENTIVO_ENCRYPTION_CACHE_TTL_SECONDS` (default `60`), `RENTIVO_ENCRYPTION_CACHE_MAX_ENTRIES` (default `10000`, memory only), `RENTIVO_REDIS_URL` (required iff backend = `redis`). Defaults preserve pre-cache behaviour bit-for-bit (#52).
+
+### Changed
+- Web, CLI, and worker Docker images now bundle the `[cache]` extras group (`redis-py`) so `RENTIVO_ENCRYPTION_CACHE_BACKEND=redis` works out of the box on deploy (#52).
+
 ## [3.9.0] - 2026-05-12
 ### Added
 - Encrypt `users.email` at rest behind the KMS backend; introduce a `users.email_hash` HMAC blind-index column for `WHERE email = ?` lookups (#49).
