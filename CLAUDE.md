@@ -357,9 +357,9 @@ Common types: `feat`, `fix`, `perf`, `refactor`, `chore`, `docs`, `test`, `ci`, 
    ```
 5. `.github/workflows/release.yml` reads the matching `CHANGELOG.md` section and publishes the GitHub Release automatically.
 
-### One-time history backfill
+### Historical tags
 
-The historical 35 tags were applied via `scripts/tag_history.sh`. The script is idempotent: re-running it skips any tag/release that already exists. Do **not** delete and re-create historical tags casually — links in PRs, issues, and external docs depend on them.
+The 41 tags `v0.1.0` … `v3.9.0` were backfilled from git history in PR #50 (commit `405e5e3`) and now live as GitHub Releases. Use `git tag --list 'v*' | sort -V` to list them. Do **not** delete or re-create historical tags — links in PRs, issues, and external docs depend on them.
 
 ### Versioning the Docker images
 
