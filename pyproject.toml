@@ -26,12 +26,14 @@ dependencies = [
     "pypdf>=5.0,<7",
     "pyotp>=2.9,<3",
     "webauthn>=2.0,<3",
+    "cachetools>=5.3,<6",
 ]
 
 [tool.setuptools.packages.find]
 include = ["rentivo*", "web*"]
 
 [project.optional-dependencies]
+cache = ["redis>=5.0,<6"]
 s3 = ["boto3>=1.35,<2"]
 dev = [
     "ruff>=0.9,<1",
@@ -46,6 +48,8 @@ test = [
     "freezegun>=1.4,<2",
     "boto3>=1.35,<2",
     "faker>=33.0,<41",
+    "fakeredis>=2.20,<3",
+    "redis>=5.0,<6",
 ]
 
 [project.scripts]

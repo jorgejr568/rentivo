@@ -242,3 +242,43 @@ def test_encryption_base64_does_not_require_kms_fields(monkeypatch):
     s = Settings(_env_file=None)
     assert s.encryption_backend == "base64"
     assert s.kms_key_id == ""
+
+
+class TestEncryptionCacheSettings:
+    def test_cache_backend_defaults_to_none(self):
+        s = Settings(_env_file=None)
+        assert s.encryption_cache_backend == "none"
+        assert s.encryption_cache_ttl_seconds == 60
+        assert s.encryption_cache_max_entries == 10_000
+        assert s.redis_url == ""
+
+    def test_cache_backend_accepts_memory(self):
+        s = Settings(_env_file=None, encryption_cache_backend="memory")
+        assert s.encryption_cache_backend == "memory"
+
+    def test_cache_backend_accepts_redis_with_url(self):
+        s = Settings(
+            _env_file=None,
+            encryption_cache_backend="redis",
+            redis_url="redis://localhost:6379/0",
+        )
+        assert s.encryption_cache_backend == "redis"
+        assert s.redis_url == "redis://localhost:6379/0"
+
+    def test_cache_backend_rejects_unknown(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, encryption_cache_backend="memcached")
+        assert "RENTIVO_ENCRYPTION_CACHE_BACKEND" in str(exc.value)
+
+    def test_cache_backend_redis_requires_url(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, encryption_cache_backend="redis", redis_url="")
+        assert "RENTIVO_REDIS_URL" in str(exc.value)
+
+    def test_cache_ttl_rejects_zero(self):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, encryption_cache_ttl_seconds=0)
+
+    def test_cache_max_entries_rejects_zero(self):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, encryption_cache_max_entries=0)

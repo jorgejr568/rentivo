@@ -309,6 +309,36 @@ The idempotency contract — each backend's `is_encrypted` recognises only its o
 - **KMS outage = read failure** for encrypted rows. Direct KMS is high-SLA but does add it as a hard dependency on the read path.
 - The migration `2f30089b2082_widen_pix_columns_for_encryption.py` widens the `pix_merchant_*` columns from `String(25)` / `String(15)` to `Text`. Run it during a low-traffic window on large tables.
 
+## Decryption Cache
+
+Decryption results are optionally cached in front of `EncryptionBackend.decrypt` / `decrypt_many` to cut KMS round-trips on hot read paths. The cache is a thin decorator (`CachingEncryptionBackend`) wrapping any concrete encryption backend; it is composed by the factory based on settings.
+
+### Configuration
+
+| Env var | Default | Notes |
+|---|---|---|
+| `RENTIVO_ENCRYPTION_CACHE_BACKEND` | `none` | `none` / `memory` / `redis` |
+| `RENTIVO_ENCRYPTION_CACHE_TTL_SECONDS` | `60` | applies to memory + redis |
+| `RENTIVO_ENCRYPTION_CACHE_MAX_ENTRIES` | `10000` | memory only |
+| `RENTIVO_REDIS_URL` | `""` | required iff cache backend = `redis` |
+
+Backends:
+
+- **none** — no wrapper is constructed; behaviour identical to before this feature.
+- **memory** — `cachetools.TTLCache` (bounded LRU) protected by an `RLock`, with a daemon cleanup thread that wakes every `ttl/4` seconds (floor 1s) to actively prune expired entries. Plaintext resides only in process RAM and is bounded by `max_entries`.
+- **redis** — sync `redis-py`; `MGET` for batch reads, pipelined `SET ... EX ttl` for writes. Keys are `rentivo:enc:dec:v1:<sha256(ciphertext)>`. Values are plaintext, UTF-8. Failures (connection, decode) are caught and logged; reads degrade to cache miss, writes are silently dropped. Redis MUST run on a private network with authentication, and ideally TLS (`rediss://`).
+
+Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`pip install 'rentivo[cache]'`) and imported lazily inside `RedisDecryptCache`.
+
+### What is not cached
+
+`encrypt()` results are not cached — plaintexts rarely repeat across writes and caching them would only widen the plaintext residency window. Cache lookups are by ciphertext string only.
+
+### Operational notes
+
+- Set `cache_backend=none` to revert to the pre-cache code path; no migrations or KMS impact.
+- The encryption test conftest (`tests/encryption/conftest.py`) calls `cache.close()` on the active `CachingEncryptionBackend` before invoking `factory._reset_for_tests()`, so the daemon cleanup thread is joined and the Redis client is closed between tests.
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).
