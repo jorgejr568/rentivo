@@ -101,3 +101,21 @@ def test_inadimplencia_counts_overdue_unpaid_bills(repo, db_connection):
 
     assert inad.amount_cents == 8000
     assert inad.count == 2
+
+
+def test_monthly_series_groups_by_reference_month(repo, db_connection):
+    _insert_billing(db_connection, billing_id=1, owner_type="user", owner_id=42)
+    _insert_bill(db_connection, bill_id=10, billing_id=1, status="paid", amount=1000, month="2026-04")
+    _insert_bill(db_connection, bill_id=11, billing_id=1, status="paid", amount=2000, month="2026-04")
+    _insert_bill(db_connection, bill_id=12, billing_id=1, status="sent", amount=500, month="2026-04")
+    _insert_bill(db_connection, bill_id=13, billing_id=1, status="cancelled", amount=99999, month="2026-04")
+    _insert_bill(db_connection, bill_id=14, billing_id=1, status="paid", amount=400, month="2026-05")
+    db_connection.commit()
+
+    series = repo.monthly_series(DashboardScope(kind="user", id=42), months=["2026-04", "2026-05"])
+
+    by_month = {p.reference_month: p for p in series}
+    assert by_month["2026-04"].faturado_cents == 3500
+    assert by_month["2026-04"].recebido_cents == 3000
+    assert by_month["2026-05"].faturado_cents == 400
+    assert by_month["2026-05"].recebido_cents == 400
