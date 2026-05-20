@@ -2,6 +2,7 @@ from rentivo.repositories.base import (
     AuditLogRepository,
     BillingRepository,
     BillRepository,
+    DashboardRepository,
     InviteRepository,
     KnownDeviceRepository,
     MFATOTPRepository,
@@ -122,3 +123,10 @@ def get_job_repository():
         get_connection(),
         stuck_after_seconds=settings.job_worker_stuck_after_seconds,
     )
+
+
+def get_dashboard_repository() -> DashboardRepository:
+    from rentivo.db import get_connection
+    from rentivo.repositories.dashboard import SQLAlchemyDashboardRepository
+
+    return SQLAlchemyDashboardRepository(get_connection())

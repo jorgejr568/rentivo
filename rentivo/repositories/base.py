@@ -275,3 +275,20 @@ class KnownDeviceRepository(ABC):
 
     @abstractmethod
     def upsert(self, device: KnownDevice) -> KnownDevice: ...
+
+
+from dataclasses import dataclass  # noqa: E402
+
+from rentivo.models.dashboard import DashboardScope  # noqa: E402
+
+
+@dataclass(frozen=True)
+class DashboardKPIs:
+    faturado_cents: int
+    recebido_cents: int
+    em_aberto_cents: int
+
+
+class DashboardRepository(ABC):
+    @abstractmethod
+    def kpis(self, scope: DashboardScope, reference_month: str) -> DashboardKPIs: ...
