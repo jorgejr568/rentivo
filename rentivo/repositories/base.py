@@ -279,7 +279,7 @@ class KnownDeviceRepository(ABC):
 
 from dataclasses import dataclass  # noqa: E402
 
-from rentivo.models.dashboard import DashboardScope  # noqa: E402
+from rentivo.models.dashboard import DashboardScope, MonthlyPoint, StatusCount  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -289,6 +289,21 @@ class DashboardKPIs:
     em_aberto_cents: int
 
 
+@dataclass(frozen=True)
+class InadimplenciaResult:
+    amount_cents: int
+    count: int
+
+
 class DashboardRepository(ABC):
     @abstractmethod
     def kpis(self, scope: DashboardScope, reference_month: str) -> DashboardKPIs: ...
+
+    @abstractmethod
+    def inadimplencia(self, scope: DashboardScope, today: str) -> InadimplenciaResult: ...
+
+    @abstractmethod
+    def monthly_series(self, scope: DashboardScope, months: list[str]) -> list[MonthlyPoint]: ...
+
+    @abstractmethod
+    def status_counts(self, scope: DashboardScope, reference_month: str) -> list[StatusCount]: ...

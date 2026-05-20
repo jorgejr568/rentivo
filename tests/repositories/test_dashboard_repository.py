@@ -73,3 +73,31 @@ def test_kpis_zero_when_no_bills(repo, db_connection):
     assert kpis.faturado_cents == 0
     assert kpis.recebido_cents == 0
     assert kpis.em_aberto_cents == 0
+
+
+def test_inadimplencia_counts_overdue_unpaid_bills(repo, db_connection):
+    _insert_billing(db_connection, billing_id=1, owner_type="user", owner_id=42)
+    # overdue + sent → counts
+    _insert_bill(db_connection, bill_id=10, billing_id=1, status="sent", amount=5000, month="2026-04", due="2026-04-15")
+    # overdue + delayed_payment → counts
+    _insert_bill(
+        db_connection,
+        bill_id=11,
+        billing_id=1,
+        status="delayed_payment",
+        amount=3000,
+        month="2026-03",
+        due="2026-03-15",
+    )
+    # overdue but paid → does NOT count
+    _insert_bill(db_connection, bill_id=12, billing_id=1, status="paid", amount=9999, month="2026-04", due="2026-04-15")
+    # not overdue → does NOT count
+    _insert_bill(db_connection, bill_id=13, billing_id=1, status="sent", amount=1234, month="2026-06", due="2026-06-30")
+    # no due_date → does NOT count
+    _insert_bill(db_connection, bill_id=14, billing_id=1, status="sent", amount=4444, month="2026-04", due=None)
+    db_connection.commit()
+
+    inad = repo.inadimplencia(DashboardScope(kind="user", id=42), today="2026-05-20")
+
+    assert inad.amount_cents == 8000
+    assert inad.count == 2
