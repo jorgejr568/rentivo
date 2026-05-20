@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 import fakeredis
 import pytest
-
 from rentivo.encryption.cache.redis import RedisDecryptCache, _hashed_key
 
 

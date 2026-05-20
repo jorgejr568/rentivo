@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from rentivo.cache.base import KVCache as DecryptCache
 from rentivo.encryption.base import EncryptionBackend
-from rentivo.encryption.cache.base import DecryptCache
 
 
 class CachingEncryptionBackend(EncryptionBackend):

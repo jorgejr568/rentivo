@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-class NullDecryptCache:
+class NullKVCache:
     """Cache implementation that does nothing. Selected when
     ``RENTIVO_ENCRYPTION_CACHE_BACKEND=none``."""
 

@@ -10,7 +10,7 @@ from cachetools import TTLCache
 logger = structlog.get_logger(__name__)
 
 
-class MemoryDecryptCache:
+class MemoryKVCache:
     """Process-local TTL cache for decrypted plaintexts.
 
     Wraps ``cachetools.TTLCache`` with an ``RLock`` because ``cachetools`` is
@@ -45,7 +45,7 @@ class MemoryDecryptCache:
             self._cleanup_thread = threading.Thread(
                 target=self._cleanup_loop,
                 args=(interval,),
-                name="MemoryDecryptCache-cleanup",
+                name="MemoryKVCache-cleanup",
                 daemon=True,
             )
             self._cleanup_thread.start()

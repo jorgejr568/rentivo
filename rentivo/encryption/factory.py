@@ -1,8 +1,8 @@
 import structlog
 
+from rentivo.cache.base import KVCache as DecryptCache
+from rentivo.cache.null import NullKVCache as NullDecryptCache
 from rentivo.encryption.base import EncryptionBackend
-from rentivo.encryption.cache.base import DecryptCache
-from rentivo.encryption.cache.null import NullDecryptCache
 from rentivo.encryption.caching import CachingEncryptionBackend
 from rentivo.settings import settings
 
@@ -38,7 +38,7 @@ def _build_decrypt_cache() -> DecryptCache:
         logger.info("decrypt_cache_selected", backend="none")
         return NullDecryptCache()
     if cache_backend == "memory":
-        from rentivo.encryption.cache.memory import MemoryDecryptCache
+        from rentivo.cache.memory import MemoryKVCache as MemoryDecryptCache
 
         logger.info(
             "decrypt_cache_selected",
@@ -51,7 +51,7 @@ def _build_decrypt_cache() -> DecryptCache:
             max_entries=settings.encryption_cache_max_entries,
         )
     if cache_backend == "redis":
-        from rentivo.encryption.cache.redis import RedisDecryptCache
+        from rentivo.cache.redis import RedisKVCache as RedisDecryptCache
 
         logger.info(
             "decrypt_cache_selected",
@@ -61,6 +61,7 @@ def _build_decrypt_cache() -> DecryptCache:
         return RedisDecryptCache.from_url(
             url=settings.redis_url,
             ttl_seconds=settings.encryption_cache_ttl_seconds,
+            key_prefix="rentivo:enc:dec:v1:",
         )
     raise ValueError(f"Unsupported decrypt cache backend: {cache_backend}")
 

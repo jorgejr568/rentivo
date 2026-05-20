@@ -12,15 +12,8 @@ except ImportError:  # pragma: no cover - exercised via patched import in tests
 
 logger = structlog.get_logger(__name__)
 
-_KEY_PREFIX = "rentivo:enc:dec:v1:"
 
-
-def _hashed_key(ciphertext: str) -> str:
-    digest = hashlib.sha256(ciphertext.encode("utf-8")).hexdigest()
-    return _KEY_PREFIX + digest
-
-
-class RedisDecryptCache:
+class RedisKVCache:
     """Shared TTL cache backed by Redis.
 
     Failure-mode: any exception from the redis client (network, decode) is
@@ -30,24 +23,29 @@ class RedisDecryptCache:
     speedup.
 
     Constructor takes an injected client so tests can supply ``fakeredis``.
-    Production callers should use ``RedisDecryptCache.from_url(...)``.
+    Production callers should use ``RedisKVCache.from_url(...)``.
     """
 
-    def __init__(self, client: Any, ttl_seconds: int) -> None:
+    def __init__(self, client: Any, ttl_seconds: int, key_prefix: str = "") -> None:
         self._client = client
         self._ttl_seconds = ttl_seconds
+        self._key_prefix = key_prefix
+
+    def _hashed_key(self, key: str) -> str:
+        digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        return self._key_prefix + digest
 
     @classmethod
-    def from_url(cls, url: str, ttl_seconds: int) -> "RedisDecryptCache":
+    def from_url(cls, url: str, ttl_seconds: int, key_prefix: str = "") -> "RedisKVCache":
         if redis is None:
-            raise ImportError("redis is required for RedisDecryptCache. Install it with: pip install 'rentivo[cache]'")
+            raise ImportError("redis is required for RedisKVCache. Install it with: pip install 'rentivo[cache]'")
         client = redis.from_url(url, decode_responses=True)
-        return cls(client=client, ttl_seconds=ttl_seconds)
+        return cls(client=client, ttl_seconds=ttl_seconds, key_prefix=key_prefix)
 
     def get_many(self, keys: list[str]) -> dict[str, str]:
         if not keys:
             return {}
-        hashed = [_hashed_key(k) for k in keys]
+        hashed = [self._hashed_key(k) for k in keys]
         try:
             values = self._client.mget(hashed)
         except Exception as exc:
@@ -66,7 +64,7 @@ class RedisDecryptCache:
         try:
             with self._client.pipeline() as pipe:
                 for k, v in items.items():
-                    pipe.set(_hashed_key(k), v, ex=self._ttl_seconds)
+                    pipe.set(self._hashed_key(k), v, ex=self._ttl_seconds)
                 pipe.execute()
         except Exception as exc:
             logger.warning("decrypt_cache_redis_set_failed", error=str(exc))

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from rentivo.encryption.base64 import Base64Backend
 from rentivo.encryption.cache.memory import MemoryDecryptCache
+
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.encryption.caching import CachingEncryptionBackend
 
 

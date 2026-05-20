@@ -66,6 +66,7 @@ class TestEncryptionFactoryCache:
         mock_settings.encryption_cache_max_entries = 100
 
         from rentivo.encryption.cache.memory import MemoryDecryptCache
+
         from rentivo.encryption.caching import CachingEncryptionBackend
         from rentivo.encryption.factory import get_encryption
 
@@ -84,6 +85,7 @@ class TestEncryptionFactoryCache:
         mock_settings.redis_url = "redis://ignored"
 
         from rentivo.encryption.cache.redis import RedisDecryptCache
+
         from rentivo.encryption.caching import CachingEncryptionBackend
         from rentivo.encryption.factory import get_encryption
 

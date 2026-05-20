@@ -4,11 +4,10 @@ from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
-class DecryptCache(Protocol):
-    """Short-lived ciphertext → plaintext cache.
+class KVCache(Protocol):
+    """Short-lived string key → string value cache.
 
-    Implementations must be safe to call from multiple threads — KMS
-    ``decrypt_many`` fans the work out via a ``ThreadPoolExecutor``.
+    Implementations must be safe to call from multiple threads.
 
     Failure semantics: ``get_many`` and ``set_many`` must never raise on
     backend failure (network errors, decoding failures). On error, return an
@@ -17,11 +16,11 @@ class DecryptCache(Protocol):
     """
 
     def get_many(self, keys: list[str]) -> dict[str, str]:
-        """Return the subset of ``keys`` present in the cache, mapped to plaintext."""
+        """Return the subset of ``keys`` present in the cache, mapped to values."""
         ...
 
     def set_many(self, items: dict[str, str]) -> None:
-        """Store ``items`` (ciphertext → plaintext) with the configured TTL."""
+        """Store ``items`` (key → value) with the configured TTL."""
         ...
 
     def close(self) -> None:
