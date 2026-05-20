@@ -119,3 +119,17 @@ def test_monthly_series_groups_by_reference_month(repo, db_connection):
     assert by_month["2026-04"].recebido_cents == 3000
     assert by_month["2026-05"].faturado_cents == 400
     assert by_month["2026-05"].recebido_cents == 400
+
+
+def test_status_counts_groups_by_status_and_includes_cancelled(repo, db_connection):
+    _insert_billing(db_connection, billing_id=1, owner_type="user", owner_id=42)
+    _insert_bill(db_connection, bill_id=10, billing_id=1, status="paid", amount=1, month="2026-05")
+    _insert_bill(db_connection, bill_id=11, billing_id=1, status="paid", amount=1, month="2026-05")
+    _insert_bill(db_connection, bill_id=12, billing_id=1, status="sent", amount=1, month="2026-05")
+    _insert_bill(db_connection, bill_id=13, billing_id=1, status="cancelled", amount=1, month="2026-05")
+    db_connection.commit()
+
+    counts = repo.status_counts(DashboardScope(kind="user", id=42), reference_month="2026-05")
+
+    by_status = {c.status: c.count for c in counts}
+    assert by_status == {"paid": 2, "sent": 1, "cancelled": 1}
