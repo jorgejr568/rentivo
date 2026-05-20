@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from rentivo.encryption.cache.memory import MemoryDecryptCache
+from rentivo.cache.memory import MemoryKVCache
 
 
-def _mk(ttl: int = 60, max_entries: int = 100, *, timer=None) -> MemoryDecryptCache:
+def _mk(ttl: int = 60, max_entries: int = 100, *, timer=None) -> MemoryKVCache:
     """Build a cache with the cleanup thread disabled — tests drive expiry
     via the injected timer."""
-    return MemoryDecryptCache(
+    return MemoryKVCache(
         ttl_seconds=ttl,
         max_entries=max_entries,
         timer=timer,
@@ -79,7 +79,7 @@ def test_thread_safe_under_concurrent_access():
 
 
 def test_cleanup_thread_starts_as_daemon_when_enabled():
-    cache = MemoryDecryptCache(
+    cache = MemoryKVCache(
         ttl_seconds=60,
         max_entries=10,
         enable_cleanup_thread=True,
@@ -94,7 +94,7 @@ def test_cleanup_thread_starts_as_daemon_when_enabled():
 
 
 def test_close_signals_thread_and_joins():
-    cache = MemoryDecryptCache(
+    cache = MemoryKVCache(
         ttl_seconds=60,
         max_entries=10,
         enable_cleanup_thread=True,
@@ -115,7 +115,7 @@ def test_cleanup_thread_expires_entries():
     def fake_timer() -> float:
         return now[0]
 
-    cache = MemoryDecryptCache(
+    cache = MemoryKVCache(
         ttl_seconds=1,
         max_entries=10,
         timer=fake_timer,
@@ -141,7 +141,7 @@ def test_cleanup_thread_expires_entries():
 
 
 def test_default_cleanup_interval_is_ttl_quarter_min_one():
-    cache = MemoryDecryptCache(
+    cache = MemoryKVCache(
         ttl_seconds=60,
         max_entries=10,
         enable_cleanup_thread=False,
@@ -164,7 +164,7 @@ def test_cleanup_loop_body_runs_synchronously():
     def fake_timer() -> float:
         return now[0]
 
-    cache = MemoryDecryptCache(
+    cache = MemoryKVCache(
         ttl_seconds=1,
         max_entries=10,
         timer=fake_timer,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 
 class NullKVCache:
-    """Cache implementation that does nothing. Selected when
-    ``RENTIVO_ENCRYPTION_CACHE_BACKEND=none``."""
+    """Cache implementation that does nothing. Used when caching is disabled
+    by configuration."""
 
     def get_many(self, keys: list[str]) -> dict[str, str]:
         return {}

@@ -65,15 +65,14 @@ class TestEncryptionFactoryCache:
         mock_settings.encryption_cache_ttl_seconds = 60
         mock_settings.encryption_cache_max_entries = 100
 
-        from rentivo.encryption.cache.memory import MemoryDecryptCache
-
+        from rentivo.cache.memory import MemoryKVCache
         from rentivo.encryption.caching import CachingEncryptionBackend
         from rentivo.encryption.factory import get_encryption
 
         backend = get_encryption()
         assert isinstance(backend, CachingEncryptionBackend)
         assert isinstance(backend.inner, Base64Backend)
-        assert isinstance(backend.cache, MemoryDecryptCache)
+        assert isinstance(backend.cache, MemoryKVCache)
 
     @patch("rentivo.encryption.factory.settings")
     def test_redis_cache_wraps_inner_backend(self, mock_settings):
@@ -84,15 +83,14 @@ class TestEncryptionFactoryCache:
         mock_settings.encryption_cache_ttl_seconds = 60
         mock_settings.redis_url = "redis://ignored"
 
-        from rentivo.encryption.cache.redis import RedisDecryptCache
-
+        from rentivo.cache.redis import RedisKVCache
         from rentivo.encryption.caching import CachingEncryptionBackend
         from rentivo.encryption.factory import get_encryption
 
         with patch("redis.from_url", return_value=fakeredis.FakeStrictRedis()):
             backend = get_encryption()
         assert isinstance(backend, CachingEncryptionBackend)
-        assert isinstance(backend.cache, RedisDecryptCache)
+        assert isinstance(backend.cache, RedisKVCache)
 
     @patch("rentivo.encryption.factory.settings")
     def test_unsupported_cache_backend_raises(self, mock_settings):

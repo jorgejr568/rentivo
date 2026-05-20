@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from rentivo.encryption.cache.null import NullDecryptCache
-
+from rentivo.cache.null import NullKVCache as NullDecryptCache
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.encryption.caching import CachingEncryptionBackend
 

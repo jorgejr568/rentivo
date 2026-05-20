@@ -11,10 +11,10 @@ logger = structlog.get_logger(__name__)
 
 
 class MemoryKVCache:
-    """Process-local TTL cache for decrypted plaintexts.
+    """Process-local TTL cache for short-lived string values.
 
     Wraps ``cachetools.TTLCache`` with an ``RLock`` because ``cachetools`` is
-    not thread-safe and KMS ``decrypt_many`` fans out via a thread pool.
+    not thread-safe and callers may fan out via a thread pool.
 
     A daemon cleanup thread actively sweeps expired entries so memory does
     not grow unbounded between reads.
