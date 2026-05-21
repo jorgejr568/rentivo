@@ -7,7 +7,16 @@ from rentivo.repositories.dashboard import SQLAlchemyDashboardRepository
 
 @pytest.fixture()
 def repo(db_connection):
-    return SQLAlchemyDashboardRepository(db_connection)
+    from rentivo.encryption.factory import get_encryption
+
+    return SQLAlchemyDashboardRepository(db_connection, get_encryption())
+
+
+@pytest.fixture()
+def encrypt_value():
+    from rentivo.encryption.factory import get_encryption
+
+    return get_encryption().encrypt
 
 
 def _insert_billing(conn, *, billing_id: int, owner_type: str, owner_id: int) -> None:
@@ -133,3 +142,26 @@ def test_status_counts_groups_by_status_and_includes_cancelled(repo, db_connecti
 
     by_status = {c.status: c.count for c in counts}
     assert by_status == {"paid": 2, "sent": 1, "cancelled": 1}
+
+
+def test_top_billings_sorted_desc_limit_5_and_decrypts_names(repo, db_connection, encrypt_value):
+    _insert_billing(db_connection, billing_id=1, owner_type="user", owner_id=42)
+    _insert_billing(db_connection, billing_id=2, owner_type="user", owner_id=42)
+    _insert_billing(db_connection, billing_id=3, owner_type="user", owner_id=42)
+    db_connection.execute(
+        text("UPDATE billings SET name = :n WHERE id = :id"),
+        [
+            {"id": 1, "n": encrypt_value("Casa A")},
+            {"id": 2, "n": encrypt_value("Casa B")},
+            {"id": 3, "n": encrypt_value("Casa C")},
+        ],
+    )
+    _insert_bill(db_connection, bill_id=10, billing_id=1, status="paid", amount=100, month="2026-05")
+    _insert_bill(db_connection, bill_id=11, billing_id=2, status="paid", amount=300, month="2026-05")
+    _insert_bill(db_connection, bill_id=12, billing_id=3, status="paid", amount=200, month="2026-05")
+    db_connection.commit()
+
+    rows = repo.top_billings(DashboardScope(kind="user", id=42), reference_month="2026-05", limit=5)
+
+    assert [r.name for r in rows] == ["Casa B", "Casa C", "Casa A"]
+    assert rows[0].faturado_cents == 300

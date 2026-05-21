@@ -127,6 +127,7 @@ def get_job_repository():
 
 def get_dashboard_repository() -> DashboardRepository:
     from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
     from rentivo.repositories.dashboard import SQLAlchemyDashboardRepository
 
-    return SQLAlchemyDashboardRepository(get_connection())
+    return SQLAlchemyDashboardRepository(get_connection(), get_encryption())

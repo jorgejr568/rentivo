@@ -3,7 +3,8 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from rentivo.models.dashboard import DashboardScope, MonthlyPoint, StatusCount
+from rentivo.encryption.base import EncryptionBackend
+from rentivo.models.dashboard import DashboardScope, MonthlyPoint, StatusCount, TopBillingRow
 from rentivo.repositories.base import DashboardKPIs, DashboardRepository, InadimplenciaResult
 
 _USER_SCOPE_SQL = (
@@ -20,8 +21,9 @@ def _scope_where(scope: DashboardScope) -> str:
 
 
 class SQLAlchemyDashboardRepository(DashboardRepository):
-    def __init__(self, conn: Connection) -> None:
+    def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
         self.conn = conn
+        self.encryption = encryption
 
     def kpis(self, scope: DashboardScope, reference_month: str) -> DashboardKPIs:
         row = (
@@ -109,3 +111,42 @@ class SQLAlchemyDashboardRepository(DashboardRepository):
             .fetchall()
         )
         return [StatusCount(status=row["status"], count=int(row["cnt"])) for row in rows]
+
+    def top_billings(self, scope: DashboardScope, reference_month: str, limit: int) -> list[TopBillingRow]:
+        rows = (
+            self.conn.execute(
+                text(
+                    "SELECT bg.uuid AS uuid, bg.name AS name, "
+                    "COALESCE(SUM(CASE WHEN b.status != 'cancelled' THEN b.total_amount END), 0) AS faturado, "
+                    "COALESCE(SUM(CASE WHEN b.status = 'paid' THEN b.total_amount END), 0) AS recebido "
+                    "FROM bills b JOIN billings bg ON b.billing_id = bg.id "
+                    "WHERE b.deleted_at IS NULL AND bg.deleted_at IS NULL "
+                    "AND b.reference_month = :reference_month "
+                    f"AND ({_scope_where(scope)}) "
+                    "GROUP BY bg.id, bg.uuid, bg.name "
+                    "ORDER BY faturado DESC "
+                    f"LIMIT {int(limit)}"
+                ),
+                {"scope_id": scope.id, "reference_month": reference_month},
+            )
+            .mappings()
+            .fetchall()
+        )
+        if not rows:
+            return []
+        names = self.encryption.decrypt_many([row["name"] for row in rows])
+        out: list[TopBillingRow] = []
+        for row, name in zip(rows, names):
+            fat = int(row["faturado"])
+            rec = int(row["recebido"])
+            rate = (rec / fat * 100.0) if fat > 0 else None
+            out.append(
+                TopBillingRow(
+                    uuid=row["uuid"],
+                    name=name,
+                    faturado_cents=fat,
+                    recebido_cents=rec,
+                    rate_pct=rate,
+                )
+            )
+        return out

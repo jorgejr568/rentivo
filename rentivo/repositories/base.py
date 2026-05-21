@@ -279,7 +279,7 @@ class KnownDeviceRepository(ABC):
 
 from dataclasses import dataclass  # noqa: E402
 
-from rentivo.models.dashboard import DashboardScope, MonthlyPoint, StatusCount  # noqa: E402
+from rentivo.models.dashboard import DashboardScope, MonthlyPoint, StatusCount, TopBillingRow  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -307,3 +307,6 @@ class DashboardRepository(ABC):
 
     @abstractmethod
     def status_counts(self, scope: DashboardScope, reference_month: str) -> list[StatusCount]: ...
+
+    @abstractmethod
+    def top_billings(self, scope: DashboardScope, reference_month: str, limit: int) -> list[TopBillingRow]: ...
