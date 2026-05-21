@@ -72,22 +72,38 @@
 
 <div class="row g-3 mb-4">
   <div class="col-lg-8">
-    <div class="card h-100">
+    <div class="card">
       <div class="card-body">
         <h5 class="card-title">Últimos 6 meses</h5>
-        <canvas id="dashboard-monthly-chart" data-series='{{ monthly_series_data|tojson }}' style="height:280px"></canvas>
+        <div class="dashboard-chart-wrap">
+          <canvas id="dashboard-monthly-chart" data-series='{{ monthly_series_data|tojson }}'></canvas>
+        </div>
       </div>
     </div>
   </div>
   <div class="col-lg-4">
-    <div class="card h-100">
+    <div class="card">
       <div class="card-body">
         <h5 class="card-title">Status (mês)</h5>
-        <canvas id="dashboard-status-chart" data-counts='{{ status_counts_data|tojson }}' style="height:280px"></canvas>
+        <div class="dashboard-chart-wrap dashboard-chart-wrap--donut">
+          <canvas id="dashboard-status-chart" data-counts='{{ status_counts_data|tojson }}'></canvas>
+        </div>
       </div>
     </div>
   </div>
 </div>
+
+<style>
+  .dashboard-chart-wrap {
+    position: relative;
+    height: 280px;
+    width: 100%;
+  }
+  .dashboard-chart-wrap--donut {
+    max-width: 280px;
+    margin: 0 auto;
+  }
+</style>
 
 {% if m.top_billings|length >= 3 %}
 <div class="card mb-4">
