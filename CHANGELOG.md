@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [3.11.0] - 2026-05-20
+
+### Added
+- User dashboard at `/dashboard` with money-flow KPIs (faturado / recebido / em aberto / inadimplência / taxa de recebimento), a 6-month bar chart, a status donut, and a top-billings table.
+- Per-organization dashboard rendered above the members section on the organization detail page.
+- Generic `rentivo/cache/` package (relocated from `rentivo/encryption/cache/`) shared by the encryption decrypt cache and the new dashboard cache.
+- New env vars: `RENTIVO_DASHBOARD_CACHE_BACKEND` (none/memory/redis), `RENTIVO_DASHBOARD_CACHE_TTL_SECONDS`, `RENTIVO_DASHBOARD_CACHE_MAX_ENTRIES`.
+
+### Changed
+- Post-login redirect now lands on `/dashboard` instead of `/billings/`.
+
+### Refactored
+- `rentivo.encryption.cache.*` moved to `rentivo.cache.*` with renamed protocol (`DecryptCache` → `KVCache`) and concrete classes (e.g. `MemoryDecryptCache` → `MemoryKVCache`). The encryption module imports from the new location via aliases for compatibility.
+
 ## [3.10.0] - 2026-05-17
 ### Added
 - Opt-in short-lived ciphertext → plaintext cache in front of `EncryptionBackend.decrypt` / `decrypt_many`, selectable via `RENTIVO_ENCRYPTION_CACHE_BACKEND` (`none` default / `memory` / `redis`). Memory backend uses `cachetools.TTLCache` with a daemon cleanup thread; Redis backend is fail-open (`MGET` reads, pipelined `SET … EX` writes, SHA-256-hashed keys under `rentivo:enc:dec:v1:`). New env vars: `RENTIVO_ENCRYPTION_CACHE_TTL_SECONDS` (default `60`), `RENTIVO_ENCRYPTION_CACHE_MAX_ENTRIES` (default `10000`, memory only), `RENTIVO_REDIS_URL` (required iff backend = `redis`). Defaults preserve pre-cache behaviour bit-for-bit (#52).
