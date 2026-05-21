@@ -13,6 +13,7 @@ from web.deps import (
     get_audit_service,
     get_authorization_service,
     get_billing_service,
+    get_dashboard_service,
     get_invite_service,
     get_job_service,
     get_mfa_service,
@@ -95,6 +96,10 @@ async def organization_detail(request: Request, org_uuid: str):
     invite_service = get_invite_service(request)
     invites = invite_service.list_org_invites(org.id) if member.role == OrgRole.ADMIN.value else []
 
+    from rentivo.models.dashboard import DashboardScope
+
+    metrics = get_dashboard_service(request).get_metrics(DashboardScope(kind="org", id=org.id))
+
     logger.info(
         "Organization detail loaded: uuid=%s members=%d billings=%d",
         org_uuid,
@@ -111,6 +116,7 @@ async def organization_detail(request: Request, org_uuid: str):
             "invites": invites,
             "member_role": member.role,
             "roles": [r.value for r in OrgRole],
+            "metrics": metrics,
         },
     )
 

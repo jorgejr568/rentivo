@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 
+from tests.web.conftest import create_org_in_db, get_test_user_id
+
 
 def test_post_login_lands_on_dashboard(client, test_engine):
     from rentivo.encryption.base64 import Base64Backend
@@ -34,3 +36,13 @@ def test_dashboard_renders_for_authed_user(auth_client: TestClient):
     assert "Recebido no mês" in r.text
     assert "Em aberto" in r.text
     assert "Inadimplência" in r.text
+
+
+def test_org_detail_renders_dashboard_partial(auth_client: TestClient, test_engine):
+    """The dashboard partial is included on the org detail page."""
+    user_id = get_test_user_id(test_engine)
+    org = create_org_in_db(test_engine, "Dash Org", user_id)
+    r = auth_client.get(f"/organizations/{org.uuid}")
+    assert r.status_code == 200
+    assert "Faturado no mês" in r.text
+    assert "Recebido no mês" in r.text
