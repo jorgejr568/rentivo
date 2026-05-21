@@ -126,6 +126,8 @@ async def organization_detail(request: Request, org_uuid: str):
             "member_role": member.role,
             "roles": [r.value for r in OrgRole],
             "metrics": metrics,
+            "monthly_series_data": [p.model_dump() for p in metrics.monthly_series],
+            "status_counts_data": [s.model_dump() for s in metrics.status_counts],
         },
     )
 

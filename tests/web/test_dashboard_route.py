@@ -1,7 +1,11 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.web.conftest import create_org_in_db, get_test_user_id
+from tests.web.conftest import (
+    create_billing_in_db,
+    create_org_in_db,
+    get_test_user_id,
+)
 from web.app import templates
 
 
@@ -64,3 +68,45 @@ def test_org_detail_renders_dashboard_partial(auth_client: TestClient, test_engi
     assert r.status_code == 200
     assert "Faturado no mês" in r.text
     assert "Recebido no mês" in r.text
+
+
+def test_dashboard_renders_with_actual_chart_data(auth_client: TestClient, test_engine):
+    """Regression: a render with non-empty monthly_series/status_counts must serialize cleanly.
+
+    Previously, `_metrics.html` piped pydantic models through `|tojson`, which raised
+    `TypeError: Object of type MonthlyPoint is not JSON serializable` once any bill existed.
+    The empty-list rendering path hid the bug.
+    """
+    from datetime import date
+
+    from sqlalchemy import text
+
+    billing = create_billing_in_db(test_engine)
+    current_month = date.today().strftime("%Y-%m")
+    with test_engine.connect() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO bills (uuid, billing_id, reference_month, total_amount, "
+                "due_date, status, status_updated_at, created_at) "
+                "VALUES (:uuid, :bid, :rm, :amt, :due, :st, datetime('now'), datetime('now'))"
+            ),
+            {
+                "uuid": "test-bill-regression",
+                "bid": billing.id,
+                "rm": current_month,
+                "amt": 12345,
+                "due": "2030-12-31",
+                "st": "paid",
+            },
+        )
+        conn.commit()
+
+    r = auth_client.get("/dashboard")
+
+    # The original bug raised TypeError → 500. A 200 response with both canvases is
+    # the smoking-gun signal that serialization works.
+    assert r.status_code == 200
+    assert "dashboard-monthly-chart" in r.text
+    assert "dashboard-status-chart" in r.text
+    # And the current month's data must have flowed into the series payload.
+    assert current_month in r.text

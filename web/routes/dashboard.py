@@ -27,5 +27,10 @@ async def dashboard(request: Request):
     return render(
         request,
         "dashboard/index.html",
-        {"metrics": metrics, "page_template": "dashboard"},
+        {
+            "metrics": metrics,
+            "monthly_series_data": [p.model_dump() for p in metrics.monthly_series],
+            "status_counts_data": [s.model_dump() for s in metrics.status_counts],
+            "page_template": "dashboard",
+        },
     )

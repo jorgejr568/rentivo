@@ -75,7 +75,7 @@
     <div class="card h-100">
       <div class="card-body">
         <h5 class="card-title">Últimos 6 meses</h5>
-        <canvas id="dashboard-monthly-chart" data-series='{{ m.monthly_series|tojson }}' style="height:280px"></canvas>
+        <canvas id="dashboard-monthly-chart" data-series='{{ monthly_series_data|tojson }}' style="height:280px"></canvas>
       </div>
     </div>
   </div>
@@ -83,7 +83,7 @@
     <div class="card h-100">
       <div class="card-body">
         <h5 class="card-title">Status (mês)</h5>
-        <canvas id="dashboard-status-chart" data-counts='{{ m.status_counts|tojson }}' style="height:280px"></canvas>
+        <canvas id="dashboard-status-chart" data-counts='{{ status_counts_data|tojson }}' style="height:280px"></canvas>
       </div>
     </div>
   </div>
