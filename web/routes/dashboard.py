@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from rentivo.models.dashboard import DashboardScope
+from web.analytics import analytics_hash, push_event
 from web.deps import get_dashboard_service, render
 
 router = APIRouter()
@@ -15,6 +16,14 @@ async def dashboard(request: Request):
         raise HTTPException(status_code=401)
     service = get_dashboard_service(request)
     metrics = service.get_metrics(DashboardScope(kind="user", id=user_id))
+    push_event(
+        request,
+        {
+            "event": "rentivo_dashboard_viewed",
+            "scope_kind": "user",
+            "scope_id_hash": analytics_hash(str(user_id)),
+        },
+    )
     return render(
         request,
         "dashboard/index.html",

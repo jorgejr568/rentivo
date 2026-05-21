@@ -1,6 +1,8 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.web.conftest import create_org_in_db, get_test_user_id
+from web.app import templates
 
 
 def test_post_login_lands_on_dashboard(client, test_engine):
@@ -36,6 +38,22 @@ def test_dashboard_renders_for_authed_user(auth_client: TestClient):
     assert "Recebido no mês" in r.text
     assert "Em aberto" in r.text
     assert "Inadimplência" in r.text
+
+
+@pytest.fixture
+def enable_gtm(monkeypatch):
+    monkeypatch.setattr("rentivo.settings.settings.gtm_container_id", "GTM-DASH")
+    monkeypatch.setattr("rentivo.settings.settings.secret_key", "test-secret")
+    monkeypatch.setitem(templates.env.globals, "gtm_container_id", "GTM-DASH")
+    monkeypatch.setitem(templates.env.globals, "environment", "production")
+    yield
+
+
+def test_dashboard_view_pushes_analytics_event(enable_gtm, auth_client):
+    """The /dashboard route emits the rentivo_dashboard_viewed event."""
+    r = auth_client.get("/dashboard")
+    assert r.status_code == 200
+    assert "rentivo_dashboard_viewed" in r.text
 
 
 def test_org_detail_renders_dashboard_partial(auth_client: TestClient, test_engine):

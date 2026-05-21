@@ -100,6 +100,15 @@ async def organization_detail(request: Request, org_uuid: str):
 
     metrics = get_dashboard_service(request).get_metrics(DashboardScope(kind="org", id=org.id))
 
+    push_event(
+        request,
+        {
+            "event": "rentivo_dashboard_viewed",
+            "scope_kind": "org",
+            "scope_id_hash": analytics_hash(str(org.id)),
+        },
+    )
+
     logger.info(
         "Organization detail loaded: uuid=%s members=%d billings=%d",
         org_uuid,
