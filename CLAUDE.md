@@ -339,6 +339,29 @@ Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`pip
 - Set `cache_backend=none` to revert to the pre-cache code path; no migrations or KMS impact.
 - The encryption test conftest (`tests/encryption/conftest.py`) calls `cache.close()` on the active `CachingEncryptionBackend` before invoking `factory._reset_for_tests()`, so the daemon cleanup thread is joined and the Redis client is closed between tests.
 
+## Dashboards
+
+The user landing page (`/dashboard`) and each organization detail page render the same set of money-flow metrics — faturado / recebido / em aberto / inadimplência / taxa de recebimento — plus a 6-month bar chart, a status donut, and a top-billings table (when scope has ≥3 billings).
+
+### How it works
+
+- `rentivo/services/dashboard_service.py:DashboardService.get_metrics(scope)` returns a `DashboardMetrics` pydantic object built from 5 aggregate SQL queries (current + prior month KPIs, inadimplência, 6-month series, status counts, top billings).
+- The user route is `GET /dashboard`; the org dashboard is the top section of `GET /organizations/<uuid>`.
+- Charts use Chart.js 4 (vendored at `web/static/core/vendor/chart.umd.min.js`).
+
+### Caching
+
+Metrics are cached behind the generic `rentivo/cache/` package (relocated from `rentivo/encryption/cache/`), which provides `NullKVCache` / `MemoryKVCache` / `RedisKVCache`.
+
+| Env var                                  | Default | Notes |
+|------------------------------------------|---------|-------|
+| `RENTIVO_DASHBOARD_CACHE_BACKEND`        | `none`  | `none` / `memory` / `redis` |
+| `RENTIVO_DASHBOARD_CACHE_TTL_SECONDS`    | `30`    | applies to memory + redis |
+| `RENTIVO_DASHBOARD_CACHE_MAX_ENTRIES`    | `1000`  | memory only |
+| `RENTIVO_REDIS_URL`                      | (existing) | shared with the encryption cache |
+
+TTL-only invalidation. After a write the dashboard may show stale numbers for up to `RENTIVO_DASHBOARD_CACHE_TTL_SECONDS` before re-computing.
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).
