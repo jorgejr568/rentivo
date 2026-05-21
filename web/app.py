@@ -24,6 +24,7 @@ from web.deps import AuthMiddleware, DBConnectionMiddleware, MFAEnforcementMiddl
 from web.middleware.logging import RequestContextMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router
+from web.routes.dashboard import router as dashboard_router
 from web.routes.health import router as health_router
 from web.routes.invite import router as invite_router
 from web.routes.organization import router as organization_router
@@ -83,6 +84,7 @@ templates.env.globals["environment"] = settings.environment
 app.include_router(auth_router)
 app.include_router(billing_router)
 app.include_router(bill_router)
+app.include_router(dashboard_router)
 app.include_router(organization_router)
 app.include_router(invite_router)
 app.include_router(password_reset_router)

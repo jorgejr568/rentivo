@@ -293,6 +293,24 @@ def get_turnstile_service(request: Request) -> TurnstileService:
     )
 
 
+def _shared_dashboard_cache():
+    from rentivo.services.dashboard_service import get_dashboard_cache
+
+    return get_dashboard_cache()
+
+
+_shared_dashboard_cache = cache(_shared_dashboard_cache)
+
+
+def get_dashboard_service(request: Request):
+    from rentivo.encryption.factory import get_encryption
+    from rentivo.repositories.dashboard import SQLAlchemyDashboardRepository
+    from rentivo.services.dashboard_service import DashboardService
+
+    repo = SQLAlchemyDashboardRepository(_get_conn(request), get_encryption())
+    return DashboardService(repository=repo, cache=_shared_dashboard_cache())
+
+
 def get_password_reset_service(request: Request) -> PasswordResetService:
     from rentivo.encryption.factory import get_encryption
 
