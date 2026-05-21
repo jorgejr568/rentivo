@@ -124,7 +124,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 @app.get("/")
 async def home(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/billings/", status_code=302)
+        return RedirectResponse("/dashboard", status_code=302)
     from web.analytics import build_page_context, pop_events
 
     ctx = {

@@ -25,7 +25,7 @@ router = APIRouter()
 @router.get("/forgot-password")
 async def forgot_password_page(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/billings/", status_code=302)
+        return RedirectResponse("/dashboard", status_code=302)
     return render(request, "forgot_password.html")
 
 

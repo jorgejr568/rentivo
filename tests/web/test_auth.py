@@ -365,7 +365,7 @@ class TestMFALoginFlow:
             follow_redirects=False,
         )
         assert response.status_code == 302
-        assert "/billings/" in response.headers["location"]
+        assert "/dashboard" in response.headers["location"]
 
         # Verify user is now logged in
         response = client.get("/billings/")
@@ -406,7 +406,7 @@ class TestMFALoginFlow:
             follow_redirects=False,
         )
         assert response.status_code == 302
-        assert "/billings/" in response.headers["location"]
+        assert "/dashboard" in response.headers["location"]
 
     def test_mfa_verify_page_renders_when_pending(self, client, test_engine):
         """GET /mfa-verify with pending MFA session should render the page."""
@@ -499,7 +499,7 @@ class TestMFAEnforcement:
             follow_redirects=False,
         )
         assert response.status_code == 302
-        assert "/billings/" in response.headers["location"]
+        assert "/dashboard" in response.headers["location"]
 
         # MFA enforcement middleware should redirect to TOTP setup
         response = client.get("/billings/", follow_redirects=False)
@@ -551,7 +551,7 @@ class TestMFAEnforcement:
                 follow_redirects=False,
             )
             assert response.status_code == 302
-            assert "/billings/" in response.headers["location"]
+            assert "/dashboard" in response.headers["location"]
 
         # MFA enforcement should redirect
         response = client.get("/billings/", follow_redirects=False)
@@ -694,7 +694,7 @@ class TestLoginTurnstile:
             follow_redirects=False,
         )
         assert response.status_code == 302
-        assert "/billings" in response.headers["location"]
+        assert "/dashboard" in response.headers["location"]
 
 
 class TestSignupTurnstile:
@@ -762,7 +762,7 @@ class TestSignupTurnstile:
             follow_redirects=False,
         )
         assert response.status_code == 302
-        assert "/billings" in response.headers["location"]
+        assert "/dashboard" in response.headers["location"]
 
 
 class TestSignupSendsWelcomeEmail:

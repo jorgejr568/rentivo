@@ -102,7 +102,7 @@ def test_reset_password_full_flow_changes_password(client, csrf_token, test_engi
         follow_redirects=False,
     )
     assert login_resp.status_code == 302
-    assert "/billings" in login_resp.headers["location"]
+    assert "/dashboard" in login_resp.headers["location"]
 
 
 def test_reset_password_rejects_mismatched_passwords(client, csrf_token):
@@ -122,7 +122,7 @@ def test_reset_password_rejects_mismatched_passwords(client, csrf_token):
 def test_forgot_password_get_redirects_when_logged_in(auth_client):
     response = auth_client.get("/forgot-password", follow_redirects=False)
     assert response.status_code == 302
-    assert "/billings" in response.headers["location"]
+    assert "/dashboard" in response.headers["location"]
 
 
 def test_forgot_password_post_rejects_empty_email(client, csrf_token):

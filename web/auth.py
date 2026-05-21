@@ -108,14 +108,14 @@ def _check_and_send_new_device_email(request: Request, user) -> None:
 @router.get("/signup")
 async def signup_page(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/billings/", status_code=302)
+        return RedirectResponse("/dashboard", status_code=302)
     return render(request, "signup.html")
 
 
 @router.post("/signup")
 async def signup(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/billings/", status_code=302)
+        return RedirectResponse("/dashboard", status_code=302)
 
     form = await request.form()
     email = str(form.get("email", "")).strip()
@@ -174,13 +174,13 @@ async def signup(request: Request):
         actor_id=user.id,
         actor_username=user.email,
     )
-    return RedirectResponse("/billings/", status_code=302)
+    return RedirectResponse("/dashboard", status_code=302)
 
 
 @router.get("/login")
 async def login_page(request: Request):
     if request.session.get("user_id"):
-        return RedirectResponse("/billings/", status_code=302)
+        return RedirectResponse("/dashboard", status_code=302)
     return render(request, "login.html")
 
 
@@ -276,7 +276,7 @@ async def login(request: Request):
 
     push_event(request, {"event": "rentivo_login_success", "via": "password"})
     _check_and_send_new_device_email(request, user)
-    return RedirectResponse("/billings/", status_code=302)
+    return RedirectResponse("/dashboard", status_code=302)
 
 
 # --- MFA Verification ---
@@ -390,7 +390,7 @@ async def mfa_verify(request: Request):
     user = get_user_service(request).get_by_id(user_id)
     if user is not None:
         _check_and_send_new_device_email(request, user)
-    return RedirectResponse("/billings/", status_code=302)
+    return RedirectResponse("/dashboard", status_code=302)
 
 
 @router.get("/change-password")
