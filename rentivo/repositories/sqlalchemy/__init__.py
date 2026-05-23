@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from rentivo.repositories._sqlalchemy_old import (
     SQLAlchemyAuditLogRepository,
-    SQLAlchemyInviteRepository,
     SQLAlchemyKnownDeviceRepository,
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyPasskeyRepository,
@@ -20,6 +19,7 @@ from rentivo.repositories._sqlalchemy_old import (
 )
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
+from rentivo.repositories.sqlalchemy.invite import SQLAlchemyInviteRepository
 from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
 from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
