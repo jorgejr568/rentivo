@@ -42,11 +42,9 @@ async def invite_accept(request: Request, invite_uuid: str):
         return RedirectResponse("/invites/", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.INVITE_ACCEPT,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="invite",
         entity_uuid=invite_uuid,
         previous_state={"status": "pending"},
@@ -54,7 +52,8 @@ async def invite_accept(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_job_service(request).enqueue(
+        get_job_service(request).enqueue_for(
+            request.state.actor,
             "email.send",
             {
                 "event": "invite_responded",
@@ -65,9 +64,6 @@ async def invite_accept(request: Request, invite_uuid: str):
                     "response_label": "aceitou",
                 },
             },
-            source="web",
-            actor_id=user_id,
-            actor_username=request.session.get("email", ""),
         )
 
     # Check if user now needs MFA setup (accepted invite from enforcing org)
@@ -93,11 +89,9 @@ async def invite_decline(request: Request, invite_uuid: str):
         return RedirectResponse("/invites/", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.INVITE_DECLINE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="invite",
         entity_uuid=invite_uuid,
         previous_state={"status": "pending"},
@@ -105,7 +99,8 @@ async def invite_decline(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_job_service(request).enqueue(
+        get_job_service(request).enqueue_for(
+            request.state.actor,
             "email.send",
             {
                 "event": "invite_responded",
@@ -116,9 +111,6 @@ async def invite_decline(request: Request, invite_uuid: str):
                     "response_label": "recusou",
                 },
             },
-            source="web",
-            actor_id=user_id,
-            actor_username=request.session.get("email", ""),
         )
 
     flash(request, "Convite recusado.", "info")
