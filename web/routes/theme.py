@@ -13,14 +13,7 @@ from rentivo.models.billing import ItemType
 from rentivo.models.theme import AVAILABLE_FONTS, DEFAULT_THEME, Theme
 from rentivo.pdf.invoice import InvoicePDF
 from web.analytics import push_event
-from web.deps import (
-    get_audit_service,
-    get_authorization_service,
-    get_billing_service,
-    get_organization_service,
-    get_theme_service,
-    render,
-)
+from web.deps import render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -94,7 +87,7 @@ def _serialize_theme(theme: Theme) -> dict:
 @router.get("/user")
 async def user_theme_form(request: Request):
     user_id = request.session.get("user_id")
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("user", user_id)
     theme = existing or DEFAULT_THEME
 
@@ -117,7 +110,7 @@ async def user_theme_form(request: Request):
 @router.post("/user")
 async def user_theme_save(request: Request):
     user_id = request.session.get("user_id")
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
 
     existing = theme_service.get_theme_for_owner("user", user_id)
 
@@ -128,7 +121,7 @@ async def user_theme_save(request: Request):
     logger.info("theme_saved", scope="user", theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         event_type,
@@ -147,14 +140,14 @@ async def user_theme_save(request: Request):
 @router.post("/user/delete")
 async def user_theme_delete(request: Request):
     user_id = request.session.get("user_id")
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
 
     existing = theme_service.get_theme_for_owner("user", user_id)
     deleted = theme_service.delete_theme("user", user_id)
 
     if deleted:
         logger.info("theme_deleted", scope="user")
-        audit = get_audit_service(request)
+        audit = request.state.services.audit
         audit.safe_log_for(
             request.state.actor,
             AuditEventType.THEME_DELETE,
@@ -180,7 +173,7 @@ def _check_org_admin(request: Request, org_uuid: str):
 
     Returns (org, user_id) on success, or a RedirectResponse on failure.
     """
-    org_service = get_organization_service(request)
+    org_service = request.state.services.organization
     org = org_service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -204,7 +197,7 @@ async def org_theme_form(request: Request, org_uuid: str):
         return result
     org = result
 
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("organization", org.id)
     theme = existing or DEFAULT_THEME
 
@@ -231,7 +224,7 @@ async def org_theme_save(request: Request, org_uuid: str):
         return result
     org = result
 
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("organization", org.id)
 
     form = await request.form()
@@ -241,7 +234,7 @@ async def org_theme_save(request: Request, org_uuid: str):
     logger.info("theme_saved", scope="organization", org_uuid=org_uuid, theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         event_type,
@@ -264,13 +257,13 @@ async def org_theme_delete(request: Request, org_uuid: str):
         return result
     org = result
 
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("organization", org.id)
     deleted = theme_service.delete_theme("organization", org.id)
 
     if deleted:
         logger.info("theme_deleted", scope="organization", org_uuid=org_uuid)
-        audit = get_audit_service(request)
+        audit = request.state.services.audit
         audit.safe_log_for(
             request.state.actor,
             AuditEventType.THEME_DELETE,
@@ -296,7 +289,7 @@ def _check_billing_access(request: Request, billing_uuid: str):
 
     Returns (billing, user_id) on success, or a RedirectResponse on failure.
     """
-    billing_service = get_billing_service(request)
+    billing_service = request.state.services.billing
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("billing_not_found", billing_uuid=billing_uuid)
@@ -304,7 +297,7 @@ def _check_billing_access(request: Request, billing_uuid: str):
         return RedirectResponse("/billings/", status_code=302), None
 
     user_id = request.session.get("user_id")
-    auth_service = get_authorization_service(request)
+    auth_service = request.state.services.authorization
     if not auth_service.can_edit_billing(user_id, billing):
         logger.warning("billing_theme_access_denied", billing_uuid=billing_uuid)
         flash(request, "Acesso negado.", "danger")
@@ -335,7 +328,7 @@ async def billing_theme_form(request: Request, billing_uuid: str):
         return result
     billing = result
 
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("billing", billing.id)
     theme = existing or DEFAULT_THEME
     effective_theme = theme_service.resolve_theme_for_billing(billing)
@@ -366,7 +359,7 @@ async def billing_theme_save(request: Request, billing_uuid: str):
         return result
     billing = result
 
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("billing", billing.id)
 
     form = await request.form()
@@ -376,7 +369,7 @@ async def billing_theme_save(request: Request, billing_uuid: str):
     logger.info("theme_saved", scope="billing", billing_uuid=billing_uuid, theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         event_type,
@@ -399,13 +392,13 @@ async def billing_theme_delete(request: Request, billing_uuid: str):
         return result
     billing = result
 
-    theme_service = get_theme_service(request)
+    theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("billing", billing.id)
     deleted = theme_service.delete_theme("billing", billing.id)
 
     if deleted:
         logger.info("theme_deleted", scope="billing", billing_uuid=billing_uuid)
-        audit = get_audit_service(request)
+        audit = request.state.services.audit
         audit.safe_log_for(
             request.state.actor,
             AuditEventType.THEME_DELETE,
