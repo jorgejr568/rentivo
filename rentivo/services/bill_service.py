@@ -53,9 +53,6 @@ class BillService:
         theme_service: object | None = None,
         pix_service: PixService | None = None,
         job_service: JobService | None = None,
-        actor_source: str = "",
-        actor_id: int | None = None,
-        actor_username: str = "",
     ) -> None:
         self.bill_repo = bill_repo
         self.storage = storage
@@ -63,9 +60,6 @@ class BillService:
         self.theme_service = theme_service
         self.pix_service = pix_service
         self.job_service = job_service
-        self._actor_source = actor_source
-        self._actor_id = actor_id
-        self._actor_username = actor_username
         self.pdf_generator = InvoicePDF()
 
     def _resolve_pix(self, billing: Billing) -> PixConfig:
@@ -171,9 +165,15 @@ class BillService:
         bill.pdf_render_status = "succeeded"
         return path, failed_uuids
 
-    def _render_or_enqueue(self, bill: Bill, billing: Billing) -> tuple[str | None, list[str]]:
+    def _render_or_enqueue(self, bill: Bill, billing: Billing, actor=None) -> tuple[str | None, list[str]]:
         """Render synchronously when no JobService is configured (CLI),
         or enqueue a pdf.render job when one is (web).
+
+        When ``actor`` is provided (typically ``request.state.actor`` on
+        the web), the job is tagged with that actor via
+        ``JobService.enqueue_for`` for audit purposes. When ``None`` —
+        the CLI default — the job (if any) is tagged with empty
+        source/id/username, matching the pre-refactor CLI behaviour.
 
         Returns (path, failed_uuids). In the enqueue branch path is None
         and failed_uuids is empty (the worker reports merge failures
@@ -185,14 +185,22 @@ class BillService:
             return self._render_pdf_sync(bill, billing)
         self.bill_repo.update_pdf_render_status(bill.id, "pending")
         bill.pdf_render_status = "pending"
-        self.job_service.enqueue(
-            "pdf.render",
-            {"bill_id": bill.id},
-            source=self._actor_source,
-            actor_id=self._actor_id,
-            actor_username=self._actor_username,
-            max_attempts=3,
-        )
+        if actor is not None:
+            self.job_service.enqueue_for(
+                actor,
+                "pdf.render",
+                {"bill_id": bill.id},
+                max_attempts=3,
+            )
+        else:
+            self.job_service.enqueue(
+                "pdf.render",
+                {"bill_id": bill.id},
+                source="",
+                actor_id=None,
+                actor_username="",
+                max_attempts=3,
+            )
         return None, []
 
     def generate_bill(
@@ -203,6 +211,7 @@ class BillService:
         extras: list[tuple[str, int]],
         notes: str = "",
         due_date: str = "",
+        actor=None,
     ) -> Bill:
         line_items: list[BillLineItem] = []
         sort = 0
@@ -257,7 +266,7 @@ class BillService:
             total_centavos=total,
         )
 
-        self._render_or_enqueue(bill, billing)
+        self._render_or_enqueue(bill, billing, actor=actor)
 
         return bill
 
@@ -268,6 +277,7 @@ class BillService:
         line_items: list[BillLineItem],
         notes: str,
         due_date: str = "",
+        actor=None,
     ) -> Bill:
         bill.line_items = line_items
         bill.total_amount = sum(li.amount for li in line_items)
@@ -277,11 +287,11 @@ class BillService:
         bill = self.bill_repo.update(bill)
         logger.info("bill_updated", bill_id=bill.id, total_centavos=bill.total_amount)
 
-        self._render_or_enqueue(bill, billing)
+        self._render_or_enqueue(bill, billing, actor=actor)
 
         return bill
 
-    def regenerate_pdf(self, bill: Bill, billing: Billing) -> Bill:
+    def regenerate_pdf(self, bill: Bill, billing: Billing, actor=None) -> Bill:
         """Regenerate the PDF using current billing info (PIX key, etc.).
 
         With a JobService configured (web), enqueues a pdf.render job
@@ -289,7 +299,7 @@ class BillService:
         'pending'. Without one (CLI), renders synchronously.
         """
         logger.info("bill_pdf_regenerate", bill_uuid=bill.uuid)
-        self._render_or_enqueue(bill, billing)
+        self._render_or_enqueue(bill, billing, actor=actor)
         return bill
 
     def get_invoice_url(self, pdf_path: str | None) -> str:
@@ -339,6 +349,7 @@ class BillService:
         filename: str,
         file_bytes: bytes,
         content_type: str,
+        actor=None,
     ) -> tuple[Receipt, list[str]]:
         """Upload a receipt file and attach it to a bill, then regenerate the PDF.
 
@@ -393,10 +404,10 @@ class BillService:
             filename=filename,
         )
 
-        _, failed_uuids = self._render_or_enqueue(bill, billing)
+        _, failed_uuids = self._render_or_enqueue(bill, billing, actor=actor)
         return receipt, failed_uuids
 
-    def delete_receipt(self, receipt: Receipt, bill: Bill, billing: Billing) -> None:
+    def delete_receipt(self, receipt: Receipt, bill: Bill, billing: Billing, actor=None) -> None:
         """Delete a receipt and regenerate the bill PDF."""
         if self.receipt_repo is None:
             raise RuntimeError("Receipt repository not configured")
@@ -407,7 +418,7 @@ class BillService:
         logger.info("receipt_deleted", receipt_uuid=receipt.uuid, bill_uuid=bill.uuid)
 
         # Regenerate PDF without this receipt
-        self._render_or_enqueue(bill, billing)
+        self._render_or_enqueue(bill, billing, actor=actor)
 
     def list_receipts(self, bill_id: int) -> list[Receipt]:
         """List receipts for a bill."""
@@ -421,7 +432,7 @@ class BillService:
             return None
         return self.receipt_repo.get_by_uuid(uuid)
 
-    def reorder_receipts(self, bill: Bill, billing: Billing, receipt_uuids: list[str]) -> None:
+    def reorder_receipts(self, bill: Bill, billing: Billing, receipt_uuids: list[str], actor=None) -> None:
         """Reorder receipts by the given UUID list and regenerate the PDF."""
         if self.receipt_repo is None:
             raise RuntimeError("Receipt repository not configured")
@@ -441,4 +452,4 @@ class BillService:
         self.receipt_repo.update_sort_orders(updates)
         logger.info("receipts_reordered", bill_uuid=bill.uuid, count=len(updates))
 
-        self._render_or_enqueue(bill, billing)
+        self._render_or_enqueue(bill, billing, actor=actor)

@@ -113,6 +113,7 @@ async def bill_generate(request: Request, billing_uuid: str):
         extras=extras,
         notes=notes,
         due_date=due_date,
+        actor=request.state.actor,
     )
 
     # Attach uploaded receipt files
@@ -133,6 +134,7 @@ async def bill_generate(request: Request, billing_uuid: str):
             filename=upload.filename,
             file_bytes=file_bytes,
             content_type=content_type,
+            actor=request.state.actor,
         )
         attached_receipts.append(receipt)
     if attached_receipts:
@@ -323,6 +325,7 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
         line_items=line_items,
         notes=notes,
         due_date=due_date,
+        actor=request.state.actor,
     )
 
     audit = get_audit_service(request)
@@ -374,7 +377,7 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
         return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill_uuid}", status_code=302)
 
     old_render_status = bill.pdf_render_status
-    bill_service.regenerate_pdf(bill, billing)
+    bill_service.regenerate_pdf(bill, billing, actor=request.state.actor)
 
     audit = get_audit_service(request)
     audit.safe_log_for(
@@ -645,6 +648,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
             filename=upload.filename,
             file_bytes=file_bytes,
             content_type=content_type,
+            actor=request.state.actor,
         )
 
         attached += 1
@@ -738,7 +742,7 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
         "bill_uuid": bill_uuid,
         "billing_uuid": billing_uuid,
     }
-    bill_service.delete_receipt(receipt, bill, billing)
+    bill_service.delete_receipt(receipt, bill, billing, actor=request.state.actor)
 
     cleanup = get_storage_cleanup_service(request)
     cleanup.enqueue_receipt_delete(
@@ -797,7 +801,7 @@ async def receipt_reorder(request: Request, billing_uuid: str, bill_uuid: str):
         return JSONResponse({"error": "Campo 'order' deve ser uma lista."}, status_code=400)
 
     try:
-        bill_service.reorder_receipts(bill, billing, receipt_uuids)
+        bill_service.reorder_receipts(bill, billing, receipt_uuids, actor=request.state.actor)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 

@@ -715,29 +715,55 @@ class TestRenderOrEnqueue:
         self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "succeeded")
 
     def test_job_service_enqueues_and_marks_pending(self):
+        from web.context import WebActor
+
         service = BillService(
             self.bill_repo,
             self.storage,
             self.receipt_repo,
             pix_service=self.pix,
             job_service=self.job_service,
-            actor_source="web",
-            actor_id=7,
-            actor_username="alice@example.com",
+        )
+        actor = WebActor(user_id=7, email="alice@example.com")
+        with patch.object(service, "pdf_generator") as mock_pdf:
+            path, failed = service._render_or_enqueue(self._bill(), self._billing(), actor=actor)
+
+        # Async path: no actual render
+        mock_pdf.generate.assert_not_called()
+        # Bill marked pending and job enqueued via enqueue_for
+        self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "pending")
+        self.job_service.enqueue_for.assert_called_once_with(
+            actor,
+            "pdf.render",
+            {"bill_id": 42},
+            max_attempts=3,
+        )
+        self.job_service.enqueue.assert_not_called()
+        assert path is None
+        assert failed == []
+
+    def test_enqueue_falls_back_to_anonymous_when_no_actor(self):
+        """When actor=None, the job is enqueued via plain enqueue with
+        empty source/id/username — matches CLI behaviour pre-refactor."""
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
         )
         with patch.object(service, "pdf_generator") as mock_pdf:
             path, failed = service._render_or_enqueue(self._bill(), self._billing())
 
-        # Async path: no actual render
         mock_pdf.generate.assert_not_called()
-        # Bill marked pending and job enqueued
         self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "pending")
+        self.job_service.enqueue_for.assert_not_called()
         self.job_service.enqueue.assert_called_once_with(
             "pdf.render",
             {"bill_id": 42},
-            source="web",
-            actor_id=7,
-            actor_username="alice@example.com",
+            source="",
+            actor_id=None,
+            actor_username="",
             max_attempts=3,
         )
         assert path is None
@@ -750,51 +776,53 @@ class TestRenderOrEnqueue:
             service._render_or_enqueue(bill, self._billing())
 
     def test_update_bill_uses_render_or_enqueue(self):
+        from web.context import WebActor
+
         service = BillService(
             self.bill_repo,
             self.storage,
             self.receipt_repo,
             pix_service=self.pix,
             job_service=self.job_service,
-            actor_source="web",
-            actor_id=7,
-            actor_username="a@x",
         )
+        actor = WebActor(user_id=7, email="a@x")
         self.bill_repo.update.return_value = self._bill()
         with patch.object(service, "pdf_generator") as mock_pdf:
-            service.update_bill(self._bill(), self._billing(), [], "notes", "")
+            service.update_bill(self._bill(), self._billing(), [], "notes", "", actor=actor)
 
         mock_pdf.generate.assert_not_called()
-        self.job_service.enqueue.assert_called_once()
+        self.job_service.enqueue_for.assert_called_once()
+        assert self.job_service.enqueue_for.call_args.args[0] is actor
 
     def test_regenerate_pdf_uses_render_or_enqueue(self):
+        from web.context import WebActor
+
         service = BillService(
             self.bill_repo,
             self.storage,
             self.receipt_repo,
             pix_service=self.pix,
             job_service=self.job_service,
-            actor_source="web",
-            actor_id=7,
-            actor_username="a@x",
         )
+        actor = WebActor(user_id=7, email="a@x")
         with patch.object(service, "pdf_generator") as mock_pdf:
-            service.regenerate_pdf(self._bill(), self._billing())
+            service.regenerate_pdf(self._bill(), self._billing(), actor=actor)
 
         mock_pdf.generate.assert_not_called()
-        self.job_service.enqueue.assert_called_once()
+        self.job_service.enqueue_for.assert_called_once()
+        assert self.job_service.enqueue_for.call_args.args[0] is actor
 
     def test_add_receipt_uses_render_or_enqueue_in_async_mode(self):
+        from web.context import WebActor
+
         service = BillService(
             self.bill_repo,
             self.storage,
             self.receipt_repo,
             pix_service=self.pix,
             job_service=self.job_service,
-            actor_source="web",
-            actor_id=7,
-            actor_username="a@x",
         )
+        actor = WebActor(user_id=7, email="a@x")
         bill = self._bill()
         self.receipt_repo.create.return_value = Receipt(
             id=11,
@@ -805,52 +833,55 @@ class TestRenderOrEnqueue:
             content_type="application/pdf",
             file_size=10,
         )
-        receipt, failed = service.add_receipt(bill, self._billing(), "r.pdf", b"data", "application/pdf")
+        receipt, failed = service.add_receipt(bill, self._billing(), "r.pdf", b"data", "application/pdf", actor=actor)
 
         assert receipt.filename == "r.pdf"
         assert failed == []
         # In async mode the worker will report receipt-merge failures separately.
-        self.job_service.enqueue.assert_called_once()
+        self.job_service.enqueue_for.assert_called_once()
+        assert self.job_service.enqueue_for.call_args.args[0] is actor
 
     def test_delete_receipt_uses_render_or_enqueue_in_async_mode(self):
+        from web.context import WebActor
+
         service = BillService(
             self.bill_repo,
             self.storage,
             self.receipt_repo,
             pix_service=self.pix,
             job_service=self.job_service,
-            actor_source="web",
-            actor_id=7,
-            actor_username="a@x",
         )
+        actor = WebActor(user_id=7, email="a@x")
         bill = self._bill()
         receipt = Receipt(id=5, bill_id=42, filename="r.pdf", uuid="r-uuid")
-        service.delete_receipt(receipt, bill, self._billing())
+        service.delete_receipt(receipt, bill, self._billing(), actor=actor)
 
         self.receipt_repo.delete.assert_called_once_with(5)
-        self.job_service.enqueue.assert_called_once()
+        self.job_service.enqueue_for.assert_called_once()
+        assert self.job_service.enqueue_for.call_args.args[0] is actor
 
     def test_reorder_receipts_uses_render_or_enqueue_in_async_mode(self):
+        from web.context import WebActor
+
         service = BillService(
             self.bill_repo,
             self.storage,
             self.receipt_repo,
             pix_service=self.pix,
             job_service=self.job_service,
-            actor_source="web",
-            actor_id=7,
-            actor_username="a@x",
         )
+        actor = WebActor(user_id=7, email="a@x")
         bill = self._bill()
         existing = [
             Receipt(id=1, uuid="a", bill_id=42, filename="x.pdf", sort_order=0),
             Receipt(id=2, uuid="b", bill_id=42, filename="y.pdf", sort_order=1),
         ]
         self.receipt_repo.list_by_bill.return_value = existing
-        service.reorder_receipts(bill, self._billing(), ["b", "a"])
+        service.reorder_receipts(bill, self._billing(), ["b", "a"], actor=actor)
 
         self.receipt_repo.update_sort_orders.assert_called_once()
-        self.job_service.enqueue.assert_called_once()
+        self.job_service.enqueue_for.assert_called_once()
+        assert self.job_service.enqueue_for.call_args.args[0] is actor
 
     def test_generate_bill_enqueues_pdf_render_when_job_service_is_configured(self):
         """First-render path must enqueue when a JobService is configured (web).
@@ -875,33 +906,32 @@ class TestRenderOrEnqueue:
             total_amount=10000,
             line_items=[BillLineItem(description="Rent", amount=10000, item_type=ItemType.FIXED, sort_order=0)],
         )
+        from web.context import WebActor
+
         service = BillService(
             self.bill_repo,
             self.storage,
             self.receipt_repo,
             pix_service=self.pix,
             job_service=self.job_service,
-            actor_source="web",
-            actor_id=7,
-            actor_username="a@x",
         )
+        actor = WebActor(user_id=7, email="a@x")
         with patch.object(service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF"
-            service.generate_bill(billing, "2026-05", {}, [])
+            service.generate_bill(billing, "2026-05", {}, [], actor=actor)
 
         # generate_bill must NOT render the PDF inline...
         mock_pdf.generate.assert_not_called()
         self.storage.save.assert_not_called()
         self.bill_repo.update_pdf_path.assert_not_called()
 
-        # ...and must enqueue a pdf.render job for the new bill.
-        self.job_service.enqueue.assert_called_once()
-        call = self.job_service.enqueue.call_args
-        assert call.args[0] == "pdf.render"
-        assert call.args[1] == {"bill_id": 42}
-        assert call.kwargs.get("source") == "web"
-        assert call.kwargs.get("actor_id") == 7
-        assert call.kwargs.get("actor_username") == "a@x"
+        # ...and must enqueue a pdf.render job for the new bill via enqueue_for.
+        self.job_service.enqueue_for.assert_called_once()
+        call = self.job_service.enqueue_for.call_args
+        assert call.args[0] is actor
+        assert call.args[1] == "pdf.render"
+        assert call.args[2] == {"bill_id": 42}
+        assert call.kwargs.get("max_attempts") == 3
 
         # The row is marked "pending" (not "succeeded") on the enqueue path.
         self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "pending")
