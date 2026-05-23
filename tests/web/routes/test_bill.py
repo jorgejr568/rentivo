@@ -1370,20 +1370,22 @@ class TestReceiptReorder:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
                 json={"order": list(reversed(uuids))},
+                headers={"X-CSRF-Token": csrf_token},
             )
         assert response.status_code == 200
         assert response.json() == {"ok": True}
         logs = get_audit_logs(test_engine, AuditEventType.RECEIPT_REORDER)
         assert len(logs) >= 1
 
-    def test_reorder_bill_not_found(self, auth_client):
+    def test_reorder_bill_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
             "/billings/x/bills/nonexistent/receipts/reorder",
             json={"order": []},
+            headers={"X-CSRF-Token": csrf_token},
         )
         assert response.status_code == 404
 
-    def test_reorder_billing_not_found(self, auth_client, test_engine, tmp_path):
+    def test_reorder_billing_not_found(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
@@ -1394,38 +1396,41 @@ class TestReceiptReorder:
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
             json={"order": []},
+            headers={"X-CSRF-Token": csrf_token},
         )
         assert response.status_code == 404
 
-    def test_reorder_access_denied(self, auth_client, test_engine, tmp_path):
+    def test_reorder_access_denied(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = _create_other_user_billing(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
             json={"order": []},
+            headers={"X-CSRF-Token": csrf_token},
         )
         assert response.status_code == 403
 
-    def test_reorder_invalid_json(self, auth_client, test_engine, tmp_path):
+    def test_reorder_invalid_json(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
                 content=b"not json",
-                headers={"content-type": "application/json"},
+                headers={"content-type": "application/json", "X-CSRF-Token": csrf_token},
             )
         assert response.status_code == 400
         assert "JSON" in response.json()["error"]
 
-    def test_reorder_order_not_a_list(self, auth_client, test_engine, tmp_path):
+    def test_reorder_order_not_a_list(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
                 json={"order": "not-a-list"},
+                headers={"X-CSRF-Token": csrf_token},
             )
         assert response.status_code == 400
         assert "lista" in response.json()["error"]
@@ -1438,6 +1443,7 @@ class TestReceiptReorder:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
                 json={"order": ["nonexistent-uuid"]},
+                headers={"X-CSRF-Token": csrf_token},
             )
         assert response.status_code == 400
 
@@ -1537,7 +1543,7 @@ class TestBillPixNotConfigured:
         assert r.status_code == 302
         assert r.headers["location"] == f"/billings/{billing.uuid}"
 
-    def test_receipt_reorder_returns_400(self, auth_client, test_engine, tmp_path):
+    def test_receipt_reorder_returns_400(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
@@ -1545,6 +1551,7 @@ class TestBillPixNotConfigured:
         r = auth_client.post(
             f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
             json={"order": []},
+            headers={"X-CSRF-Token": csrf_token},
         )
         assert r.status_code == 400
         assert "PIX" in r.json()["error"]

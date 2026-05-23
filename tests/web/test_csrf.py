@@ -1,6 +1,7 @@
 """Tests for CSRF middleware edge cases."""
 
 import asyncio
+import re
 
 from web.csrf import CSRFMiddleware
 
@@ -33,16 +34,49 @@ class TestCSRFMismatch:
         )
         assert response.status_code == 302
 
-    def test_json_post_passes_through(self, auth_client):
-        """POST with JSON content type (not form) should pass through CSRF."""
+    def test_json_post_without_token_is_rejected(self, auth_client):
+        """JSON POST with no CSRF token (neither field nor header) is rejected."""
         response = auth_client.post(
             "/logout",
             headers={"content-type": "application/json"},
             content="{}",
             follow_redirects=False,
         )
-        # Logout clears session and redirects even without CSRF for non-form content
         assert response.status_code == 302
+        assert auth_client.cookies.get("session") is not None  # didn't reach logout
+
+
+class TestCSRFHeaderToken:
+    def test_json_post_with_valid_header_token_passes(self, auth_client):
+        """JSON POST with a valid X-CSRF-Token header must be accepted."""
+        page = auth_client.get("/change-password")
+        m = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+        assert m, "csrf_token not found in change-password page"
+        csrf = m.group(1)
+
+        response = auth_client.post(
+            "/logout",
+            headers={
+                "content-type": "application/json",
+                "X-CSRF-Token": csrf,
+            },
+            content="{}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
+    def test_json_post_with_wrong_header_token_is_rejected(self, auth_client):
+        response = auth_client.post(
+            "/logout",
+            headers={
+                "content-type": "application/json",
+                "X-CSRF-Token": "not-the-real-token",
+            },
+            content="{}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert auth_client.cookies.get("session") is not None
 
 
 class TestCSRFNonHTTPScope:
