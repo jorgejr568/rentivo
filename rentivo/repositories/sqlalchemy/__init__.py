@@ -18,10 +18,10 @@ from rentivo.repositories._sqlalchemy_old import (
     SQLAlchemyReceiptRepository,
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyThemeRepository,
-    SQLAlchemyUserRepository,
 )
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
+from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
 __all__ = [
     "SQLAlchemyAuditLogRepository",
