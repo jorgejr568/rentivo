@@ -1,10 +1,11 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.billing import Billing
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
+from web.services_container import RequestServices
 
 
 def _create_other_user_billing(test_engine):
@@ -442,19 +443,16 @@ class TestBillingTransfer:
         user_id = get_test_user_id(test_engine)
         billing = create_billing_in_db(test_engine)
         org = create_org_in_db(test_engine, "My Org", user_id)
-        with patch(
-            "web.routes.billing.get_billing_service",
-        ) as mock_svc_fn:
-            mock_svc = MagicMock()
-            mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=billing.id,
-                uuid=billing.uuid,
-                name="A",
-                owner_type="user",
-                owner_id=user_id,
-            )
-            mock_svc.transfer_to_organization.side_effect = ValueError("Only personal billings")
-            mock_svc_fn.return_value = mock_svc
+        mock_svc = MagicMock()
+        mock_svc.get_billing_by_uuid.return_value = Billing(
+            id=billing.id,
+            uuid=billing.uuid,
+            name="A",
+            owner_type="user",
+            owner_id=user_id,
+        )
+        mock_svc.transfer_to_organization.side_effect = ValueError("Only personal billings")
+        with patch.object(RequestServices, "billing", new_callable=PropertyMock, return_value=mock_svc):
             response = auth_client.post(
                 f"/billings/{billing.uuid}/transfer",
                 data={"csrf_token": csrf_token, "organization_id": str(org.id)},
@@ -565,12 +563,9 @@ class TestBillingTransfer:
             org_repo.add_member(org.id, other_admin.id, OrgRole.ADMIN.value)
 
         # The actor must be allowed to transfer this billing — patch authorization.
-        with patch(
-            "web.routes.billing.get_authorization_service",
-        ) as mock_auth_fn:
-            mock_auth = MagicMock()
-            mock_auth.can_transfer_billing.return_value = True
-            mock_auth_fn.return_value = mock_auth
+        mock_auth = MagicMock()
+        mock_auth.can_transfer_billing.return_value = True
+        with patch.object(RequestServices, "authorization", new_callable=PropertyMock, return_value=mock_auth):
             response = auth_client.post(
                 f"/billings/{billing.uuid}/transfer",
                 data={"organization_id": str(org.id), "csrf_token": csrf_token},
@@ -590,18 +585,15 @@ class TestBillingDetailIdNone:
     def test_detail_billing_id_none(self, auth_client, test_engine, csrf_token):
         """billing.id is None on detail page returns error."""
         billing = create_billing_in_db(test_engine)
-        with patch(
-            "web.routes.billing.get_billing_service",
-        ) as mock_svc_fn:
-            mock_svc = MagicMock()
-            mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=None,
-                uuid=billing.uuid,
-                name="A",
-                owner_type="user",
-                owner_id=get_test_user_id(test_engine),
-            )
-            mock_svc_fn.return_value = mock_svc
+        mock_svc = MagicMock()
+        mock_svc.get_billing_by_uuid.return_value = Billing(
+            id=None,
+            uuid=billing.uuid,
+            name="A",
+            owner_type="user",
+            owner_id=get_test_user_id(test_engine),
+        )
+        with patch.object(RequestServices, "billing", new_callable=PropertyMock, return_value=mock_svc):
             response = auth_client.get(
                 f"/billings/{billing.uuid}",
                 follow_redirects=False,
@@ -613,18 +605,15 @@ class TestBillingDeleteIdNone:
     def test_delete_billing_id_none(self, auth_client, test_engine, csrf_token):
         """billing.id is None on delete returns error."""
         billing = create_billing_in_db(test_engine)
-        with patch(
-            "web.routes.billing.get_billing_service",
-        ) as mock_svc_fn:
-            mock_svc = MagicMock()
-            mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=None,
-                uuid=billing.uuid,
-                name="A",
-                owner_type="user",
-                owner_id=get_test_user_id(test_engine),
-            )
-            mock_svc_fn.return_value = mock_svc
+        mock_svc = MagicMock()
+        mock_svc.get_billing_by_uuid.return_value = Billing(
+            id=None,
+            uuid=billing.uuid,
+            name="A",
+            owner_type="user",
+            owner_id=get_test_user_id(test_engine),
+        )
+        with patch.object(RequestServices, "billing", new_callable=PropertyMock, return_value=mock_svc):
             response = auth_client.post(
                 f"/billings/{billing.uuid}/delete",
                 data={"csrf_token": csrf_token},
