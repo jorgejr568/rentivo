@@ -129,11 +129,9 @@ async def user_theme_save(request: Request):
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         event_type,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="theme",
         entity_id=theme.id,
         entity_uuid=theme.uuid,
@@ -157,11 +155,9 @@ async def user_theme_delete(request: Request):
     if deleted:
         logger.info("theme_deleted", scope="user")
         audit = get_audit_service(request)
-        audit.safe_log(
+        audit.safe_log_for(
+            request.state.actor,
             AuditEventType.THEME_DELETE,
-            actor_id=user_id,
-            actor_username=request.session.get("email", ""),
-            source="web",
             entity_type="theme",
             entity_id=existing.id if existing else None,
             entity_uuid=existing.uuid if existing else "",
@@ -246,11 +242,9 @@ async def org_theme_save(request: Request, org_uuid: str):
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         event_type,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="theme",
         entity_id=theme.id,
         entity_uuid=theme.uuid,
@@ -277,11 +271,9 @@ async def org_theme_delete(request: Request, org_uuid: str):
     if deleted:
         logger.info("theme_deleted", scope="organization", org_uuid=org_uuid)
         audit = get_audit_service(request)
-        audit.safe_log(
+        audit.safe_log_for(
+            request.state.actor,
             AuditEventType.THEME_DELETE,
-            actor_id=user_id,
-            actor_username=request.session.get("email", ""),
-            source="web",
             entity_type="theme",
             entity_id=existing.id if existing else None,
             entity_uuid=existing.uuid if existing else "",
@@ -385,11 +377,9 @@ async def billing_theme_save(request: Request, billing_uuid: str):
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         event_type,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="theme",
         entity_id=theme.id,
         entity_uuid=theme.uuid,
@@ -416,11 +406,9 @@ async def billing_theme_delete(request: Request, billing_uuid: str):
     if deleted:
         logger.info("theme_deleted", scope="billing", billing_uuid=billing_uuid)
         audit = get_audit_service(request)
-        audit.safe_log(
+        audit.safe_log_for(
+            request.state.actor,
             AuditEventType.THEME_DELETE,
-            actor_id=user_id,
-            actor_username=request.session.get("email", ""),
-            source="web",
             entity_type="theme",
             entity_id=existing.id if existing else None,
             entity_uuid=existing.uuid if existing else "",
