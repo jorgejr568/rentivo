@@ -1,9 +1,10 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository, SQLAlchemyUserRepository
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
+from web.services_container import RequestServices
 
 
 def _create_org_as_other_user(test_engine, org_name="Other Org"):
@@ -556,12 +557,9 @@ class TestOrganizationTransferBilling:
             )
             org_repo.add_member(org.id, other_admin.id, OrgRole.ADMIN.value)
 
-        with patch(
-            "web.routes.organization.get_authorization_service",
-        ) as mock_auth_fn:
-            mock_auth = MagicMock()
-            mock_auth.can_transfer_billing.return_value = True
-            mock_auth_fn.return_value = mock_auth
+        mock_auth = MagicMock()
+        mock_auth.can_transfer_billing.return_value = True
+        with patch.object(RequestServices, "authorization", new_callable=PropertyMock, return_value=mock_auth):
             response = auth_client.post(
                 f"/organizations/{org.uuid}/transfer-billing",
                 data={"csrf_token": csrf_token, "billing_uuid": billing.uuid},
@@ -593,10 +591,9 @@ class TestInviteReturnsNone:
             user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             user_repo.create(User(email="invite_target@example.com", password_hash="h"))
 
-        with patch("web.routes.organization.get_invite_service") as mock_invite_svc_fn:
-            mock_invite_svc = MagicMock()
-            mock_invite_svc.send_invite.return_value = None
-            mock_invite_svc_fn.return_value = mock_invite_svc
+        mock_invite_svc = MagicMock()
+        mock_invite_svc.send_invite.return_value = None
+        with patch.object(RequestServices, "invite", new_callable=PropertyMock, return_value=mock_invite_svc):
             response = auth_client.post(
                 f"/organizations/{org.uuid}/invite",
                 data={"csrf_token": csrf_token, "email": "invite_target@example.com", "role": "viewer"},
@@ -627,21 +624,18 @@ class TestInviteReturnsNone:
         user_id = get_test_user_id(test_engine)
         org = create_org_in_db(test_engine, "Org5", user_id)
         billing = create_billing_in_db(test_engine, name="Transfer Billing")
-        with patch(
-            "web.routes.organization.get_billing_service",
-        ) as mock_svc_fn:
-            mock_svc = MagicMock()
-            from rentivo.models.billing import Billing
+        from rentivo.models.billing import Billing
 
-            mock_svc.get_billing_by_uuid.return_value = Billing(
-                id=billing.id,
-                uuid=billing.uuid,
-                name="A",
-                owner_type="user",
-                owner_id=user_id,
-            )
-            mock_svc.transfer_to_organization.side_effect = ValueError("Transfer failed")
-            mock_svc_fn.return_value = mock_svc
+        mock_svc = MagicMock()
+        mock_svc.get_billing_by_uuid.return_value = Billing(
+            id=billing.id,
+            uuid=billing.uuid,
+            name="A",
+            owner_type="user",
+            owner_id=user_id,
+        )
+        mock_svc.transfer_to_organization.side_effect = ValueError("Transfer failed")
+        with patch.object(RequestServices, "billing", new_callable=PropertyMock, return_value=mock_svc):
             response = auth_client.post(
                 f"/organizations/{org.uuid}/transfer-billing",
                 data={"csrf_token": csrf_token, "billing_uuid": billing.uuid},
