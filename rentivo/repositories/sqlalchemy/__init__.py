@@ -10,7 +10,6 @@ from __future__ import annotations
 from rentivo.repositories._sqlalchemy_old import (
     SQLAlchemyKnownDeviceRepository,
     SQLAlchemyPasswordResetTokenRepository,
-    SQLAlchemyThemeRepository,
 )
 from rentivo.repositories.sqlalchemy.audit_log import SQLAlchemyAuditLogRepository
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
@@ -23,6 +22,7 @@ from rentivo.repositories.sqlalchemy.mfa import (
 )
 from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
 from rentivo.repositories.sqlalchemy.receipt import SQLAlchemyReceiptRepository
+from rentivo.repositories.sqlalchemy.theme import SQLAlchemyThemeRepository
 from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
 __all__ = [
