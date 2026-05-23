@@ -45,3 +45,25 @@ class JobService:
         )
         logger.info("job_enqueued", job_type=job_type, ulid=job.ulid)
         return job
+
+    def enqueue_for(
+        self,
+        actor,
+        job_type: str,
+        payload: dict,
+        *,
+        run_after: datetime | None = None,
+        max_attempts: int = 5,
+    ) -> Job:
+        """Convenience wrapper that unpacks an actor object (typically a
+        ``web.context.WebActor``) into ``enqueue`` kwargs. Duck-typed.
+        """
+        return self.enqueue(
+            job_type,
+            payload,
+            run_after=run_after,
+            max_attempts=max_attempts,
+            source=actor.source,
+            actor_id=actor.user_id,
+            actor_username=actor.email,
+        )

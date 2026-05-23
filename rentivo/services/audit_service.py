@@ -65,6 +65,22 @@ class AuditService:
             logger.exception("audit_log_failed")
             return None
 
+    def safe_log_for(self, actor, event_type, **kwargs) -> AuditLog | None:
+        """Convenience wrapper that unpacks an actor object (typically a
+        ``web.context.WebActor``) into ``safe_log`` kwargs. Duck-typed: any
+        object exposing ``user_id`` / ``email`` / ``source`` attrs works.
+
+        Use this from web routes instead of hand-deriving
+        ``actor_id=request.session["user_id"]`` etc. on every call.
+        """
+        return self.safe_log(
+            event_type,
+            actor_id=actor.user_id,
+            actor_username=actor.email,
+            source=actor.source,
+            **kwargs,
+        )
+
     def list_by_entity(self, entity_type: str, entity_id: int) -> list[AuditLog]:
         return self.repo.list_by_entity(entity_type, entity_id)
 
