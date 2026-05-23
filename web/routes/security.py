@@ -39,9 +39,10 @@ _MFA_CHANGE_LABELS = {
 }
 
 
-def _send_mfa_changed_email(request: Request, email: str, change_kind: str, *, user_id: int) -> None:
+def _send_mfa_changed_email(request: Request, email: str, change_kind: str) -> None:
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_job_service(request).enqueue(
+    get_job_service(request).enqueue_for(
+        request.state.actor,
         "email.send",
         {
             "event": "mfa_changed",
@@ -54,9 +55,6 @@ def _send_mfa_changed_email(request: Request, email: str, change_kind: str, *, u
                 "reset_url": forgot_url,
             },
         },
-        source="web",
-        actor_id=user_id,
-        actor_username=email,
     )
 
 
@@ -105,11 +103,9 @@ async def update_pix(request: Request):
         return RedirectResponse("/security", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.USER_UPDATE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="user",
         entity_id=user_id,
         previous_state=serialize_user(previous),
@@ -155,18 +151,17 @@ async def change_password(request: Request):
     logger.info("password_changed", email=email)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.USER_CHANGE_PASSWORD,
-        actor_id=user_id,
-        actor_username=email,
-        source="web",
         entity_type="user",
         entity_id=user_id,
         new_state={"email": email},
     )
 
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_job_service(request).enqueue(
+    get_job_service(request).enqueue_for(
+        request.state.actor,
         "email.send",
         {
             "event": "password_changed",
@@ -178,9 +173,6 @@ async def change_password(request: Request):
                 "reset_url": forgot_url,
             },
         },
-        source="web",
-        actor_id=user_id,
-        actor_username=email,
     )
 
     flash(request, "Senha alterada com sucesso!", "success")
@@ -228,15 +220,13 @@ async def totp_confirm(request: Request):
     request.session.pop("mfa_setup_required", None)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.MFA_TOTP_ENABLED,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="user",
         entity_id=user_id,
     )
-    _send_mfa_changed_email(request, request.session.get("email", ""), "totp_enabled", user_id=user_id)
+    _send_mfa_changed_email(request, request.session.get("email", ""), "totp_enabled")
 
     push_event(request, {"event": "rentivo_mfa_enabled", "method": "totp"})
     return render(
@@ -270,15 +260,13 @@ async def totp_disable(request: Request):
     mfa_service.disable_totp(user_id)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.MFA_TOTP_DISABLED,
-        actor_id=user_id,
-        actor_username=email,
-        source="web",
         entity_type="user",
         entity_id=user_id,
     )
-    _send_mfa_changed_email(request, email, "totp_disabled", user_id=user_id)
+    _send_mfa_changed_email(request, email, "totp_disabled")
 
     flash(request, "TOTP desativado com sucesso.", "success")
     push_event(request, {"event": "rentivo_mfa_disabled"})
@@ -297,11 +285,9 @@ async def regenerate_recovery_codes(request: Request):
         return RedirectResponse("/security", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.MFA_RECOVERY_REGENERATED,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="user",
         entity_id=user_id,
     )
@@ -393,16 +379,14 @@ async def passkey_register_complete(request: Request):
     request.session.pop("mfa_setup_required", None)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.MFA_PASSKEY_REGISTERED,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="user",
         entity_id=user_id,
         metadata={"passkey_name": passkey_name},
     )
-    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_registered", user_id=user_id)
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_registered")
 
     push_event(request, {"event": "rentivo_passkey_added"})
     return JSONResponse({"status": "ok", "name": passkey_name})
@@ -420,16 +404,14 @@ async def passkey_delete(request: Request, passkey_uuid: str):
         return RedirectResponse("/security", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.MFA_PASSKEY_DELETED,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="user",
         entity_id=user_id,
         metadata={"passkey_uuid": passkey_uuid},
     )
-    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_deleted", user_id=user_id)
+    _send_mfa_changed_email(request, request.session.get("email", ""), "passkey_deleted")
 
     flash(request, "Passkey removida.", "success")
     push_event(request, {"event": "rentivo_passkey_removed"})
@@ -492,6 +474,14 @@ async def passkey_auth_complete(request: Request):
     if passkey is None or passkey.user_id != user_id:
         return JSONResponse({"error": "Passkey não encontrada."}, status_code=400)
 
+    # During MFA verification the session has mfa_pending_user_id but NOT
+    # user_id - request.state.actor is ANON_ACTOR. Construct a local actor
+    # so the audit rows in this handler record who attempted / completed
+    # the verification.
+    from web.context import WebActor
+
+    verify_actor = WebActor(user_id=user_id, email=email or "")
+
     try:
         verification = webauthn.verify_authentication_response(
             credential=body,
@@ -504,11 +494,9 @@ async def passkey_auth_complete(request: Request):
     except Exception as e:
         logger.warning("passkey_auth_failed", user_id=user_id, error=str(e))
         audit = get_audit_service(request)
-        audit.safe_log(
+        audit.safe_log_for(
+            verify_actor,
             AuditEventType.MFA_VERIFY_FAILED,
-            actor_id=user_id,
-            actor_username=email or "",
-            source="web",
             entity_type="user",
             entity_id=user_id,
             metadata={"ip": client_ip, "method": "passkey"},
@@ -526,20 +514,16 @@ async def passkey_auth_complete(request: Request):
         request.session["mfa_setup_required"] = True
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        verify_actor,
         AuditEventType.MFA_PASSKEY_USED,
-        actor_id=user_id,
-        actor_username=email or "",
-        source="web",
         entity_type="user",
         entity_id=user_id,
         metadata={"ip": client_ip, "passkey_uuid": passkey.uuid},
     )
-    audit.safe_log(
+    audit.safe_log_for(
+        verify_actor,
         AuditEventType.USER_LOGIN,
-        actor_id=user_id,
-        actor_username=email or "",
-        source="web",
         entity_type="user",
         entity_id=user_id,
         new_state={"user_id": user_id, "email": email},
