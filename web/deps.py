@@ -208,9 +208,6 @@ def get_bill_service(request: Request) -> BillService:
         theme_service=get_theme_service(request),
         pix_service=get_pix_service(request),
         job_service=get_job_service(request),
-        actor_source="web",
-        actor_id=request.session.get("user_id"),
-        actor_username=request.session.get("email", ""),
     )
 
 
