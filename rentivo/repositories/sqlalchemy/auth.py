@@ -1,21 +1,15 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import Connection, text
 from sqlalchemy.engine import RowMapping
 
-from rentivo.constants import SP_TZ
 from rentivo.models.known_device import KnownDevice
 from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.repositories.base import (
     KnownDeviceRepository,
     PasswordResetTokenRepository,
 )
-
-
-def _now() -> datetime:
-    return datetime.now(SP_TZ)
+from rentivo.repositories.sqlalchemy._common import _now
 
 
 class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
