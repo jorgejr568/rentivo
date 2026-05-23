@@ -8,7 +8,6 @@ through these re-exports.
 from __future__ import annotations
 
 from rentivo.repositories._sqlalchemy_old import (
-    SQLAlchemyAuditLogRepository,
     SQLAlchemyKnownDeviceRepository,
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyPasskeyRepository,
@@ -16,6 +15,7 @@ from rentivo.repositories._sqlalchemy_old import (
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyThemeRepository,
 )
+from rentivo.repositories.sqlalchemy.audit_log import SQLAlchemyAuditLogRepository
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
 from rentivo.repositories.sqlalchemy.invite import SQLAlchemyInviteRepository
