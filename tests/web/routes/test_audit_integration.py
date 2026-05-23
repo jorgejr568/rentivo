@@ -56,9 +56,13 @@ class TestAuthAuditLogs:
         assert log.source == "web"
         assert log.entity_type == "user"
 
-    def test_logout_creates_audit_log(self, auth_client, test_engine):
+    def test_logout_creates_audit_log(self, auth_client, test_engine, csrf_token):
         """Logout creates a user.logout audit entry."""
-        auth_client.post("/logout", follow_redirects=False)
+        auth_client.post(
+            "/logout",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
 
         logs = get_audit_logs(test_engine, AuditEventType.USER_LOGOUT)
         assert len(logs) >= 1

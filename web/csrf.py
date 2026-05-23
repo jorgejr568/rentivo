@@ -80,18 +80,37 @@ class CSRFMiddleware:
             await self.app(scope, receive, send)
             return
 
-        content_type = request.headers.get("content-type", "")
-        if "multipart/form-data" not in content_type and "application/x-www-form-urlencoded" not in content_type:
-            logger.debug("csrf_bypass_non_form", content_type=content_type)
+        # 1. Header-token fast path — works for JSON and any non-form request.
+        header_token = request.headers.get("X-CSRF-Token", "")
+        if header_token:
+            if not _verify_csrf_token(request, header_token):
+                logger.warning("csrf_token_mismatch", source="header")
+                flash(request, "Sessão expirada. Tente novamente.", "danger")
+                referer = request.headers.get("referer", "/")
+                response = RedirectResponse(referer, status_code=302)
+                await response(scope, receive, send)
+                return
             await self.app(scope, receive, send)
             return
+
+        # 2. Form-body path — read body, extract csrf_token field, replay body.
+        content_type = request.headers.get("content-type", "")
+        if "multipart/form-data" not in content_type and "application/x-www-form-urlencoded" not in content_type:
+            # No header token AND no form body — nothing to verify. Reject.
+            logger.warning("csrf_token_missing", content_type=content_type)
+            flash(request, "Sessão expirada. Tente novamente.", "danger")
+            referer = request.headers.get("referer", "/")
+            response = RedirectResponse(referer, status_code=302)
+            await response(scope, receive, send)
+            return
+
         body = await request.body()
         form = await request.form()
         form_token = str(form.get("csrf_token", ""))
         await form.close()
 
         if not _verify_csrf_token(request, form_token):
-            logger.warning("csrf_token_mismatch")
+            logger.warning("csrf_token_mismatch", source="form")
             flash(request, "Sessão expirada. Tente novamente.", "danger")
             referer = request.headers.get("referer", "/")
             response = RedirectResponse(referer, status_code=302)
