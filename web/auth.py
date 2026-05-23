@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
 
 import structlog
 from fastapi import APIRouter, Request
@@ -77,32 +76,6 @@ def _record_mfa_failed(ip: str) -> None:
 
 def _clear_mfa_attempts(ip: str) -> None:
     _mfa_attempts.pop(ip, None)
-
-
-def _check_and_send_new_device_email(request: Request, user) -> None:
-    user_agent = request.headers.get("user-agent", "")
-    client_ip = request.client.host if request.client else "unknown"
-    kd_service = get_known_device_service(request)
-    if kd_service.register_login(user.id, user_agent, client_ip):
-        return
-    forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_job_service(request).enqueue(
-        "email.send",
-        {
-            "event": "new_device_login",
-            "to_email": user.email,
-            "ctx": {
-                "email": user.email,
-                "logged_in_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
-                "source_ip": client_ip,
-                "user_agent": user_agent,
-                "reset_url": forgot_url,
-            },
-        },
-        source="web",
-        actor_id=user.id,
-        actor_username=user.email,
-    )
 
 
 @router.get("/signup")
@@ -275,7 +248,13 @@ async def login(request: Request):
     )
 
     push_event(request, {"event": "rentivo_login_success", "via": "password"})
-    _check_and_send_new_device_email(request, user)
+    get_known_device_service(request).notify_if_new(
+        user=user,
+        user_agent=request.headers.get("user-agent", ""),
+        client_ip=request.client.host if request.client else "unknown",
+        forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
+        job_service=get_job_service(request),
+    )
     return RedirectResponse("/billings/", status_code=302)
 
 
@@ -389,7 +368,13 @@ async def mfa_verify(request: Request):
     push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
     user = get_user_service(request).get_by_id(user_id)
     if user is not None:
-        _check_and_send_new_device_email(request, user)
+        get_known_device_service(request).notify_if_new(
+            user=user,
+            user_agent=request.headers.get("user-agent", ""),
+            client_ip=request.client.host if request.client else "unknown",
+            forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
+            job_service=get_job_service(request),
+        )
     return RedirectResponse("/billings/", status_code=302)
 
 

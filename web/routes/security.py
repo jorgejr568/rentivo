@@ -21,8 +21,14 @@ from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
-from web.auth import _check_and_send_new_device_email
-from web.deps import get_audit_service, get_job_service, get_mfa_service, get_user_service, render
+from web.deps import (
+    get_audit_service,
+    get_job_service,
+    get_known_device_service,
+    get_mfa_service,
+    get_user_service,
+    render,
+)
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -551,6 +557,12 @@ async def passkey_auth_complete(request: Request):
 
     user = get_user_service(request).get_by_id(user_id)
     if user is not None:
-        _check_and_send_new_device_email(request, user)
+        get_known_device_service(request).notify_if_new(
+            user=user,
+            user_agent=request.headers.get("user-agent", ""),
+            client_ip=request.client.host if request.client else "unknown",
+            forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
+            job_service=get_job_service(request),
+        )
 
     return JSONResponse({"status": "ok", "redirect": "/billings/"})
