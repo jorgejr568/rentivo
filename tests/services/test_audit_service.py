@@ -171,3 +171,57 @@ class TestActorUsernameRedaction:
         # leaking the raw value.
         result = self.service.log(event_type="job.scheduled", actor_username="cli")
         assert result.actor_username == "***"
+
+
+class TestSafeLogFor:
+    """Tests for safe_log_for — the WebActor-unpacking convenience wrapper."""
+
+    def setup_method(self):
+        self.mock_repo = MagicMock()
+        self.mock_repo.create.side_effect = lambda log: log
+        self.service = AuditService(self.mock_repo)
+
+    def test_safe_log_for_unpacks_actor(self):
+        from web.context import WebActor
+
+        actor = WebActor(user_id=42, email="alice@example.com")
+        result = self.service.safe_log_for(
+            actor,
+            AuditEventType.BILLING_CREATE,
+            entity_type="billing",
+            entity_id=1,
+            new_state={"name": "Apt 1"},
+        )
+        assert result is not None
+        created_log = self.mock_repo.create.call_args[0][0]
+        assert created_log.actor_id == 42
+        # actor_username is post-redaction; "alice@example.com" → "al...@example.com"
+        assert created_log.actor_username == "al...@example.com"
+        assert created_log.source == "web"
+        assert created_log.entity_type == "billing"
+        assert created_log.entity_id == 1
+
+    def test_safe_log_for_anon_actor(self):
+        from web.context import ANON_ACTOR
+
+        self.service.safe_log_for(
+            ANON_ACTOR,
+            AuditEventType.USER_LOGIN_FAILED,
+            entity_type="user",
+            entity_id=None,
+            new_state={"email": "h...@x.com"},
+        )
+        created_log = self.mock_repo.create.call_args[0][0]
+        assert created_log.actor_id is None
+        assert created_log.actor_username == ""
+        assert created_log.source == "web"
+
+    def test_safe_log_for_swallows_exceptions(self):
+        from web.context import WebActor
+
+        self.mock_repo.create.side_effect = RuntimeError("DB down")
+        result = self.service.safe_log_for(
+            WebActor(user_id=1, email="x@y.z"),
+            "test.event",
+        )
+        assert result is None

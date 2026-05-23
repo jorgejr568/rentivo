@@ -122,12 +122,17 @@ async def signup(request: Request):
     request.session["email"] = user.email
     logger.info("user_signed_up", email=user.email)
 
+    # /signup is public, so request.state.actor is ANON_ACTOR. Build a local
+    # WebActor from the just-created user so both the audit row and the
+    # welcome email job record who completed the signup.
+    from web.context import WebActor
+
+    signup_actor = WebActor(user_id=user.id, email=user.email)
+
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        signup_actor,
         AuditEventType.USER_SIGNUP,
-        actor_id=user.id,
-        actor_username=user.email,
-        source="web",
         entity_type="user",
         entity_id=user.id,
         new_state=serialize_user(user),
@@ -136,16 +141,14 @@ async def signup(request: Request):
     push_event(request, {"event": "rentivo_signup_completed"})
 
     pix_setup_url = f"{settings.public_app_url.rstrip('/')}/security/pix"
-    get_job_service(request).enqueue(
+    get_job_service(request).enqueue_for(
+        signup_actor,
         "email.send",
         {
             "event": "welcome",
             "to_email": user.email,
             "ctx": {"email": user.email, "pix_setup_url": pix_setup_url},
         },
-        source="web",
-        actor_id=user.id,
-        actor_username=user.email,
     )
     return RedirectResponse("/billings/", status_code=302)
 
@@ -189,9 +192,9 @@ async def login(request: Request):
         _record_failed_attempt(client_ip)
         logger.warning("login_failed", email=email, client_ip=client_ip)
         audit = get_audit_service(request)
-        audit.safe_log(
+        audit.safe_log_for(
+            request.state.actor,
             AuditEventType.USER_LOGIN_FAILED,
-            source="web",
             entity_type="user",
             new_state={"email": email},
             metadata={"ip": client_ip},
@@ -205,6 +208,12 @@ async def login(request: Request):
     mfa_service = get_mfa_service(request)
     has_mfa = mfa_service.has_any_mfa(user.id)
 
+    # /login is public, so request.state.actor is ANON_ACTOR. Build a local
+    # WebActor from the just-authenticated user for the post-auth audit rows.
+    from web.context import WebActor
+
+    login_actor = WebActor(user_id=user.id, email=user.email)
+
     if has_mfa:
         # Don't fully authenticate yet — redirect to MFA verification
         request.session.clear()
@@ -213,11 +222,9 @@ async def login(request: Request):
         logger.info("mfa_verification_required", email=user.email, user_id=user.id)
 
         audit = get_audit_service(request)
-        audit.safe_log(
+        audit.safe_log_for(
+            login_actor,
             AuditEventType.MFA_CHALLENGE_ISSUED,
-            actor_id=user.id,
-            actor_username=user.email,
-            source="web",
             entity_type="user",
             entity_id=user.id,
             metadata={"ip": client_ip},
@@ -236,11 +243,9 @@ async def login(request: Request):
         request.session["mfa_setup_required"] = True
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        login_actor,
         AuditEventType.USER_LOGIN,
-        actor_id=user.id,
-        actor_username=user.email,
-        source="web",
         entity_type="user",
         entity_id=user.id,
         new_state={"user_id": user.id, "email": user.email},
@@ -310,14 +315,18 @@ async def mfa_verify(request: Request):
     else:
         verified = mfa_service.verify_totp(user_id, code)
 
+    # During MFA verification the session has mfa_pending_user_id but NOT
+    # user_id - request.state.actor is ANON_ACTOR. Build a local actor.
+    from web.context import WebActor
+
+    verify_actor = WebActor(user_id=user_id, email=email or "")
+
     if not verified:
         _record_mfa_failed(client_ip)
         audit = get_audit_service(request)
-        audit.safe_log(
+        audit.safe_log_for(
+            verify_actor,
             AuditEventType.MFA_VERIFY_FAILED,
-            actor_id=user_id,
-            actor_username=email or "",
-            source="web",
             entity_type="user",
             entity_id=user_id,
             metadata={"ip": client_ip, "method": method},
@@ -344,20 +353,16 @@ async def mfa_verify(request: Request):
         request.session["mfa_setup_required"] = True
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        verify_actor,
         AuditEventType.MFA_VERIFY_SUCCESS,
-        actor_id=user_id,
-        actor_username=email or "",
-        source="web",
         entity_type="user",
         entity_id=user_id,
         metadata={"ip": client_ip, "method": method},
     )
-    audit.safe_log(
+    audit.safe_log_for(
+        verify_actor,
         AuditEventType.USER_LOGIN,
-        actor_id=user_id,
-        actor_username=email or "",
-        source="web",
         entity_type="user",
         entity_id=user_id,
         new_state={"user_id": user_id, "email": email},
@@ -389,11 +394,9 @@ async def logout(request: Request):
     email = request.session.get("email")
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.USER_LOGOUT,
-        actor_id=user_id,
-        actor_username=email or "",
-        source="web",
         entity_type="user",
         entity_id=user_id,
         new_state={"email": email},

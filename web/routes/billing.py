@@ -110,11 +110,9 @@ async def billing_create(request: Request):
         return RedirectResponse("/billings/create", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILLING_CREATE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="billing",
         entity_id=billing.id,
         entity_uuid=billing.uuid,
@@ -249,11 +247,9 @@ async def billing_edit(request: Request, billing_uuid: str):
         return RedirectResponse(f"/billings/{billing_uuid}/edit", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILLING_UPDATE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="billing",
         entity_id=updated.id,
         entity_uuid=updated.uuid,
@@ -308,11 +304,9 @@ async def billing_transfer(request: Request, billing_uuid: str):
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILLING_TRANSFER,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="billing",
         entity_id=billing.id,
         entity_uuid=billing.uuid,
@@ -365,11 +359,9 @@ async def billing_delete(request: Request, billing_uuid: str):
     service.delete_billing(billing.id)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILLING_DELETE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="billing",
         entity_id=billing.id,
         entity_uuid=billing.uuid,

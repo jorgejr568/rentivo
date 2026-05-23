@@ -55,11 +55,9 @@ async def organization_create(request: Request):
     org = service.create_organization(name, user_id)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.ORGANIZATION_CREATE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="organization",
         entity_id=org.id,
         entity_uuid=org.uuid,
@@ -170,11 +168,9 @@ async def organization_edit(request: Request, org_uuid: str):
         return RedirectResponse(f"/organizations/{org_uuid}/edit", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.ORGANIZATION_UPDATE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="organization",
         entity_id=updated.id,
         entity_uuid=updated.uuid,
@@ -206,11 +202,9 @@ async def organization_delete(request: Request, org_uuid: str):
     service.delete_organization(org.id)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.ORGANIZATION_DELETE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="organization",
         entity_id=org.id,
         entity_uuid=org.uuid,
@@ -260,11 +254,9 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
     )
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.ORGANIZATION_UPDATE_MEMBER_ROLE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="organization",
         entity_id=org.id,
         entity_uuid=org.uuid,
@@ -276,7 +268,8 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
     if member_user is not None:
         old_label = OrgRole.label(old_role) if old_role else "—"
         new_label = OrgRole.label(new_role)
-        get_job_service(request).enqueue(
+        get_job_service(request).enqueue_for(
+            request.state.actor,
             "email.send",
             {
                 "event": "member_changed",
@@ -287,9 +280,6 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
                     "actor_email": request.session.get("email", ""),
                 },
             },
-            source="web",
-            actor_id=request.session.get("user_id"),
-            actor_username=request.session.get("email", ""),
         )
 
     flash(request, "Papel atualizado com sucesso!", "success")
@@ -322,11 +312,9 @@ async def member_remove(request: Request, org_uuid: str, member_user_id: int):
     service.remove_member(org.id, member_user_id)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.ORGANIZATION_REMOVE_MEMBER,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="organization",
         entity_id=org.id,
         entity_uuid=org.uuid,
@@ -372,11 +360,9 @@ async def organization_invite(request: Request, org_uuid: str):
 
     audit = get_audit_service(request)
     if invite:
-        audit.safe_log(
+        audit.safe_log_for(
+            request.state.actor,
             AuditEventType.INVITE_SEND,
-            actor_id=user_id,
-            actor_username=request.session.get("email", ""),
-            source="web",
             entity_type="invite",
             entity_id=invite.id,
             entity_uuid=invite.uuid,
@@ -385,7 +371,8 @@ async def organization_invite(request: Request, org_uuid: str):
 
     inviter_email = request.session.get("email", "")
     invites_url = f"{settings.public_app_url.rstrip('/')}/invites/"
-    get_job_service(request).enqueue(
+    get_job_service(request).enqueue_for(
+        request.state.actor,
         "email.send",
         {
             "event": "invite_received",
@@ -397,9 +384,6 @@ async def organization_invite(request: Request, org_uuid: str):
                 "invites_url": invites_url,
             },
         },
-        source="web",
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
     )
 
     flash(request, f"Convite enviado para '{email}'!", "success")
@@ -425,11 +409,9 @@ async def organization_toggle_mfa(request: Request, org_uuid: str):
     org_service.set_enforce_mfa(org.id, new_value)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.ORGANIZATION_UPDATE_MFA,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="organization",
         entity_id=org.id,
         entity_uuid=org.uuid,
@@ -494,11 +476,9 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILLING_TRANSFER,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="billing",
         entity_id=billing.id,
         entity_uuid=billing.uuid,

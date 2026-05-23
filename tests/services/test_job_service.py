@@ -75,3 +75,59 @@ def test_enqueue_default_source_is_empty_string():
     svc.enqueue("email.send", {"event": "welcome"})
 
     assert audit.safe_log.call_args.kwargs["source"] == ""
+
+
+class TestEnqueueFor:
+    """Tests for enqueue_for — the WebActor-unpacking convenience wrapper."""
+
+    def test_enqueue_for_unpacks_actor(self):
+        from web.context import WebActor
+
+        repo = MagicMock()
+        repo.enqueue.return_value = _make_job()
+        audit = MagicMock()
+        svc = JobService(repo, audit)
+
+        actor = WebActor(user_id=7, email="a@x.z")
+        result = svc.enqueue_for(actor, "email.send", {"event": "welcome"})
+
+        assert result.id == 42
+        repo.enqueue.assert_called_once_with("email.send", {"event": "welcome"}, None, 5)
+        kwargs = audit.safe_log.call_args.kwargs
+        assert kwargs["source"] == "web"
+        assert kwargs["actor_id"] == 7
+        assert kwargs["actor_username"] == "a@x.z"
+
+    def test_enqueue_for_anon_actor(self):
+        from web.context import ANON_ACTOR
+
+        repo = MagicMock()
+        repo.enqueue.return_value = _make_job()
+        audit = MagicMock()
+        svc = JobService(repo, audit)
+
+        svc.enqueue_for(ANON_ACTOR, "email.send", {"event": "welcome"})
+
+        kwargs = audit.safe_log.call_args.kwargs
+        assert kwargs["source"] == "web"
+        assert kwargs["actor_id"] is None
+        assert kwargs["actor_username"] == ""
+
+    def test_enqueue_for_passes_run_after_and_max_attempts(self):
+        from web.context import WebActor
+
+        repo = MagicMock()
+        repo.enqueue.return_value = _make_job(max_attempts=3)
+        audit = MagicMock()
+        svc = JobService(repo, audit)
+
+        when = datetime(2030, 1, 1, 12, 0, 0)
+        svc.enqueue_for(
+            WebActor(user_id=1, email="x@y.z"),
+            "email.send",
+            {"event": "welcome"},
+            run_after=when,
+            max_attempts=3,
+        )
+
+        repo.enqueue.assert_called_once_with("email.send", {"event": "welcome"}, when, 3)

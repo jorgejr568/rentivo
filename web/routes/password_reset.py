@@ -49,9 +49,9 @@ async def forgot_password(request: Request):
         logger.exception("password_reset_dispatch_failed", email=email)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.USER_PASSWORD_RESET_REQUESTED,
-        source="web",
         entity_type="user",
         new_state={"email": email},
     )
@@ -89,9 +89,17 @@ async def reset_password(request: Request):
     if user_id is None:
         return render(request, "reset_password.html", {"invalid": True})
 
+    # /reset-password is public, so request.state.actor is ANON_ACTOR. Build
+    # a local WebActor from the just-resolved user so the audit row and the
+    # confirmation-email job record who completed the reset.
+    from web.context import WebActor
+
     user = get_user_service(request).get_by_id(user_id)
+    reset_actor = WebActor(user_id=user_id, email=user.email if user else "")
+
     if user is not None:
-        get_job_service(request).enqueue(
+        get_job_service(request).enqueue_for(
+            reset_actor,
             "email.send",
             {
                 "event": "password_reset_completed",
@@ -102,16 +110,12 @@ async def reset_password(request: Request):
                     "source_ip": request.client.host if request.client else "unknown",
                 },
             },
-            source="web",
-            actor_id=user.id,
-            actor_username=user.email,
         )
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        reset_actor,
         AuditEventType.USER_PASSWORD_RESET_COMPLETED,
-        actor_id=user_id,
-        source="web",
         entity_type="user",
         entity_id=user_id,
     )
