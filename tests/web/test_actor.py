@@ -36,3 +36,15 @@ class TestWebActor:
     def test_actor_from_session_handles_missing_email(self):
         actor = actor_from_session({"user_id": 7})
         assert actor == WebActor(user_id=7, email="")
+
+
+class TestActorOnRequestState:
+    def test_logged_in_request_does_not_crash(self, auth_client):
+        response = auth_client.get("/billings/")
+        assert response.status_code in (200, 302)
+
+    def test_anon_request_does_not_crash(self, client):
+        # /login is public — AuthMiddleware short-circuits but still
+        # attaches request.state.actor before doing so.
+        response = client.get("/login")
+        assert response.status_code in (200, 302)

@@ -93,7 +93,15 @@ class AuthMiddleware:
             await self.app(scope, receive, send)
             return
 
+        # Local import — web.deps is imported during app boot; avoid cycles.
+        from web.context import actor_from_session
+
         request = Request(scope, receive)
+        # Attach the per-request actor up front so every downstream
+        # handler / service can rely on `request.state.actor` existing
+        # regardless of authentication state (ANON_ACTOR for anonymous).
+        request.state.actor = actor_from_session(request.session)
+
         path = request.url.path
         if path in PUBLIC_EXACT_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIX_PATHS):
             await self.app(scope, receive, send)
