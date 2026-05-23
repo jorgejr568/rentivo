@@ -342,3 +342,55 @@ class TestRedactAuditLogs:
         result, changed = _redact_state(json.dumps([1, 2, 3]))
         assert result == json.dumps([1, 2, 3])
         assert changed is False
+
+    def test_redact_state_redacts_invite_emails_and_drops_org_name(self, db_connection):
+        """Legacy invite audit rows carried plaintext invited_email,
+        invited_by_email and organization_name. The backfill redacts the
+        emails in-place and removes organization_name entirely (it's no
+        longer written by serialize_invite)."""
+        from rentivo.scripts.redact_audit_logs import _redact_state
+
+        state = json.dumps(
+            {
+                "id": 7,
+                "uuid": "inv123",
+                "organization_id": 3,
+                "organization_name": "Org A",
+                "invited_user_id": 5,
+                "invited_email": "bob@example.com",
+                "invited_by_user_id": 1,
+                "invited_by_email": "alice@example.com",
+                "role": "viewer",
+                "status": "pending",
+            }
+        )
+        result, changed = _redact_state(state)
+        assert changed is True
+        data = json.loads(result)
+        assert data["invited_email"] == "bo...@example.com"
+        assert data["invited_by_email"] == "al...@example.com"
+        assert "organization_name" not in data
+        # Non-PII fields are preserved.
+        assert data["id"] == 7
+        assert data["organization_id"] == 3
+        assert data["role"] == "viewer"
+        assert data["status"] == "pending"
+
+    def test_redact_state_invite_idempotent_on_already_redacted(self, db_connection):
+        """Re-running the backfill on a row whose invite emails are already
+        partial-mask redacted (and which no longer carries organization_name)
+        is a byte-for-byte no-op."""
+        from rentivo.scripts.redact_audit_logs import _redact_state
+
+        state = json.dumps(
+            {
+                "id": 7,
+                "organization_id": 3,
+                "invited_email": "bo...@example.com",
+                "invited_by_email": "al...@example.com",
+                "status": "pending",
+            }
+        )
+        result, changed = _redact_state(state)
+        assert changed is False
+        assert result == state

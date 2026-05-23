@@ -293,7 +293,7 @@ class TestSerializeOrganization:
 
 
 class TestSerializeInvite:
-    def test_basic_invite(self):
+    def test_basic_invite_redacts_emails_and_drops_org_name(self):
         now = datetime(2026, 2, 10, 8, 0, 0)
         invite = Invite(
             id=1,
@@ -301,9 +301,9 @@ class TestSerializeInvite:
             organization_id=3,
             organization_name="Org A",
             invited_user_id=5,
-            invited_email="bob",
+            invited_email="bob@example.com",
             invited_by_user_id=1,
-            invited_by_email="alice",
+            invited_by_email="alice@example.com",
             role="viewer",
             status="pending",
             created_at=now,
@@ -314,11 +314,15 @@ class TestSerializeInvite:
         assert result["id"] == 1
         assert result["uuid"] == "inv123"
         assert result["organization_id"] == 3
-        assert result["organization_name"] == "Org A"
+        # organization_name intentionally NOT in audit payload — the row
+        # references the org by id, and the name is captured under the
+        # dedicated organization audit events via serialize_organization.
+        assert "organization_name" not in result
         assert result["invited_user_id"] == 5
-        assert result["invited_email"] == "bob"
+        # first 2 chars of local + ...@ + full domain
+        assert result["invited_email"] == "bo...@example.com"
         assert result["invited_by_user_id"] == 1
-        assert result["invited_by_email"] == "alice"
+        assert result["invited_by_email"] == "al...@example.com"
         assert result["role"] == "viewer"
         assert result["status"] == "pending"
         assert result["created_at"] == now.isoformat()
@@ -335,6 +339,50 @@ class TestSerializeInvite:
         )
         result = serialize_invite(invite)
         assert result["responded_at"] == now.isoformat()
+
+    def test_invite_short_local_collapses_and_empty_stays_empty(self):
+        """Edge-case email values go through the same partial-mask rules
+        as ``serialize_user``: 1-char local-parts collapse to ``***@<domain>``
+        and empty values round-trip as ``""``.
+        """
+        invite = Invite(
+            organization_id=1,
+            invited_user_id=2,
+            invited_email="a@b.co",
+            invited_by_user_id=3,
+            invited_by_email="",
+        )
+        result = serialize_invite(invite)
+        # Empty email → "" (redact returns "" on empty input).
+        assert result["invited_by_email"] == ""
+        # Short local-part collapses to "***@<domain>" — see
+        # rentivo.pii_redaction._mask_email.
+        assert result["invited_email"] == "***@b.co"
+        # And in no case do we leak the plaintext local-part.
+        assert "a@b.co" not in result["invited_email"]
+
+    def test_invite_email_redaction_is_deterministic(self):
+        """Same plaintext email → same redacted form; key-less mask."""
+        a = serialize_invite(
+            Invite(
+                organization_id=1,
+                invited_user_id=2,
+                invited_email="alice@example.com",
+                invited_by_user_id=3,
+                invited_by_email="carol@example.com",
+            )
+        )
+        b = serialize_invite(
+            Invite(
+                organization_id=1,
+                invited_user_id=2,
+                invited_email="alice@example.com",
+                invited_by_user_id=3,
+                invited_by_email="dan@example.com",
+            )
+        )
+        assert a["invited_email"] == b["invited_email"] == "al...@example.com"
+        assert a["invited_by_email"] != b["invited_by_email"]
 
 
 class TestSerializeJobPayload:

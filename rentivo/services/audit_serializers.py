@@ -120,16 +120,22 @@ def serialize_organization(org: Organization) -> dict:
 
 
 def serialize_invite(invite: Invite) -> dict:
-    """Serialize an Invite for audit state."""
+    """Serialize an Invite for audit state.
+
+    Email fields are partial-mask redacted via :func:`rentivo.pii_redaction.redact`
+    with ``PIIKind.EMAIL`` (first 2 chars of local-part + ``...@`` + full domain).
+    ``organization_name`` is dropped — the row already references the org by id,
+    and the org's name is captured under the dedicated organization audit events
+    via :func:`serialize_organization`.
+    """
     return {
         "id": invite.id,
         "uuid": invite.uuid,
         "organization_id": invite.organization_id,
-        "organization_name": invite.organization_name,
         "invited_user_id": invite.invited_user_id,
-        "invited_email": invite.invited_email,
+        "invited_email": redact(invite.invited_email or "", PIIKind.EMAIL),
         "invited_by_user_id": invite.invited_by_user_id,
-        "invited_by_email": invite.invited_by_email,
+        "invited_by_email": redact(invite.invited_by_email or "", PIIKind.EMAIL),
         "role": invite.role,
         "status": invite.status,
         "created_at": _dt(invite.created_at),

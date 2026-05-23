@@ -39,6 +39,8 @@ console = Console()
 
 
 _PII_KEYS = ("pix_key", "pix_merchant_name", "pix_merchant_city")
+_EMAIL_KEYS = ("to_email", "invited_email", "invited_by_email")
+_DROP_KEYS = ("organization_name",)
 
 
 def _redact_state(state_json: str | None) -> tuple[str | None, bool]:
@@ -67,11 +69,23 @@ def _redact_state(state_json: str | None) -> tuple[str | None, bool]:
                 changed = True
 
     # email.send job payloads stored plaintext to_email before this PR.
-    if "to_email" in data:
-        value = data["to_email"]
-        redacted = redact(value or "", PIIKind.EMAIL)
-        if redacted != value:
-            data["to_email"] = redacted
+    # Invite audit rows stored plaintext invited_email / invited_by_email
+    # before the redact-serialize-invite change.
+    for key in _EMAIL_KEYS:
+        if key in data:
+            value = data[key]
+            redacted = redact(value or "", PIIKind.EMAIL)
+            if redacted != value:
+                data[key] = redacted
+                changed = True
+
+    # Drop legacy keys that the current serializers no longer write.
+    # organization_name was being logged in plaintext on invite audit rows;
+    # serialize_invite now omits it (the org id and org's own audit events
+    # capture the name on the rare occasion it matters).
+    for key in _DROP_KEYS:
+        if key in data:
+            del data[key]
             changed = True
 
     if not changed:
