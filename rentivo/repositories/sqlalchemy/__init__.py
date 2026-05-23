@@ -12,7 +12,6 @@ from rentivo.repositories._sqlalchemy_old import (
     SQLAlchemyInviteRepository,
     SQLAlchemyKnownDeviceRepository,
     SQLAlchemyMFATOTPRepository,
-    SQLAlchemyOrganizationRepository,
     SQLAlchemyPasskeyRepository,
     SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyReceiptRepository,
@@ -21,6 +20,7 @@ from rentivo.repositories._sqlalchemy_old import (
 )
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
+from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
 from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
 __all__ = [
