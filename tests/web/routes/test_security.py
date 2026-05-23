@@ -1,6 +1,6 @@
 import re
 import time as real_time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, PropertyMock, patch
 
 import pyotp
 
@@ -13,6 +13,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyUserRepository,
 )
 from tests.web.conftest import create_org_in_db, get_test_user_id
+from web.services_container import RequestServices
 
 
 def _setup_confirmed_totp(test_engine, user_id, secret=None):
@@ -665,7 +666,7 @@ class TestPasskeyAuthComplete:
         mock_mfa.user_requires_mfa_setup.return_value = True
 
         with (
-            patch("web.routes.security.get_mfa_service", return_value=mock_mfa),
+            patch.object(RequestServices, "mfa", new_callable=PropertyMock, return_value=mock_mfa),
             patch("web.routes.security.webauthn") as mock_wa,
         ):
             mock_wa.base64url_to_bytes.return_value = b"pk_bytes"
@@ -756,10 +757,9 @@ class TestSecurityPixUpdate:
 
     def test_update_pix_when_user_missing_redirects(self, auth_client, csrf_token):
         """If the session user has no DB row (edge case), route flashes + redirects."""
-        with patch("web.routes.security.get_user_service") as mock_svc_fn:
-            svc = MagicMock()
-            svc.get_by_id.return_value = None
-            mock_svc_fn.return_value = svc
+        svc = MagicMock()
+        svc.get_by_id.return_value = None
+        with patch.object(RequestServices, "user", new_callable=PropertyMock, return_value=svc):
             r = auth_client.post(
                 "/security/pix",
                 data={
