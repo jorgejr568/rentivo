@@ -6,19 +6,17 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.billing import BillingItem, ItemType
-from rentivo.models.organization import OrgRole
 from rentivo.services.audit_serializers import serialize_billing
 from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
     get_bill_service,
+    get_billing_notification_service,
     get_billing_service,
-    get_job_service,
     get_organization_service,
     get_pix_service,
     get_storage_cleanup_service,
-    get_user_service,
     render,
 )
 from web.flash import flash
@@ -27,67 +25,6 @@ from web.forms import parse_brl, parse_formset
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/billings")
-
-
-def _notify_billing_transferred(
-    request: Request,
-    billing,
-    previous_owner: dict,
-    new_org_id: int,
-    actor_user_id: int,
-) -> None:
-    """Email previous user-owner (if any) + every admin of the destination org.
-
-    The actor (`actor_user_id`) is excluded so the user who clicked the transfer button
-    doesn't receive a notification about their own action. Each notification is enqueued
-    as an email.send job; the worker handles it asynchronously, so this never blocks the
-    redirect.
-    """
-    actor_email = request.session.get("email", "")
-    user_service = get_user_service(request)
-    job_service = get_job_service(request)
-    org_service = get_organization_service(request)
-
-    # Notify the previous owner if they were a user (orgs have no single inbox).
-    if previous_owner["owner_type"] == "user":
-        prev_user = user_service.get_by_id(previous_owner["owner_id"])
-        if prev_user is not None and prev_user.id != actor_user_id:
-            job_service.enqueue(
-                "email.send",
-                {
-                    "event": "billing_transferred",
-                    "to_email": prev_user.email,
-                    "ctx": {
-                        "billing_name": billing.name,
-                        "recipient_role": "previous_owner",
-                        "actor_email": actor_email,
-                    },
-                },
-                source="web",
-                actor_id=actor_user_id,
-                actor_username=actor_email,
-            )
-
-    # Notify admin members of the destination organization (excluding the actor).
-    for member in org_service.list_members(new_org_id):
-        if member.user_id == actor_user_id:
-            continue
-        if member.role == OrgRole.ADMIN.value:
-            job_service.enqueue(
-                "email.send",
-                {
-                    "event": "billing_transferred",
-                    "to_email": member.email,
-                    "ctx": {
-                        "billing_name": billing.name,
-                        "recipient_role": "destination_admin",
-                        "actor_email": actor_email,
-                    },
-                },
-                source="web",
-                actor_id=actor_user_id,
-                actor_username=actor_email,
-            )
 
 
 @router.get("/")
@@ -383,7 +320,13 @@ async def billing_transfer(request: Request, billing_uuid: str):
         new_state={"owner_type": "organization", "owner_id": org_id},
     )
 
-    _notify_billing_transferred(request, billing, previous_owner, org_id, user_id)
+    get_billing_notification_service(request).notify_transferred(
+        billing=billing,
+        previous_owner=previous_owner,
+        new_org_id=org_id,
+        actor_user_id=user_id,
+        actor_email=request.session.get("email", ""),
+    )
 
     flash(request, "Cobrança transferida com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_transferred", "billing_uuid_hash": analytics_hash(billing_uuid)})
