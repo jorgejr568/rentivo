@@ -191,6 +191,53 @@ def _get_conn(request: Request):
     return request.state.db_conn
 
 
+class RequestServicesMiddleware:
+    """Pure ASGI — attaches a lazy services proxy to request.state.services.
+
+    Must run AFTER DBConnectionMiddleware (i.e. registered immediately after it
+    in web/app.py) so the proxy can rely on request.state.db_conn existing.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope)
+        request.state.services = _LazyServicesProxy(request)
+        await self.app(scope, receive, send)
+
+
+class _LazyServicesProxy:
+    """Defers RequestServices construction until first attribute access.
+
+    Keeps the per-request overhead at zero for endpoints that do not touch
+    any service (e.g. /health, /static).
+    """
+
+    __slots__ = ("_request", "_real")
+
+    def __init__(self, request) -> None:
+        self._request = request
+        self._real = None
+
+    def _get(self):
+        if self._real is None:
+            from rentivo.encryption.factory import get_encryption
+            from web.services_container import RequestServices
+
+            self._real = RequestServices(
+                conn=_get_conn(self._request),
+                encryption=get_encryption(),
+            )
+        return self._real
+
+    def __getattr__(self, name):
+        return getattr(self._get(), name)
+
+
 def get_billing_service(request: Request) -> BillingService:
     from rentivo.encryption.factory import get_encryption
 

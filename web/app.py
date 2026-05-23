@@ -20,7 +20,12 @@ from rentivo.models import format_brl, format_brl_input
 from rentivo.settings import settings
 from web.auth import router as auth_router
 from web.csrf import CSRFMiddleware
-from web.deps import AuthMiddleware, DBConnectionMiddleware, MFAEnforcementMiddleware
+from web.deps import (
+    AuthMiddleware,
+    DBConnectionMiddleware,
+    MFAEnforcementMiddleware,
+    RequestServicesMiddleware,
+)
 from web.middleware.logging import RequestContextMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router
@@ -62,6 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(docs_url=None, redoc_url=None, lifespan=lifespan)
 
 app.add_middleware(DBConnectionMiddleware)
+app.add_middleware(RequestServicesMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(MFAEnforcementMiddleware)
 app.add_middleware(AuthMiddleware)
