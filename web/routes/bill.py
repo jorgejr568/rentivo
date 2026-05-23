@@ -139,22 +139,18 @@ async def bill_generate(request: Request, billing_uuid: str):
         logger.info("receipts_attached", bill_uuid=bill.uuid, count=len(attached_receipts))
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILL_CREATE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
         new_state=serialize_bill(bill),
     )
     for receipt in attached_receipts:
-        audit.safe_log(
+        audit.safe_log_for(
+            request.state.actor,
             AuditEventType.RECEIPT_UPLOAD,
-            actor_id=user_id,
-            actor_username=request.session.get("email", ""),
-            source="web",
             entity_type="receipt",
             entity_id=receipt.id,
             entity_uuid=receipt.uuid,
@@ -330,11 +326,9 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
     )
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILL_UPDATE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
@@ -383,11 +377,9 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
     bill_service.regenerate_pdf(bill, billing)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILL_REGENERATE_PDF,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
@@ -437,11 +429,9 @@ async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str
         return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill_uuid}", status_code=302)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILL_STATUS_CHANGE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
@@ -502,11 +492,9 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     bill_service.delete_bill(bill.id)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.BILL_DELETE,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
@@ -661,11 +649,9 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
 
         attached += 1
 
-        audit.safe_log(
+        audit.safe_log_for(
+            request.state.actor,
             AuditEventType.RECEIPT_UPLOAD,
-            actor_id=request.session.get("user_id"),
-            actor_username=request.session.get("email", ""),
-            source="web",
             entity_type="receipt",
             entity_id=receipt.id,
             entity_uuid=receipt.uuid,
@@ -763,11 +749,9 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
     )
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.RECEIPT_DELETE,
-        actor_id=request.session.get("user_id"),
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="receipt",
         entity_id=receipt.id,
         entity_uuid=receipt_uuid,
@@ -818,11 +802,9 @@ async def receipt_reorder(request: Request, billing_uuid: str, bill_uuid: str):
         return JSONResponse({"error": str(e)}, status_code=400)
 
     audit = get_audit_service(request)
-    audit.safe_log(
+    audit.safe_log_for(
+        request.state.actor,
         AuditEventType.RECEIPT_REORDER,
-        actor_id=user_id,
-        actor_username=request.session.get("email", ""),
-        source="web",
         entity_type="bill",
         entity_id=bill.id,
         entity_uuid=bill.uuid,
