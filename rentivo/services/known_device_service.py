@@ -47,3 +47,36 @@ class KnownDeviceService:
             )
         )
         return existing is not None
+
+    def notify_if_new(
+        self,
+        *,
+        user,
+        user_agent: str,
+        client_ip: str,
+        forgot_password_url: str,
+        job_service,
+    ) -> None:
+        """Enqueue a new_device_login email iff the device is unseen."""
+        from datetime import datetime
+
+        if self.register_login(user.id, user_agent, client_ip):
+            return
+
+        job_service.enqueue(
+            "email.send",
+            {
+                "event": "new_device_login",
+                "to_email": user.email,
+                "ctx": {
+                    "email": user.email,
+                    "logged_in_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                    "source_ip": client_ip,
+                    "user_agent": user_agent,
+                    "reset_url": forgot_password_url,
+                },
+            },
+            source="web",
+            actor_id=user.id,
+            actor_username=user.email,
+        )

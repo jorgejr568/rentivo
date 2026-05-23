@@ -12,6 +12,7 @@ from web.analytics import analytics_hash, push_event
 from web.deps import (
     get_audit_service,
     get_authorization_service,
+    get_billing_notification_service,
     get_billing_service,
     get_invite_service,
     get_job_service,
@@ -505,9 +506,13 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         new_state={"owner_type": "organization", "owner_id": org.id},
     )
 
-    from web.routes.billing import _notify_billing_transferred
-
-    _notify_billing_transferred(request, billing, previous_owner, org.id, user_id)
+    get_billing_notification_service(request).notify_transferred(
+        billing=billing,
+        previous_owner=previous_owner,
+        new_org_id=org.id,
+        actor_user_id=user_id,
+        actor_email=request.session.get("email", ""),
+    )
 
     flash(request, "Cobrança transferida com sucesso!", "success")
     return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)

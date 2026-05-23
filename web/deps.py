@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from functools import cache
+from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
+
+if TYPE_CHECKING:
+    from rentivo.services.billing_notification_service import BillingNotificationService
 
 from rentivo.db import get_engine
 from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
@@ -283,6 +287,16 @@ def get_storage_cleanup_service(request: Request) -> StorageCleanupService:
 
 def get_known_device_service(request: Request) -> KnownDeviceService:
     return KnownDeviceService(SQLAlchemyKnownDeviceRepository(_get_conn(request)))
+
+
+def get_billing_notification_service(request: Request) -> "BillingNotificationService":
+    from rentivo.services.billing_notification_service import BillingNotificationService
+
+    return BillingNotificationService(
+        user_service=get_user_service(request),
+        org_service=get_organization_service(request),
+        job_service=get_job_service(request),
+    )
 
 
 def get_turnstile_service(request: Request) -> TurnstileService:
