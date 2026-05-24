@@ -7,6 +7,7 @@ from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
 from rentivo.storage.local import LocalStorage
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs, get_test_user_id
+from web.services_container import RequestServices
 
 
 def _create_other_user_billing(test_engine):
@@ -342,10 +343,9 @@ class TestBillInvoice:
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
-            with patch("web.routes.bill.get_billing_service") as mock_billing_svc_fn:
-                mock_billing_svc = MagicMock()
-                mock_billing_svc.get_billing.return_value = None
-                mock_billing_svc_fn.return_value = mock_billing_svc
+            mock_billing_svc = MagicMock()
+            mock_billing_svc.get_billing.return_value = None
+            with patch.object(RequestServices, "billing", new=mock_billing_svc):
                 response = auth_client.get(
                     f"/billings/{billing.uuid}/bills/{bill.uuid}/invoice",
                     follow_redirects=False,
@@ -636,10 +636,9 @@ class TestBillDeleteIdNone:
             reference_month="2025-03",
             total_amount=0,
         )
-        with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
-            mock_svc = MagicMock()
-            mock_svc.get_bill_by_uuid.return_value = mock_bill
-            mock_svc_fn.return_value = mock_svc
+        mock_svc = MagicMock()
+        mock_svc.get_bill_by_uuid.return_value = mock_bill
+        with patch.object(RequestServices, "bill", new=mock_svc):
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/delete",
                 data={"csrf_token": csrf_token},
@@ -664,19 +663,18 @@ class TestBillInvoiceS3Redirect:
             )
             conn.commit()
         # Mock get_invoice_url to return a URL
-        with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
-            mock_svc = MagicMock()
-            mock_bill = Bill(
-                id=bill.id,
-                uuid=bill.uuid,
-                billing_id=billing.id,
-                reference_month="2025-03",
-                total_amount=0,
-                pdf_path="s3-bucket/key.pdf",
-            )
-            mock_svc.get_bill_by_uuid.return_value = mock_bill
-            mock_svc.get_invoice_url.return_value = "https://presigned-url.example.com/file.pdf"
-            mock_svc_fn.return_value = mock_svc
+        mock_svc = MagicMock()
+        mock_bill = Bill(
+            id=bill.id,
+            uuid=bill.uuid,
+            billing_id=billing.id,
+            reference_month="2025-03",
+            total_amount=0,
+            pdf_path="s3-bucket/key.pdf",
+        )
+        mock_svc.get_bill_by_uuid.return_value = mock_bill
+        mock_svc.get_invoice_url.return_value = "https://presigned-url.example.com/file.pdf"
+        with patch.object(RequestServices, "bill", new=mock_svc):
             response = auth_client.get(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/invoice",
                 follow_redirects=False,
@@ -1166,12 +1164,11 @@ class TestReceiptViewS3Redirect:
             assert len(receipts) == 1
 
         # Mock bill_service to return a non-local URL
-        with patch("web.routes.bill.get_bill_service") as mock_svc_fn:
-            mock_svc = MagicMock()
-            mock_svc.get_receipt_by_uuid.return_value = receipts[0]
-            mock_svc.get_bill.return_value = bill
-            mock_svc.storage.get_url.return_value = "https://s3.example.com/receipt.pdf"
-            mock_svc_fn.return_value = mock_svc
+        mock_svc = MagicMock()
+        mock_svc.get_receipt_by_uuid.return_value = receipts[0]
+        mock_svc.get_bill.return_value = bill
+        mock_svc.storage.get_url.return_value = "https://s3.example.com/receipt.pdf"
+        with patch.object(RequestServices, "bill", new=mock_svc):
             response = auth_client.get(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipts[0].uuid}",
                 follow_redirects=False,
@@ -1278,12 +1275,14 @@ class TestBillGenerateVariableIdNone:
             total_amount=285000,
         )
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            mock_billing_svc = MagicMock()
+            mock_billing_svc.get_billing_by_uuid.return_value = mock_billing
+            mock_bill_svc = MagicMock()
+            mock_bill_svc.generate_bill.return_value = mock_bill
             with (
-                patch("web.routes.bill.get_billing_service") as mock_billing_svc,
-                patch("web.routes.bill.get_bill_service") as mock_bill_svc,
+                patch.object(RequestServices, "billing", new=mock_billing_svc),
+                patch.object(RequestServices, "bill", new=mock_bill_svc),
             ):
-                mock_billing_svc.return_value.get_billing_by_uuid.return_value = mock_billing
-                mock_bill_svc.return_value.generate_bill.return_value = mock_bill
                 response = auth_client.post(
                     f"/billings/{billing.uuid}/bills/generate",
                     data={
