@@ -549,3 +549,67 @@ class TestBackfillUsersEmail:
 
         row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
         assert row["email_hash"] == "STALEHASH"  # unchanged
+
+    def test_empty_email_row_is_skipped(self, db_connection, monkeypatch):
+        """Rows with an empty email string short-circuit the helper without writing.
+
+        The column is NOT NULL but defaults to '' in some legacy fixtures; the
+        skip branch keeps the backfill from generating a hash for an empty value.
+        """
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts.backfill_encryption import _backfill_users_email
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x0b" * 32)
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('', NULL, 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        rewritten, skipped = _backfill_users_email(db_connection, FakeEncryptingBackend(), dry_run=False)
+
+        assert rewritten == 0
+        assert skipped == 1
+        row = db_connection.execute(text("SELECT email, email_hash FROM users")).mappings().fetchone()
+        assert row["email"] == ""
+        assert row["email_hash"] is None
+
+    def test_main_with_reset_blind_index_flag_runs_reset(self, db_connection, monkeypatch):
+        """`python -m ... --reset-blind-index` clears hashes before re-running the backfill."""
+        from unittest.mock import patch
+
+        from sqlalchemy import text
+
+        import rentivo.blind_index
+        from rentivo.scripts import backfill_encryption
+        from tests.conftest import FakeEncryptingBackend
+
+        monkeypatch.setattr(rentivo.blind_index, "_cached_key", b"\x0c" * 32)
+
+        db_connection.execute(
+            text(
+                "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                "VALUES ('fake:user@example.com', 'STALEHASH', 'x', '2026-04-01 00:00:00')"
+            )
+        )
+        db_connection.commit()
+
+        with (
+            patch.object(backfill_encryption, "initialize_db"),
+            patch.object(backfill_encryption, "get_connection", return_value=db_connection),
+            patch.object(backfill_encryption, "get_encryption", return_value=FakeEncryptingBackend()),
+            patch("sys.argv", ["prog", "--reset-blind-index"]),
+        ):
+            backfill_encryption.main()
+
+        from rentivo.blind_index import compute_email_hash
+
+        row = db_connection.execute(text("SELECT email_hash FROM users")).mappings().fetchone()
+        # Stale hash was wiped, then re-populated under the current key.
+        assert row["email_hash"] == compute_email_hash("user@example.com")
