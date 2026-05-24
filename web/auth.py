@@ -10,15 +10,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
-from web.deps import (
-    get_audit_service,
-    get_job_service,
-    get_known_device_service,
-    get_mfa_service,
-    get_turnstile_service,
-    get_user_service,
-    render,
-)
+from web.deps import render
 
 logger = structlog.get_logger(__name__)
 
@@ -97,7 +89,7 @@ async def signup(request: Request):
 
     turnstile_token = str(form.get("cf-turnstile-response", ""))
     client_ip = request.client.host if request.client else "unknown"
-    turnstile = get_turnstile_service(request)
+    turnstile = request.state.services.turnstile
     if not await turnstile.verify(turnstile_token, client_ip):
         logger.warning("signup_turnstile_failed", email=email, client_ip=client_ip)
         return render(request, "signup.html", {"error": "Verificação de segurança falhou. Tente novamente."})
@@ -110,7 +102,7 @@ async def signup(request: Request):
         logger.warning("signup_rejected", reason="password_mismatch", email=email)
         return render(request, "signup.html", {"error": "As senhas não coincidem."})
 
-    user_service = get_user_service(request)
+    user_service = request.state.services.user
     try:
         user = user_service.register_user(email, password)
     except ValueError:
@@ -129,7 +121,7 @@ async def signup(request: Request):
 
     signup_actor = WebActor(user_id=user.id, email=user.email)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         signup_actor,
         AuditEventType.USER_SIGNUP,
@@ -141,7 +133,7 @@ async def signup(request: Request):
     push_event(request, {"event": "rentivo_signup_completed"})
 
     pix_setup_url = f"{settings.public_app_url.rstrip('/')}/security/pix"
-    get_job_service(request).enqueue_for(
+    request.state.services.job.enqueue_for(
         signup_actor,
         "email.send",
         {
@@ -180,18 +172,18 @@ async def login(request: Request):
     password = form.get("password", "")
     turnstile_token = str(form.get("cf-turnstile-response", ""))
 
-    turnstile = get_turnstile_service(request)
+    turnstile = request.state.services.turnstile
     if not await turnstile.verify(turnstile_token, client_ip):
         logger.warning("login_turnstile_failed", email=email, client_ip=client_ip)
         return render(request, "login.html", {"error": "Verificação de segurança falhou. Tente novamente."})
 
-    user_service = get_user_service(request)
+    user_service = request.state.services.user
     user = user_service.authenticate(email, str(password))
 
     if user is None:
         _record_failed_attempt(client_ip)
         logger.warning("login_failed", email=email, client_ip=client_ip)
-        audit = get_audit_service(request)
+        audit = request.state.services.audit
         audit.safe_log_for(
             request.state.actor,
             AuditEventType.USER_LOGIN_FAILED,
@@ -205,7 +197,7 @@ async def login(request: Request):
     _clear_attempts(client_ip)
 
     # Check if user has MFA enabled
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
     has_mfa = mfa_service.has_any_mfa(user.id)
 
     # /login is public, so request.state.actor is ANON_ACTOR. Build a local
@@ -221,7 +213,7 @@ async def login(request: Request):
         request.session["mfa_pending_email"] = user.email
         logger.info("mfa_verification_required", email=user.email, user_id=user.id)
 
-        audit = get_audit_service(request)
+        audit = request.state.services.audit
         audit.safe_log_for(
             login_actor,
             AuditEventType.MFA_CHALLENGE_ISSUED,
@@ -242,7 +234,7 @@ async def login(request: Request):
     if mfa_service.user_requires_mfa_setup(user.id):
         request.session["mfa_setup_required"] = True
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         login_actor,
         AuditEventType.USER_LOGIN,
@@ -253,12 +245,12 @@ async def login(request: Request):
     )
 
     push_event(request, {"event": "rentivo_login_success", "via": "password"})
-    get_known_device_service(request).notify_if_new(
+    request.state.services.known_device.notify_if_new(
         user=user,
         user_agent=request.headers.get("user-agent", ""),
         client_ip=request.client.host if request.client else "unknown",
         forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
-        job_service=get_job_service(request),
+        job_service=request.state.services.job,
     )
     return RedirectResponse("/billings/", status_code=302)
 
@@ -272,7 +264,7 @@ async def mfa_verify_page(request: Request):
         return RedirectResponse("/login", status_code=302)
 
     user_id = request.session["mfa_pending_user_id"]
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
     has_passkeys = len(mfa_service.list_passkeys(user_id)) > 0
 
     return render(
@@ -308,7 +300,7 @@ async def mfa_verify(request: Request):
     code = str(form.get("code", "")).strip()
     method = str(form.get("method", "totp"))
 
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
 
     if method == "recovery":
         verified = mfa_service.verify_recovery_code(user_id, code)
@@ -323,7 +315,7 @@ async def mfa_verify(request: Request):
 
     if not verified:
         _record_mfa_failed(client_ip)
-        audit = get_audit_service(request)
+        audit = request.state.services.audit
         audit.safe_log_for(
             verify_actor,
             AuditEventType.MFA_VERIFY_FAILED,
@@ -352,7 +344,7 @@ async def mfa_verify(request: Request):
     if mfa_service.user_requires_mfa_setup(user_id):
         request.session["mfa_setup_required"] = True
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         verify_actor,
         AuditEventType.MFA_VERIFY_SUCCESS,
@@ -371,14 +363,14 @@ async def mfa_verify(request: Request):
 
     logger.info("mfa_verified", email=email, method=method)
     push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
-    user = get_user_service(request).get_by_id(user_id)
+    user = request.state.services.user.get_by_id(user_id)
     if user is not None:
-        get_known_device_service(request).notify_if_new(
+        request.state.services.known_device.notify_if_new(
             user=user,
             user_agent=request.headers.get("user-agent", ""),
             client_ip=request.client.host if request.client else "unknown",
             forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
-            job_service=get_job_service(request),
+            job_service=request.state.services.job,
         )
     return RedirectResponse("/billings/", status_code=302)
 
@@ -393,7 +385,7 @@ async def logout(request: Request):
     user_id = request.session.get("user_id")
     email = request.session.get("email")
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.USER_LOGOUT,

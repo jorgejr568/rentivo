@@ -6,13 +6,7 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from web.analytics import analytics_hash, push_event
-from web.deps import (
-    get_audit_service,
-    get_invite_service,
-    get_job_service,
-    get_mfa_service,
-    render,
-)
+from web.deps import render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -23,7 +17,7 @@ router = APIRouter(prefix="/invites")
 @router.get("/")
 async def invite_list(request: Request):
     user_id = request.session.get("user_id")
-    service = get_invite_service(request)
+    service = request.state.services.invite
     invites = service.list_pending(user_id)
 
     return render(request, "invite/list.html", {"invites": invites})
@@ -32,7 +26,7 @@ async def invite_list(request: Request):
 @router.post("/{invite_uuid}/accept")
 async def invite_accept(request: Request, invite_uuid: str):
     user_id = request.session.get("user_id")
-    service = get_invite_service(request)
+    service = request.state.services.invite
     invite_record = service.invite_repo.get_by_uuid(invite_uuid)
     try:
         service.accept_invite(invite_uuid, user_id)
@@ -41,7 +35,7 @@ async def invite_accept(request: Request, invite_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse("/invites/", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.INVITE_ACCEPT,
@@ -52,7 +46,7 @@ async def invite_accept(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_job_service(request).enqueue_for(
+        request.state.services.job.enqueue_for(
             request.state.actor,
             "email.send",
             {
@@ -67,7 +61,7 @@ async def invite_accept(request: Request, invite_uuid: str):
         )
 
     # Check if user now needs MFA setup (accepted invite from enforcing org)
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
     if mfa_service.user_requires_mfa_setup(user_id):
         request.session["mfa_setup_required"] = True
 
@@ -79,7 +73,7 @@ async def invite_accept(request: Request, invite_uuid: str):
 @router.post("/{invite_uuid}/decline")
 async def invite_decline(request: Request, invite_uuid: str):
     user_id = request.session.get("user_id")
-    service = get_invite_service(request)
+    service = request.state.services.invite
     invite_record = service.invite_repo.get_by_uuid(invite_uuid)
     try:
         service.decline_invite(invite_uuid, user_id)
@@ -88,7 +82,7 @@ async def invite_decline(request: Request, invite_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse("/invites/", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.INVITE_DECLINE,
@@ -99,7 +93,7 @@ async def invite_decline(request: Request, invite_uuid: str):
     )
 
     if invite_record is not None:
-        get_job_service(request).enqueue_for(
+        request.state.services.job.enqueue_for(
             request.state.actor,
             "email.send",
             {

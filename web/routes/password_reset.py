@@ -8,14 +8,7 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from web.analytics import push_event
-from web.deps import (
-    get_audit_service,
-    get_job_service,
-    get_password_reset_service,
-    get_turnstile_service,
-    get_user_service,
-    render,
-)
+from web.deps import render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -35,20 +28,20 @@ async def forgot_password(request: Request):
     email = str(form.get("email", "")).strip().lower()
     turnstile_token = str(form.get("cf-turnstile-response", ""))
     client_ip = request.client.host if request.client else "unknown"
-    turnstile = get_turnstile_service(request)
+    turnstile = request.state.services.turnstile
     if not await turnstile.verify(turnstile_token, client_ip):
         logger.warning("forgot_password_turnstile_failed", email=email, client_ip=client_ip)
         return render(request, "forgot_password.html", {"error": "Verificação de segurança falhou. Tente novamente."})
     if not email:
         return render(request, "forgot_password.html", {"error": "Informe um e-mail."})
 
-    service = get_password_reset_service(request)
+    service = request.state.services.password_reset
     try:
         service.request_reset(email)
     except Exception:
         logger.exception("password_reset_dispatch_failed", email=email)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.USER_PASSWORD_RESET_REQUESTED,
@@ -84,7 +77,7 @@ async def reset_password(request: Request):
             {"token": token, "error": "As senhas não coincidem.", "invalid": False},
         )
 
-    service = get_password_reset_service(request)
+    service = request.state.services.password_reset
     user_id = service.consume(token, new_password=password)
     if user_id is None:
         return render(request, "reset_password.html", {"invalid": True})
@@ -94,11 +87,11 @@ async def reset_password(request: Request):
     # confirmation-email job record who completed the reset.
     from web.context import WebActor
 
-    user = get_user_service(request).get_by_id(user_id)
+    user = request.state.services.user.get_by_id(user_id)
     reset_actor = WebActor(user_id=user_id, email=user.email if user else "")
 
     if user is not None:
-        get_job_service(request).enqueue_for(
+        request.state.services.job.enqueue_for(
             reset_actor,
             "email.send",
             {
@@ -112,7 +105,7 @@ async def reset_password(request: Request):
             },
         )
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         reset_actor,
         AuditEventType.USER_PASSWORD_RESET_COMPLETED,

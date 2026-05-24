@@ -9,18 +9,7 @@ from rentivo.models.organization import OrgRole
 from rentivo.services.audit_serializers import serialize_invite, serialize_organization
 from rentivo.settings import settings
 from web.analytics import analytics_hash, push_event
-from web.deps import (
-    get_audit_service,
-    get_authorization_service,
-    get_billing_notification_service,
-    get_billing_service,
-    get_invite_service,
-    get_job_service,
-    get_mfa_service,
-    get_organization_service,
-    get_user_service,
-    render,
-)
+from web.deps import render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -31,7 +20,7 @@ router = APIRouter(prefix="/organizations")
 @router.get("/")
 async def organization_list(request: Request):
     user_id = request.session.get("user_id")
-    service = get_organization_service(request)
+    service = request.state.services.organization
     orgs = service.list_user_organizations(user_id)
     return render(request, "organization/list.html", {"organizations": orgs})
 
@@ -51,10 +40,10 @@ async def organization_create(request: Request):
         return RedirectResponse("/organizations/create", status_code=302)
 
     user_id = request.session.get("user_id")
-    service = get_organization_service(request)
+    service = request.state.services.organization
     org = service.create_organization(name, user_id)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.ORGANIZATION_CREATE,
@@ -71,7 +60,7 @@ async def organization_create(request: Request):
 
 @router.get("/{org_uuid}")
 async def organization_detail(request: Request, org_uuid: str):
-    service = get_organization_service(request)
+    service = request.state.services.organization
     org = service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -86,12 +75,12 @@ async def organization_detail(request: Request, org_uuid: str):
         return RedirectResponse("/organizations/", status_code=302)
 
     members = service.list_members(org.id)
-    billing_service = get_billing_service(request)
+    billing_service = request.state.services.billing
     # Get billings owned by this org
     all_billings = billing_service.list_billings_for_user(user_id)
     org_billings = [b for b in all_billings if b.owner_type == "organization" and b.owner_id == org.id]
 
-    invite_service = get_invite_service(request)
+    invite_service = request.state.services.invite
     invites = invite_service.list_org_invites(org.id) if member.role == OrgRole.ADMIN.value else []
 
     logger.info(
@@ -116,7 +105,7 @@ async def organization_detail(request: Request, org_uuid: str):
 
 @router.get("/{org_uuid}/edit")
 async def organization_edit_form(request: Request, org_uuid: str):
-    service = get_organization_service(request)
+    service = request.state.services.organization
     org = service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -135,7 +124,7 @@ async def organization_edit_form(request: Request, org_uuid: str):
 
 @router.post("/{org_uuid}/edit")
 async def organization_edit(request: Request, org_uuid: str):
-    service = get_organization_service(request)
+    service = request.state.services.organization
     org = service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -167,7 +156,7 @@ async def organization_edit(request: Request, org_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse(f"/organizations/{org_uuid}/edit", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.ORGANIZATION_UPDATE,
@@ -184,7 +173,7 @@ async def organization_edit(request: Request, org_uuid: str):
 
 @router.post("/{org_uuid}/delete")
 async def organization_delete(request: Request, org_uuid: str):
-    service = get_organization_service(request)
+    service = request.state.services.organization
     org = service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -201,7 +190,7 @@ async def organization_delete(request: Request, org_uuid: str):
     previous_state = serialize_organization(org)
     service.delete_organization(org.id)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.ORGANIZATION_DELETE,
@@ -222,7 +211,7 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
         org_uuid,
         member_user_id,
     )
-    service = get_organization_service(request)
+    service = request.state.services.organization
     org = service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -253,7 +242,7 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
         new_role,
     )
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.ORGANIZATION_UPDATE_MEMBER_ROLE,
@@ -264,11 +253,11 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
         new_state={"role": new_role},
     )
 
-    member_user = get_user_service(request).get_by_id(member_user_id)
+    member_user = request.state.services.user.get_by_id(member_user_id)
     if member_user is not None:
         old_label = OrgRole.label(old_role) if old_role else "—"
         new_label = OrgRole.label(new_role)
-        get_job_service(request).enqueue_for(
+        request.state.services.job.enqueue_for(
             request.state.actor,
             "email.send",
             {
@@ -288,7 +277,7 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
 
 @router.post("/{org_uuid}/members/{member_user_id}/remove")
 async def member_remove(request: Request, org_uuid: str, member_user_id: int):
-    service = get_organization_service(request)
+    service = request.state.services.organization
     org = service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -311,7 +300,7 @@ async def member_remove(request: Request, org_uuid: str, member_user_id: int):
     old_role = target_member.role if target_member else ""
     service.remove_member(org.id, member_user_id)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.ORGANIZATION_REMOVE_MEMBER,
@@ -327,7 +316,7 @@ async def member_remove(request: Request, org_uuid: str, member_user_id: int):
 
 @router.post("/{org_uuid}/invite")
 async def organization_invite(request: Request, org_uuid: str):
-    org_service = get_organization_service(request)
+    org_service = request.state.services.organization
     org = org_service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -350,7 +339,7 @@ async def organization_invite(request: Request, org_uuid: str):
         flash(request, "Informe o e-mail.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
-    invite_service = get_invite_service(request)
+    invite_service = request.state.services.invite
     try:
         invite = invite_service.send_invite(org.id, email, role, user_id)
     except ValueError as e:
@@ -358,7 +347,7 @@ async def organization_invite(request: Request, org_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     if invite:
         audit.safe_log_for(
             request.state.actor,
@@ -371,7 +360,7 @@ async def organization_invite(request: Request, org_uuid: str):
 
     inviter_email = request.session.get("email", "")
     invites_url = f"{settings.public_app_url.rstrip('/')}/invites/"
-    get_job_service(request).enqueue_for(
+    request.state.services.job.enqueue_for(
         request.state.actor,
         "email.send",
         {
@@ -393,7 +382,7 @@ async def organization_invite(request: Request, org_uuid: str):
 
 @router.post("/{org_uuid}/toggle-mfa")
 async def organization_toggle_mfa(request: Request, org_uuid: str):
-    org_service = get_organization_service(request)
+    org_service = request.state.services.organization
     org = org_service.get_by_uuid(org_uuid)
     if not org:
         flash(request, "Organização não encontrada.", "danger")
@@ -408,7 +397,7 @@ async def organization_toggle_mfa(request: Request, org_uuid: str):
     new_value = not org.enforce_mfa
     org_service.set_enforce_mfa(org.id, new_value)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.ORGANIZATION_UPDATE_MFA,
@@ -424,7 +413,7 @@ async def organization_toggle_mfa(request: Request, org_uuid: str):
 
     # If enabling MFA, check if the admin themselves needs to set up MFA
     if new_value:
-        mfa_service = get_mfa_service(request)
+        mfa_service = request.state.services.mfa
         if not mfa_service.has_any_mfa(user_id):
             request.session["mfa_setup_required"] = True
 
@@ -433,7 +422,7 @@ async def organization_toggle_mfa(request: Request, org_uuid: str):
 
 @router.post("/{org_uuid}/transfer-billing")
 async def organization_transfer_billing(request: Request, org_uuid: str):
-    org_service = get_organization_service(request)
+    org_service = request.state.services.organization
     org = org_service.get_by_uuid(org_uuid)
     if not org:
         logger.warning("organization_not_found", org_uuid=org_uuid)
@@ -454,8 +443,8 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         flash(request, "Selecione uma cobrança.", "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
-    billing_service = get_billing_service(request)
-    auth_service = get_authorization_service(request)
+    billing_service = request.state.services.billing
+    auth_service = request.state.services.authorization
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("billing_not_found_for_transfer", billing_uuid=billing_uuid, org_uuid=org_uuid)
@@ -475,7 +464,7 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.BILLING_TRANSFER,
@@ -486,7 +475,7 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         new_state={"owner_type": "organization", "owner_id": org.id},
     )
 
-    get_billing_notification_service(request).notify_transferred(
+    request.state.services.billing_notification.notify_transferred(
         billing=billing,
         previous_owner=previous_owner,
         new_org_id=org.id,

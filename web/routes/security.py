@@ -21,14 +21,7 @@ from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
-from web.deps import (
-    get_audit_service,
-    get_job_service,
-    get_known_device_service,
-    get_mfa_service,
-    get_user_service,
-    render,
-)
+from web.deps import render
 from web.flash import flash
 
 logger = structlog.get_logger(__name__)
@@ -47,7 +40,7 @@ _MFA_CHANGE_LABELS = {
 
 def _send_mfa_changed_email(request: Request, email: str, change_kind: str) -> None:
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_job_service(request).enqueue_for(
+    request.state.services.job.enqueue_for(
         request.state.actor,
         "email.send",
         {
@@ -67,8 +60,8 @@ def _send_mfa_changed_email(request: Request, email: str, change_kind: str) -> N
 @router.get("/")
 async def security_settings(request: Request):
     user_id = request.session["user_id"]
-    mfa_service = get_mfa_service(request)
-    user_service = get_user_service(request)
+    mfa_service = request.state.services.mfa
+    user_service = request.state.services.user
 
     totp = mfa_service.get_totp(user_id)
     has_totp = totp is not None and totp.confirmed
@@ -96,7 +89,7 @@ async def update_pix(request: Request):
     pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
 
-    user_service = get_user_service(request)
+    user_service = request.state.services.user
     previous = user_service.get_by_id(user_id)
     if previous is None:
         flash(request, "Usuário não encontrado.", "danger")
@@ -108,7 +101,7 @@ async def update_pix(request: Request):
         flash(request, str(e), "danger")
         return RedirectResponse("/security", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.USER_UPDATE,
@@ -130,7 +123,7 @@ async def change_password(request: Request):
     new_password = str(form.get("new_password", ""))
     confirm_password = str(form.get("confirm_password", ""))
 
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
     totp = mfa_service.get_totp(user_id)
     has_totp = totp is not None and totp.confirmed
     passkeys = mfa_service.list_passkeys(user_id)
@@ -145,7 +138,7 @@ async def change_password(request: Request):
         logger.warning("change_password_rejected", reason="password_mismatch")
         return render(request, "security/index.html", {**ctx, "password_error": "As senhas não coincidem."})
 
-    user_service = get_user_service(request)
+    user_service = request.state.services.user
     email = request.session.get("email", "")
     user = user_service.authenticate(email, current_password)
 
@@ -156,7 +149,7 @@ async def change_password(request: Request):
     user_service.change_password(user_id, new_password)
     logger.info("password_changed", email=email)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.USER_CHANGE_PASSWORD,
@@ -166,7 +159,7 @@ async def change_password(request: Request):
     )
 
     forgot_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
-    get_job_service(request).enqueue_for(
+    request.state.services.job.enqueue_for(
         request.state.actor,
         "email.send",
         {
@@ -190,7 +183,7 @@ async def change_password(request: Request):
 async def totp_setup_page(request: Request):
     user_id = request.session["user_id"]
     email = request.session["email"]
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
 
     if mfa_service.has_confirmed_totp(user_id):
         flash(request, "TOTP já está ativado.", "info")
@@ -215,7 +208,7 @@ async def totp_confirm(request: Request):
     form = await request.form()
     code = str(form.get("code", "")).strip()
 
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
     try:
         recovery_codes = mfa_service.confirm_totp(user_id, code)
     except ValueError as e:
@@ -225,7 +218,7 @@ async def totp_confirm(request: Request):
     # Clear MFA enforcement flag
     request.session.pop("mfa_setup_required", None)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.MFA_TOTP_ENABLED,
@@ -250,14 +243,14 @@ async def totp_disable(request: Request):
     form = await request.form()
     password = str(form.get("password", ""))
 
-    user_service = get_user_service(request)
+    user_service = request.state.services.user
     email = request.session.get("email", "")
     user = user_service.authenticate(email, password)
     if user is None:
         flash(request, "Senha incorreta.", "danger")
         return RedirectResponse("/security", status_code=302)
 
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
 
     if mfa_service.user_in_enforcing_org(user_id):
         flash(request, "Você não pode desativar MFA enquanto pertence a uma organização que exige MFA.", "danger")
@@ -265,7 +258,7 @@ async def totp_disable(request: Request):
 
     mfa_service.disable_totp(user_id)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.MFA_TOTP_DISABLED,
@@ -282,7 +275,7 @@ async def totp_disable(request: Request):
 @router.post("/recovery-codes/regenerate")
 async def regenerate_recovery_codes(request: Request):
     user_id = request.session["user_id"]
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
 
     try:
         codes = mfa_service.regenerate_recovery_codes(user_id)
@@ -290,7 +283,7 @@ async def regenerate_recovery_codes(request: Request):
         flash(request, str(e), "danger")
         return RedirectResponse("/security", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.MFA_RECOVERY_REGENERATED,
@@ -315,7 +308,7 @@ async def regenerate_recovery_codes(request: Request):
 async def passkey_register_begin(request: Request):
     user_id = request.session["user_id"]
     email = request.session["email"]
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
 
     existing_passkeys = mfa_service.list_passkeys(user_id)
     exclude_credentials = [
@@ -371,7 +364,7 @@ async def passkey_register_complete(request: Request):
     credential_id_b64 = base64.urlsafe_b64encode(verification.credential_id).rstrip(b"=").decode()
     public_key_b64 = base64.urlsafe_b64encode(verification.credential_public_key).rstrip(b"=").decode()
 
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
     passkey = UserPasskey(
         user_id=user_id,
         credential_id=credential_id_b64,
@@ -384,7 +377,7 @@ async def passkey_register_complete(request: Request):
     # Clear MFA enforcement flag if applicable
     request.session.pop("mfa_setup_required", None)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.MFA_PASSKEY_REGISTERED,
@@ -401,7 +394,7 @@ async def passkey_register_complete(request: Request):
 @router.post("/passkeys/{passkey_uuid}/delete")
 async def passkey_delete(request: Request, passkey_uuid: str):
     user_id = request.session["user_id"]
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
 
     try:
         mfa_service.delete_passkey(passkey_uuid, user_id)
@@ -409,7 +402,7 @@ async def passkey_delete(request: Request, passkey_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse("/security", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.MFA_PASSKEY_DELETED,
@@ -433,7 +426,7 @@ async def passkey_auth_begin(request: Request):
     if not user_id:
         return JSONResponse({"error": "Sem login pendente"}, status_code=400)
 
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
     passkeys = mfa_service.list_passkeys(user_id)
 
     allow_credentials = [
@@ -472,7 +465,7 @@ async def passkey_auth_complete(request: Request):
 
     client_ip = request.client.host if request.client else "unknown"
 
-    mfa_service = get_mfa_service(request)
+    mfa_service = request.state.services.mfa
 
     # Find the passkey by credential ID
     credential_id_b64 = body.get("id", "")
@@ -499,7 +492,7 @@ async def passkey_auth_complete(request: Request):
         )
     except Exception as e:
         logger.warning("passkey_auth_failed", user_id=user_id, error=str(e))
-        audit = get_audit_service(request)
+        audit = request.state.services.audit
         audit.safe_log_for(
             verify_actor,
             AuditEventType.MFA_VERIFY_FAILED,
@@ -519,7 +512,7 @@ async def passkey_auth_complete(request: Request):
     if mfa_service.user_requires_mfa_setup(user_id):
         request.session["mfa_setup_required"] = True
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         verify_actor,
         AuditEventType.MFA_PASSKEY_USED,
@@ -539,14 +532,14 @@ async def passkey_auth_complete(request: Request):
     logger.info("passkey_auth_verified", email=email)
     push_event(request, {"event": "rentivo_login_success", "via": "passkey"})
 
-    user = get_user_service(request).get_by_id(user_id)
+    user = request.state.services.user.get_by_id(user_id)
     if user is not None:
-        get_known_device_service(request).notify_if_new(
+        request.state.services.known_device.notify_if_new(
             user=user,
             user_agent=request.headers.get("user-agent", ""),
             client_ip=request.client.host if request.client else "unknown",
             forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
-            job_service=get_job_service(request),
+            job_service=request.state.services.job,
         )
 
     return JSONResponse({"status": "ok", "redirect": "/billings/"})

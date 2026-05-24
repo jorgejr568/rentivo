@@ -539,12 +539,12 @@ class TestMFAEnforcement:
         totp = pyotp.TOTP(secret)
         code = totp.now()
 
-        with patch("web.auth.get_mfa_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.verify_totp.return_value = True
-            mock_svc.user_requires_mfa_setup.return_value = True
-            mock_get.return_value = mock_svc
+        from web.services_container import RequestServices
 
+        mock_svc = MagicMock()
+        mock_svc.verify_totp.return_value = True
+        mock_svc.user_requires_mfa_setup.return_value = True
+        with patch.object(RequestServices, "mfa", new=mock_svc):
             response = client.post(
                 "/mfa-verify",
                 data={"code": code, "method": "totp"},

@@ -8,17 +8,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.models.billing import BillingItem, ItemType
 from rentivo.services.audit_serializers import serialize_billing
 from web.analytics import analytics_hash, push_event
-from web.deps import (
-    get_audit_service,
-    get_authorization_service,
-    get_bill_service,
-    get_billing_notification_service,
-    get_billing_service,
-    get_organization_service,
-    get_pix_service,
-    get_storage_cleanup_service,
-    render,
-)
+from web.deps import render
 from web.flash import flash
 from web.forms import parse_brl, parse_formset
 
@@ -29,8 +19,8 @@ router = APIRouter(prefix="/billings")
 
 @router.get("/")
 async def billing_list(request: Request):
-    service = get_billing_service(request)
-    pix_service = get_pix_service(request)
+    service = request.state.services.billing
+    pix_service = request.state.services.pix
     user_id = request.session.get("user_id")
     billings = service.list_billings_for_user(user_id)
     billings_needing_pix = [b for b in billings if pix_service.billing_needs_setup(b)]
@@ -85,7 +75,7 @@ async def billing_create(request: Request):
         flash(request, "Adicione pelo menos um item.", "danger")
         return RedirectResponse("/billings/create", status_code=302)
 
-    service = get_billing_service(request)
+    service = request.state.services.billing
     user_id = request.session.get("user_id", 0)
     organization_id = str(form.get("organization_id", "")).strip()
     if organization_id:
@@ -109,7 +99,7 @@ async def billing_create(request: Request):
         flash(request, str(e), "danger")
         return RedirectResponse("/billings/create", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.BILLING_CREATE,
@@ -134,9 +124,9 @@ async def billing_create(request: Request):
 
 @router.get("/{billing_uuid}")
 async def billing_detail(request: Request, billing_uuid: str):
-    billing_service = get_billing_service(request)
-    bill_service = get_bill_service(request)
-    auth_service = get_authorization_service(request)
+    billing_service = request.state.services.billing
+    bill_service = request.state.services.bill
+    auth_service = request.state.services.authorization
 
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
@@ -159,12 +149,12 @@ async def billing_detail(request: Request, billing_uuid: str):
     bills = bill_service.list_bills(billing.id)
 
     # Load user's orgs for transfer dropdown
-    org_service = get_organization_service(request)
+    org_service = request.state.services.organization
     user_orgs = (
         org_service.list_user_organizations(user_id) if auth_service.can_transfer_billing(user_id, billing) else []
     )
 
-    pix_service = get_pix_service(request)
+    pix_service = request.state.services.pix
     pix_needs_setup = pix_service.billing_needs_setup(billing)
 
     return render(
@@ -182,8 +172,8 @@ async def billing_detail(request: Request, billing_uuid: str):
 
 @router.get("/{billing_uuid}/edit")
 async def billing_edit_form(request: Request, billing_uuid: str):
-    service = get_billing_service(request)
-    auth_service = get_authorization_service(request)
+    service = request.state.services.billing
+    auth_service = request.state.services.authorization
     billing = service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("billing_not_found", billing_uuid=billing_uuid)
@@ -198,8 +188,8 @@ async def billing_edit_form(request: Request, billing_uuid: str):
 
 @router.post("/{billing_uuid}/edit")
 async def billing_edit(request: Request, billing_uuid: str):
-    service = get_billing_service(request)
-    auth_service = get_authorization_service(request)
+    service = request.state.services.billing
+    auth_service = request.state.services.authorization
     billing = service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("billing_not_found", billing_uuid=billing_uuid)
@@ -246,7 +236,7 @@ async def billing_edit(request: Request, billing_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse(f"/billings/{billing_uuid}/edit", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.BILLING_UPDATE,
@@ -264,8 +254,8 @@ async def billing_edit(request: Request, billing_uuid: str):
 
 @router.post("/{billing_uuid}/transfer")
 async def billing_transfer(request: Request, billing_uuid: str):
-    billing_service = get_billing_service(request)
-    auth_service = get_authorization_service(request)
+    billing_service = request.state.services.billing
+    auth_service = request.state.services.authorization
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
         flash(request, "Cobrança não encontrada.", "danger")
@@ -285,7 +275,7 @@ async def billing_transfer(request: Request, billing_uuid: str):
         flash(request, "Organização inválida.", "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
-    org_service = get_organization_service(request)
+    org_service = request.state.services.organization
     if org_service.get_member(org_id, user_id) is None:
         logger.warning(
             "billing_transfer_rejected",
@@ -303,7 +293,7 @@ async def billing_transfer(request: Request, billing_uuid: str):
         flash(request, str(e), "danger")
         return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.BILLING_TRANSFER,
@@ -314,7 +304,7 @@ async def billing_transfer(request: Request, billing_uuid: str):
         new_state={"owner_type": "organization", "owner_id": org_id},
     )
 
-    get_billing_notification_service(request).notify_transferred(
+    request.state.services.billing_notification.notify_transferred(
         billing=billing,
         previous_owner=previous_owner,
         new_org_id=org_id,
@@ -329,8 +319,8 @@ async def billing_transfer(request: Request, billing_uuid: str):
 
 @router.post("/{billing_uuid}/delete")
 async def billing_delete(request: Request, billing_uuid: str):
-    service = get_billing_service(request)
-    auth_service = get_authorization_service(request)
+    service = request.state.services.billing
+    auth_service = request.state.services.authorization
     billing = service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("billing_not_found", billing_uuid=billing_uuid)
@@ -348,7 +338,7 @@ async def billing_delete(request: Request, billing_uuid: str):
         return RedirectResponse("/", status_code=302)
     previous_state = serialize_billing(billing)
 
-    cleanup = get_storage_cleanup_service(request)
+    cleanup = request.state.services.storage_cleanup
     cleanup.enqueue_billing_delete_cascade(
         billing,
         source="web",
@@ -358,7 +348,7 @@ async def billing_delete(request: Request, billing_uuid: str):
 
     service.delete_billing(billing.id)
 
-    audit = get_audit_service(request)
+    audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
         AuditEventType.BILLING_DELETE,
