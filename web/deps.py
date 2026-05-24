@@ -10,42 +10,16 @@ from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 if TYPE_CHECKING:
-    from rentivo.services.billing_notification_service import BillingNotificationService
+    pass
 
 from rentivo.db import get_engine
-from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
 from rentivo.repositories.sqlalchemy import (
-    SQLAlchemyAuditLogRepository,
-    SQLAlchemyBillingRepository,
-    SQLAlchemyBillRepository,
+    SQLAlchemyBillingRepository,  # noqa: F401 — re-exported for test patches
     SQLAlchemyInviteRepository,
-    SQLAlchemyKnownDeviceRepository,
-    SQLAlchemyMFATOTPRepository,
-    SQLAlchemyOrganizationRepository,
-    SQLAlchemyPasskeyRepository,
-    SQLAlchemyPasswordResetTokenRepository,
-    SQLAlchemyReceiptRepository,
-    SQLAlchemyRecoveryCodeRepository,
-    SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
-from rentivo.services.audit_service import AuditService
-from rentivo.services.authorization_service import AuthorizationService
-from rentivo.services.bill_service import BillService
-from rentivo.services.billing_service import BillingService
-from rentivo.services.invite_service import InviteService
-from rentivo.services.job_service import JobService
-from rentivo.services.known_device_service import KnownDeviceService
-from rentivo.services.mfa_service import MFAService
-from rentivo.services.organization_service import OrganizationService
-from rentivo.services.password_reset_service import PasswordResetService
-from rentivo.services.pix_service import PixService
-from rentivo.services.storage_cleanup_service import StorageCleanupService
-from rentivo.services.theme_service import ThemeService
-from rentivo.services.turnstile_service import TurnstileService
-from rentivo.services.user_service import UserService
 from rentivo.settings import settings
-from rentivo.storage.factory import get_storage
+from rentivo.storage.factory import get_storage  # noqa: F401 — re-exported for test patches
 from web.analytics import build_page_context, pop_events
 from web.flash import get_flashed_messages
 
@@ -236,141 +210,6 @@ class _LazyServicesProxy:
 
     def __getattr__(self, name):
         return getattr(self._get(), name)
-
-
-def get_billing_service(request: Request) -> BillingService:
-    from rentivo.encryption.factory import get_encryption
-
-    return BillingService(SQLAlchemyBillingRepository(_get_conn(request), get_encryption()))
-
-
-def get_bill_service(request: Request) -> BillService:
-    from rentivo.encryption.factory import get_encryption
-
-    conn = _get_conn(request)
-    return BillService(
-        SQLAlchemyBillRepository(conn, get_encryption()),
-        get_storage(),
-        SQLAlchemyReceiptRepository(conn, get_encryption()),
-        theme_service=get_theme_service(request),
-        pix_service=get_pix_service(request),
-        job_service=get_job_service(request),
-    )
-
-
-def get_theme_service(request: Request) -> ThemeService:
-    return ThemeService(SQLAlchemyThemeRepository(_get_conn(request)))
-
-
-def get_pix_service(request: Request) -> PixService:
-    from rentivo.encryption.factory import get_encryption
-
-    conn = _get_conn(request)
-    return PixService(
-        SQLAlchemyUserRepository(conn, get_encryption()),
-        SQLAlchemyOrganizationRepository(conn, get_encryption()),
-    )
-
-
-def get_user_service(request: Request) -> UserService:
-    from rentivo.encryption.factory import get_encryption
-
-    return UserService(SQLAlchemyUserRepository(_get_conn(request), get_encryption()))
-
-
-def get_organization_service(request: Request) -> OrganizationService:
-    from rentivo.encryption.factory import get_encryption
-
-    return OrganizationService(SQLAlchemyOrganizationRepository(_get_conn(request), get_encryption()))
-
-
-def get_invite_service(request: Request) -> InviteService:
-    from rentivo.encryption.factory import get_encryption
-
-    conn = _get_conn(request)
-    encryption = get_encryption()
-    return InviteService(
-        SQLAlchemyInviteRepository(conn, encryption),
-        SQLAlchemyOrganizationRepository(conn, encryption),
-        SQLAlchemyUserRepository(conn, encryption),
-    )
-
-
-def get_authorization_service(request: Request) -> AuthorizationService:
-    from rentivo.encryption.factory import get_encryption
-
-    return AuthorizationService(SQLAlchemyOrganizationRepository(_get_conn(request), get_encryption()))
-
-
-def get_audit_service(request: Request) -> AuditService:
-    return AuditService(SQLAlchemyAuditLogRepository(_get_conn(request)))
-
-
-def get_mfa_service(request: Request) -> MFAService:
-    from rentivo.encryption.factory import get_encryption
-
-    conn = _get_conn(request)
-    return MFAService(
-        SQLAlchemyMFATOTPRepository(conn, get_encryption()),
-        SQLAlchemyRecoveryCodeRepository(conn),
-        SQLAlchemyPasskeyRepository(conn),
-        SQLAlchemyOrganizationRepository(conn, get_encryption()),
-    )
-
-
-def get_job_service(request: Request) -> JobService:
-    conn = _get_conn(request)
-    return JobService(
-        SQLAlchemyJobRepository(conn, stuck_after_seconds=settings.job_worker_stuck_after_seconds),
-        AuditService(SQLAlchemyAuditLogRepository(conn)),
-    )
-
-
-def get_storage_cleanup_service(request: Request) -> StorageCleanupService:
-    from rentivo.encryption.factory import get_encryption
-
-    conn = _get_conn(request)
-    return StorageCleanupService(
-        job_service=get_job_service(request),
-        bill_repo=SQLAlchemyBillRepository(conn, get_encryption()),
-        receipt_repo=SQLAlchemyReceiptRepository(conn, get_encryption()),
-    )
-
-
-def get_known_device_service(request: Request) -> KnownDeviceService:
-    return KnownDeviceService(SQLAlchemyKnownDeviceRepository(_get_conn(request)))
-
-
-def get_billing_notification_service(request: Request) -> "BillingNotificationService":
-    from rentivo.services.billing_notification_service import BillingNotificationService
-
-    return BillingNotificationService(
-        user_service=get_user_service(request),
-        org_service=get_organization_service(request),
-        job_service=get_job_service(request),
-    )
-
-
-def get_turnstile_service(request: Request) -> TurnstileService:
-    return TurnstileService(
-        site_key=settings.turnstile_site_key,
-        secret_key=settings.turnstile_secret_key,
-        verify_url=settings.turnstile_verify_url,
-    )
-
-
-def get_password_reset_service(request: Request) -> PasswordResetService:
-    from rentivo.encryption.factory import get_encryption
-
-    conn = _get_conn(request)
-    user_repo = SQLAlchemyUserRepository(conn, get_encryption())
-    return PasswordResetService(
-        user_repo=user_repo,
-        token_repo=SQLAlchemyPasswordResetTokenRepository(conn),
-        job_service=get_job_service(request),
-        user_service=UserService(user_repo),
-        public_app_url=settings.public_app_url,
-    )
 
 
 def _hydrate_legacy_session_email(request: Request, user_id: int | None) -> str | None:

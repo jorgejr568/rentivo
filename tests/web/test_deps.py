@@ -101,39 +101,11 @@ class TestLegacySessionEmailHydration:
         assert "username" not in session
 
 
-class TestTurnstileServiceFactory:
-    def test_get_turnstile_service_uses_settings(self, monkeypatch):
-        from rentivo.settings import settings
-        from web.deps import get_turnstile_service
-
-        monkeypatch.setattr(settings, "turnstile_site_key", "factory-site")
-        monkeypatch.setattr(settings, "turnstile_secret_key", "factory-secret")
-        monkeypatch.setattr(settings, "turnstile_verify_url", "https://verify.invalid/x")
-
-        # Build a fake Request just to satisfy the signature.
-        class _Req:
-            pass
-
-        service = get_turnstile_service(_Req())
-        assert service.site_key == "factory-site"
-        assert service.secret_key == "factory-secret"
-        assert service.verify_url == "https://verify.invalid/x"
-
-
-class TestJobServiceFactory:
-    """Coverage for the factory until web routes call it (Tasks 11-15)."""
-
-    def test_get_job_service_returns_job_service(self, test_engine):
-        from rentivo.services.job_service import JobService
-        from web.deps import get_job_service
-
-        request = _fake_request({}, db_conn=test_engine.connect())
-        try:
-            service = get_job_service(request)
-        finally:
-            request.state.db_conn.close()
-
-        assert isinstance(service, JobService)
+# NOTE: TestTurnstileServiceFactory and TestJobServiceFactory were removed
+# in the RequestServices migration — the per-factory functions they tested
+# (get_turnstile_service / get_job_service) no longer exist. Equivalent
+# coverage now lives in tests/web/test_services_container.py against the
+# lazy properties of RequestServices.
 
 
 def _fake_request(session: dict, db_conn=None):
