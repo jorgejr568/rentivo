@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [3.10.1] - 2026-05-23
+### Security
+- `serialize_invite` now partial-mask redacts `invited_email` / `invited_by_email` via `PIIKind.EMAIL` and drops `organization_name` from the audit payload, matching the redaction policy already enforced by `serialize_user` / `serialize_organization`. Backfill script (`make redact-audit-logs`) extended to clean legacy invite rows (#57).
+- `CSRFMiddleware` now verifies an `X-CSRF-Token` header on every non-form, non-exempt POST/PUT/DELETE/PATCH instead of silently bypassing them. JSON consumers (notably the receipts-reorder endpoint) already shipped the header; the middleware just wasn't reading it. Untokened JSON requests are now rejected with a 302 redirect + flash (#58).
+
+### Changed
+- Route-private notification helpers extracted into proper services. New `rentivo/services/billing_notification_service.py:BillingNotificationService.notify_transferred` replaces the cross-route private import of `web.routes.billing._notify_billing_transferred`. New `KnownDeviceService.notify_if_new` replaces the cross-route private import of `web.auth._check_and_send_new_device_email` (#59).
+- `rentivo/repositories/sqlalchemy.py` (1634 LOC, 13 unrelated repository classes) split into a `rentivo/repositories/sqlalchemy/` subpackage with one module per entity (`billing.py`, `bill.py`, `user.py`, `organization.py`, `invite.py`, `receipt.py`, `audit_log.py`, `mfa.py`, `theme.py`, `auth.py`). The package's `__init__.py` re-exports every `SQLAlchemy*Repository` class so all ~28 existing import sites keep working unchanged (#60).
+- New `web/context.py:WebActor` dataclass + `request.state.actor`, plus `AuditService.safe_log_for` / `JobService.enqueue_for` overloads that unpack the actor into the existing `source` / `actor_id` / `actor_username` kwargs. ~80 hand-derived `actor_id=user_id, actor_username=session["email"], source="web"` sites in `web/routes/` + `web/auth.py` collapsed to a single `actor=request.state.actor` argument (#61).
+- `BillService` no longer holds per-request actor state in `__init__`. Methods that may enqueue PDF render jobs (`generate_bill`, `update_bill`, `regenerate_pdf`, `add_receipt`, `delete_receipt`, `reorder_receipts`) now accept an optional `actor` parameter and forward it to `JobService.enqueue_for` when provided. CLI callers omit the argument and continue rendering synchronously (#62).
+- New `web/services_container.py:RequestServices` lazy per-request services container with one `@cached_property` per service, attached to `request.state.services` by a new `RequestServicesMiddleware`. The 16 `get_*_service(request)` factory functions in `web/deps.py` and the 21 function-local `from rentivo.encryption.factory import get_encryption` re-imports were deleted; routes call `request.state.services.<name>` instead. `web/deps.py` shrunk from 422 → ~250 LOC (#63).
+
 ## [3.10.0] - 2026-05-17
 ### Added
 - Opt-in short-lived ciphertext → plaintext cache in front of `EncryptionBackend.decrypt` / `decrypt_many`, selectable via `RENTIVO_ENCRYPTION_CACHE_BACKEND` (`none` default / `memory` / `redis`). Memory backend uses `cachetools.TTLCache` with a daemon cleanup thread; Redis backend is fail-open (`MGET` reads, pipelined `SET … EX` writes, SHA-256-hashed keys under `rentivo:enc:dec:v1:`). New env vars: `RENTIVO_ENCRYPTION_CACHE_TTL_SECONDS` (default `60`), `RENTIVO_ENCRYPTION_CACHE_MAX_ENTRIES` (default `10000`, memory only), `RENTIVO_REDIS_URL` (required iff backend = `redis`). Defaults preserve pre-cache behaviour bit-for-bit (#52).
