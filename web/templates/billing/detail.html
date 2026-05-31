@@ -3,19 +3,25 @@
 {% block title %}{{ billing.name }} - Rentivo{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="page-header-info">
-        <h2 class="page-title">{{ billing.name }}</h2>
-        {% if billing.description %}
-        <p class="page-subtitle">{{ billing.description }}</p>
-        {% endif %}
+<a class="crumb" href="/billings/">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    Minhas Cobranças
+</a>
+
+<div class="pagehead">
+    <div>
+        <h1 class="pagehead__title">{{ billing.name }}</h1>
+        <p class="pagehead__sub">
+            {% if billing.description %}{{ billing.description }}{% else %}Modelo de cobrança recorrente{% endif %}
+            {% if billing.owner_type == "organization" %} · Organização{% endif %}
+        </p>
     </div>
     <div class="page-actions">
         {% if role in ("owner", "admin", "manager") %}
         {% if pix_needs_setup %}
-        <button type="button" class="btn btn--primary" disabled title="Configure os dados do PIX primeiro">Gerar Fatura</button>
+        <button type="button" class="btn btn--primary" disabled title="Configure os dados do PIX primeiro">Gerar fatura</button>
         {% else %}
-        <a href="/billings/{{ billing.uuid }}/bills/generate" class="btn btn--primary">Gerar Fatura</a>
+        <a href="/billings/{{ billing.uuid }}/bills/generate" class="btn btn--primary">Gerar fatura</a>
         {% endif %}
         {% endif %}
         {% if role in ("owner", "admin") %}
@@ -37,127 +43,129 @@
 </div>
 {% endif %}
 
-{% if billing.pix_key or billing.pix_merchant_name or billing.pix_merchant_city %}
-<div class="detail-meta">
-    {% if billing.pix_key %}
-    <div class="detail-meta-item">
-        <strong>Chave PIX (override):</strong> <span class="text-mono">{{ billing.pix_key }}</span>
-    </div>
-    {% endif %}
-    {% if billing.pix_merchant_name %}
-    <div class="detail-meta-item">
-        <strong>Recebedor:</strong> {{ billing.pix_merchant_name }}
-    </div>
-    {% endif %}
-    {% if billing.pix_merchant_city %}
-    <div class="detail-meta-item">
-        <strong>Cidade:</strong> {{ billing.pix_merchant_city }}
-    </div>
-    {% endif %}
-</div>
-{% endif %}
+{% set ns = namespace(fixed=0) %}
+{% for item in billing.items %}
+{% if item.item_type.value == "fixed" %}{% set ns.fixed = ns.fixed + item.amount %}{% endif %}
+{% endfor %}
 
-<div class="panel">
-    <div class="panel-head">
-        <h5>Itens da Cobrança</h5>
+<div class="grid-2" style="grid-template-columns: 1.4fr 1fr; align-items: start;">
+    <!-- Items -->
+    <div class="panel">
+        <div class="panel__head"><h3>Itens da cobrança</h3><span class="panel__title-eyebrow">Modelo recorrente</span></div>
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr><th>Descrição</th><th class="center">Tipo</th><th class="num">Valor</th></tr>
+                </thead>
+                <tbody>
+                    {% for item in billing.items %}
+                    <tr>
+                        <td class="table__primary">{{ item.description }}</td>
+                        <td class="center">
+                            {% if item.item_type.value == "fixed" %}
+                            <span class="tag tag--fixed">Fixo</span>
+                            {% else %}
+                            <span class="tag tag--variable">Variável</span>
+                            {% endif %}
+                        </td>
+                        <td class="num">
+                            {% if item.item_type.value == "fixed" %}{{ format_brl(item.amount) }}{% else %}<span class="muted">por fatura</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="total"><td colspan="2">Subtotal fixo</td><td class="num">{{ format_brl(ns.fixed) }}</td></tr>
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="data-table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Descrição</th>
-                    <th class="text-center">Tipo</th>
-                    <th class="text-right">Valor</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in billing.items %}
-                <tr>
-                    <td>{{ item.description }}</td>
-                    <td class="text-center">
-                        {% if item.item_type.value == "fixed" %}
-                        <span class="tag tag--fixed">Fixo</span>
-                        {% else %}
-                        <span class="tag tag--variable">Variável</span>
-                        {% endif %}
-                    </td>
-                    <td class="text-right text-mono">
-                        {% if item.item_type.value == "fixed" %}
-                        {{ format_brl(item.amount) }}
-                        {% else %}
-                        —
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+
+    <!-- PIX info -->
+    <div class="panel">
+        <div class="panel__head">
+            <h3>Recebimento PIX</h3>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 17v4M17 14h4M21 18v3M18 21h-1"/></svg>
+        </div>
+        <div class="panel__body">
+            {% if billing.pix_key or billing.pix_merchant_name or billing.pix_merchant_city %}
+            {% if billing.pix_key %}
+            <div class="field" style="margin-bottom: 0.9rem;">
+                <div class="field__label">Chave PIX (override)</div>
+                <div class="between" style="background: var(--paper-2); border: 2px solid var(--ink); border-radius: var(--r-sm); padding: 0.5rem 0.7rem;">
+                    <span class="mono" style="font-size: 0.85rem; word-break: break-all;">{{ billing.pix_key }}</span>
+                </div>
+            </div>
+            {% endif %}
+            <div class="grid-2" style="gap: 0.9rem;">
+                <div>
+                    <div class="field__label">Recebedor</div>
+                    <div style="font-weight: 600; font-size: 0.9rem;">{{ billing.pix_merchant_name or "—" }}</div>
+                </div>
+                <div>
+                    <div class="field__label">Cidade</div>
+                    <div class="mono" style="font-size: 0.85rem;">{{ billing.pix_merchant_city or "—" }}</div>
+                </div>
+            </div>
+            {% else %}
+            <p class="muted mb-2" style="font-size: 0.88rem;">Sem override nesta cobrança — usa a configuração do proprietário ({{ "organização" if billing.owner_type == "organization" else "sua conta" }}).</p>
+            {% endif %}
+            {% if pix_needs_setup %}
+            <div class="tag tag--draft mt-2" style="width: fit-content;"><span class="dot"></span>PIX pendente</div>
+            {% else %}
+            <div class="tag tag--paid mt-2" style="width: fit-content;"><span class="dot"></span>PIX configurado</div>
+            {% endif %}
+        </div>
     </div>
 </div>
 
+<!-- Invoices history -->
 <div class="panel">
-    <div class="panel-head">
-        <h5>Faturas</h5>
-    </div>
+    <div class="panel__head"><h3>Faturas</h3><span class="panel__title-eyebrow">{{ bills | length }} gerada{{ "" if bills | length == 1 else "s" }}</span></div>
     {% if bills %}
-    <div class="data-table-wrap">
-        <table class="data-table">
+    <div class="table-wrap">
+        <table class="table">
             <thead>
-                <tr>
-                    <th>Referência</th>
-                    <th class="text-right">Total</th>
-                    <th class="text-center">Vencimento</th>
-                    <th class="text-center">Status</th>
-                    <th></th>
-                </tr>
+                <tr><th>Referência</th><th class="num">Total</th><th class="center">Vencimento</th><th class="center">Status</th><th></th></tr>
             </thead>
             <tbody>
                 {% for bill in bills %}
                 <tr>
-                    <td><a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}">{{ format_month(bill.reference_month) }}</a></td>
-                    <td class="text-right text-mono">{{ format_brl(bill.total_amount) }}</td>
-                    <td class="text-center">{{ bill.due_date or "—" }}</td>
-                    <td class="text-center">
-                        {% if bill.status == "draft" %}
-                        <span class="tag tag--draft">Rascunho</span>
-                        {% elif bill.status == "published" %}
-                        <span class="tag tag--published">Publicado</span>
-                        {% elif bill.status == "sent" %}
-                        <span class="tag tag--sent">Enviado</span>
-                        {% elif bill.status == "paid" %}
-                        <span class="tag tag--paid">Pago</span>
-                        {% elif bill.status == "cancelled" %}
-                        <span class="tag tag--cancelled">Cancelado</span>
-                        {% elif bill.status == "delayed_payment" %}
-                        <span class="tag tag--delayed">Pag. Atrasado</span>
+                    <td class="table__primary"><a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" style="border: none;">{{ format_month(bill.reference_month) }}</a></td>
+                    <td class="num">{{ format_brl(bill.total_amount) }}</td>
+                    <td class="center mono" style="font-size: 0.85rem;">{{ bill.due_date or "—" }}</td>
+                    <td class="center">
+                        {% if bill.status == "draft" %}<span class="tag tag--draft">Rascunho</span>
+                        {% elif bill.status == "published" %}<span class="tag tag--published">Publicado</span>
+                        {% elif bill.status == "sent" %}<span class="tag tag--sent"><span class="dot"></span>Enviado</span>
+                        {% elif bill.status == "paid" %}<span class="tag tag--paid"><span class="dot"></span>Pago</span>
+                        {% elif bill.status == "cancelled" %}<span class="tag tag--cancelled">Cancelado</span>
+                        {% elif bill.status == "delayed_payment" %}<span class="tag tag--delayed"><span class="dot"></span>Pag. Atrasado</span>
                         {% endif %}
                     </td>
-                    <td class="text-right">
-                        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" class="btn btn--sm">Ver</a>
-                    </td>
+                    <td class="num"><a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" class="btn btn--sm">Ver</a></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
     {% else %}
-    <div class="empty-state">
-        <p>Nenhuma fatura gerada.</p>
+    <div class="empty-state" style="padding: 2.5rem;">
+        <p>Nenhuma fatura gerada para este imóvel.</p>
+        {% if role in ("owner", "admin", "manager") and not pix_needs_setup %}
+        <a href="/billings/{{ billing.uuid }}/bills/generate" class="btn btn--primary">Gerar primeira fatura</a>
+        {% endif %}
     </div>
     {% endif %}
 </div>
 
 {% if user_orgs %}
 <div class="panel">
-    <div class="panel-head">
-        <h5>Transferir para Organização</h5>
-    </div>
-    <div class="panel-body">
+    <div class="panel__head"><h3>Transferir para organização</h3></div>
+    <div class="panel__body">
         <form method="post" action="/billings/{{ billing.uuid }}/transfer">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="item-grid">
                 <div class="field mb-0">
-                    <select class="field-select" name="organization_id" required>
+                    <select class="select" name="organization_id" required>
                         <option value="">Selecione...</option>
                         {% for org in user_orgs %}
                         <option value="{{ org.id }}">{{ org.name }}</option>
@@ -175,12 +183,16 @@
 {% endif %}
 
 {% if role in ("owner", "admin") %}
-<div class="mt-2">
-    <form method="post" action="/billings/{{ billing.uuid }}/delete"
-          onsubmit="return confirm('Tem certeza que deseja excluir esta cobrança?')">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="btn btn--sm btn--danger">Excluir Cobrança</button>
-    </form>
+<div class="panel danger-zone">
+    <div class="panel__head"><h3>Zona de perigo</h3></div>
+    <div class="panel__body">
+        <p class="muted mb-2" style="font-size: 0.88rem;">Excluir remove esta cobrança e suas faturas. Não pode ser desfeito.</p>
+        <form method="post" action="/billings/{{ billing.uuid }}/delete"
+              onsubmit="return confirm('Tem certeza que deseja excluir esta cobrança?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn--danger btn--sm">Excluir cobrança</button>
+        </form>
+    </div>
 </div>
 {% endif %}
 {% endblock %}

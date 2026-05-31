@@ -1,12 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Login - Rentivo{% endblock %}
+{% block title %}Entrar - Rentivo{% endblock %}
 
 {% block content %}
 <div class="login-wrap">
-    <div class="panel login-panel">
-        <div class="panel-body" style="padding: 2rem;">
-            <h2 class="login-title">Ren<span>tivo</span></h2>
+    <div class="panel">
+        <div class="panel__body" style="padding: 2.25rem;">
+            <div style="text-align: center; margin-bottom: 1.75rem;">
+                <div class="auth-mark">R</div>
+                <h2 style="font-size: 1.5rem; margin: 0;">Entrar no rent<span style="color: var(--accent-dark);">ivo</span></h2>
+                <p class="muted" style="font-size: 0.9rem; margin: 0.35rem 0 0;">Bem-vindo de volta.</p>
+            </div>
 
             {% if error %}
             <div class="toast toast--error" role="alert">{{ error }}</div>
@@ -14,14 +18,14 @@
 
             <form method="post" action="/login">
                 <div class="field">
-                    <label for="email" class="field-label">E-mail</label>
-                    <input type="email" class="field-input" id="email" name="email" required autofocus>
+                    <label for="email" class="field__label">E-mail</label>
+                    <input type="email" class="input" id="email" name="email" required autofocus>
                 </div>
                 <div class="field">
-                    <label for="password" class="field-label">Senha</label>
-                    <input type="password" class="field-input" id="password" name="password" required>
+                    <label for="password" class="field__label">Senha</label>
+                    <input type="password" class="input" id="password" name="password" required>
                 </div>
-                <p style="text-align: right; margin: 0 0 .75rem; font-size: .875rem;">
+                <p style="text-align: right; margin: -0.4rem 0 1rem; font-size: 0.85rem;">
                     <a href="/forgot-password">Esqueceu sua senha?</a>
                 </p>
                 {% if turnstile_site_key %}
@@ -29,9 +33,9 @@
                     <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                 </div>
                 {% endif %}
-                <button type="submit" class="btn btn--primary" style="width: 100%; margin-top: 0.5rem;">Entrar</button>
+                <button type="submit" class="btn btn--primary btn--block btn--lg">Entrar</button>
             </form>
-            <p style="text-align: center; margin-top: 1rem;">
+            <p class="muted" style="text-align: center; font-size: 0.88rem; margin: 1.25rem 0 0;">
                 Não tem conta? <a href="/signup">Criar conta</a>
             </p>
         </div>

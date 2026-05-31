@@ -1,14 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Cobranças - Rentivo{% endblock %}
+{% block title %}Minhas Cobranças - Rentivo{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="page-header-info">
-        <h2 class="page-title">Cobranças</h2>
+<div class="pagehead">
+    <div>
+        <h1 class="pagehead__title">Minhas Cobranças</h1>
+        <p class="pagehead__sub">{{ billings | length }} {{ "imóvel" if billings | length == 1 else "imóveis" }} cadastrado{{ "" if billings | length == 1 else "s" }}</p>
     </div>
-    <div class="page-actions">
-        <a href="/billings/create" class="btn btn--primary">+ Nova Cobrança</a>
+    <div class="btn-row">
+        <a href="/organizations/" class="btn">Organizações</a>
+        <a href="/billings/create" class="btn btn--primary">+ Nova cobrança</a>
     </div>
 </div>
 
@@ -32,23 +34,68 @@
 {% endif %}
 
 {% if billings %}
-<div>
-    {% for billing in billings %}
-    <a href="/billings/{{ billing.uuid }}" class="billing-card">
-        <div class="billing-card-info">
-            <p class="billing-card-name">{{ billing.name }}</p>
-            {% if billing.description %}
-            <p class="billing-card-desc">{{ billing.description }}</p>
-            {% endif %}
-        </div>
-        <span class="billing-card-count">
-            {% if billing.owner_type == "organization" %}
-            <span class="tag tag--variable">Org</span>
-            {% endif %}
-            {{ billing.items | length }} itens
-        </span>
-    </a>
-    {% endfor %}
+{% set ns = namespace(items=0, orgs=0) %}
+{% for billing in billings %}
+{% set ns.items = ns.items + (billing.items | length) %}
+{% if billing.owner_type == "organization" %}{% set ns.orgs = ns.orgs + 1 %}{% endif %}
+{% endfor %}
+
+<div class="stats stats--3 mb-3">
+    <div class="stat" style="--bar: var(--ink);">
+        <div class="stat__label">Imóveis</div>
+        <div class="stat__value mono">{{ billings | length }}</div>
+        <div class="stat__meta">cobranças ativas</div>
+    </div>
+    <div class="stat" style="--bar: var(--accent);">
+        <div class="stat__label">Itens no total</div>
+        <div class="stat__value mono">{{ ns.items }}</div>
+        <div class="stat__meta">fixos e variáveis</div>
+    </div>
+    <div class="stat" style="--bar: var(--sent);">
+        <div class="stat__label">Em organização</div>
+        <div class="stat__value mono">{{ ns.orgs }}</div>
+        <div class="stat__meta">{{ billings | length - ns.orgs }} pessoais</div>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="panel__head">
+        <h3>Imóveis &amp; cobranças</h3>
+        <span class="panel__title-eyebrow">Modelo recorrente</span>
+    </div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Imóvel</th>
+                    <th class="center">Tipo</th>
+                    <th class="center">Itens</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for billing in billings %}
+                <tr>
+                    <td>
+                        <a href="/billings/{{ billing.uuid }}" class="table__primary" style="border: none;">{{ billing.name }}</a>
+                        {% if billing.description %}
+                        <div class="table__sub">{{ billing.description }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="center">
+                        {% if billing.owner_type == "organization" %}
+                        <span class="tag tag--solid">Org</span>
+                        {% else %}
+                        <span class="tag tag--variable">Pessoal</span>
+                        {% endif %}
+                    </td>
+                    <td class="center mono">{{ billing.items | length }}</td>
+                    <td class="num"><a href="/billings/{{ billing.uuid }}" class="btn btn--sm">Ver</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% else %}
 <div class="panel">
