@@ -9,24 +9,25 @@ current-bill status per property.
 - The per-property table shows each billing's *latest* bill regardless of year.
 
 Both are derived from a single ``list_summaries`` query. Because the read happens
-on hot navigation paths, the per-(period, billing-set) result is stored in a
-pluggable :class:`StatsCache` (none / memory / redis, selected by
-``RENTIVO_STATS_CACHE_BACKEND``). The cache key includes the year-to-date window
-plus the exact set of billing ids, so entries are shared across users without
-leaking data (bill ids are globally unique and the underlying rows are identical
-regardless of who reads them).
+on hot navigation paths, the per-(period, billing-set) result is stored (as a
+plain dict via ``BillingStats.to_dict``) in the generic :class:`rentivo.cache.Cache`
+(none / memory / redis, selected by ``RENTIVO_CACHE_BACKEND``). The cache key is
+prefixed ``billing_stats:`` and includes the year-to-date window plus the exact
+set of billing ids, so entries are shared across users without leaking data (bill
+ids are globally unique and the underlying rows are identical regardless of who
+reads them).
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime
 
+from rentivo.cache.base import Cache
+from rentivo.cache.factory import get_cache
 from rentivo.constants import SP_TZ
 from rentivo.models.bill import BillStatus, BillSummary
 from rentivo.repositories.base import BillRepository
 from rentivo.services.billing_stats import BillingStats
-from rentivo.services.stats_cache.base import StatsCache
-from rentivo.services.stats_cache.factory import get_stats_cache
 
 __all__ = ["BillingStats", "BillingStatsService"]
 
@@ -76,9 +77,9 @@ def _ytd_rollup(summaries: list[BillSummary], year: int, month: int) -> dict[str
 
 
 class BillingStatsService:
-    def __init__(self, bill_repo: BillRepository, cache: StatsCache | None = None) -> None:
+    def __init__(self, bill_repo: BillRepository, cache: Cache | None = None) -> None:
         self._bill_repo = bill_repo
-        self._cache = cache or get_stats_cache()
+        self._cache = cache or get_cache()
 
     def stats_for_ids(self, billing_ids: list[int], *, today: date | None = None) -> BillingStats:
         if today is None:
@@ -87,14 +88,14 @@ class BillingStatsService:
         if not ids:
             return BillingStats(year=today.year)
 
-        cache_key = f"{today.year}|{today.month}|{','.join(str(i) for i in ids)}"
+        cache_key = f"billing_stats:{today.year}|{today.month}|{','.join(str(i) for i in ids)}"
         cached = self._cache.get(cache_key)
         if cached is not None:
-            return cached
+            return BillingStats.from_dict(cached)
 
         summaries = self._bill_repo.list_summaries(list(ids))
         rollup = _ytd_rollup(summaries, today.year, today.month)
         stats = BillingStats(year=today.year, current=_latest_per_billing(summaries), **rollup)
 
-        self._cache.set(cache_key, stats)
+        self._cache.set(cache_key, stats.to_dict())
         return stats

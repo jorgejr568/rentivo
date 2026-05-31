@@ -7,9 +7,9 @@ from datetime import date
 
 import pytest
 
+from rentivo.cache.memory import MemoryCache
 from rentivo.models.bill import BillSummary
 from rentivo.services.billing_stats_service import BillingStatsService
-from rentivo.services.stats_cache.memory import MemoryStatsCache
 
 
 class FakeBillRepo:
@@ -38,7 +38,7 @@ TODAY = date(2026, 5, 15)
 
 @pytest.fixture()
 def cache():
-    c = MemoryStatsCache(ttl_seconds=60, max_entries=64, enable_cleanup_thread=False)
+    c = MemoryCache(ttl_seconds=60, max_entries=64, enable_cleanup_thread=False)
     yield c
     c.close()
 
@@ -126,8 +126,8 @@ class TestCacheInteraction:
         first = svc.stats_for_ids([1], today=TODAY)
         second = svc.stats_for_ids([1], today=TODAY)
 
-        assert repo.calls == 1
-        assert first is second
+        assert repo.calls == 1  # second call served from cache
+        assert first == second
 
     def test_clearing_cache_forces_recompute(self, cache):
         repo = FakeBillRepo([_summary(1, 100000, "paid")])

@@ -80,9 +80,9 @@ class Settings(BaseSettings):
     encryption_cache_max_entries: int = 10_000
     redis_url: str = ""
 
-    stats_cache_backend: str = "memory"
-    stats_cache_ttl_seconds: int = 60
-    stats_cache_max_entries: int = 2_048
+    cache_backend: str = "memory"
+    cache_ttl_seconds: int = 60
+    cache_max_entries: int = 2_048
 
     turnstile_site_key: str = ""
     turnstile_secret_key: str = ""
@@ -127,25 +127,25 @@ class Settings(BaseSettings):
             raise ValueError("RENTIVO_ENCRYPTION_CACHE_MAX_ENTRIES must be >= 1")
         return v
 
-    @field_validator("stats_cache_backend")
+    @field_validator("cache_backend")
     @classmethod
-    def _validate_stats_cache_backend(cls, v: str) -> str:
+    def _validate_cache_backend(cls, v: str) -> str:
         if v not in ("none", "memory", "redis"):
-            raise ValueError("RENTIVO_STATS_CACHE_BACKEND must be one of: none, memory, redis")
+            raise ValueError("RENTIVO_CACHE_BACKEND must be one of: none, memory, redis")
         return v
 
-    @field_validator("stats_cache_ttl_seconds")
+    @field_validator("cache_ttl_seconds")
     @classmethod
-    def _validate_stats_cache_ttl(cls, v: int) -> int:
+    def _validate_cache_ttl(cls, v: int) -> int:
         if v < 1:
-            raise ValueError("RENTIVO_STATS_CACHE_TTL_SECONDS must be >= 1")
+            raise ValueError("RENTIVO_CACHE_TTL_SECONDS must be >= 1")
         return v
 
-    @field_validator("stats_cache_max_entries")
+    @field_validator("cache_max_entries")
     @classmethod
-    def _validate_stats_cache_max_entries(cls, v: int) -> int:
+    def _validate_cache_max_entries(cls, v: int) -> int:
         if v < 1:
-            raise ValueError("RENTIVO_STATS_CACHE_MAX_ENTRIES must be >= 1")
+            raise ValueError("RENTIVO_CACHE_MAX_ENTRIES must be >= 1")
         return v
 
     @model_validator(mode="after")
@@ -171,8 +171,8 @@ class Settings(BaseSettings):
     def _validate_redis_url_required(self) -> "Settings":
         if self.encryption_cache_backend == "redis" and not self.redis_url:
             raise ValueError("RENTIVO_REDIS_URL is required when RENTIVO_ENCRYPTION_CACHE_BACKEND=redis")
-        if self.stats_cache_backend == "redis" and not self.redis_url:
-            raise ValueError("RENTIVO_REDIS_URL is required when RENTIVO_STATS_CACHE_BACKEND=redis")
+        if self.cache_backend == "redis" and not self.redis_url:
+            raise ValueError("RENTIVO_REDIS_URL is required when RENTIVO_CACHE_BACKEND=redis")
         return self
 
     def get_secret_key(self) -> str:

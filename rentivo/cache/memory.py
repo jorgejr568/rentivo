@@ -2,22 +2,21 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Callable
+from typing import Any, Callable
 
 import structlog
 from cachetools import TTLCache
 
-from rentivo.services.billing_stats import BillingStats
-
 logger = structlog.get_logger(__name__)
 
 
-class MemoryStatsCache:
-    """Process-local TTL cache for ``BillingStats`` rollups.
+class MemoryCache:
+    """Process-local TTL cache.
 
     Wraps ``cachetools.TTLCache`` with an ``RLock`` (cachetools is not
     thread-safe and the web server is multi-threaded). A daemon cleanup thread
     actively sweeps expired entries so memory does not grow between reads.
+    Values are stored as-is (no serialisation).
     """
 
     def __init__(
@@ -31,7 +30,7 @@ class MemoryStatsCache:
     ) -> None:
         self._timer = timer or time.time
         self._lock = threading.RLock()
-        self._cache: TTLCache[str, BillingStats] = TTLCache(
+        self._cache: TTLCache[str, Any] = TTLCache(
             maxsize=max_entries,
             ttl=ttl_seconds,
             timer=self._timer,
@@ -45,7 +44,7 @@ class MemoryStatsCache:
             self._cleanup_thread = threading.Thread(
                 target=self._cleanup_loop,
                 args=(interval,),
-                name="MemoryStatsCache-cleanup",
+                name="MemoryCache-cleanup",
                 daemon=True,
             )
             self._cleanup_thread.start()
@@ -63,11 +62,11 @@ class MemoryStatsCache:
             with self._lock:
                 self._cache.expire()
 
-    def get(self, key: str) -> BillingStats | None:
+    def get(self, key: str) -> Any | None:
         with self._lock:
             return self._cache.get(key)
 
-    def set(self, key: str, value: BillingStats) -> None:
+    def set(self, key: str, value: Any) -> None:
         with self._lock:
             self._cache[key] = value
 

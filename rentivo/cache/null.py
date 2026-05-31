@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from rentivo.services.billing_stats import BillingStats
+from typing import Any
 
 
-class NullStatsCache:
+class NullCache:
     """Cache implementation that does nothing. Selected when
-    ``RENTIVO_STATS_CACHE_BACKEND=none``."""
+    ``RENTIVO_CACHE_BACKEND=none``."""
 
-    def get(self, key: str) -> BillingStats | None:
+    def get(self, key: str) -> Any | None:
         return None
 
-    def set(self, key: str, value: BillingStats) -> None:
+    def set(self, key: str, value: Any) -> None:
         return None
 
     def clear(self) -> None:
