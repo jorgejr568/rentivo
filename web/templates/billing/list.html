@@ -1,14 +1,17 @@
 {% extends "base.html" %}
+{% from "_macros.html" import kpi_cards, bill_status_tag %}
 
-{% block title %}Cobranças - Rentivo{% endblock %}
+{% block title %}Minhas Cobranças - Rentivo{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div class="page-header-info">
-        <h2 class="page-title">Cobranças</h2>
+<div class="pagehead">
+    <div>
+        <h1 class="pagehead__title">Minhas Cobranças</h1>
+        <p class="pagehead__sub">{{ billings | length }} {{ "imóvel" if billings | length == 1 else "imóveis" }} cadastrado{{ "" if billings | length == 1 else "s" }}</p>
     </div>
-    <div class="page-actions">
-        <a href="/billings/create" class="btn btn--primary">+ Nova Cobrança</a>
+    <div class="btn-row">
+        <a href="/organizations/" class="btn">Organizações</a>
+        <a href="/billings/create" class="btn btn--primary">+ Nova cobrança</a>
     </div>
 </div>
 
@@ -32,23 +35,42 @@
 {% endif %}
 
 {% if billings %}
-<div>
-    {% for billing in billings %}
-    <a href="/billings/{{ billing.uuid }}" class="billing-card">
-        <div class="billing-card-info">
-            <p class="billing-card-name">{{ billing.name }}</p>
-            {% if billing.description %}
-            <p class="billing-card-desc">{{ billing.description }}</p>
-            {% endif %}
-        </div>
-        <span class="billing-card-count">
-            {% if billing.owner_type == "organization" %}
-            <span class="tag tag--variable">Org</span>
-            {% endif %}
-            {{ billing.items | length }} itens
-        </span>
-    </a>
-    {% endfor %}
+{{ kpi_cards(stats) }}
+
+<div class="panel">
+    <div class="panel__head">
+        <h3>Imóveis &amp; cobranças</h3>
+        <span class="panel__title-eyebrow">Status da fatura atual</span>
+    </div>
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Imóvel</th>
+                    <th class="center">Itens</th>
+                    <th class="num">Fatura atual</th>
+                    <th class="center">Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for billing in billings %}
+                {% set current = stats.current.get(billing.id) %}
+                <tr>
+                    <td>
+                        <a href="/billings/{{ billing.uuid }}" class="table__primary" style="border: none;">{{ billing.name }}</a>
+                        {% if billing.owner_type == "organization" %}<span class="tag tag--solid ms-1">Org</span>{% endif %}
+                        {% if billing.description %}<div class="table__sub">{{ billing.description }}</div>{% endif %}
+                    </td>
+                    <td class="center mono">{{ billing.items | length }}</td>
+                    <td class="num">{% if current %}{{ format_brl(current.total_amount) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td class="center">{% if current %}{{ bill_status_tag(current.status) }}{% else %}<span class="tag tag--draft">Sem fatura</span>{% endif %}</td>
+                    <td class="num"><a href="/billings/{{ billing.uuid }}" class="btn btn--sm">Ver</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 {% else %}
 <div class="panel">

@@ -1,25 +1,43 @@
 {% extends "base.html" %}
 
-{% block title %}Nova Organização - Rentivo{% endblock %}
+{% block title %}Nova organização - Rentivo{% endblock %}
 
 {% block content %}
-<h2 class="mb-3">Nova Organização</h2>
+<a class="crumb" href="/organizations/">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    Organizações
+</a>
+
+<div class="pagehead">
+    <div>
+        <h1 class="pagehead__title">Nova organização</h1>
+        <p class="pagehead__sub">Crie um espaço compartilhado para gerenciar imóveis com sua equipe.</p>
+    </div>
+</div>
 
 <form method="post" action="/organizations/create">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
     <div class="panel">
-        <div class="panel-body">
+        <div class="panel__head">
+            <h3>Detalhes</h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M9 6h.01M15 6h.01M9 10h.01M15 10h.01M9 14h.01M15 14h.01"/></svg>
+        </div>
+        <div class="panel__body">
             <div class="field mb-0">
-                <label for="name" class="field-label">Nome</label>
-                <input type="text" class="field-input" id="name" name="name" required autofocus>
+                <label for="name" class="field__label">Nome da organização</label>
+                <input type="text" class="input" id="name" name="name" placeholder="Ex.: Ribeiro Imóveis" required autofocus>
+                <span class="field__hint">Você será o administrador. Poderá convidar membros depois.</span>
             </div>
         </div>
     </div>
 
-    <div class="btn-group">
-        <button type="submit" class="btn btn--primary">Criar Organização</button>
-        <a href="/organizations/" class="btn btn--ghost">Cancelar</a>
+    <div class="actionbar">
+        <span class="muted" style="font-size: 0.85rem;">Você entra como <strong style="color: var(--ink);">Admin</strong>.</span>
+        <div class="btn-row">
+            <a href="/organizations/" class="btn btn--ghost">Cancelar</a>
+            <button type="submit" class="btn btn--primary">Criar organização</button>
+        </div>
     </div>
 </form>
 {% endblock %}

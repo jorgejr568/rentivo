@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from rentivo.models.audit_log import AuditLog
-from rentivo.models.bill import Bill
+from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.known_device import KnownDevice
@@ -52,6 +52,13 @@ class BillRepository(ABC):
 
     @abstractmethod
     def list_by_billing(self, billing_id: int) -> list[Bill]: ...
+
+    @abstractmethod
+    def list_summaries(self, billing_ids: list[int]) -> list[BillSummary]:
+        """All (non-deleted) bills for the given billings as lightweight summaries,
+        ordered by billing_id then newest reference_month first. Lets callers derive
+        both the latest bill per billing and year-to-date rollups from one query."""
+        ...
 
     @abstractmethod
     def update(self, bill: Bill) -> Bill: ...

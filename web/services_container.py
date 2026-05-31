@@ -27,6 +27,7 @@ from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_notification_service import BillingNotificationService
 from rentivo.services.billing_service import BillingService
+from rentivo.services.billing_stats_service import BillingStatsService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.job_service import JobService
 from rentivo.services.known_device_service import KnownDeviceService
@@ -62,6 +63,10 @@ class RequestServices:
     @cached_property
     def billing(self) -> BillingService:
         return BillingService(SQLAlchemyBillingRepository(self._conn, self._encryption))
+
+    @cached_property
+    def billing_stats(self) -> BillingStatsService:
+        return BillingStatsService(SQLAlchemyBillRepository(self._conn, self._encryption))
 
     @cached_property
     def user(self) -> UserService:

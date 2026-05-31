@@ -339,6 +339,27 @@ Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`pip
 - Set `cache_backend=none` to revert to the pre-cache code path; no migrations or KMS impact.
 - The encryption test conftest (`tests/encryption/conftest.py`) calls `cache.close()` on the active `CachingEncryptionBackend` before invoking `factory._reset_for_tests()`, so the daemon cleanup thread is joined and the Redis client is closed between tests.
 
+## Cache
+
+A generic, reusable key→value cache (`rentivo/cache/`), pluggable across the same three backends as the decryption cache but configured by **its own env vars** — the two caches are independent toggles. Values must be JSON-serialisable (dict / list / str / int / float / bool / None) so any backend can store them; consumers serialize their own domain objects at the boundary.
+
+| Env var | Default | Notes |
+|---|---|---|
+| `RENTIVO_CACHE_BACKEND` | `memory` | `none` / `memory` / `redis` |
+| `RENTIVO_CACHE_TTL_SECONDS` | `60` | memory + redis |
+| `RENTIVO_CACHE_MAX_ENTRIES` | `2048` | memory only |
+| `RENTIVO_REDIS_URL` | `""` | shared with the decryption cache; required iff `RENTIVO_CACHE_BACKEND=redis` |
+
+- Default is `memory` (not `none` like the decryption cache) so the cache stays on out of the box.
+- `Cache` protocol (`get`/`set`/`clear`/`close`) with `NullCache`, `MemoryCache` (`cachetools.TTLCache` + `RLock` + daemon cleanup thread, stores values as-is), and `RedisCache` (JSON-encoded values, keys `rentivo:cache:v1:<sha256(key)>`, fail-open). `rentivo.cache.factory.get_cache()` returns the process-global singleton; `_reset_for_tests()` closes + drops it.
+- Every backend is fail-open: a backend error degrades to a cache miss / dropped write, never a raised exception.
+- Callers namespace their own keys (e.g. `billing_stats:...`) so multiple consumers can share one cache instance without collisions.
+- `tests/web/conftest.py` and `tests/cache/conftest.py` call `factory._reset_for_tests()` between tests so a fresh-DB id reuse or a settings-patching test never leaks a cached value or a redis singleton.
+
+### Consumer: billing KPI rollups
+
+`BillingStatsService` is the first consumer. `BillingStats` (in `rentivo/services/billing_stats.py`, separate from the service) provides `to_dict`/`from_dict`; the service stores `stats.to_dict()` under key `billing_stats:{year}|{month}|{sorted billing ids}` (the YTD window + exact billing set, so entries are correct across month rollovers and shared across users since bill ids are globally unique) and rebuilds via `from_dict` on a hit.
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).

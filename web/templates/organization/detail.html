@@ -1,195 +1,271 @@
 {% extends "base.html" %}
+{% from "_macros.html" import kpi_cards, bill_status_tag %}
 
 {% block title %}{{ org.name }} - Rentivo{% endblock %}
 
+{% set role_labels = {"admin": "Admin", "manager": "Gerente", "viewer": "Visualizador"} %}
+{% set is_admin = member_role == "admin" %}
+{% set can_manage = member_role in ("admin", "manager") %}
+
 {% block content %}
-<div class="page-header">
-    <div class="page-header-info">
-        <h2 class="page-title">{{ org.name }}</h2>
+<a class="crumb" href="/organizations/">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    Organizações
+</a>
+
+<div class="pagehead">
+    <div class="flex gap" style="align-items: center;">
+        <span class="org-card__mark" style="width: 52px; height: 52px; font-size: 1.4rem;">{{ org.name[:1] | upper }}</span>
+        <div>
+            <h1 class="pagehead__title">{{ org.name }}</h1>
+            <p class="pagehead__sub">{{ members | length }} membros · {{ org_billings | length }} cobranças · você é {{ role_labels[member_role] or member_role }}</p>
+        </div>
     </div>
-    {% if member_role == "admin" %}
     <div class="page-actions">
-        <a href="/themes/organization/{{ org.uuid }}" class="btn">Personalizar Tema</a>
+        {% if can_manage %}<a href="/billings/create" class="btn btn--primary">+ Nova cobrança</a>{% endif %}
+        {% if is_admin %}
+        <a href="/themes/organization/{{ org.uuid }}" class="btn">Tema</a>
         <a href="/organizations/{{ org.uuid }}/edit" class="btn">Editar</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Overview -->
+{% if org_billings %}{{ kpi_cards(stats) }}{% endif %}
+
+<!-- Billings -->
+<div class="panel">
+    <div class="panel__head">
+        <h3>Cobranças da organização</h3>
+        {% if can_manage %}
+        <a href="/billings/create" class="btn btn--sm btn--primary">+ Nova cobrança</a>
+        {% else %}
+        <span class="panel__title-eyebrow">Status da fatura atual</span>
+        {% endif %}
+    </div>
+    {% if org_billings %}
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Imóvel</th><th class="center">Itens</th><th class="num">Fatura atual</th><th class="center">Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for b in org_billings %}
+                {% set current = stats.current.get(b.id) %}
+                <tr>
+                    <td class="table__primary"><a href="/billings/{{ b.uuid }}" style="border: none;">{{ b.name }}</a></td>
+                    <td class="center mono">{{ b.items | length }}</td>
+                    <td class="num">{% if current %}{{ format_brl(current.total_amount) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td class="center">{% if current %}{{ bill_status_tag(current.status) }}{% else %}<span class="tag tag--draft">Sem fatura</span>{% endif %}</td>
+                    <td class="num"><a href="/billings/{{ b.uuid }}" class="btn btn--sm">Ver</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 2.5rem 1.5rem;">
+        <p>Nenhuma cobrança nesta organização ainda.</p>
+        <p class="muted" style="font-size: 0.85rem; margin-top: -0.6rem;">Crie uma cobrança ou transfira uma das suas para cá.</p>
+        {% if can_manage %}<a href="/billings/create" class="btn btn--primary">+ Nova cobrança</a>{% endif %}
     </div>
     {% endif %}
 </div>
 
-<div class="panel">
-    <div class="panel-head">
-        <h5>Membros</h5>
-    </div>
-    <div class="data-table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>E-mail</th>
-                    <th class="text-center">Papel</th>
-                    {% if member_role == "admin" %}
-                    <th class="text-right">Ações</th>
-                    {% endif %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for m in members %}
-                <tr>
-                    <td>{{ m.email }}</td>
-                    <td class="text-center">
-                        {% if m.role == "admin" %}
-                        <span class="tag tag--fixed">Admin</span>
-                        {% elif m.role == "manager" %}
-                        <span class="tag tag--variable">Gerente</span>
-                        {% else %}
-                        <span class="tag tag--pending">Visualizador</span>
-                        {% endif %}
-                    </td>
-                    {% if member_role == "admin" %}
-                    <td class="text-right">
-                        {% if m.user_id != user_id %}
-                        <form method="post" action="/organizations/{{ org.uuid }}/members/{{ m.user_id }}/role" class="inline-form">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <select name="role" class="field-select" style="width:auto;display:inline-block;">
-                                {% for r in roles %}
-                                <option value="{{ r }}" {% if r == m.role %}selected{% endif %}>{{ r }}</option>
-                                {% endfor %}
-                            </select>
-                            <button type="submit" class="btn btn--sm">Alterar</button>
-                        </form>
-                        <form method="post" action="/organizations/{{ org.uuid }}/members/{{ m.user_id }}/remove" class="inline-form"
-                              onsubmit="return confirm('Remover este membro?')">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit" class="btn btn--sm btn--danger">Remover</button>
-                        </form>
-                        {% endif %}
-                    </td>
-                    {% endif %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-
-{% if member_role == "admin" %}
-<div class="panel">
-    <div class="panel-head">
-        <h5>Convidar Membro</h5>
-    </div>
-    <div class="panel-body">
-        <form method="post" action="/organizations/{{ org.uuid }}/invite">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="item-grid">
-                <div class="field mb-0">
-                    <label class="field-label">E-mail</label>
-                    <input type="email" class="field-input" name="email" required>
-                </div>
-                <div class="field mb-0">
-                    <label class="field-label">Papel</label>
-                    <select class="field-select" name="role">
-                        {% for r in roles %}
-                        <option value="{{ r }}">{{ r }}</option>
+<div class="grid-2" style="grid-template-columns: 1.5fr 1fr; align-items: start;">
+    <div class="stack gap">
+        <!-- Members -->
+        <div class="panel">
+            <div class="panel__head"><h3>Membros</h3><span class="panel__title-eyebrow">{{ members | length }} pessoas</span></div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr><th>Pessoa</th><th class="center">Papel</th>{% if is_admin %}<th class="num">Ações</th>{% endif %}</tr>
+                    </thead>
+                    <tbody>
+                        {% for m in members %}
+                        <tr>
+                            <td>
+                                <div class="member">
+                                    <span class="avatar{% if m.user_id == user_id %} avatar--accent{% endif %}">{{ m.email[:2] | upper }}</span>
+                                    <div>
+                                        <div class="member__name">{{ m.email.split('@')[0] }} {% if m.user_id == user_id %}<span class="you-chip">você</span>{% endif %}</div>
+                                        <div class="member__email">{{ m.email }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="center">
+                                {% if is_admin and m.user_id != user_id %}
+                                <form method="post" action="/organizations/{{ org.uuid }}/members/{{ m.user_id }}/role" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <select name="role" class="select" style="width: auto; display: inline-block; padding: 0.3rem 1.8rem 0.3rem 0.6rem; font-size: 0.85rem;" onchange="this.form.submit()">
+                                        {% for r in roles %}
+                                        <option value="{{ r }}" {% if r == m.role %}selected{% endif %}>{{ role_labels[r] or r }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </form>
+                                {% else %}
+                                {% if m.role == "admin" %}<span class="tag tag--fixed">Admin</span>
+                                {% elif m.role == "manager" %}<span class="tag tag--variable">Gerente</span>
+                                {% else %}<span class="tag tag--draft">Visualizador</span>{% endif %}
+                                {% endif %}
+                            </td>
+                            {% if is_admin %}
+                            <td class="num">
+                                {% if m.user_id != user_id %}
+                                <form method="post" action="/organizations/{{ org.uuid }}/members/{{ m.user_id }}/remove" class="inline-form"
+                                      onsubmit="return confirm('Remover este membro?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="icon-btn" title="Remover" aria-label="Remover membro">
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                                    </button>
+                                </form>
+                                {% else %}
+                                <span class="muted" style="font-size: 0.8rem;">—</span>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                        </tr>
                         {% endfor %}
-                    </select>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Sent invites -->
+        {% if is_admin and invites %}
+        <div class="panel">
+            <div class="panel__head"><h3>Convites enviados</h3></div>
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr><th>E-mail</th><th class="center">Papel</th><th class="center">Status</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for inv in invites %}
+                        <tr>
+                            <td class="mono" style="font-size: 0.85rem;">{{ inv.invited_email }}</td>
+                            <td class="center">
+                                {% if inv.role == "admin" %}<span class="tag tag--fixed">Admin</span>
+                                {% elif inv.role == "manager" %}<span class="tag tag--variable">Gerente</span>
+                                {% else %}<span class="tag tag--draft">Visualizador</span>{% endif %}
+                            </td>
+                            <td class="center">
+                                {% if inv.status == "pending" %}<span class="tag tag--pending"><span class="dot"></span>Pendente</span>
+                                {% elif inv.status == "accepted" %}<span class="tag tag--paid"><span class="dot"></span>Aceito</span>
+                                {% else %}<span class="tag tag--overdue"><span class="dot"></span>Recusado</span>{% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Sidebar -->
+    <div class="stack gap">
+        {% if is_admin %}
+        <!-- Invite -->
+        <div class="panel">
+            <div class="panel__head">
+                <h3>Convidar membro</h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>
+            </div>
+            <div class="panel__body">
+                <form method="post" action="/organizations/{{ org.uuid }}/invite">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="field">
+                        <label class="field__label">E-mail</label>
+                        <input type="email" class="input mono" name="email" placeholder="nome@email.com" required>
+                    </div>
+                    <div class="field">
+                        <label class="field__label">Papel</label>
+                        <select class="select" name="role">
+                            {% for r in roles %}
+                            <option value="{{ r }}">{{ role_labels[r] or r }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn btn--primary btn--block">Enviar convite</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- MFA -->
+        <div class="panel">
+            <div class="panel__head">
+                <h3>Autenticação (MFA)</h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+            </div>
+            <div class="panel__body">
+                <form method="post" action="/organizations/{{ org.uuid }}/toggle-mfa">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="between" style="align-items: flex-start;">
+                        <div style="max-width: 70%;">
+                            <div style="font-weight: 700; font-size: 0.92rem;">Exigir MFA</div>
+                            <p class="muted mb-0" style="font-size: 0.82rem; margin-top: 0.15rem;">
+                                {{ "Obrigatório para todos os membros." if org.enforce_mfa else "Opcional para os membros." }}
+                            </p>
+                        </div>
+                        <button type="submit" class="switch" role="switch" aria-checked="{{ 'true' if org.enforce_mfa else 'false' }}"
+                                title="{{ 'Desativar exigência de MFA' if org.enforce_mfa else 'Ativar exigência de MFA' }}"
+                                aria-label="{{ 'Desativar exigência de MFA' if org.enforce_mfa else 'Ativar exigência de MFA' }}"></button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Danger zone -->
+        <div class="panel danger-zone">
+            <div class="panel__head"><h3>Zona de perigo</h3></div>
+            <div class="panel__body">
+                <p class="muted" style="font-size: 0.85rem; margin-top: 0;">Excluir remove a organização e desvincula suas cobranças. Não pode ser desfeito.</p>
+                <form method="post" action="/organizations/{{ org.uuid }}/delete"
+                      onsubmit="return confirm('Tem certeza que deseja excluir esta organização? Esta ação não pode ser desfeita.')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn--danger btn--block">Excluir organização</button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <!-- Read-only info for non-admins -->
+        <div class="panel">
+            <div class="panel__head">
+                <h3>Sobre a organização</h3>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M9 6h.01M15 6h.01M9 10h.01M15 10h.01M9 14h.01M15 14h.01"/></svg>
+            </div>
+            <div class="panel__body">
+                <div class="between" style="padding: 0.45rem 0; border-bottom: 1.5px solid var(--line);">
+                    <span class="muted" style="font-size: 0.88rem; white-space: nowrap;">Seu papel</span>
+                    {% if member_role == "manager" %}<span class="tag tag--variable">Gerente</span>{% else %}<span class="tag tag--draft">Visualizador</span>{% endif %}
                 </div>
-                <div>
-                    <button type="submit" class="btn btn--primary">Enviar Convite</button>
+                <div class="between" style="padding: 0.45rem 0; border-bottom: 1.5px solid var(--line);">
+                    <span class="muted" style="font-size: 0.88rem; white-space: nowrap;">Membros</span>
+                    <span class="mono" style="font-weight: 700;">{{ members | length }}</span>
+                </div>
+                <div class="between" style="padding: 0.45rem 0;">
+                    <span class="muted" style="font-size: 0.88rem; white-space: nowrap;">MFA obrigatório</span>
+                    {% if org.enforce_mfa %}<span class="tag tag--paid"><span class="dot"></span>Sim</span>{% else %}<span class="tag tag--draft">Não</span>{% endif %}
                 </div>
             </div>
-        </form>
+        </div>
+        <div class="panel" style="background: var(--paper-2);">
+            <div class="panel__body flex gap-sm" style="align-items: flex-start;">
+                <span style="color: var(--muted); flex-shrink: 0; margin-top: 0.1rem;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                </span>
+                <p class="muted mb-0" style="font-size: 0.85rem;">
+                    {% if member_role == "manager" %}
+                    Como gerente você pode criar cobranças e gerar faturas. Gerenciar membros e configurações é restrito a administradores.
+                    {% else %}
+                    Como visualizador você tem acesso de leitura. Gerenciar cobranças, membros e configurações é restrito a gerentes e administradores.
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
-{% endif %}
-
-{% if org_billings %}
-<div class="panel">
-    <div class="panel-head">
-        <h5>Cobranças da Organização</h5>
-    </div>
-    <div class="data-table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>Nome</th>
-                    <th class="text-right">Itens</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for b in org_billings %}
-                <tr>
-                    <td><a href="/billings/{{ b.uuid }}">{{ b.name }}</a></td>
-                    <td class="text-right">{{ b.items | length }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-
-{% if member_role == "admin" and invites %}
-<div class="panel">
-    <div class="panel-head">
-        <h5>Convites Enviados</h5>
-    </div>
-    <div class="data-table-wrap">
-        <table class="data-table">
-            <thead>
-                <tr>
-                    <th>E-mail</th>
-                    <th class="text-center">Papel</th>
-                    <th class="text-center">Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for inv in invites %}
-                <tr>
-                    <td>{{ inv.invited_email }}</td>
-                    <td class="text-center">{{ inv.role }}</td>
-                    <td class="text-center">
-                        {% if inv.status == "pending" %}
-                        <span class="tag tag--pending">Pendente</span>
-                        {% elif inv.status == "accepted" %}
-                        <span class="tag tag--paid">Aceito</span>
-                        {% else %}
-                        <span class="tag tag--overdue">Recusado</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-
-{% if member_role == "admin" %}
-<div class="panel">
-    <div class="panel-head"><h5>Autenticação Multifator (MFA)</h5></div>
-    <div class="panel-body">
-        <p>
-            {% if org.enforce_mfa %}
-            MFA está <strong style="color: var(--emerald);">obrigatório</strong> para todos os membros desta organização.
-            {% else %}
-            MFA <strong>não é obrigatório</strong> para membros desta organização.
-            {% endif %}
-        </p>
-        <form method="post" action="/organizations/{{ org.uuid }}/toggle-mfa" style="margin-top: 0.75rem;">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% if org.enforce_mfa %}
-            <button type="submit" class="btn btn--sm btn--danger">Desativar Exigência de MFA</button>
-            {% else %}
-            <button type="submit" class="btn btn--sm btn--primary">Ativar Exigência de MFA</button>
-            {% endif %}
-        </form>
-    </div>
-</div>
-
-<div class="mt-2">
-    <form method="post" action="/organizations/{{ org.uuid }}/delete"
-          onsubmit="return confirm('Tem certeza que deseja excluir esta organização?')">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <button type="submit" class="btn btn--sm btn--danger">Excluir Organização</button>
-    </form>
-</div>
-{% endif %}
 {% endblock %}

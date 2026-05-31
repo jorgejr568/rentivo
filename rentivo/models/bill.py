@@ -26,6 +26,20 @@ class BillLineItem(BaseModel):
     sort_order: int = 0
 
 
+class BillSummary(BaseModel):
+    """Lightweight scalar view of a bill — no line items, no decryption.
+
+    Used to compute dashboard / organization KPI rollups without hydrating
+    every bill's encrypted notes and line items.
+    """
+
+    billing_id: int
+    total_amount: int = 0  # centavos
+    status: str = BillStatus.DRAFT.value
+    reference_month: str = ""
+    due_date: str | None = None
+
+
 class Bill(BaseModel):
     id: int | None = None
     uuid: str = ""

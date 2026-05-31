@@ -83,6 +83,8 @@ async def organization_detail(request: Request, org_uuid: str):
     invite_service = request.state.services.invite
     invites = invite_service.list_org_invites(org.id) if member.role == OrgRole.ADMIN.value else []
 
+    stats = request.state.services.billing_stats.stats_for_ids([b.id for b in org_billings])
+
     logger.info(
         "Organization detail loaded: uuid=%s members=%d billings=%d",
         org_uuid,
@@ -99,6 +101,7 @@ async def organization_detail(request: Request, org_uuid: str):
             "invites": invites,
             "member_role": member.role,
             "roles": [r.value for r in OrgRole],
+            "stats": stats,
         },
     )
 
