@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 > Note: this changelog was seeded from 187 commits of pre-SemVer history. Some pre-v3.0.0 dates are not strictly monotonic top-to-bottom (rebase artifacts) — entries are ordered by SemVer, not by date.
 
 ## [Unreleased]
+### Changed
+- Refined neobrutalist redesign of the web UI. New design-token system in `custom.css` (OKLCH palette; Space Grotesk / Hanken Grotesk / JetBrains Mono; refined shadows) plus new components (KPI stat cards, segmented form sections, sticky action bar, org card grid, bank-style invoice document, danger zone). Legacy class names and CSS vars are preserved and restyled so every page inherits the new look. The landing, login, billing list/detail, invoice, billing create/edit, and organization list/detail/create screens were rebuilt to match the design handoff. No backend, route, or form-contract changes (#66).
 
 ## [3.10.1] - 2026-05-23
 ### Security
