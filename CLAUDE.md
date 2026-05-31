@@ -339,6 +339,23 @@ Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`pip
 - Set `cache_backend=none` to revert to the pre-cache code path; no migrations or KMS impact.
 - The encryption test conftest (`tests/encryption/conftest.py`) calls `cache.close()` on the active `CachingEncryptionBackend` before invoking `factory._reset_for_tests()`, so the daemon cleanup thread is joined and the Redis client is closed between tests.
 
+## Billing Stats Cache
+
+The dashboard / organization KPI rollups (`BillingStatsService`) are cached behind a pluggable backend that mirrors the decryption cache but is configured by **its own env vars** — the two caches are independent toggles.
+
+| Env var | Default | Notes |
+|---|---|---|
+| `RENTIVO_STATS_CACHE_BACKEND` | `memory` | `none` / `memory` / `redis` |
+| `RENTIVO_STATS_CACHE_TTL_SECONDS` | `60` | memory + redis |
+| `RENTIVO_STATS_CACHE_MAX_ENTRIES` | `2048` | memory only |
+| `RENTIVO_REDIS_URL` | `""` | shared with the decryption cache; required iff stats backend = `redis` |
+
+- Default is `memory` (not `none` like the decryption cache) so the KPI cache stays on out of the box.
+- `rentivo/services/stats_cache/` — `StatsCache` protocol (`get`/`set`/`clear`/`close`) with `NullStatsCache`, `MemoryStatsCache` (`cachetools.TTLCache` + `RLock` + daemon cleanup thread), and `RedisStatsCache` (JSON via `BillingStats.to_dict`/`from_dict`, keys `rentivo:stats:ytd:v1:<sha256(key)>`, fail-open). `factory.get_stats_cache()` returns the process-global singleton; `_reset_for_tests()` closes + drops it.
+- `BillingStats` lives in `rentivo/services/billing_stats.py` (separate from the service) so the cache layer can serialize it without a circular import.
+- Cache key is `"{year}|{month}|{sorted billing ids}"` — the year-to-date window plus the exact billing set, so entries are correct across month rollovers and shared across users (bill ids are globally unique).
+- `tests/web/conftest.py` and `tests/services/stats_cache/conftest.py` call `factory._reset_for_tests()` between tests so a fresh-DB id reuse or a settings-patching test never leaks a cached rollup or a redis singleton.
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).

@@ -282,3 +282,32 @@ class TestEncryptionCacheSettings:
     def test_cache_max_entries_rejects_zero(self):
         with pytest.raises(ValidationError):
             Settings(_env_file=None, encryption_cache_max_entries=0)
+
+
+class TestStatsCacheSettings:
+    def test_defaults_to_memory(self):
+        s = Settings(_env_file=None)
+        assert s.stats_cache_backend == "memory"
+        assert s.stats_cache_ttl_seconds == 60
+        assert s.stats_cache_max_entries == 2_048
+
+    def test_accepts_none_and_redis_with_url(self):
+        assert Settings(_env_file=None, stats_cache_backend="none").stats_cache_backend == "none"
+        s = Settings(_env_file=None, stats_cache_backend="redis", redis_url="redis://localhost:6379/0")
+        assert s.stats_cache_backend == "redis"
+
+    def test_rejects_unknown_backend(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, stats_cache_backend="memcached")
+        assert "RENTIVO_STATS_CACHE_BACKEND" in str(exc.value)
+
+    def test_redis_requires_url(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, stats_cache_backend="redis", redis_url="")
+        assert "RENTIVO_STATS_CACHE_BACKEND=redis" in str(exc.value)
+
+    def test_ttl_and_max_entries_reject_zero(self):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, stats_cache_ttl_seconds=0)
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, stats_cache_max_entries=0)

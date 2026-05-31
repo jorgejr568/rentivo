@@ -9,69 +9,32 @@ current-bill status per property.
 - The per-property table shows each billing's *latest* bill regardless of year.
 
 Both are derived from a single ``list_summaries`` query. Because the read happens
-on hot navigation paths, the per-(period, billing-set) result is memoised in a
-process-global TTL cache (default 60s); staleness is bounded by the TTL. The
-cache is keyed by the year-to-date window plus the exact set of billing ids, so
-it is shared across users without leaking data (bill ids are globally unique and
-the underlying rows are identical regardless of who reads them).
+on hot navigation paths, the per-(period, billing-set) result is stored in a
+pluggable :class:`StatsCache` (none / memory / redis, selected by
+``RENTIVO_STATS_CACHE_BACKEND``). The cache key includes the year-to-date window
+plus the exact set of billing ids, so entries are shared across users without
+leaking data (bill ids are globally unique and the underlying rows are identical
+regardless of who reads them).
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import date, datetime
-from threading import RLock
-
-from cachetools import TTLCache
 
 from rentivo.constants import SP_TZ
 from rentivo.models.bill import BillStatus, BillSummary
 from rentivo.repositories.base import BillRepository
+from rentivo.services.billing_stats import BillingStats
+from rentivo.services.stats_cache.base import StatsCache
+from rentivo.services.stats_cache.factory import get_stats_cache
+
+__all__ = ["BillingStats", "BillingStatsService"]
 
 # Statuses that count as already received / overdue. Everything else that is not
 # cancelled is treated as "pending" (still expected this cycle).
 _RECEIVED = {BillStatus.PAID.value}
 _OVERDUE = {BillStatus.DELAYED_PAYMENT.value}
 _EXCLUDED = {BillStatus.CANCELLED.value}
-
-CACHE_TTL_SECONDS = 60
-_CACHE: TTLCache = TTLCache(maxsize=1024, ttl=CACHE_TTL_SECONDS)
-_LOCK = RLock()
-
-
-def clear_cache() -> None:
-    """Drop all cached stats. Used between tests and after the TTL is irrelevant."""
-    with _LOCK:
-        _CACHE.clear()
-
-
-@dataclass(frozen=True)
-class BillingStats:
-    """Year-to-date rollup across a set of billings, plus each billing's current bill.
-
-    All money values are in centavos. ``year`` is the calendar year the rollup
-    covers. ``current`` maps ``billing_id`` to its latest :class:`BillSummary`
-    (any year, including cancelled bills so the table can still render their
-    status); billings without any bill are absent.
-    """
-
-    year: int = 0
-    expected: int = 0
-    received: int = 0
-    pending: int = 0
-    overdue: int = 0
-    paid_count: int = 0
-    pending_count: int = 0
-    overdue_count: int = 0
-    current: dict[int, BillSummary] = field(default_factory=dict)
-
-    @property
-    def active_count(self) -> int:
-        return self.pending_count + self.overdue_count
-
-    @property
-    def billed_count(self) -> int:
-        return self.paid_count + self.pending_count + self.overdue_count
 
 
 def _latest_per_billing(summaries: list[BillSummary]) -> dict[int, BillSummary]:
@@ -113,8 +76,9 @@ def _ytd_rollup(summaries: list[BillSummary], year: int, month: int) -> dict[str
 
 
 class BillingStatsService:
-    def __init__(self, bill_repo: BillRepository) -> None:
+    def __init__(self, bill_repo: BillRepository, cache: StatsCache | None = None) -> None:
         self._bill_repo = bill_repo
+        self._cache = cache or get_stats_cache()
 
     def stats_for_ids(self, billing_ids: list[int], *, today: date | None = None) -> BillingStats:
         if today is None:
@@ -123,16 +87,14 @@ class BillingStatsService:
         if not ids:
             return BillingStats(year=today.year)
 
-        key = (today.year, today.month, ids)
-        with _LOCK:
-            cached = _CACHE.get(key)
-            if cached is not None:
-                return cached
+        cache_key = f"{today.year}|{today.month}|{','.join(str(i) for i in ids)}"
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            return cached
 
         summaries = self._bill_repo.list_summaries(list(ids))
         rollup = _ytd_rollup(summaries, today.year, today.month)
         stats = BillingStats(year=today.year, current=_latest_per_billing(summaries), **rollup)
 
-        with _LOCK:
-            _CACHE[key] = stats
+        self._cache.set(cache_key, stats)
         return stats

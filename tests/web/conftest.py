@@ -128,14 +128,15 @@ def get_csrf_token(client) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _clear_billing_stats_cache():
-    """The billing-stats cache is process-global; clear it between tests so a
-    reused billing id (fresh DB each test) never returns another test's rollup."""
-    from rentivo.services.billing_stats_service import clear_cache
+def _reset_billing_stats_cache():
+    """The billing-stats cache is process-global; reset it between tests so a
+    reused billing id (fresh DB each test) never returns another test's rollup,
+    and any backend swapped in by a settings-patching test does not leak."""
+    from rentivo.services.stats_cache.factory import _reset_for_tests
 
-    clear_cache()
+    _reset_for_tests()
     yield
-    clear_cache()
+    _reset_for_tests()
 
 
 @pytest.fixture(autouse=True)
