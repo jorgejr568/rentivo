@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 
 from rentivo.models.audit_log import AuditLog
-from rentivo.models.bill import Bill
+from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.known_device import KnownDevice
@@ -52,6 +52,12 @@ class BillRepository(ABC):
 
     @abstractmethod
     def list_by_billing(self, billing_id: int) -> list[Bill]: ...
+
+    @abstractmethod
+    def current_summaries(self, billing_ids: list[int]) -> dict[int, BillSummary]:
+        """Latest (most recent reference_month) bill per billing, as a lightweight
+        summary keyed by billing_id. Billings with no bills are omitted."""
+        ...
 
     @abstractmethod
     def update(self, bill: Bill) -> Bill: ...

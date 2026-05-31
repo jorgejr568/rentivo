@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import kpi_cards, bill_status_tag %}
 
 {% block title %}{{ org.name }} - Rentivo{% endblock %}
 
@@ -30,23 +31,7 @@
 </div>
 
 <!-- Overview -->
-<div class="stats stats--3 mb-3">
-    <div class="stat" style="--bar: var(--ink);">
-        <div class="stat__label">Membros</div>
-        <div class="stat__value mono">{{ members | length }}</div>
-        <div class="stat__meta">na organização</div>
-    </div>
-    <div class="stat" style="--bar: var(--accent);">
-        <div class="stat__label">Cobranças</div>
-        <div class="stat__value mono">{{ org_billings | length }}</div>
-        <div class="stat__meta">imóveis geridos</div>
-    </div>
-    <div class="stat" style="--bar: {{ 'var(--accent)' if org.enforce_mfa else 'var(--pending)' }};">
-        <div class="stat__label">MFA</div>
-        <div class="stat__value" style="font-size: 1.25rem;">{{ "Obrigatório" if org.enforce_mfa else "Opcional" }}</div>
-        <div class="stat__meta">para os membros</div>
-    </div>
-</div>
+{% if org_billings %}{{ kpi_cards(stats) }}{% endif %}
 
 <!-- Billings -->
 <div class="panel">
@@ -55,20 +40,23 @@
         {% if can_manage %}
         <a href="/billings/create" class="btn btn--sm btn--primary">+ Nova cobrança</a>
         {% else %}
-        <span class="panel__title-eyebrow">Somente leitura</span>
+        <span class="panel__title-eyebrow">Status da fatura atual</span>
         {% endif %}
     </div>
     {% if org_billings %}
     <div class="table-wrap">
         <table class="table">
             <thead>
-                <tr><th>Imóvel</th><th class="center">Itens</th><th></th></tr>
+                <tr><th>Imóvel</th><th class="center">Itens</th><th class="num">Fatura atual</th><th class="center">Status</th><th></th></tr>
             </thead>
             <tbody>
                 {% for b in org_billings %}
+                {% set current = stats.current.get(b.id) %}
                 <tr>
                     <td class="table__primary"><a href="/billings/{{ b.uuid }}" style="border: none;">{{ b.name }}</a></td>
                     <td class="center mono">{{ b.items | length }}</td>
+                    <td class="num">{% if current %}{{ format_brl(current.total_amount) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td class="center">{% if current %}{{ bill_status_tag(current.status) }}{% else %}<span class="tag tag--draft">Sem fatura</span>{% endif %}</td>
                     <td class="num"><a href="/billings/{{ b.uuid }}" class="btn btn--sm">Ver</a></td>
                 </tr>
                 {% endfor %}

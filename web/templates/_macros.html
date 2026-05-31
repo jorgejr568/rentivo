@@ -1,0 +1,37 @@
+{# Shared presentation macros — KPI cards + bill status tag.
+   format_brl is a Jinja env global, so these macros can use it directly. #}
+
+{% macro bill_status_tag(status) -%}
+{% if status == "draft" %}<span class="tag tag--draft">Rascunho</span>
+{%- elif status == "published" %}<span class="tag tag--published">Publicado</span>
+{%- elif status == "sent" %}<span class="tag tag--sent"><span class="dot"></span>Enviado</span>
+{%- elif status == "paid" %}<span class="tag tag--paid"><span class="dot"></span>Pago</span>
+{%- elif status == "cancelled" %}<span class="tag tag--cancelled">Cancelado</span>
+{%- elif status == "delayed_payment" %}<span class="tag tag--delayed"><span class="dot"></span>Pag. Atrasado</span>
+{%- endif %}
+{%- endmacro %}
+
+{% macro kpi_cards(stats) -%}
+<div class="stats mb-3">
+    <div class="stat" style="--bar: var(--ink);">
+        <div class="stat__label">A receber · mês</div>
+        <div class="stat__value mono">{{ format_brl(stats.expected) }}</div>
+        <div class="stat__meta">{{ stats.active_count }} fatura{{ "" if stats.active_count == 1 else "s" }} ativa{{ "" if stats.active_count == 1 else "s" }}</div>
+    </div>
+    <div class="stat" style="--bar: var(--accent);">
+        <div class="stat__label">Recebido</div>
+        <div class="stat__value mono">{{ format_brl(stats.received) }}</div>
+        <div class="stat__meta">{{ stats.paid_count }} fatura{{ "" if stats.paid_count == 1 else "s" }} paga{{ "" if stats.paid_count == 1 else "s" }}</div>
+    </div>
+    <div class="stat" style="--bar: var(--pending);">
+        <div class="stat__label">Pendente</div>
+        <div class="stat__value mono">{{ format_brl(stats.pending) }}</div>
+        <div class="stat__meta">{{ stats.pending_count }} aguardando</div>
+    </div>
+    <div class="stat" style="--bar: var(--overdue);">
+        <div class="stat__label">Em atraso</div>
+        <div class="stat__value mono">{{ format_brl(stats.overdue) }}</div>
+        <div class="stat__meta">{{ stats.overdue_count }} vencida{{ "" if stats.overdue_count == 1 else "s" }}</div>
+    </div>
+</div>
+{%- endmacro %}

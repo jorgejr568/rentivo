@@ -25,6 +25,7 @@ async def billing_list(request: Request):
     billings = service.list_billings_for_user(user_id)
     billings_needing_pix = [b for b in billings if pix_service.billing_needs_setup(b)]
     user_pix_incomplete = pix_service.owner_needs_setup("user", user_id) if user_id else False
+    stats = request.state.services.billing_stats.stats_for_ids([b.id for b in billings])
     return render(
         request,
         "billing/list.html",
@@ -32,6 +33,7 @@ async def billing_list(request: Request):
             "billings": billings,
             "billings_needing_pix": billings_needing_pix,
             "user_pix_incomplete": user_pix_incomplete,
+            "stats": stats,
         },
     )
 

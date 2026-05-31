@@ -8,7 +8,7 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
-from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.bill import Bill, BillLineItem, BillSummary
 from rentivo.models.billing import ItemType
 from rentivo.repositories.base import BillRepository
 from rentivo.repositories.sqlalchemy._common import _now
@@ -176,6 +176,29 @@ class SQLAlchemyBillRepository(BillRepository):
         ciphertexts = self._gather_bill_ciphertexts(rows, items_by_bill)
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return [self._build_bill(row, items_by_bill.get(row["id"], []), plaintexts) for row in rows]
+
+    def current_summaries(self, billing_ids: list[int]) -> dict[int, BillSummary]:
+        if not billing_ids:
+            return {}
+        stmt = text(
+            "SELECT billing_id, total_amount, status, reference_month, due_date "
+            "FROM bills WHERE deleted_at IS NULL AND billing_id IN :billing_ids "
+            "ORDER BY billing_id ASC, reference_month DESC, id DESC"
+        ).bindparams(bindparam("billing_ids", expanding=True))
+        rows = self.conn.execute(stmt, {"billing_ids": billing_ids}).mappings().fetchall()
+        summaries: dict[int, BillSummary] = {}
+        for row in rows:
+            # Rows are ordered newest-first per billing; keep the first seen.
+            if row["billing_id"] in summaries:
+                continue
+            summaries[row["billing_id"]] = BillSummary(
+                billing_id=row["billing_id"],
+                total_amount=row["total_amount"],
+                status=row.get("status", "draft"),
+                reference_month=row["reference_month"],
+                due_date=row["due_date"],
+            )
+        return summaries
 
     def update(self, bill: Bill) -> Bill:
         self.conn.execute(

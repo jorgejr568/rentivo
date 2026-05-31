@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import kpi_cards, bill_status_tag %}
 
 {% block title %}Minhas Cobranças - Rentivo{% endblock %}
 
@@ -34,62 +35,36 @@
 {% endif %}
 
 {% if billings %}
-{% set ns = namespace(items=0, orgs=0) %}
-{% for billing in billings %}
-{% set ns.items = ns.items + (billing.items | length) %}
-{% if billing.owner_type == "organization" %}{% set ns.orgs = ns.orgs + 1 %}{% endif %}
-{% endfor %}
-
-<div class="stats stats--3 mb-3">
-    <div class="stat" style="--bar: var(--ink);">
-        <div class="stat__label">Imóveis</div>
-        <div class="stat__value mono">{{ billings | length }}</div>
-        <div class="stat__meta">cobranças ativas</div>
-    </div>
-    <div class="stat" style="--bar: var(--accent);">
-        <div class="stat__label">Itens no total</div>
-        <div class="stat__value mono">{{ ns.items }}</div>
-        <div class="stat__meta">fixos e variáveis</div>
-    </div>
-    <div class="stat" style="--bar: var(--sent);">
-        <div class="stat__label">Em organização</div>
-        <div class="stat__value mono">{{ ns.orgs }}</div>
-        <div class="stat__meta">{{ billings | length - ns.orgs }} pessoais</div>
-    </div>
-</div>
+{{ kpi_cards(stats) }}
 
 <div class="panel">
     <div class="panel__head">
         <h3>Imóveis &amp; cobranças</h3>
-        <span class="panel__title-eyebrow">Modelo recorrente</span>
+        <span class="panel__title-eyebrow">Status da fatura atual</span>
     </div>
     <div class="table-wrap">
         <table class="table">
             <thead>
                 <tr>
                     <th>Imóvel</th>
-                    <th class="center">Tipo</th>
                     <th class="center">Itens</th>
+                    <th class="num">Fatura atual</th>
+                    <th class="center">Status</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for billing in billings %}
+                {% set current = stats.current.get(billing.id) %}
                 <tr>
                     <td>
                         <a href="/billings/{{ billing.uuid }}" class="table__primary" style="border: none;">{{ billing.name }}</a>
-                        {% if billing.description %}
-                        <div class="table__sub">{{ billing.description }}</div>
-                        {% endif %}
-                    </td>
-                    <td class="center">
-                        {% if billing.owner_type == "organization" %}
-                        <span class="tag tag--solid">Org</span>
-                        {% else %}
-                        <span class="tag tag--variable">Pessoal</span>
-                        {% endif %}
+                        {% if billing.owner_type == "organization" %}<span class="tag tag--solid ms-1">Org</span>{% endif %}
+                        {% if billing.description %}<div class="table__sub">{{ billing.description }}</div>{% endif %}
                     </td>
                     <td class="center mono">{{ billing.items | length }}</td>
+                    <td class="num">{% if current %}{{ format_brl(current.total_amount) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td class="center">{% if current %}{{ bill_status_tag(current.status) }}{% else %}<span class="tag tag--draft">Sem fatura</span>{% endif %}</td>
                     <td class="num"><a href="/billings/{{ billing.uuid }}" class="btn btn--sm">Ver</a></td>
                 </tr>
                 {% endfor %}
