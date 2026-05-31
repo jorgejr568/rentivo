@@ -177,28 +177,25 @@ class SQLAlchemyBillRepository(BillRepository):
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return [self._build_bill(row, items_by_bill.get(row["id"], []), plaintexts) for row in rows]
 
-    def current_summaries(self, billing_ids: list[int]) -> dict[int, BillSummary]:
+    def list_summaries(self, billing_ids: list[int]) -> list[BillSummary]:
         if not billing_ids:
-            return {}
+            return []
         stmt = text(
             "SELECT billing_id, total_amount, status, reference_month, due_date "
             "FROM bills WHERE deleted_at IS NULL AND billing_id IN :billing_ids "
             "ORDER BY billing_id ASC, reference_month DESC, id DESC"
         ).bindparams(bindparam("billing_ids", expanding=True))
         rows = self.conn.execute(stmt, {"billing_ids": billing_ids}).mappings().fetchall()
-        summaries: dict[int, BillSummary] = {}
-        for row in rows:
-            # Rows are ordered newest-first per billing; keep the first seen.
-            if row["billing_id"] in summaries:
-                continue
-            summaries[row["billing_id"]] = BillSummary(
+        return [
+            BillSummary(
                 billing_id=row["billing_id"],
                 total_amount=row["total_amount"],
                 status=row.get("status", "draft"),
                 reference_month=row["reference_month"],
                 due_date=row["due_date"],
             )
-        return summaries
+            for row in rows
+        ]
 
     def update(self, bill: Bill) -> Bill:
         self.conn.execute(

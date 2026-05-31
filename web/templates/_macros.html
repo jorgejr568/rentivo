@@ -14,12 +14,12 @@
 {% macro kpi_cards(stats) -%}
 <div class="stats mb-3">
     <div class="stat" style="--bar: var(--ink);">
-        <div class="stat__label">A receber · mês</div>
+        <div class="stat__label">Faturado · {{ stats.year }}</div>
         <div class="stat__value mono">{{ format_brl(stats.expected) }}</div>
-        <div class="stat__meta">{{ stats.active_count }} fatura{{ "" if stats.active_count == 1 else "s" }} ativa{{ "" if stats.active_count == 1 else "s" }}</div>
+        <div class="stat__meta">{{ stats.billed_count }} fatura{{ "" if stats.billed_count == 1 else "s" }} no ano</div>
     </div>
     <div class="stat" style="--bar: var(--accent);">
-        <div class="stat__label">Recebido</div>
+        <div class="stat__label">Recebido · {{ stats.year }}</div>
         <div class="stat__value mono">{{ format_brl(stats.received) }}</div>
         <div class="stat__meta">{{ stats.paid_count }} fatura{{ "" if stats.paid_count == 1 else "s" }} paga{{ "" if stats.paid_count == 1 else "s" }}</div>
     </div>

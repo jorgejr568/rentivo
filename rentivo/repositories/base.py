@@ -54,9 +54,10 @@ class BillRepository(ABC):
     def list_by_billing(self, billing_id: int) -> list[Bill]: ...
 
     @abstractmethod
-    def current_summaries(self, billing_ids: list[int]) -> dict[int, BillSummary]:
-        """Latest (most recent reference_month) bill per billing, as a lightweight
-        summary keyed by billing_id. Billings with no bills are omitted."""
+    def list_summaries(self, billing_ids: list[int]) -> list[BillSummary]:
+        """All (non-deleted) bills for the given billings as lightweight summaries,
+        ordered by billing_id then newest reference_month first. Lets callers derive
+        both the latest bill per billing and year-to-date rollups from one query."""
         ...
 
     @abstractmethod
