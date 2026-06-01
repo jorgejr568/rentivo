@@ -4,7 +4,6 @@ CONTAINER      := rentivo
 CONTAINER_CLI  := rentivo-cli
 
 PYTHON  := $(shell [ -d .venv ] && echo .venv/bin/python || echo python)
-PIP     := $(shell [ -d .venv ] && echo .venv/bin/pip || echo pip)
 UVICORN := $(shell [ -d .venv ] && echo .venv/bin/uvicorn || echo uvicorn)
 RUFF    := $(shell [ -d .venv ] && echo .venv/bin/ruff || echo ruff)
 
@@ -12,12 +11,8 @@ RUFF    := $(shell [ -d .venv ] && echo .venv/bin/ruff || echo ruff)
 
 .PHONY: install
 install:
-	@# Only create venv if it doesn't exist
-	@if [ ! -d .venv ]; then \
-		python -m venv .venv; \
-	fi
-	.venv/bin/python -m pip install -e ".[dev,test]"
-	.venv/bin/pre-commit install
+	uv sync --all-extras
+	uv run pre-commit install
 
 .PHONY: run
 run:
