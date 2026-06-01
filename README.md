@@ -38,7 +38,10 @@ Built for Brazilian rentivos — all tenant-facing output is in **PT-BR** with *
 ## Quick Start
 
 ```bash
-make install              # create venv + install deps
+# Prerequisite: install uv — https://docs.astral.sh/uv/  (e.g. `brew install uv`)
+# uv provisions Python 3.14 automatically; no system Python required.
+
+make install              # uv sync + install git hooks
 cp .env.example .env      # configure settings
 docker compose up -d db   # start MariaDB
 make migrate              # run database migrations
@@ -106,7 +109,7 @@ Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
 
 | Command | Description |
 |---------|-------------|
-| `make install` | Create virtualenv and install dependencies |
+| `make install` | Sync dependencies into `.venv` with uv and install git hooks |
 | `make run` | Run the CLI |
 | `make migrate` | Run pending Alembic migrations |
 | `make web-run` | Start the web UI (uvicorn, port 8000) |

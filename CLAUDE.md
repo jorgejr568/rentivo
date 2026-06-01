@@ -328,7 +328,7 @@ Backends:
 - **memory** — `cachetools.TTLCache` (bounded LRU) protected by an `RLock`, with a daemon cleanup thread that wakes every `ttl/4` seconds (floor 1s) to actively prune expired entries. Plaintext resides only in process RAM and is bounded by `max_entries`.
 - **redis** — sync `redis-py`; `MGET` for batch reads, pipelined `SET ... EX ttl` for writes. Keys are `rentivo:enc:dec:v1:<sha256(ciphertext)>`. Values are plaintext, UTF-8. Failures (connection, decode) are caught and logged; reads degrade to cache miss, writes are silently dropped. Redis MUST run on a private network with authentication, and ideally TLS (`rediss://`).
 
-Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`pip install 'rentivo[cache]'`) and imported lazily inside `RedisDecryptCache`.
+Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`uv sync --extra cache`) and imported lazily inside `RedisDecryptCache`.
 
 ### What is not cached
 
@@ -421,5 +421,5 @@ Currently the Docker images aren't published to a registry — deploy is a webho
 - **NEVER delete `invoices/`** without explicit user confirmation
 - Do not use floats for monetary values — always centavos (int)
 - Keep repository and storage abstractions — they exist so backends can be swapped (S3, etc.)
-- Always use `.venv/bin/` commands (e.g. `.venv/bin/python`, `.venv/bin/pip`, `.venv/bin/pytest`) instead of bare `python`/`pip`/`pytest`
-- Always run tests in parallel: `.venv/bin/python -m pytest -n auto` (or `make test`)
+- Dependencies are managed with **uv**. Install with `make install` (= `uv sync --all-extras`). Run tools via `uv run` (e.g. `uv run python`, `uv run pytest`) or the equivalent `.venv/bin/` executables that `uv sync` creates — never bare `python`/`pip`/`pytest`. Add or change dependencies in `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
+- Always run tests in parallel: `uv run pytest -n auto` (or `make test`)

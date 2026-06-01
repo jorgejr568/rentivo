@@ -1,25 +1,32 @@
-# --- Build stage: install Python deps (all pure-Python) ---
+# --- Build stage: install deps into /app/.venv with uv ---
 FROM python:3.14-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /bin/uv
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
 WORKDIR /app
 
-COPY pyproject.toml .
+# Install dependencies first (no project) so this layer caches across source edits.
+COPY pyproject.toml uv.lock ./
 RUN mkdir -p rentivo web && touch rentivo/__init__.py web/__init__.py
-RUN pip install --no-cache-dir '.[cache]'
+RUN uv sync --frozen --no-install-project --extra cache
 
+# Install the project itself.
 COPY . .
-RUN pip install --no-cache-dir '.[cache]'
+RUN uv sync --frozen --extra cache
 
-# --- Runtime stage: slim image with only what's needed ---
+# --- Runtime stage: slim image with only the venv + source ---
 FROM python:3.14-slim
 
 RUN useradd --system --uid 10001 --create-home --home-dir /home/appuser --shell /usr/sbin/nologin appuser
 
 WORKDIR /app
 
-COPY --from=builder /usr/local/lib/python3.14/site-packages /usr/local/lib/python3.14/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /app /app
+
+ENV PATH="/app/.venv/bin:$PATH"
 
 RUN mkdir -p /app/invoices && chown -R appuser:appuser /app
 
