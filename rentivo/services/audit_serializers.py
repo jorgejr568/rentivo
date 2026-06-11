@@ -12,6 +12,7 @@ from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
+from rentivo.models.theme import Theme
 from rentivo.models.user import User
 from rentivo.pii_redaction import PIIKind, redact
 
@@ -140,6 +141,24 @@ def serialize_invite(invite: Invite) -> dict:
         "status": invite.status,
         "created_at": _dt(invite.created_at),
         "responded_at": _dt(invite.responded_at),
+    }
+
+
+def serialize_theme(theme: Theme) -> dict:
+    """Serialize a Theme for audit state."""
+    return {
+        "uuid": theme.uuid,
+        "owner_type": theme.owner_type,
+        "owner_id": theme.owner_id,
+        "name": theme.name,
+        "header_font": theme.header_font,
+        "text_font": theme.text_font,
+        "primary": theme.primary,
+        "primary_light": theme.primary_light,
+        "secondary": theme.secondary,
+        "secondary_dark": theme.secondary_dark,
+        "text_color": theme.text_color,
+        "text_contrast": theme.text_contrast,
     }
 
 

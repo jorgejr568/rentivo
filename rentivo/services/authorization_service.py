@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.billing import Billing
+from rentivo.models.organization import OrgRole
 from rentivo.repositories.base import OrganizationRepository
 
 logger = structlog.get_logger(__name__)
@@ -49,4 +50,18 @@ class AuthorizationService:
     def can_transfer_billing(self, user_id: int, billing: Billing) -> bool:
         result = billing.owner_type == "user" and billing.owner_id == user_id
         logger.debug("authz_check", user_id=user_id, billing_id=billing.id, action="transfer", allowed=result)
+        return result
+
+    def get_role_for_org(self, user_id: int, org_id: int) -> str | None:
+        if self.org_repo is None:
+            logger.debug("authz_org_role", user_id=user_id, org_id=org_id, role=None)
+            return None
+        member = self.org_repo.get_member(org_id, user_id)
+        role = member.role if member is not None else None
+        logger.debug("authz_org_role", user_id=user_id, org_id=org_id, role=role)
+        return role
+
+    def can_admin_org(self, user_id: int, org_id: int) -> bool:
+        result = self.get_role_for_org(user_id, org_id) == OrgRole.ADMIN.value
+        logger.debug("authz_check", user_id=user_id, org_id=org_id, action="admin_org", allowed=result)
         return result

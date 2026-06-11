@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
@@ -11,6 +11,7 @@ from rentivo.settings import settings
 from web.analytics import analytics_hash, push_event
 from web.deps import render
 from web.flash import flash
+from web.guards import OrgContext, require_org_admin, require_org_member
 
 logger = structlog.get_logger(__name__)
 
@@ -59,20 +60,9 @@ async def organization_create(request: Request):
 
 
 @router.get("/{org_uuid}")
-async def organization_detail(request: Request, org_uuid: str):
+async def organization_detail(request: Request, ctx: OrgContext = Depends(require_org_member)):
+    org, member, user_id = ctx.org, ctx.member, ctx.user_id
     service = request.state.services.organization
-    org = service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = service.get_member(org.id, user_id)
-    if not member:
-        logger.warning("organization_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
 
     members = service.list_members(org.id)
     billing_service = request.state.services.billing
@@ -87,7 +77,7 @@ async def organization_detail(request: Request, org_uuid: str):
 
     logger.info(
         "Organization detail loaded: uuid=%s members=%d billings=%d",
-        org_uuid,
+        org.uuid,
         len(members),
         len(org_billings),
     )
@@ -107,39 +97,14 @@ async def organization_detail(request: Request, org_uuid: str):
 
 
 @router.get("/{org_uuid}/edit")
-async def organization_edit_form(request: Request, org_uuid: str):
-    service = request.state.services.organization
-    org = service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning("organization_edit_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
-
-    return render(request, "organization/edit.html", {"org": org})
+async def organization_edit_form(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    return render(request, "organization/edit.html", {"org": ctx.org})
 
 
 @router.post("/{org_uuid}/edit")
-async def organization_edit(request: Request, org_uuid: str):
+async def organization_edit(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     service = request.state.services.organization
-    org = service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning("organization_edit_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     previous_state = serialize_organization(org)
 
@@ -149,15 +114,15 @@ async def organization_edit(request: Request, org_uuid: str):
     org.pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     org.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
     if not org.name:
-        logger.warning("organization_edit_rejected", org_uuid=org_uuid, reason="empty_name")
+        logger.warning("organization_edit_rejected", org_uuid=org.uuid, reason="empty_name")
         flash(request, "Nome é obrigatório.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}/edit", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}/edit", status_code=302)
 
     try:
         updated = service.update_organization(org)
     except ValueError as e:
         flash(request, str(e), "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}/edit", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}/edit", status_code=302)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -171,24 +136,13 @@ async def organization_edit(request: Request, org_uuid: str):
     )
 
     flash(request, "Organização atualizada com sucesso!", "success")
-    return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+    return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
 
 @router.post("/{org_uuid}/delete")
-async def organization_delete(request: Request, org_uuid: str):
+async def organization_delete(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     service = request.state.services.organization
-    org = service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning("organization_delete_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     previous_state = serialize_organization(org)
     service.delete_organization(org.id)
@@ -208,39 +162,28 @@ async def organization_delete(request: Request, org_uuid: str):
 
 
 @router.post("/{org_uuid}/members/{member_user_id}/role")
-async def member_change_role(request: Request, org_uuid: str, member_user_id: int):
+async def member_change_role(request: Request, member_user_id: int, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     logger.info(
         "POST /organizations/%s/members/%s/role — changing role",
-        org_uuid,
+        org.uuid,
         member_user_id,
     )
     service = request.state.services.organization
-    org = service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning("org_member_role_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     form = await request.form()
     new_role = str(form.get("role", "")).strip()
     if new_role not in [r.value for r in OrgRole]:
-        logger.warning("org_member_role_invalid", org_uuid=org_uuid, member_user_id=member_user_id, role=new_role)
+        logger.warning("org_member_role_invalid", org_uuid=org.uuid, member_user_id=member_user_id, role=new_role)
         flash(request, "Papel inválido.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
     target_member = service.get_member(org.id, member_user_id)
     old_role = target_member.role if target_member else ""
     service.update_member_role(org.id, member_user_id, new_role)
     logger.info(
         "Member role changed: org=%s member=%s new_role=%s",
-        org_uuid,
+        org.uuid,
         member_user_id,
         new_role,
     )
@@ -275,29 +218,18 @@ async def member_change_role(request: Request, org_uuid: str, member_user_id: in
         )
 
     flash(request, "Papel atualizado com sucesso!", "success")
-    return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+    return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
 
 @router.post("/{org_uuid}/members/{member_user_id}/remove")
-async def member_remove(request: Request, org_uuid: str, member_user_id: int):
+async def member_remove(request: Request, member_user_id: int, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     service = request.state.services.organization
-    org = service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
 
-    user_id = request.session.get("user_id")
-    member = service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning("org_member_remove_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
-
-    if member_user_id == user_id:
-        logger.warning("org_member_self_removal_attempted", org_uuid=org_uuid)
+    if member_user_id == ctx.user_id:
+        logger.warning("org_member_self_removal_attempted", org_uuid=org.uuid)
         flash(request, "Você não pode remover a si mesmo.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
     target_member = service.get_member(org.id, member_user_id)
     old_role = target_member.role if target_member else ""
@@ -314,41 +246,29 @@ async def member_remove(request: Request, org_uuid: str, member_user_id: int):
     )
 
     flash(request, "Membro removido.", "success")
-    return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+    return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
 
 @router.post("/{org_uuid}/invite")
-async def organization_invite(request: Request, org_uuid: str):
-    org_service = request.state.services.organization
-    org = org_service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = org_service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning("invite_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+async def organization_invite(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
 
     form = await request.form()
     email = str(form.get("email", "")).strip().lower()
     role = str(form.get("role", "viewer")).strip()
 
     if not email:
-        logger.warning("invite_rejected", org_uuid=org_uuid, reason="empty_email")
+        logger.warning("invite_rejected", org_uuid=org.uuid, reason="empty_email")
         flash(request, "Informe o e-mail.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
     invite_service = request.state.services.invite
     try:
-        invite = invite_service.send_invite(org.id, email, role, user_id)
+        invite = invite_service.send_invite(org.id, email, role, ctx.user_id)
     except ValueError as e:
-        logger.warning("invite_failed", org_uuid=org_uuid, email=email, error=str(e))
+        logger.warning("invite_failed", org_uuid=org.uuid, email=email, error=str(e))
         flash(request, str(e), "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
     audit = request.state.services.audit
     if invite:
@@ -379,23 +299,14 @@ async def organization_invite(request: Request, org_uuid: str):
     )
 
     flash(request, f"Convite enviado para '{email}'!", "success")
-    push_event(request, {"event": "rentivo_invite_sent", "org_id_hash": analytics_hash(org_uuid)})
-    return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+    push_event(request, {"event": "rentivo_invite_sent", "org_id_hash": analytics_hash(org.uuid)})
+    return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
 
 @router.post("/{org_uuid}/toggle-mfa")
-async def organization_toggle_mfa(request: Request, org_uuid: str):
+async def organization_toggle_mfa(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     org_service = request.state.services.organization
-    org = org_service.get_by_uuid(org_uuid)
-    if not org:
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = org_service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
 
     new_value = not org.enforce_mfa
     org_service.set_enforce_mfa(org.id, new_value)
@@ -417,55 +328,43 @@ async def organization_toggle_mfa(request: Request, org_uuid: str):
     # If enabling MFA, check if the admin themselves needs to set up MFA
     if new_value:
         mfa_service = request.state.services.mfa
-        if not mfa_service.has_any_mfa(user_id):
+        if not mfa_service.has_any_mfa(ctx.user_id):
             request.session["mfa_setup_required"] = True
 
-    return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+    return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
 
 @router.post("/{org_uuid}/transfer-billing")
-async def organization_transfer_billing(request: Request, org_uuid: str):
-    org_service = request.state.services.organization
-    org = org_service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    member = org_service.get_member(org.id, user_id)
-    if not member or member.role != OrgRole.ADMIN.value:
-        logger.warning("transfer_billing_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+async def organization_transfer_billing(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
 
     form = await request.form()
     billing_uuid = str(form.get("billing_uuid", "")).strip()
     if not billing_uuid:
-        logger.warning("transfer_billing_rejected", org_uuid=org_uuid, reason="no_billing_selected")
+        logger.warning("transfer_billing_rejected", org_uuid=org.uuid, reason="no_billing_selected")
         flash(request, "Selecione uma cobrança.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
     billing_service = request.state.services.billing
     auth_service = request.state.services.authorization
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
-        logger.warning("billing_not_found_for_transfer", billing_uuid=billing_uuid, org_uuid=org_uuid)
+        logger.warning("billing_not_found_for_transfer", billing_uuid=billing_uuid, org_uuid=org.uuid)
         flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
-    if not auth_service.can_transfer_billing(user_id, billing):
+    if not auth_service.can_transfer_billing(ctx.user_id, billing):
         logger.warning("transfer_billing_denied", billing_uuid=billing_uuid)
         flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
     previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
         billing_service.transfer_to_organization(billing.id, org.id)
     except ValueError as e:
-        logger.warning("transfer_billing_failed", billing_uuid=billing_uuid, org_uuid=org_uuid, error=str(e))
+        logger.warning("transfer_billing_failed", billing_uuid=billing_uuid, org_uuid=org.uuid, error=str(e))
         flash(request, str(e), "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -482,9 +381,9 @@ async def organization_transfer_billing(request: Request, org_uuid: str):
         billing=billing,
         previous_owner=previous_owner,
         new_org_id=org.id,
-        actor_user_id=user_id,
+        actor_user_id=ctx.user_id,
         actor_email=request.session.get("email", ""),
     )
 
     flash(request, "Cobrança transferida com sucesso!", "success")
-    return RedirectResponse(f"/organizations/{org_uuid}", status_code=302)
+    return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)

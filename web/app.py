@@ -26,6 +26,7 @@ from web.deps import (
     MFAEnforcementMiddleware,
     RequestServicesMiddleware,
 )
+from web.guards import install_guard_handlers
 from web.middleware.logging import RequestContextMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router
@@ -66,6 +67,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(docs_url=None, redoc_url=None, lifespan=lifespan)
+
+install_guard_handlers(app)
 
 app.add_middleware(DBConnectionMiddleware)
 app.add_middleware(RequestServicesMiddleware)

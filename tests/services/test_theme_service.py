@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 from rentivo.models.billing import Billing
 from rentivo.models.theme import DEFAULT_THEME, Theme
-from rentivo.services.theme_service import ThemeService
+from rentivo.services.theme_service import ResolvedTheme, ThemeService
 
 
 class TestThemeService:
@@ -120,3 +120,60 @@ class TestThemeService:
         result = self.service.get_by_uuid("nonexistent")
 
         assert result is None
+
+    def test_resolve_theme_with_source_billing(self):
+        billing = Billing(id=1, uuid="b-uuid", name="Apt", owner_type="user", owner_id=10)
+        billing_theme = Theme(id=5, uuid="bt-uuid", owner_type="billing", owner_id=1)
+        self.mock_repo.get_by_owner.return_value = billing_theme
+
+        resolved = self.service.resolve_theme_with_source(billing)
+
+        assert resolved == ResolvedTheme(theme=billing_theme, source="billing")
+        self.mock_repo.get_by_owner.assert_called_once_with("billing", 1)
+
+    def test_resolve_theme_with_source_owner_user(self):
+        billing = Billing(id=1, uuid="b-uuid", name="Apt", owner_type="user", owner_id=10)
+        owner_theme = Theme(id=3, uuid="ot-uuid", owner_type="user", owner_id=10)
+
+        def side_effect(owner_type, owner_id):
+            if owner_type == "user" and owner_id == 10:
+                return owner_theme
+            return None
+
+        self.mock_repo.get_by_owner.side_effect = side_effect
+
+        resolved = self.service.resolve_theme_with_source(billing)
+
+        assert resolved == ResolvedTheme(theme=owner_theme, source="user")
+
+    def test_resolve_theme_with_source_owner_organization(self):
+        billing = Billing(id=1, uuid="b-uuid", name="Apt", owner_type="organization", owner_id=44)
+        org_theme = Theme(id=4, uuid="og-uuid", owner_type="organization", owner_id=44)
+
+        def side_effect(owner_type, owner_id):
+            if owner_type == "organization" and owner_id == 44:
+                return org_theme
+            return None
+
+        self.mock_repo.get_by_owner.side_effect = side_effect
+
+        resolved = self.service.resolve_theme_with_source(billing)
+
+        assert resolved == ResolvedTheme(theme=org_theme, source="organization")
+
+    def test_resolve_theme_with_source_default(self):
+        billing = Billing(id=1, uuid="b-uuid", name="Apt", owner_type="user", owner_id=10)
+        self.mock_repo.get_by_owner.return_value = None
+
+        resolved = self.service.resolve_theme_with_source(billing)
+
+        assert resolved == ResolvedTheme(theme=DEFAULT_THEME, source="default")
+
+    def test_resolve_theme_with_source_skips_billing_lookup_without_id(self):
+        billing = Billing(id=None, uuid="b-uuid", name="Apt", owner_type="user", owner_id=10)
+        self.mock_repo.get_by_owner.return_value = None
+
+        resolved = self.service.resolve_theme_with_source(billing)
+
+        assert resolved.source == "default"
+        self.mock_repo.get_by_owner.assert_called_once_with("user", 10)
