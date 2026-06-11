@@ -14,6 +14,7 @@ from rentivo.settings import settings
 from web.analytics import push_event
 from web.context import actor_for
 from web.deps import render
+from web.login_flow import begin_mfa_challenge, complete_login
 
 logger = structlog.get_logger(__name__)
 
@@ -70,7 +71,11 @@ async def google_callback(request: Request):
         if user is None:
             return render(request, "login.html", {"error": _GOOGLE_LOGIN_ERROR})
 
-    response = _finish_login(request, user)
+    client_ip = request.client.host if request.client else "unknown"
+    if request.state.services.mfa.has_any_mfa(user.id):
+        response = begin_mfa_challenge(request, user, client_ip=client_ip, metadata={"method": "google"})
+    else:
+        response = complete_login(request, user, via="google", client_ip=client_ip, metadata={"method": "google"})
     if is_new:
         push_event(request, {"event": "rentivo_signup_completed", "via": "google"})
     return response
@@ -108,56 +113,3 @@ def _signup_google_user(request: Request, email: str) -> User | None:
         },
     )
     return user
-
-
-def _finish_login(request: Request, user: User) -> RedirectResponse:
-    """Post-credential half of POST /login (web/auth.py), for the Google flow.
-
-    Deliberately mirrors — not refactors — the password flow: that one
-    interleaves rate limiting and Turnstile, so sharing code would tangle it.
-    The MFA gate is identical: with any MFA enrolled only mfa_pending_user_id
-    enters the session, and /mfa-verify (TOTP, recovery, passkey) takes over.
-    """
-    client_ip = request.client.host if request.client else "unknown"
-    mfa_service = request.state.services.mfa
-    audit = request.state.services.audit
-    login_actor = actor_for(user.id, user.email)
-
-    if mfa_service.has_any_mfa(user.id):
-        request.session.clear()
-        request.session["mfa_pending_user_id"] = user.id
-        request.session["mfa_pending_email"] = user.email
-        logger.info("mfa_verification_required", email=user.email, user_id=user.id)
-        audit.safe_log_for(
-            login_actor,
-            AuditEventType.MFA_CHALLENGE_ISSUED,
-            entity_type="user",
-            entity_id=user.id,
-            metadata={"ip": client_ip, "method": "google"},
-        )
-        return RedirectResponse("/mfa-verify", status_code=302)
-
-    request.session.clear()
-    request.session["user_id"] = user.id
-    request.session["email"] = user.email
-    logger.info("user_logged_in", email=user.email, user_id=user.id, method="google")
-
-    if mfa_service.user_requires_mfa_setup(user.id):
-        request.session["mfa_setup_required"] = True
-
-    audit.safe_log_for(
-        login_actor,
-        AuditEventType.USER_LOGIN,
-        entity_type="user",
-        entity_id=user.id,
-        new_state={"user_id": user.id, "email": user.email},
-        metadata={"ip": client_ip, "method": "google"},
-    )
-    push_event(request, {"event": "rentivo_login_success", "via": "google"})
-    request.state.services.known_device.notify_if_new(
-        user=user,
-        user_agent=request.headers.get("user-agent", ""),
-        client_ip=client_ip,
-        job_service=request.state.services.job,
-    )
-    return RedirectResponse("/billings/", status_code=302)
