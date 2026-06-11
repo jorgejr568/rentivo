@@ -471,6 +471,36 @@ class TestMFALoginFlow:
         # Cleanup
         auth_module._mfa_limiter.reset()
 
+    def test_mfa_verify_user_deleted_mid_flow_aborts_to_login(self, client, test_engine):
+        """If the user row vanishes between the password step and the MFA step,
+        abort to /login instead of authenticating a ghost session."""
+        from unittest.mock import MagicMock, PropertyMock, patch
+
+        import pyotp
+
+        from web.services_container import RequestServices
+
+        _, secret = self._create_user_with_totp(test_engine)
+        client.post(
+            "/login",
+            data={"email": "mfauser@example.com", "password": "secret"},
+            follow_redirects=False,
+        )
+
+        code = pyotp.TOTP(secret).now()
+        svc = MagicMock()
+        svc.get_by_id.return_value = None
+        with patch.object(RequestServices, "user", new_callable=PropertyMock, return_value=svc):
+            response = client.post(
+                "/mfa-verify",
+                data={"code": code, "method": "totp"},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/login"
+        # Session was cleared — still not authenticated.
+        assert client.get("/billings/", follow_redirects=False).status_code == 302
+
 
 class TestMFAEnforcement:
     """Tests for MFA enforcement during login and MFA verification."""

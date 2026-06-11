@@ -266,12 +266,15 @@ async def mfa_verify(request: Request):
 
     # MFA verified — complete login
     _mfa_limiter.clear(client_ip)
-    request.session.clear()
-    request.session["user_id"] = user_id
-    request.session["email"] = email
 
-    if mfa_service.user_requires_mfa_setup(user_id):
-        request.session["mfa_setup_required"] = True
+    user = request.state.services.user.get_by_id(user_id)
+    if user is None:
+        # The account vanished between the password step and the MFA step
+        # (e.g. deleted by an admin). Abort instead of authenticating a
+        # ghost session.
+        logger.warning("mfa_verify_user_missing", user_id=user_id)
+        request.session.clear()
+        return RedirectResponse("/login", status_code=302)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -281,26 +284,9 @@ async def mfa_verify(request: Request):
         entity_id=user_id,
         metadata={"ip": client_ip, "method": method},
     )
-    audit.safe_log_for(
-        verify_actor,
-        AuditEventType.USER_LOGIN,
-        entity_type="user",
-        entity_id=user_id,
-        new_state={"user_id": user_id, "email": email},
-        metadata={"ip": client_ip, "mfa": True},
-    )
 
     logger.info("mfa_verified", email=email, method=method)
-    push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
-    user = request.state.services.user.get_by_id(user_id)
-    if user is not None:
-        request.state.services.known_device.notify_if_new(
-            user=user,
-            user_agent=request.headers.get("user-agent", ""),
-            client_ip=request.client.host if request.client else "unknown",
-            job_service=request.state.services.job,
-        )
-    return RedirectResponse("/billings/", status_code=302)
+    return complete_login(request, user, via="mfa", client_ip=client_ip, metadata={"mfa": True})
 
 
 @router.get("/change-password")
