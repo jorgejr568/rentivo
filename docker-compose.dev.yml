@@ -10,6 +10,9 @@
 #   image's /app/.venv is not shadowed by a host directory.
 # - The worker has no auto-reload; after editing job/handler code run:
 #   docker compose restart worker
+# - With the local email backend, sent emails live INSIDE the worker
+#   container (not bind-mounted, to avoid uid-10001 write issues on
+#   Linux hosts): docker compose exec worker ls outbox
 services:
   rentivo:
     command: uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
