@@ -1,9 +1,10 @@
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 
-from rentivo.services.google_auth_service import GoogleAuthService, GoogleUserInfo
+from rentivo.services.google_auth_service import GoogleAuthService, GoogleUserInfo, _default_factory
 
 
 def _make_service(client=None, **overrides):
@@ -59,6 +60,7 @@ class TestBuildAuthorizationUrl:
         assert params["response_type"] == ["code"]
         assert params["scope"] == ["openid email"]
         assert params["state"] == ["state-123"]
+        assert params["prompt"] == ["select_account"]
 
 
 class TestExchangeCode:
@@ -120,6 +122,7 @@ class TestExchangeCode:
         client.post = AsyncMock(return_value=_json_response({"access_token": "at"}))
         client.get = AsyncMock(side_effect=RuntimeError("boom"))
         assert await _make_service(client=client).exchange_code("c") is None
+        client.aclose.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_returns_none_when_sub_missing(self):
@@ -130,3 +133,13 @@ class TestExchangeCode:
     async def test_returns_none_when_email_missing(self):
         client = _make_client({"access_token": "at"}, {"sub": "g-1", "email_verified": True})
         assert await _make_service(client=client).exchange_code("c") is None
+
+
+def test_default_factory_returns_async_httpx_client():
+    """The default factory builds a real httpx.AsyncClient so callers don't need to wire one up."""
+    client = _default_factory()
+    try:
+        assert isinstance(client, httpx.AsyncClient)
+    finally:
+        # AsyncClient.close() is sync-safe enough at construction time; ignore.
+        pass

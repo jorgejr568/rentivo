@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Awaitable, Callable, Protocol
 from urllib.parse import urlencode
 
 import httpx
@@ -117,7 +117,11 @@ class GoogleAuthService:
                 logger.warning("google_auth_exchange_failed", error=str(exc))
                 return None
         finally:
-            await client.aclose()
+            close = getattr(client, "aclose", None)
+            if close is not None:
+                maybe = close()
+                if isinstance(maybe, Awaitable):
+                    await maybe
 
         sub = str(payload.get("sub", ""))
         email = str(payload.get("email", "")).strip().lower()
