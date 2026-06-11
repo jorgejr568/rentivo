@@ -112,6 +112,7 @@ make web-run             # start uvicorn at http://localhost:8000
 
 - **App**: `web/app.py` — FastAPI app, SessionMiddleware, Jinja2 templates, static files
 - **Auth**: `web/auth.py` — login/logout routes, session-based auth
+- **Login flow**: `web/login_flow.py` — `complete_login()` / `begin_mfa_challenge()`, the shared post-credential sequence used by password, TOTP/recovery, passkey, and Google logins
 - **Middleware**: `web/deps.py` — AuthMiddleware (redirects to /login), service factories, render helper
 - **Flash**: `web/flash.py` — session-based flash messages
 - **Forms**: `web/forms.py` — `parse_brl()` and `parse_formset()` helpers
