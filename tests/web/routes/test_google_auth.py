@@ -370,6 +370,7 @@ class TestGoogleButtonRendering:
         assert response.status_code == 200
         assert 'href="/auth/google/login"' in response.text
         assert "Continuar com Google" in response.text
+        assert 'class="google-icon"' in response.text  # Google "G" mark inside the button
 
     def test_login_page_hides_button_when_disabled(self, client):
         response = client.get("/login")
@@ -381,6 +382,7 @@ class TestGoogleButtonRendering:
         assert response.status_code == 200
         assert 'href="/auth/google/login"' in response.text
         assert "Continuar com Google" in response.text
+        assert 'class="google-icon"' in response.text  # Google "G" mark inside the button
 
     def test_signup_page_hides_button_when_disabled(self, client):
         response = client.get("/signup")
