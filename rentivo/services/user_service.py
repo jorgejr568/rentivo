@@ -31,6 +31,15 @@ class UserService:
         logger.info("user_registered", email=email)
         return result
 
+    def register_google_user(self, email: str) -> User:
+        existing = self.repo.get_by_email(email)
+        if existing is not None:
+            raise ValueError(f"Email '{email}' is already registered")
+        user = User(email=email, password_hash="")
+        result = self.repo.create(user)
+        logger.info("google_user_registered", email=email)
+        return result
+
     def get_by_id(self, user_id: int) -> User | None:
         result = self.repo.get_by_id(user_id)
         logger.debug("user_get_by_id", user_id=user_id, found=result is not None)
@@ -43,6 +52,9 @@ class UserService:
         user = self.repo.get_by_email(email)
         if user is None:
             logger.warning("auth_failed", email=email, reason="user_not_found")
+            return None
+        if not user.password_hash:
+            logger.warning("auth_failed", email=email, reason="no_password_set")
             return None
         if bcrypt.checkpw(password.encode(), user.password_hash.encode()):
             logger.info("user_authenticated", email=email)
