@@ -103,4 +103,5 @@ Never invent revision IDs by hand — always let `alembic revision` generate the
 - **Web container crashes with "Can't connect to MySQL server on 'localhost'"** — you are overriding `RENTIVO_DB_URL` in the container environment; inside compose the host must be `db` (the base compose file handles this — don't fight it).
 - **Sessions reset on every restart / warning `secret_key_not_configured`** — set a real `RENTIVO_SECRET_KEY`.
 - **`db` service unhealthy on first boot** — MariaDB initializes its datadir on first run; give it ~15s, the app containers wait via `depends_on: service_healthy`.
+- **Worker restarts a few times on first compose boot** — it needs the `jobs` table, which only exists after `make compose-migrate`; the `restart: unless-stopped` policy retries until then. Harmless once migrations have run.
 - **Stale DB schema after switching branches** — `make migrate-fresh` (drops everything) then `make seed`.
