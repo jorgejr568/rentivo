@@ -10,6 +10,20 @@ class TestLazyProperties:
         services = RequestServices(conn=MagicMock(), encryption=MagicMock())
         assert services.billing is services.billing
 
+    def test_google_auth_built_from_settings(self, monkeypatch):
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "google_auth_enabled", True)
+        monkeypatch.setattr(settings, "google_client_id", "cid")
+        monkeypatch.setattr(settings, "google_client_secret", "cs")
+        monkeypatch.setattr(settings, "public_app_url", "https://app.example.com/")
+
+        services = RequestServices(conn=MagicMock(), encryption=MagicMock())
+        service = services.google_auth
+        assert service is services.google_auth  # memoised
+        assert service.is_enabled is True
+        assert service.redirect_uri == "https://app.example.com/auth/google/callback"
+
 
 class TestNoLazyEncryptionImport:
     def test_module_imports_encryption_at_top_level(self):
