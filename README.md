@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jorgejr568/rentivo/actions/workflows/deploy.yml"><img src="https://github.com/jorgejr568/rentivo/actions/workflows/deploy.yml/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/jorgejr568/rentivo/actions/workflows/deploy.yml"><img src="https://github.com/jorgejr568/rentivo/actions/workflows/deploy.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/gh/jorgejr568/rentivo"><img src="https://codecov.io/gh/jorgejr568/rentivo/branch/main/graph/badge.svg" alt="codecov"></a>
   <a href="https://github.com/jorgejr568/rentivo/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="GPL-3.0"></a>
 </p>
@@ -24,18 +24,20 @@ Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with 
 
 ## Features
 
-- Create and manage recurring billing templates with multiple line items
-- Generate professional PDF invoices with PIX QR codes for easy payment
-- **Web UI** (FastAPI) for browser-based management, or **interactive CLI**
-- User management with bcrypt password hashing
-- Attach receipt files (PDF, JPG, PNG) to bills — merged into the invoice PDF
-- Comprehensive audit logging of all operations (create, update, delete, login, etc.)
-- Store invoices locally or on S3 with presigned URLs
-- MariaDB as the database backend (via SQLAlchemy)
-- Schema migrations with Alembic
-- Docker-ready with health check endpoint
+- Recurring billing templates with multiple line items; one-click monthly bill generation
+- Professional PDF invoices with PIX QR codes; receipt attachments (PDF/JPG/PNG) merged into the invoice
+- **Web UI** (FastAPI) and **interactive CLI** over the same service layer
+- Login with sessions, **TOTP MFA and passkeys (WebAuthn)**, password recovery by email
+- **Organizations** with role-based access (owner / admin / manager / viewer) and email invites
+- Transactional emails (AWS SES, or local `.eml` files in dev)
+- **Background job worker** for emails, PDF rendering, and storage cleanup
+- Field-level **encryption of PII at rest** (AWS KMS) with an email blind index
+- Comprehensive **audit logging** with PII redaction
+- Invoice storage on local disk or **S3** with presigned URLs
+- Optional bot protection (Cloudflare Turnstile) and analytics (Google Tag Manager)
+- MariaDB via SQLAlchemy Core; schema migrations with Alembic; Docker-ready
 
-## Quick Start
+## Quick start (local Python)
 
 ```bash
 # Prerequisite: install uv — https://docs.astral.sh/uv/  (e.g. `brew install uv`)
@@ -45,106 +47,70 @@ make install              # uv sync + install git hooks
 cp .env.example .env      # configure settings
 docker compose up -d db   # start MariaDB
 make migrate              # run database migrations
-make run                  # start the interactive CLI
-```
-
-### Web UI
-
-```bash
-docker compose up -d db   # start MariaDB (if not running)
-make migrate              # run database migrations (first time)
 make web-createuser       # create a login user
-make web-run              # start web UI at http://localhost:8000
+make web-run              # web UI at http://localhost:8000
 ```
 
-### Docker Compose
+Also available: `make run` (interactive CLI), `make worker` (background job worker), `make seed` (demo data).
+
+## Quick start (Docker Compose only)
+
+No local Python needed — web, CLI, and worker all run in containers:
 
 ```bash
-make compose-up           # start MariaDB + web + CLI
+cp .env.example .env      # required: compose reads it via env_file
+make compose-dev          # build + start db, web, cli, worker (web with live reload)
+make compose-migrate      # run database migrations
 make compose-createuser   # create a login user
 ```
 
+Open http://localhost:8000. Source edits under `rentivo/` and `web/` reload automatically; after editing job handlers run `docker compose restart worker`. Use `make compose-up` instead for an immutable (non-dev) stack.
+
+See [docs/development.md](docs/development.md) for the full developer guide.
+
 ## Configuration
 
-Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
-
-<details>
-<summary><strong>Database</strong></summary>
+Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The most important ones:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RENTIVO_DB_URL` | `mysql+pymysql://rentivo:rentivo@db:3306/rentivo` | SQLAlchemy database URL (MariaDB, PyMySQL driver) |
+| `RENTIVO_DB_URL` | `...@localhost:3306/rentivo` | Database URL for host-side commands (compose containers are pinned to the `db` service automatically) |
+| `RENTIVO_SECRET_KEY` | `change-me-in-production` | Session signing key — set a real value in production |
+| `RENTIVO_STORAGE_BACKEND` | `local` | Invoice storage: `local` or `s3` |
+| `RENTIVO_EMAIL_BACKEND` | `local` | `local` (writes `.eml` to `./outbox`) or `ses` |
+| `RENTIVO_ENCRYPTION_BACKEND` | `base64` | PII encryption: `base64` (dev-only obfuscation) or `kms` |
 
-</details>
+**Full reference for all ~47 variables: [docs/configuration.md](docs/configuration.md)** — kept in sync with the code by a test.
 
-<details>
-<summary><strong>Storage</strong></summary>
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RENTIVO_STORAGE_BACKEND` | `local` | `local` or `s3` |
-| `RENTIVO_STORAGE_LOCAL_PATH` | `./invoices` | Local directory for PDFs |
-| `RENTIVO_S3_BUCKET` | | S3 bucket name |
-| `RENTIVO_S3_REGION` | | AWS region |
-| `RENTIVO_S3_ACCESS_KEY_ID` | | AWS access key |
-| `RENTIVO_S3_SECRET_ACCESS_KEY` | | AWS secret key |
-| `RENTIVO_S3_ENDPOINT_URL` | | Custom S3 endpoint (MinIO, etc.) |
-| `RENTIVO_S3_PRESIGNED_EXPIRY` | `604800` | Presigned URL expiry in seconds (default 7 days) |
-
-</details>
+## Makefile reference
 
 <details>
-<summary><strong>Web</strong></summary>
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RENTIVO_SECRET_KEY` | `change-me-in-production` | Secret key for session signing |
-
-</details>
-
-## Makefile Reference
-
-<details>
-<summary><strong>Local</strong></summary>
+<summary><strong>Local development</strong></summary>
 
 | Command | Description |
 |---------|-------------|
 | `make install` | Sync dependencies into `.venv` with uv and install git hooks |
-| `make run` | Run the CLI |
-| `make migrate` | Run pending Alembic migrations |
-| `make web-run` | Start the web UI (uvicorn, port 8000) |
+| `make run` | Run the interactive CLI |
+| `make web-run` | Start the web UI (uvicorn --reload, port 8000) |
+| `make worker` | Run the background job worker |
 | `make web-createuser` | Create a web login user |
-| `make test` | Run tests |
-| `make test-cov` | Run tests with coverage report |
-| `make regenerate-pdfs` | Regenerate all invoice PDFs |
-| `make regenerate-pdfs-dry` | Preview regeneration (dry run) |
+| `make migrate` | Run pending Alembic migrations |
+| `make migrate-fresh` | ⚠️ Drop all tables and re-migrate (dev only) |
+| `make seed` | Seed the database with demo data |
+| `make test` / `make test-cov` | Run tests (parallel) / with coverage |
+| `make lint` / `make fmt` | Check / auto-fix lint and formatting |
 
 </details>
 
 <details>
-<summary><strong>Docker (Web)</strong></summary>
+<summary><strong>Maintenance scripts</strong></summary>
 
 | Command | Description |
 |---------|-------------|
-| `make build` | Build the web Docker image |
-| `make up` / `make down` | Start / stop the web container |
-| `make docker-createuser` | Create a login user in the container |
-| `make shell` | Open a bash shell in the container |
-| `make docker-migrate` | Run migrations in the container |
-| `make logs` | Tail container logs |
-| `make health` | Check the health endpoint |
-
-</details>
-
-<details>
-<summary><strong>Docker (CLI)</strong></summary>
-
-| Command | Description |
-|---------|-------------|
-| `make build-cli` | Build the CLI Docker image |
-| `make up-cli` / `make down-cli` | Start / stop the CLI container |
-| `make rentivo` | Run the CLI in the container |
-| `make shell-cli` | Open a bash shell in the CLI container |
+| `make regenerate-pdfs` / `-dry` | Re-render all invoice PDFs |
+| `make backfill-encryption` / `-dry` | Encrypt legacy plaintext rows (after enabling KMS) |
+| `make backfill-encryption-reset-blind-index` | Rebuild email blind index after secret-key rotation |
+| `make redact-audit-logs` / `-dry` | Redact PII from legacy audit log rows |
 
 </details>
 
@@ -153,48 +119,87 @@ Copy `.env.example` to `.env`. All variables use the `RENTIVO_` prefix.
 
 | Command | Description |
 |---------|-------------|
-| `make compose-up` / `compose-down` | Start / stop with Compose |
-| `make compose-rentivo` | Run the CLI via Compose |
-| `make compose-createuser` | Create a login user via Compose |
-| `make compose-migrate` | Run migrations via Compose |
+| `make compose-up` / `compose-down` | Start / stop the full stack (db, web, cli, worker) |
+| `make compose-dev` / `compose-dev-down` | Same, with source bind mounts + web live reload |
+| `make compose-migrate` | Run migrations in the web container |
+| `make compose-createuser` | Create a login user |
+| `make compose-rentivo` | Run the CLI in its container |
+| `make compose-shell` / `compose-shell-cli` | Bash in the web / CLI container |
+| `make compose-logs` / `compose-logs-worker` | Tail logs |
+| `make compose-regenerate` | Re-render PDFs inside the CLI container |
+
+</details>
+
+<details>
+<summary><strong>Docker (standalone containers)</strong></summary>
+
+| Command | Description |
+|---------|-------------|
+| `make build` / `up` / `down` / `restart` | Web image / container lifecycle |
+| `make build-cli` / `up-cli` / `down-cli` | CLI image / container lifecycle |
+| `make build-worker` / `up-worker` / `down-worker` | Worker image / container lifecycle |
+| `make rentivo` | Run the CLI in the standalone container |
+| `make shell` / `shell-cli` / `shell-worker` | Bash in a container |
+| `make docker-migrate` / `docker-createuser` | Migrations / user creation in the web container |
+| `make logs` / `logs-worker` / `make health` | Logs / health check |
 
 </details>
 
 ## Architecture
 
+Three deployables built from one codebase: the **web app** (`Dockerfile`), the **CLI** (`Dockerfile.cli`), and the **job worker** (`Dockerfile.worker`).
+
 ```
 rentivo/
   settings.py          # Pydantic Settings (env prefix RENTIVO_)
-  db.py                # SQLAlchemy engine + connection
-  models/              # Pydantic models (Billing, Bill, User)
-  repositories/        # Abstract base + SQLAlchemy Core implementation
-  services/            # Business logic (billing, bill, user services)
-  storage/             # Abstract base + Local / S3 implementations
+  db.py                # SQLAlchemy engine; schema managed by Alembic
+  models/              # Pydantic domain models (Billing, Bill, User, Organization, ...)
+  repositories/        # Abstract bases + SQLAlchemy Core implementations
+  services/            # Business logic (billing, bills, users, orgs, audit, email, ...)
+  storage/             # Local / S3 invoice storage
+  encryption/          # base64 / KMS field encryption + decryption cache
+  cache/               # Generic key-value cache (memory / redis)
+  jobs/                # Job queue: registry, worker loop, handlers (email, pdf, s3)
+  workers/             # Worker entrypoint (python -m rentivo.workers)
   pdf/                 # fpdf2 invoice generator + pypdf receipt merger
   cli/                 # Interactive menus (questionary + rich)
-  scripts/             # Maintenance scripts (PDF regeneration)
+  scripts/             # seed, regenerate_pdfs, backfill_encryption, redact_audit_logs
 web/
-  app.py               # FastAPI app, middleware, templates
-  auth.py              # Login, logout, change password routes
-  deps.py              # Auth middleware, service factories
-  routes/              # Billing + bill CRUD routes
-  templates/           # Jinja2 templates
+  app.py               # FastAPI app, middleware stack, templates
+  auth.py              # Login / logout / signup / password recovery
+  routes/              # Billing, bills, security (MFA/passkeys), organizations, invites
+  templates/           # Jinja2 (PT-BR) + emails
   static/              # CSS + JS
+alembic/               # Migrations
 ```
 
-## Tech Stack
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [docs/configuration.md](docs/configuration.md) | Every environment variable, defaults, validation rules |
+| [docs/development.md](docs/development.md) | Dev setup (local & compose-only), worker, migrations, troubleshooting |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow, conventions, tests, PR expectations |
+| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
+| [CHANGELOG.md](CHANGELOG.md) | Release history (SemVer, Keep a Changelog) |
+
+## Tech stack
 
 | Layer | Technology |
 |-------|-----------|
 | Language | Python 3.14+ |
-| Web Framework | FastAPI + Uvicorn |
+| Web framework | FastAPI + Uvicorn |
 | Templates | Jinja2 + custom CSS |
 | Database | MariaDB 11 (SQLAlchemy Core) |
 | Migrations | Alembic |
-| PDF Generation | fpdf2 + pypdf |
-| QR Codes | qrcode (PIX) |
-| Auth | bcrypt + session cookies |
+| PDF generation | fpdf2 + pypdf |
+| QR codes | qrcode (PIX) |
+| Auth | bcrypt + session cookies, pyotp (TOTP), webauthn (passkeys) |
 | Storage | Local filesystem / AWS S3 |
+| Email | AWS SES / local .eml files |
+| Encryption | AWS KMS (field-level PII) |
+| Caching | cachetools / Redis (optional) |
+| Logging | structlog |
 | CLI | questionary + rich |
 | Containers | Docker + Docker Compose |
 | CI/CD | GitHub Actions |
