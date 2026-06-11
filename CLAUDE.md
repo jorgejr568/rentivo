@@ -51,8 +51,8 @@ make down-cli    # stop and remove
 make rentivo    # run CLI interactively
 make shell-cli   # bash session
 
-# Docker Compose (both services)
-make compose-up            # start web + cli
+# Docker Compose (full stack: db, web, cli, worker)
+make compose-up            # start the full stack
 make compose-down          # stop all
 make compose-rentivo      # run CLI in cli container
 make compose-createuser    # create web user
