@@ -65,7 +65,7 @@ class InviteService:
         logger.info("invite_sent", org_id=org_id, email=email, role=role)
         return created
 
-    def accept_invite(self, invite_uuid: str, user_id: int) -> None:
+    def accept_invite(self, invite_uuid: str, user_id: int) -> Invite:
         invite = self.invite_repo.get_by_uuid(invite_uuid)
         if invite is None:
             logger.warning("invite_accept_failed", invite_uuid=invite_uuid, reason="not_found")
@@ -90,8 +90,9 @@ class InviteService:
         self.org_repo.add_member(invite.organization_id, invite.invited_user_id, invite.role)
         self.invite_repo.update_status(invite.id, InviteStatus.ACCEPTED.value)
         logger.info("invite_accepted", invite_uuid=invite_uuid, user_id=user_id)
+        return invite
 
-    def decline_invite(self, invite_uuid: str, user_id: int) -> None:
+    def decline_invite(self, invite_uuid: str, user_id: int) -> Invite:
         invite = self.invite_repo.get_by_uuid(invite_uuid)
         if invite is None:
             logger.warning("invite_decline_failed", invite_uuid=invite_uuid, reason="not_found")
@@ -115,6 +116,7 @@ class InviteService:
 
         self.invite_repo.update_status(invite.id, InviteStatus.DECLINED.value)
         logger.info("invite_declined", invite_uuid=invite_uuid, user_id=user_id)
+        return invite
 
     def list_pending(self, user_id: int) -> list[Invite]:
         result = self.invite_repo.list_pending_for_user(user_id)
