@@ -252,6 +252,7 @@ class TestBillChangeStatusEdgeCases:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
     def test_change_status_invalid_status(self, auth_client, test_engine, tmp_path, csrf_token):
         """Cover lines 377-379: invalid status value raises ValueError."""
@@ -481,6 +482,7 @@ class TestBillAccessDenied:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
     def test_generate_post_access_denied(self, auth_client, test_engine, csrf_token):
         billing = _create_other_user_billing(test_engine)
@@ -490,6 +492,7 @@ class TestBillAccessDenied:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
     def test_detail_access_denied(self, auth_client, test_engine, tmp_path):
         billing = _create_other_user_billing(test_engine)
@@ -1166,7 +1169,7 @@ class TestReceiptViewS3Redirect:
         # Mock bill_service to return a non-local URL
         mock_svc = MagicMock()
         mock_svc.get_receipt_by_uuid.return_value = receipts[0]
-        mock_svc.get_bill.return_value = bill
+        mock_svc.get_bill_by_uuid.return_value = bill
         mock_svc.storage.get_url.return_value = "https://s3.example.com/receipt.pdf"
         with patch.object(RequestServices, "bill", new=mock_svc):
             response = auth_client.get(
@@ -1499,7 +1502,7 @@ class TestBillPixNotConfigured:
             follow_redirects=False,
         )
         assert r.status_code == 302
-        assert r.headers["location"] == f"/billings/{billing.uuid}/bills/{bill.uuid}"
+        assert r.headers["location"] == f"/billings/{billing.uuid}"
 
     def test_receipt_upload_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
@@ -1514,46 +1517,6 @@ class TestBillPixNotConfigured:
         )
         assert r.status_code == 302
         assert r.headers["location"] == f"/billings/{billing.uuid}"
-
-    def test_receipt_delete_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
-        from rentivo.models.receipt import Receipt
-        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
-
-        billing = create_billing_in_db(test_engine)
-        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
-            bill = generate_bill_in_db(test_engine, billing, tmp_path)
-        with test_engine.connect() as conn:
-            receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).create(
-                Receipt(
-                    bill_id=bill.id,
-                    filename="r.pdf",
-                    storage_key="k",
-                    content_type="application/pdf",
-                    file_size=10,
-                    sort_order=0,
-                )
-            )
-        _clear_test_user_pix(test_engine)
-        r = auth_client.post(
-            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}/delete",
-            data={"csrf_token": csrf_token},
-            follow_redirects=False,
-        )
-        assert r.status_code == 302
-        assert r.headers["location"] == f"/billings/{billing.uuid}"
-
-    def test_receipt_reorder_returns_400(self, auth_client, test_engine, tmp_path, csrf_token):
-        billing = create_billing_in_db(test_engine)
-        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
-            bill = generate_bill_in_db(test_engine, billing, tmp_path)
-        _clear_test_user_pix(test_engine)
-        r = auth_client.post(
-            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
-            json={"order": []},
-            headers={"X-CSRF-Token": csrf_token},
-        )
-        assert r.status_code == 400
-        assert "PIX" in r.json()["error"]
 
 
 class TestBillDeleteCrossBilling:
@@ -1729,3 +1692,147 @@ class TestBillDeleteEnqueuesS3Delete:
         s3_keys = [s["payload"]["key"] for s in sent if s["job_type"] == "s3.delete"]
         assert len(s3_keys) == 1
         assert s3_keys[0] == receipts[0].storage_key
+
+
+class TestBillDetailCrossBilling:
+    def test_detail_rejects_mismatched_billing_uuid(self, auth_client, test_engine, tmp_path):
+        """Deliberate fix: bill_detail must reject URLs pairing the bill with an unrelated billing."""
+        billing_a = create_billing_in_db(test_engine, name="A")
+        billing_b = create_billing_in_db(test_engine, name="B")
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing_a, tmp_path)
+        response = auth_client.get(
+            f"/billings/{billing_b.uuid}/bills/{bill.uuid}",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+
+class TestBillChangeStatusCrossBilling:
+    def test_change_status_rejects_mismatched_billing_uuid(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Deliberate fix: change-status must reject URLs pairing the bill with an unrelated billing."""
+        billing_a = create_billing_in_db(test_engine, name="A")
+        billing_b = create_billing_in_db(test_engine, name="B")
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing_a, tmp_path)
+        response = auth_client.post(
+            f"/billings/{billing_b.uuid}/bills/{bill.uuid}/change-status",
+            data={"csrf_token": csrf_token, "status": "paid"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
+        assert reloaded.status == "draft"
+
+
+class TestBillInvoiceCrossBilling:
+    def test_invoice_rejects_mismatched_billing_uuid(self, auth_client, test_engine, tmp_path):
+        """Deliberate fix: invoice download must reject URLs pairing the bill with an unrelated billing."""
+        billing_a = create_billing_in_db(test_engine, name="A")
+        billing_b = create_billing_in_db(test_engine, name="B")
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing_a, tmp_path)
+            response = auth_client.get(
+                f"/billings/{billing_b.uuid}/bills/{bill.uuid}/invoice",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+
+class TestBillInvoiceNoPdf:
+    def test_invoice_redirects_when_bill_has_no_pdf(self, auth_client, test_engine, tmp_path):
+        """Keeps the 'Fatura sem PDF' branch covered now that the guard owns bill-not-found."""
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        with test_engine.connect() as conn:
+            conn.execute(text("UPDATE bills SET pdf_path = '' WHERE id = :id"), {"id": bill.id})
+            conn.commit()
+        response = auth_client.get(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/invoice",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+
+class TestReceiptReorderCrossBilling:
+    def test_reorder_rejects_mismatched_billing_uuid(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Deliberate fix: the JSON reorder endpoint must reject mismatched billing uuids with 404."""
+        billing_a = create_billing_in_db(test_engine, name="A")
+        billing_b = create_billing_in_db(test_engine, name="B")
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing_a, tmp_path)
+        response = auth_client.post(
+            f"/billings/{billing_b.uuid}/bills/{bill.uuid}/receipts/reorder",
+            json={"order": []},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert response.status_code == 404
+
+
+class TestReceiptOpsWithoutPix:
+    """Deliberate change: PIX setup no longer gates receipt deletion or reordering."""
+
+    def test_receipt_delete_succeeds_without_pix(self, auth_client, test_engine, tmp_path, csrf_token):
+        from rentivo.models.receipt import Receipt
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+        with test_engine.connect() as conn:
+            receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).create(
+                Receipt(
+                    bill_id=bill.id,
+                    filename="r.pdf",
+                    storage_key="k",
+                    content_type="application/pdf",
+                    file_size=10,
+                    sort_order=0,
+                )
+            )
+        _clear_test_user_pix(test_engine)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == f"/billings/{billing.uuid}/bills/{bill.uuid}/edit"
+        with test_engine.connect() as conn:
+            assert SQLAlchemyReceiptRepository(conn, Base64Backend()).get_by_uuid(receipt.uuid) is None
+
+    def test_receipt_reorder_succeeds_without_pix(self, auth_client, test_engine, tmp_path, csrf_token):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            # Upload two receipts while PIX is still configured.
+            for i in range(2):
+                auth_client.post(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                    data={"csrf_token": csrf_token},
+                    files={"receipt_files": (f"r{i}.pdf", b"%PDF-" + bytes([i]), "application/pdf")},
+                    follow_redirects=False,
+                )
+        with test_engine.connect() as conn:
+            uuids = [r.uuid for r in SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill.id)]
+        assert len(uuids) == 2
+        _clear_test_user_pix(test_engine)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/reorder",
+            json={"order": list(reversed(uuids))},
+            headers={"X-CSRF-Token": csrf_token},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"ok": True}
