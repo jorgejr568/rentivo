@@ -33,6 +33,7 @@ PUBLIC_PREFIX_PATHS = {
     "/security/passkeys/auth",
     "/forgot-password",
     "/reset-password",
+    "/auth/google",
 }
 PUBLIC_EXACT_PATHS = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
