@@ -21,8 +21,10 @@ from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
+from web.context import actor_for
 from web.deps import render
 from web.flash import flash
+from web.login_flow import complete_login
 
 logger = structlog.get_logger(__name__)
 
@@ -473,13 +475,7 @@ async def passkey_auth_complete(request: Request):
     if passkey is None or passkey.user_id != user_id:
         return JSONResponse({"error": "Passkey não encontrada."}, status_code=400)
 
-    # During MFA verification the session has mfa_pending_user_id but NOT
-    # user_id - request.state.actor is ANON_ACTOR. Construct a local actor
-    # so the audit rows in this handler record who attempted / completed
-    # the verification.
-    from web.context import WebActor
-
-    verify_actor = WebActor(user_id=user_id, email=email or "")
+    verify_actor = actor_for(user_id, email)
 
     try:
         verification = webauthn.verify_authentication_response(
@@ -504,13 +500,13 @@ async def passkey_auth_complete(request: Request):
 
     mfa_service.update_passkey_sign_count(passkey.id, verification.new_sign_count)
 
-    # Complete login
-    request.session.clear()
-    request.session["user_id"] = user_id
-    request.session["email"] = email
-
-    if mfa_service.user_requires_mfa_setup(user_id):
-        request.session["mfa_setup_required"] = True
+    user = request.state.services.user.get_by_id(user_id)
+    if user is None:
+        # The account vanished between the password step and the passkey
+        # step. Abort instead of authenticating a ghost session.
+        logger.warning("passkey_auth_user_missing", user_id=user_id)
+        request.session.clear()
+        return JSONResponse({"error": "Usuário não encontrado."}, status_code=400)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -520,26 +516,9 @@ async def passkey_auth_complete(request: Request):
         entity_id=user_id,
         metadata={"ip": client_ip, "passkey_uuid": passkey.uuid},
     )
-    audit.safe_log_for(
-        verify_actor,
-        AuditEventType.USER_LOGIN,
-        entity_type="user",
-        entity_id=user_id,
-        new_state={"user_id": user_id, "email": email},
-        metadata={"ip": client_ip, "mfa": True, "method": "passkey"},
-    )
 
     logger.info("passkey_auth_verified", email=email)
-    push_event(request, {"event": "rentivo_login_success", "via": "passkey"})
-
-    user = request.state.services.user.get_by_id(user_id)
-    if user is not None:
-        request.state.services.known_device.notify_if_new(
-            user=user,
-            user_agent=request.headers.get("user-agent", ""),
-            client_ip=request.client.host if request.client else "unknown",
-            forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
-            job_service=request.state.services.job,
-        )
-
-    return JSONResponse({"status": "ok", "redirect": "/billings/"})
+    redirect = complete_login(
+        request, user, via="passkey", client_ip=client_ip, metadata={"mfa": True, "method": "passkey"}
+    )
+    return JSONResponse({"status": "ok", "redirect": redirect.headers["location"]})

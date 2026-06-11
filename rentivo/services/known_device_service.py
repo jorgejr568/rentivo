@@ -6,6 +6,7 @@ import structlog
 
 from rentivo.models.known_device import KnownDevice
 from rentivo.repositories.base import KnownDeviceRepository
+from rentivo.settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -54,15 +55,19 @@ class KnownDeviceService:
         user,
         user_agent: str,
         client_ip: str,
-        forgot_password_url: str,
         job_service,
     ) -> None:
-        """Enqueue a new_device_login email iff the device is unseen."""
+        """Enqueue a new_device_login email iff the device is unseen.
+
+        The password-reset CTA URL is derived here from settings so the four
+        login call sites don't each assemble it.
+        """
         from datetime import datetime
 
         if self.register_login(user.id, user_agent, client_ip):
             return
 
+        forgot_password_url = f"{settings.public_app_url.rstrip('/')}/forgot-password"
         job_service.enqueue(
             "email.send",
             {

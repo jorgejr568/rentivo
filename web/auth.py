@@ -10,64 +10,54 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
+from web.context import actor_for
 from web.deps import render
+from web.login_flow import begin_mfa_challenge, complete_login
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter()
 
-# Simple in-memory rate limiter for login attempts
-_login_attempts: dict[str, list[float]] = {}
-_MAX_ATTEMPTS = 5
-_LOCKOUT_SECONDS = 60
 
-# Rate limiter for MFA verification
-_mfa_attempts: dict[str, list[float]] = {}
-_MFA_MAX_ATTEMPTS = 5
-_MFA_LOCKOUT_SECONDS = 300
+class RateLimiter:
+    """Sliding-window in-memory rate limiter keyed by an arbitrary string (client IP).
 
+    One class replaces the two hand-rolled dict+function trios that previously
+    lived in this module (login attempts and MFA attempts) — same logic,
+    different constants.
+    """
 
-def _is_rate_limited(ip: str) -> bool:
-    """Check if an IP is rate-limited. Returns True if locked out."""
-    now = time.monotonic()
-    attempts = _login_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < _LOCKOUT_SECONDS]
-    _login_attempts[ip] = attempts
-    return len(attempts) >= _MAX_ATTEMPTS
+    def __init__(self, max_attempts: int, window_seconds: int) -> None:
+        self.max_attempts = max_attempts
+        self.window_seconds = window_seconds
+        self._attempts: dict[str, list[float]] = {}
 
+    def _prune(self, key: str) -> list[float]:
+        """Drop entries older than the window; store and return the live list."""
+        now = time.monotonic()
+        attempts = [t for t in self._attempts.get(key, []) if now - t < self.window_seconds]
+        self._attempts[key] = attempts
+        return attempts
 
-def _record_failed_attempt(ip: str) -> None:
-    """Record a failed login attempt for rate limiting."""
-    now = time.monotonic()
-    attempts = _login_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < _LOCKOUT_SECONDS]
-    attempts.append(now)
-    _login_attempts[ip] = attempts
+    def is_limited(self, key: str) -> bool:
+        return len(self._prune(key)) >= self.max_attempts
 
+    def record_failure(self, key: str) -> None:
+        # _prune stores the pruned list in the dict and returns that same list,
+        # so appending here mutates the stored state.
+        self._prune(key).append(time.monotonic())
 
-def _clear_attempts(ip: str) -> None:
-    """Clear failed attempts after successful login."""
-    _login_attempts.pop(ip, None)
+    def clear(self, key: str) -> None:
+        self._attempts.pop(key, None)
 
-
-def _is_mfa_rate_limited(ip: str) -> bool:
-    now = time.monotonic()
-    attempts = _mfa_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < _MFA_LOCKOUT_SECONDS]
-    _mfa_attempts[ip] = attempts
-    return len(attempts) >= _MFA_MAX_ATTEMPTS
+    def reset(self) -> None:
+        """Drop all recorded attempts across all keys (test-isolation helper)."""
+        self._attempts.clear()
 
 
-def _record_mfa_failed(ip: str) -> None:
-    now = time.monotonic()
-    attempts = _mfa_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < _MFA_LOCKOUT_SECONDS]
-    attempts.append(now)
-    _mfa_attempts[ip] = attempts
-
-
-def _clear_mfa_attempts(ip: str) -> None:
-    _mfa_attempts.pop(ip, None)
+# Login attempts: 5 per 60s per IP. MFA verification: 5 per 300s per IP.
+_login_limiter = RateLimiter(max_attempts=5, window_seconds=60)
+_mfa_limiter = RateLimiter(max_attempts=5, window_seconds=300)
 
 
 @router.get("/signup")
@@ -114,12 +104,7 @@ async def signup(request: Request):
     request.session["email"] = user.email
     logger.info("user_signed_up", email=user.email)
 
-    # /signup is public, so request.state.actor is ANON_ACTOR. Build a local
-    # WebActor from the just-created user so both the audit row and the
-    # welcome email job record who completed the signup.
-    from web.context import WebActor
-
-    signup_actor = WebActor(user_id=user.id, email=user.email)
+    signup_actor = actor_for(user.id, user.email)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -156,7 +141,7 @@ async def login_page(request: Request):
 async def login(request: Request):
     client_ip = request.client.host if request.client else "unknown"
 
-    if _is_rate_limited(client_ip):
+    if _login_limiter.is_limited(client_ip):
         logger.warning("login_rate_limited", client_ip=client_ip)
         push_event(request, {"event": "rentivo_login_failed", "reason": "rate_limited"})
         return render(
@@ -181,7 +166,7 @@ async def login(request: Request):
     user = user_service.authenticate(email, str(password))
 
     if user is None:
-        _record_failed_attempt(client_ip)
+        _login_limiter.record_failure(client_ip)
         logger.warning("login_failed", email=email, client_ip=client_ip)
         audit = request.state.services.audit
         audit.safe_log_for(
@@ -194,65 +179,13 @@ async def login(request: Request):
         push_event(request, {"event": "rentivo_login_failed", "reason": "bad_credentials"})
         return render(request, "login.html", {"error": "E-mail ou senha inválidos."})
 
-    _clear_attempts(client_ip)
+    _login_limiter.clear(client_ip)
 
-    # Check if user has MFA enabled
-    mfa_service = request.state.services.mfa
-    has_mfa = mfa_service.has_any_mfa(user.id)
+    # MFA enrolled? Don't fully authenticate yet — issue the challenge.
+    if request.state.services.mfa.has_any_mfa(user.id):
+        return begin_mfa_challenge(request, user, client_ip=client_ip)
 
-    # /login is public, so request.state.actor is ANON_ACTOR. Build a local
-    # WebActor from the just-authenticated user for the post-auth audit rows.
-    from web.context import WebActor
-
-    login_actor = WebActor(user_id=user.id, email=user.email)
-
-    if has_mfa:
-        # Don't fully authenticate yet — redirect to MFA verification
-        request.session.clear()
-        request.session["mfa_pending_user_id"] = user.id
-        request.session["mfa_pending_email"] = user.email
-        logger.info("mfa_verification_required", email=user.email, user_id=user.id)
-
-        audit = request.state.services.audit
-        audit.safe_log_for(
-            login_actor,
-            AuditEventType.MFA_CHALLENGE_ISSUED,
-            entity_type="user",
-            entity_id=user.id,
-            metadata={"ip": client_ip},
-        )
-
-        return RedirectResponse("/mfa-verify", status_code=302)
-
-    # No MFA — complete login
-    request.session.clear()
-    request.session["user_id"] = user.id
-    request.session["email"] = user.email
-    logger.info("user_logged_in", email=user.email, user_id=user.id)
-
-    # Check if MFA setup is required by org enforcement
-    if mfa_service.user_requires_mfa_setup(user.id):
-        request.session["mfa_setup_required"] = True
-
-    audit = request.state.services.audit
-    audit.safe_log_for(
-        login_actor,
-        AuditEventType.USER_LOGIN,
-        entity_type="user",
-        entity_id=user.id,
-        new_state={"user_id": user.id, "email": user.email},
-        metadata={"ip": client_ip},
-    )
-
-    push_event(request, {"event": "rentivo_login_success", "via": "password"})
-    request.state.services.known_device.notify_if_new(
-        user=user,
-        user_agent=request.headers.get("user-agent", ""),
-        client_ip=request.client.host if request.client else "unknown",
-        forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
-        job_service=request.state.services.job,
-    )
-    return RedirectResponse("/billings/", status_code=302)
+    return complete_login(request, user, via="password", client_ip=client_ip)
 
 
 # --- MFA Verification ---
@@ -285,7 +218,7 @@ async def mfa_verify(request: Request):
 
     client_ip = request.client.host if request.client else "unknown"
 
-    if _is_mfa_rate_limited(client_ip):
+    if _mfa_limiter.is_limited(client_ip):
         logger.warning("mfa_rate_limited", client_ip=client_ip)
         return render(
             request,
@@ -307,14 +240,10 @@ async def mfa_verify(request: Request):
     else:
         verified = mfa_service.verify_totp(user_id, code)
 
-    # During MFA verification the session has mfa_pending_user_id but NOT
-    # user_id - request.state.actor is ANON_ACTOR. Build a local actor.
-    from web.context import WebActor
-
-    verify_actor = WebActor(user_id=user_id, email=email or "")
+    verify_actor = actor_for(user_id, email)
 
     if not verified:
-        _record_mfa_failed(client_ip)
+        _mfa_limiter.record_failure(client_ip)
         audit = request.state.services.audit
         audit.safe_log_for(
             verify_actor,
@@ -336,13 +265,16 @@ async def mfa_verify(request: Request):
         )
 
     # MFA verified — complete login
-    _clear_mfa_attempts(client_ip)
-    request.session.clear()
-    request.session["user_id"] = user_id
-    request.session["email"] = email
+    _mfa_limiter.clear(client_ip)
 
-    if mfa_service.user_requires_mfa_setup(user_id):
-        request.session["mfa_setup_required"] = True
+    user = request.state.services.user.get_by_id(user_id)
+    if user is None:
+        # The account vanished between the password step and the MFA step
+        # (e.g. deleted by an admin). Abort instead of authenticating a
+        # ghost session.
+        logger.warning("mfa_verify_user_missing", user_id=user_id)
+        request.session.clear()
+        return RedirectResponse("/login", status_code=302)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -352,27 +284,9 @@ async def mfa_verify(request: Request):
         entity_id=user_id,
         metadata={"ip": client_ip, "method": method},
     )
-    audit.safe_log_for(
-        verify_actor,
-        AuditEventType.USER_LOGIN,
-        entity_type="user",
-        entity_id=user_id,
-        new_state={"user_id": user_id, "email": email},
-        metadata={"ip": client_ip, "mfa": True},
-    )
 
     logger.info("mfa_verified", email=email, method=method)
-    push_event(request, {"event": "rentivo_login_success", "via": "mfa"})
-    user = request.state.services.user.get_by_id(user_id)
-    if user is not None:
-        request.state.services.known_device.notify_if_new(
-            user=user,
-            user_agent=request.headers.get("user-agent", ""),
-            client_ip=request.client.host if request.client else "unknown",
-            forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
-            job_service=request.state.services.job,
-        )
-    return RedirectResponse("/billings/", status_code=302)
+    return complete_login(request, user, via="mfa", client_ip=client_ip, metadata={"mfa": True})
 
 
 @router.get("/change-password")

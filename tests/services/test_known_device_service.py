@@ -61,40 +61,35 @@ def test_register_login_uses_ipv4_24_grouping():
 
 
 class TestNotifyIfNew:
-    def test_does_not_enqueue_when_device_is_known(self):
+    def _service_and_job(self, device_known: bool):
         repo = MagicMock()
         service = KnownDeviceService(repo)
-        service.register_login = MagicMock(return_value=True)  # type: ignore[assignment]
-        job_service = MagicMock()
+        service.register_login = MagicMock(return_value=device_known)  # type: ignore[assignment]
+        return service, MagicMock()
 
+    def _user(self):
         from rentivo.models.user import User
 
-        user = User(id=1, email="u@x.com")
+        return User(id=1, email="u@x.com")
+
+    def test_does_not_enqueue_when_device_is_known(self):
+        service, job_service = self._service_and_job(device_known=True)
 
         service.notify_if_new(
-            user=user,
+            user=self._user(),
             user_agent="UA",
             client_ip="1.2.3.4",
-            forgot_password_url="https://example.com/forgot-password",
             job_service=job_service,
         )
         job_service.enqueue.assert_not_called()
 
     def test_enqueues_email_when_device_is_new(self):
-        repo = MagicMock()
-        service = KnownDeviceService(repo)
-        service.register_login = MagicMock(return_value=False)  # type: ignore[assignment]
-        job_service = MagicMock()
-
-        from rentivo.models.user import User
-
-        user = User(id=1, email="u@x.com")
+        service, job_service = self._service_and_job(device_known=False)
 
         service.notify_if_new(
-            user=user,
+            user=self._user(),
             user_agent="UA",
             client_ip="1.2.3.4",
-            forgot_password_url="https://example.com/forgot-password",
             job_service=job_service,
         )
         assert job_service.enqueue.call_count == 1
@@ -104,7 +99,24 @@ class TestNotifyIfNew:
         assert args[1]["to_email"] == "u@x.com"
         assert args[1]["ctx"]["source_ip"] == "1.2.3.4"
         assert args[1]["ctx"]["user_agent"] == "UA"
-        assert args[1]["ctx"]["reset_url"] == "https://example.com/forgot-password"
+        # URL is now derived inside the service from settings.public_app_url
+        # (default "http://localhost:8000").
+        assert args[1]["ctx"]["reset_url"] == "http://localhost:8000/forgot-password"
         assert kwargs["source"] == "web"
         assert kwargs["actor_id"] == 1
         assert kwargs["actor_username"] == "u@x.com"
+
+    def test_reset_url_strips_trailing_slash_from_public_app_url(self, monkeypatch):
+        from rentivo.settings import settings
+
+        monkeypatch.setattr(settings, "public_app_url", "https://app.example.com/")
+        service, job_service = self._service_and_job(device_known=False)
+
+        service.notify_if_new(
+            user=self._user(),
+            user_agent="UA",
+            client_ip="1.2.3.4",
+            job_service=job_service,
+        )
+        args, _ = job_service.enqueue.call_args
+        assert args[1]["ctx"]["reset_url"] == "https://app.example.com/forgot-password"

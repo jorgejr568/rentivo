@@ -630,6 +630,32 @@ class TestPasskeyAuthComplete:
         response = client.get("/billings/")
         assert response.status_code == 200
 
+    def test_user_deleted_mid_flow_returns_400(self, client, test_engine):
+        """If the user row vanishes between the password step and the passkey
+        step, abort with 400 instead of authenticating a ghost session."""
+        user, passkey = self._setup_mfa_pending_with_passkey(client, test_engine)
+        self._begin_auth(client)
+
+        svc = MagicMock()
+        svc.get_by_id.return_value = None
+        with (
+            patch.object(RequestServices, "user", new_callable=PropertyMock, return_value=svc),
+            patch("web.routes.security.webauthn") as mock_wa,
+        ):
+            mock_wa.base64url_to_bytes.return_value = b"pk_bytes"
+            mock_verification = MagicMock()
+            mock_verification.new_sign_count = 1
+            mock_wa.verify_authentication_response.return_value = mock_verification
+
+            response = client.post(
+                "/security/passkeys/auth/complete",
+                json={"id": passkey.credential_id},
+            )
+        assert response.status_code == 400
+        assert response.json()["error"] == "Usuário não encontrado."
+        # Session was cleared — still not authenticated.
+        assert client.get("/billings/", follow_redirects=False).status_code == 302
+
     def test_verification_failure(self, client, test_engine):
         user, passkey = self._setup_mfa_pending_with_passkey(client, test_engine)
         self._begin_auth(client)
