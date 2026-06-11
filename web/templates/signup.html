@@ -32,6 +32,14 @@
                 {% endif %}
                 <button type="submit" class="btn btn--primary" style="width: 100%; margin-top: 0.5rem;">Criar Conta</button>
             </form>
+            {% if google_auth_enabled %}
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin: 1.25rem 0;">
+                <hr style="flex: 1; border: none; border-top: 1px solid var(--border, #ddd); margin: 0;">
+                <span class="muted" style="font-size: 0.85rem;">ou</span>
+                <hr style="flex: 1; border: none; border-top: 1px solid var(--border, #ddd); margin: 0;">
+            </div>
+            <a href="/auth/google/login" class="btn btn--block" data-track="google_login">Continuar com Google</a>
+            {% endif %}
             <p style="text-align: center; margin-top: 1rem;">
                 Já tem conta? <a href="/login">Entrar</a>
             </p>

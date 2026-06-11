@@ -342,3 +342,26 @@ class TestGoogleSignupAnalytics:
         events = _find_events(destination.text, "rentivo_signup_completed")
         assert len(events) == 1
         assert events[0]["via"] == "google"
+
+
+class TestGoogleButtonRendering:
+    def test_login_page_shows_button_when_enabled(self, client, google_enabled):
+        response = client.get("/login")
+        assert response.status_code == 200
+        assert 'href="/auth/google/login"' in response.text
+        assert "Continuar com Google" in response.text
+
+    def test_login_page_hides_button_when_disabled(self, client):
+        response = client.get("/login")
+        assert response.status_code == 200
+        assert "/auth/google/login" not in response.text
+
+    def test_signup_page_shows_button_when_enabled(self, client, google_enabled):
+        response = client.get("/signup")
+        assert response.status_code == 200
+        assert 'href="/auth/google/login"' in response.text
+
+    def test_signup_page_hides_button_when_disabled(self, client):
+        response = client.get("/signup")
+        assert response.status_code == 200
+        assert "/auth/google/login" not in response.text
