@@ -14,6 +14,7 @@ Guards read services via ``request.state.services`` (the lazy proxy from
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NoReturn
 
 import structlog
 from fastapi import FastAPI, Request
@@ -118,3 +119,91 @@ async def require_org_admin(org_uuid: str, request: Request) -> OrgContext:
         logger.warning("organization_admin_access_denied", org_uuid=org_uuid, path=request.url.path)
         raise FlashRedirect(ACCESS_DENIED_MESSAGE, f"/organizations/{org_uuid}")
     return OrgContext(org=org, member=member, user_id=user_id)
+
+
+_LEVEL_METHODS = {
+    "view": "can_view_billing",
+    "edit": "can_edit_billing",
+    "delete": "can_delete_billing",
+    "manage": "can_manage_bills",
+    "transfer": "can_transfer_billing",
+}
+
+
+def _level_method(level: str) -> str:
+    try:
+        return _LEVEL_METHODS[level]
+    except KeyError:
+        raise ValueError(f"Unknown authorization level: {level!r}") from None
+
+
+def _fail(message: str, url: str, status_code: int, *, json: bool, category: str = "danger") -> NoReturn:
+    if json:
+        raise GuardJSONError(message, status_code)
+    raise FlashRedirect(message, url, category)
+
+
+def require_billing(level: str, *, pix: bool = False, json: bool = False):
+    """Dependency factory: resolve the billing by ``billing_uuid`` and authorize ``level``.
+
+    With ``pix=True`` additionally requires the billing's PIX setup to be
+    complete. With ``json=True`` failures raise :class:`GuardJSONError`
+    instead of :class:`FlashRedirect`.
+    """
+    method_name = _level_method(level)
+
+    async def dependency(billing_uuid: str, request: Request) -> BillingContext:
+        services = request.state.services
+        billing = services.billing.get_billing_by_uuid(billing_uuid)
+        if not billing:
+            logger.warning("billing_not_found", billing_uuid=billing_uuid, path=request.url.path)
+            _fail(BILLING_NOT_FOUND_MESSAGE, "/", 404, json=json)
+        user_id = request.session.get("user_id")
+        auth = services.authorization
+        if not getattr(auth, method_name)(user_id, billing):
+            logger.warning("billing_access_denied", billing_uuid=billing_uuid, level=level, path=request.url.path)
+            _fail(ACCESS_DENIED_MESSAGE, "/", 403, json=json)
+        if pix and services.pix.billing_needs_setup(billing):
+            logger.warning("pix_setup_required", billing_uuid=billing.uuid, path=request.url.path)
+            _fail(PIX_SETUP_REQUIRED_MESSAGE, f"/billings/{billing.uuid}", 400, json=json, category="warning")
+        role = auth.get_role_for_billing(user_id, billing) or ""
+        return BillingContext(billing=billing, role=role, user_id=user_id)
+
+    return dependency
+
+
+def require_bill(level: str, *, pix: bool = False, json: bool = False):
+    """Dependency factory: resolve the bill by ``bill_uuid``, its billing, and authorize ``level``.
+
+    Owns the ``billing.uuid == billing_uuid`` cross-check: a URL pairing a
+    bill with an unrelated billing's uuid fails as "billing not found".
+    """
+    method_name = _level_method(level)
+
+    async def dependency(billing_uuid: str, bill_uuid: str, request: Request) -> BillContext:
+        services = request.state.services
+        bill = services.bill.get_bill_by_uuid(bill_uuid)
+        if not bill:
+            logger.warning("bill_not_found", bill_uuid=bill_uuid, path=request.url.path)
+            _fail(BILL_NOT_FOUND_MESSAGE, "/", 404, json=json)
+        billing = services.billing.get_billing(bill.billing_id)
+        if not billing or billing.uuid != billing_uuid:
+            logger.warning(
+                "billing_not_found_for_bill",
+                billing_id=bill.billing_id,
+                bill_uuid=bill_uuid,
+                path=request.url.path,
+            )
+            _fail(BILLING_NOT_FOUND_MESSAGE, "/", 404, json=json)
+        user_id = request.session.get("user_id")
+        auth = services.authorization
+        if not getattr(auth, method_name)(user_id, billing):
+            logger.warning("bill_access_denied", bill_uuid=bill_uuid, level=level, path=request.url.path)
+            _fail(ACCESS_DENIED_MESSAGE, "/", 403, json=json)
+        if pix and services.pix.billing_needs_setup(billing):
+            logger.warning("pix_setup_required", billing_uuid=billing.uuid, path=request.url.path)
+            _fail(PIX_SETUP_REQUIRED_MESSAGE, f"/billings/{billing.uuid}", 400, json=json, category="warning")
+        role = auth.get_role_for_billing(user_id, billing) or ""
+        return BillContext(bill=bill, billing=billing, role=role, user_id=user_id)
+
+    return dependency
