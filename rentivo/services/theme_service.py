@@ -1,11 +1,21 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import structlog
 
 from rentivo.models.theme import DEFAULT_THEME, Theme
 from rentivo.repositories.base import ThemeRepository
 
 logger = structlog.get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class ResolvedTheme:
+    """A resolved theme plus where in the precedence chain it came from."""
+
+    theme: Theme
+    source: str  # "billing" | "organization" | "user" | "default"
 
 
 class ThemeService:
@@ -15,27 +25,27 @@ class ThemeService:
     def get_theme_for_owner(self, owner_type: str, owner_id: int) -> Theme | None:
         return self.theme_repo.get_by_owner(owner_type, owner_id)
 
-    def resolve_theme_for_billing(self, billing) -> Theme:
-        """Resolve theme using hierarchy: billing -> org -> user -> DEFAULT_THEME.
+    def resolve_theme_with_source(self, billing) -> ResolvedTheme:
+        """Resolve theme + source using hierarchy: billing -> owner -> DEFAULT_THEME.
 
         The billing object must have: id, owner_type, owner_id.
-        For org-owned billings, checks both billing-level and org-level themes.
         """
         # 1. Check billing-level theme
         if billing.id is not None:
             theme = self.theme_repo.get_by_owner("billing", billing.id)
             if theme is not None:
-                return theme
+                return ResolvedTheme(theme=theme, source="billing")
 
         # 2. Check owner-level theme (org or user)
         theme = self.theme_repo.get_by_owner(billing.owner_type, billing.owner_id)
         if theme is not None:
-            return theme
+            return ResolvedTheme(theme=theme, source=billing.owner_type)
 
-        # 3. If billing is owned by org, also check the org creator's user theme
-        # (not implemented — hierarchy is billing -> owner -> default)
+        return ResolvedTheme(theme=DEFAULT_THEME, source="default")
 
-        return DEFAULT_THEME
+    def resolve_theme_for_billing(self, billing) -> Theme:
+        """Resolve theme using hierarchy: billing -> org -> user -> DEFAULT_THEME."""
+        return self.resolve_theme_with_source(billing).theme
 
     def create_or_update_theme(self, owner_type: str, owner_id: int, **fields) -> Theme:
         existing = self.theme_repo.get_by_owner(owner_type, owner_id)

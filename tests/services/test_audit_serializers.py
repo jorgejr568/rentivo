@@ -4,6 +4,7 @@ from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
+from rentivo.models.theme import Theme
 from rentivo.models.user import User
 from rentivo.services.audit_serializers import (
     serialize_bill,
@@ -11,6 +12,7 @@ from rentivo.services.audit_serializers import (
     serialize_invite,
     serialize_job_payload,
     serialize_organization,
+    serialize_theme,
     serialize_user,
 )
 
@@ -498,3 +500,36 @@ class TestSerializeJobPayload:
         result = serialize_job_payload({"job_type": "s3.delete", "key": "k", "bucket": "secret", "actor": "x"})
 
         assert result == {"key": "k"}
+
+
+class TestSerializeTheme:
+    def test_serialize_theme(self):
+        theme = Theme(
+            id=1,
+            uuid="t-uuid",
+            owner_type="billing",
+            owner_id=3,
+            name="Custom",
+            header_font="Roboto",
+            text_font="Lora",
+            primary="#111111",
+            primary_light="#222222",
+            secondary="#333333",
+            secondary_dark="#444444",
+            text_color="#555555",
+            text_contrast="#666666",
+        )
+        assert serialize_theme(theme) == {
+            "uuid": "t-uuid",
+            "owner_type": "billing",
+            "owner_id": 3,
+            "name": "Custom",
+            "header_font": "Roboto",
+            "text_font": "Lora",
+            "primary": "#111111",
+            "primary_light": "#222222",
+            "secondary": "#333333",
+            "secondary_dark": "#444444",
+            "text_color": "#555555",
+            "text_contrast": "#666666",
+        }
