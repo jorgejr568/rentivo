@@ -88,3 +88,33 @@ def install_guard_handlers(app: FastAPI) -> None:
     """Register the guard exception handlers on ``app``."""
     app.add_exception_handler(FlashRedirect, flash_redirect_handler)
     app.add_exception_handler(GuardJSONError, guard_json_error_handler)
+
+
+def _resolve_org(request: Request, org_uuid: str) -> Organization:
+    org = request.state.services.organization.get_by_uuid(org_uuid)
+    if not org:
+        logger.warning("organization_not_found", org_uuid=org_uuid, path=request.url.path)
+        raise FlashRedirect(ORGANIZATION_NOT_FOUND_MESSAGE, "/organizations/")
+    return org
+
+
+async def require_org_member(org_uuid: str, request: Request) -> OrgContext:
+    """Resolve the org and require the session user to be a member of it."""
+    org = _resolve_org(request, org_uuid)
+    user_id = request.session.get("user_id")
+    member = request.state.services.organization.get_member(org.id, user_id)
+    if member is None:
+        logger.warning("organization_access_denied", org_uuid=org_uuid, path=request.url.path)
+        raise FlashRedirect(ACCESS_DENIED_MESSAGE, "/organizations/")
+    return OrgContext(org=org, member=member, user_id=user_id)
+
+
+async def require_org_admin(org_uuid: str, request: Request) -> OrgContext:
+    """Resolve the org and require the session user to be an admin of it."""
+    org = _resolve_org(request, org_uuid)
+    user_id = request.session.get("user_id")
+    member = request.state.services.organization.get_member(org.id, user_id)
+    if member is None or not request.state.services.authorization.can_admin_org(user_id, org.id):
+        logger.warning("organization_admin_access_denied", org_uuid=org_uuid, path=request.url.path)
+        raise FlashRedirect(ACCESS_DENIED_MESSAGE, f"/organizations/{org_uuid}")
+    return OrgContext(org=org, member=member, user_id=user_id)

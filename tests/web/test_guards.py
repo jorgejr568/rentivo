@@ -10,13 +10,19 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from starlette.testclient import TestClient
 
+from rentivo.models.organization import Organization, OrganizationMember
 from web.guards import (
+    ACCESS_DENIED_MESSAGE,
+    ORGANIZATION_NOT_FOUND_MESSAGE,
     FlashRedirect,
     GuardJSONError,
+    OrgContext,
     install_guard_handlers,
+    require_org_admin,
+    require_org_member,
 )
 
 
@@ -108,3 +114,105 @@ class TestGuardExceptionHandlers:
         response = client.get("/json")
         assert response.status_code == 418
         assert response.json() == {"error": "Erro."}
+
+
+ORG = Organization(id=7, uuid="org-uuid", name="Acme")
+
+
+def _org_member(role="viewer"):
+    return OrganizationMember(organization_id=7, user_id=1, role=role)
+
+
+def _org_app(services, session):
+    app = FastAPI()
+
+    @app.get("/orgs/{org_uuid}/member")
+    async def member_route(ctx: OrgContext = Depends(require_org_member)):
+        return {"org_id": ctx.org.id, "role": ctx.member.role, "user_id": ctx.user_id}
+
+    @app.get("/orgs/{org_uuid}/admin")
+    async def admin_route(ctx: OrgContext = Depends(require_org_admin)):
+        return {"org_id": ctx.org.id, "role": ctx.member.role, "user_id": ctx.user_id}
+
+    return finalize_app(app, services, session)
+
+
+class TestRequireOrgMember:
+    def test_success(self):
+        services = make_services()
+        services.organization.get_by_uuid.return_value = ORG
+        services.organization.get_member.return_value = _org_member()
+        client = _org_app(services, {"user_id": 1})
+        response = client.get("/orgs/org-uuid/member")
+        assert response.status_code == 200
+        assert response.json() == {"org_id": 7, "role": "viewer", "user_id": 1}
+        services.organization.get_by_uuid.assert_called_once_with("org-uuid")
+        services.organization.get_member.assert_called_once_with(7, 1)
+
+    def test_org_not_found(self):
+        services = make_services()
+        services.organization.get_by_uuid.return_value = None
+        session = {"user_id": 1}
+        client = _org_app(services, session)
+        response = client.get("/orgs/org-uuid/member", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/"
+        assert session["_messages"] == [{"message": ORGANIZATION_NOT_FOUND_MESSAGE, "category": "danger"}]
+
+    def test_not_a_member(self):
+        services = make_services()
+        services.organization.get_by_uuid.return_value = ORG
+        services.organization.get_member.return_value = None
+        session = {"user_id": 1}
+        client = _org_app(services, session)
+        response = client.get("/orgs/org-uuid/member", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/"
+        assert session["_messages"] == [{"message": ACCESS_DENIED_MESSAGE, "category": "danger"}]
+
+
+class TestRequireOrgAdmin:
+    def test_success(self):
+        services = make_services()
+        services.organization.get_by_uuid.return_value = ORG
+        services.organization.get_member.return_value = _org_member(role="admin")
+        services.authorization.can_admin_org.return_value = True
+        client = _org_app(services, {"user_id": 1})
+        response = client.get("/orgs/org-uuid/admin")
+        assert response.status_code == 200
+        assert response.json() == {"org_id": 7, "role": "admin", "user_id": 1}
+        services.authorization.can_admin_org.assert_called_once_with(1, 7)
+
+    def test_org_not_found(self):
+        services = make_services()
+        services.organization.get_by_uuid.return_value = None
+        session = {"user_id": 1}
+        client = _org_app(services, session)
+        response = client.get("/orgs/org-uuid/admin", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/"
+        assert session["_messages"] == [{"message": ORGANIZATION_NOT_FOUND_MESSAGE, "category": "danger"}]
+
+    def test_non_member_denied_without_admin_check(self):
+        services = make_services()
+        services.organization.get_by_uuid.return_value = ORG
+        services.organization.get_member.return_value = None
+        session = {"user_id": 1}
+        client = _org_app(services, session)
+        response = client.get("/orgs/org-uuid/admin", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/org-uuid"
+        assert session["_messages"] == [{"message": ACCESS_DENIED_MESSAGE, "category": "danger"}]
+        services.authorization.can_admin_org.assert_not_called()
+
+    def test_member_not_admin(self):
+        services = make_services()
+        services.organization.get_by_uuid.return_value = ORG
+        services.organization.get_member.return_value = _org_member(role="viewer")
+        services.authorization.can_admin_org.return_value = False
+        session = {"user_id": 1}
+        client = _org_app(services, session)
+        response = client.get("/orgs/org-uuid/admin", follow_redirects=False)
+        assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/org-uuid"
+        assert session["_messages"] == [{"message": ACCESS_DENIED_MESSAGE, "category": "danger"}]
