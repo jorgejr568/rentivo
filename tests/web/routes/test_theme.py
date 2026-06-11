@@ -133,6 +133,7 @@ class TestOrgThemeForm:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == f"/organizations/{org.uuid}"
 
     def test_org_theme_form_not_found(self, auth_client):
         """GET /themes/organization/<bad-uuid> redirects — covers lines 191-193."""
@@ -250,6 +251,7 @@ class TestBillingThemeForm:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
     def test_billing_theme_form_not_found(self, auth_client):
         """GET /themes/billing/<bad-uuid> redirects — covers lines 313-315."""
@@ -258,7 +260,7 @@ class TestBillingThemeForm:
             follow_redirects=False,
         )
         assert response.status_code == 302
-        assert response.headers["location"] == "/billings/"
+        assert response.headers["location"] == "/"
 
     def test_billing_theme_form_with_user_theme(self, auth_client, test_engine, csrf_token):
         """effective_source should be 'user' — covers line 337."""
@@ -333,6 +335,7 @@ class TestBillingThemeSave:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
 
 class TestBillingThemeDelete:
@@ -382,6 +385,7 @@ class TestBillingThemeDelete:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
 
 class TestThemePreview:

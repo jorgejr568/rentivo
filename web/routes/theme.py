@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 from starlette.responses import Response
 
@@ -12,9 +12,11 @@ from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import ItemType
 from rentivo.models.theme import AVAILABLE_FONTS, DEFAULT_THEME, Theme
 from rentivo.pdf.invoice import InvoicePDF
+from rentivo.services.audit_serializers import serialize_theme
 from web.analytics import push_event
 from web.deps import render
 from web.flash import flash
+from web.guards import BillingContext, OrgContext, require_billing, require_org_admin
 
 logger = structlog.get_logger(__name__)
 
@@ -59,24 +61,6 @@ def _parse_theme_fields(form: dict) -> dict:
                 value = getattr(DEFAULT_THEME, key)
         fields[key] = value
     return fields
-
-
-def _serialize_theme(theme: Theme) -> dict:
-    """Serialize a Theme to a dict for audit logging."""
-    return {
-        "uuid": theme.uuid,
-        "owner_type": theme.owner_type,
-        "owner_id": theme.owner_id,
-        "name": theme.name,
-        "header_font": theme.header_font,
-        "text_font": theme.text_font,
-        "primary": theme.primary,
-        "primary_light": theme.primary_light,
-        "secondary": theme.secondary,
-        "secondary_dark": theme.secondary_dark,
-        "text_color": theme.text_color,
-        "text_contrast": theme.text_contrast,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -128,8 +112,8 @@ async def user_theme_save(request: Request):
         entity_type="theme",
         entity_id=theme.id,
         entity_uuid=theme.uuid,
-        previous_state=_serialize_theme(existing) if existing else None,
-        new_state=_serialize_theme(theme),
+        previous_state=serialize_theme(existing) if existing else None,
+        new_state=serialize_theme(theme),
     )
 
     flash(request, "Tema salvo com sucesso!", "success")
@@ -154,7 +138,7 @@ async def user_theme_delete(request: Request):
             entity_type="theme",
             entity_id=existing.id if existing else None,
             entity_uuid=existing.uuid if existing else "",
-            previous_state=_serialize_theme(existing) if existing else None,
+            previous_state=serialize_theme(existing) if existing else None,
         )
         flash(request, "Tema redefinido para o padrão.", "success")
     else:
@@ -168,35 +152,9 @@ async def user_theme_delete(request: Request):
 # ---------------------------------------------------------------------------
 
 
-def _check_org_admin(request: Request, org_uuid: str):
-    """Look up org and verify the current user is an admin.
-
-    Returns (org, user_id) on success, or a RedirectResponse on failure.
-    """
-    org_service = request.state.services.organization
-    org = org_service.get_by_uuid(org_uuid)
-    if not org:
-        logger.warning("organization_not_found", org_uuid=org_uuid)
-        flash(request, "Organização não encontrada.", "danger")
-        return RedirectResponse("/organizations/", status_code=302), None
-
-    user_id = request.session.get("user_id")
-    member = org_service.get_member(org.id, user_id)
-    if not member or member.role != "admin":
-        logger.warning("organization_theme_access_denied", org_uuid=org_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org_uuid}", status_code=302), None
-
-    return org, user_id
-
-
 @router.get("/organization/{org_uuid}")
-async def org_theme_form(request: Request, org_uuid: str):
-    result, user_id = _check_org_admin(request, org_uuid)
-    if isinstance(result, RedirectResponse):
-        return result
-    org = result
-
+async def org_theme_form(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("organization", org.id)
     theme = existing or DEFAULT_THEME
@@ -207,10 +165,10 @@ async def org_theme_form(request: Request, org_uuid: str):
         {
             "theme": theme,
             "owner_type": "organization",
-            "owner_label": f"{org.name} \u2014 Tema",
-            "form_action": f"/themes/organization/{org_uuid}",
-            "delete_action": f"/themes/organization/{org_uuid}/delete",
-            "back_url": f"/organizations/{org_uuid}",
+            "owner_label": f"{org.name} — Tema",
+            "form_action": f"/themes/organization/{org.uuid}",
+            "delete_action": f"/themes/organization/{org.uuid}/delete",
+            "back_url": f"/organizations/{org.uuid}",
             "available_fonts": AVAILABLE_FONTS,
             "has_custom": existing is not None,
         },
@@ -218,12 +176,8 @@ async def org_theme_form(request: Request, org_uuid: str):
 
 
 @router.post("/organization/{org_uuid}")
-async def org_theme_save(request: Request, org_uuid: str):
-    result, user_id = _check_org_admin(request, org_uuid)
-    if isinstance(result, RedirectResponse):
-        return result
-    org = result
-
+async def org_theme_save(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("organization", org.id)
 
@@ -231,7 +185,7 @@ async def org_theme_save(request: Request, org_uuid: str):
     fields = _parse_theme_fields(dict(form))
 
     theme = theme_service.create_or_update_theme("organization", org.id, **fields)
-    logger.info("theme_saved", scope="organization", org_uuid=org_uuid, theme_uuid=theme.uuid)
+    logger.info("theme_saved", scope="organization", org_uuid=org.uuid, theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = request.state.services.audit
@@ -241,28 +195,24 @@ async def org_theme_save(request: Request, org_uuid: str):
         entity_type="theme",
         entity_id=theme.id,
         entity_uuid=theme.uuid,
-        previous_state=_serialize_theme(existing) if existing else None,
-        new_state=_serialize_theme(theme),
+        previous_state=serialize_theme(existing) if existing else None,
+        new_state=serialize_theme(theme),
     )
 
     flash(request, "Tema da organização salvo com sucesso!", "success")
     push_event(request, {"event": "rentivo_theme_changed", "scope": "organization"})
-    return RedirectResponse(f"/themes/organization/{org_uuid}", status_code=302)
+    return RedirectResponse(f"/themes/organization/{org.uuid}", status_code=302)
 
 
 @router.post("/organization/{org_uuid}/delete")
-async def org_theme_delete(request: Request, org_uuid: str):
-    result, user_id = _check_org_admin(request, org_uuid)
-    if isinstance(result, RedirectResponse):
-        return result
-    org = result
-
+async def org_theme_delete(request: Request, ctx: OrgContext = Depends(require_org_admin)):
+    org = ctx.org
     theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("organization", org.id)
     deleted = theme_service.delete_theme("organization", org.id)
 
     if deleted:
-        logger.info("theme_deleted", scope="organization", org_uuid=org_uuid)
+        logger.info("theme_deleted", scope="organization", org_uuid=org.uuid)
         audit = request.state.services.audit
         audit.safe_log_for(
             request.state.actor,
@@ -270,13 +220,13 @@ async def org_theme_delete(request: Request, org_uuid: str):
             entity_type="theme",
             entity_id=existing.id if existing else None,
             entity_uuid=existing.uuid if existing else "",
-            previous_state=_serialize_theme(existing) if existing else None,
+            previous_state=serialize_theme(existing) if existing else None,
         )
         flash(request, "Tema da organização redefinido para o padrão.", "success")
     else:
         flash(request, "Nenhum tema personalizado para redefinir.", "warning")
 
-    return RedirectResponse(f"/themes/organization/{org_uuid}", status_code=302)
+    return RedirectResponse(f"/themes/organization/{org.uuid}", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -284,55 +234,13 @@ async def org_theme_delete(request: Request, org_uuid: str):
 # ---------------------------------------------------------------------------
 
 
-def _check_billing_access(request: Request, billing_uuid: str):
-    """Look up billing and verify the current user can edit it.
-
-    Returns (billing, user_id) on success, or a RedirectResponse on failure.
-    """
-    billing_service = request.state.services.billing
-    billing = billing_service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        logger.warning("billing_not_found", billing_uuid=billing_uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/billings/", status_code=302), None
-
-    user_id = request.session.get("user_id")
-    auth_service = request.state.services.authorization
-    if not auth_service.can_edit_billing(user_id, billing):
-        logger.warning("billing_theme_access_denied", billing_uuid=billing_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302), None
-
-    return billing, user_id
-
-
-def _resolve_effective_source(theme_service, billing) -> str:
-    """Determine where the effective theme comes from for a billing."""
-    # Check billing-level theme
-    if billing.id is not None:
-        if theme_service.get_theme_for_owner("billing", billing.id) is not None:
-            return "billing"
-
-    # Check owner-level theme (organization or user)
-    owner_theme = theme_service.get_theme_for_owner(billing.owner_type, billing.owner_id)
-    if owner_theme is not None:
-        return billing.owner_type
-
-    return "default"
-
-
 @router.get("/billing/{billing_uuid}")
-async def billing_theme_form(request: Request, billing_uuid: str):
-    result, user_id = _check_billing_access(request, billing_uuid)
-    if isinstance(result, RedirectResponse):
-        return result
-    billing = result
-
+async def billing_theme_form(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
+    billing = ctx.billing
     theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("billing", billing.id)
     theme = existing or DEFAULT_THEME
-    effective_theme = theme_service.resolve_theme_for_billing(billing)
-    effective_source = _resolve_effective_source(theme_service, billing)
+    resolved = theme_service.resolve_theme_with_source(billing)
 
     return render(
         request,
@@ -340,25 +248,21 @@ async def billing_theme_form(request: Request, billing_uuid: str):
         {
             "theme": theme,
             "owner_type": "billing",
-            "owner_label": f"{billing.name} \u2014 Tema",
-            "form_action": f"/themes/billing/{billing_uuid}",
-            "delete_action": f"/themes/billing/{billing_uuid}/delete",
-            "back_url": f"/billings/{billing_uuid}",
+            "owner_label": f"{billing.name} — Tema",
+            "form_action": f"/themes/billing/{billing.uuid}",
+            "delete_action": f"/themes/billing/{billing.uuid}/delete",
+            "back_url": f"/billings/{billing.uuid}",
             "available_fonts": AVAILABLE_FONTS,
             "has_custom": existing is not None,
-            "effective_theme": effective_theme,
-            "effective_source": effective_source,
+            "effective_theme": resolved.theme,
+            "effective_source": resolved.source,
         },
     )
 
 
 @router.post("/billing/{billing_uuid}")
-async def billing_theme_save(request: Request, billing_uuid: str):
-    result, user_id = _check_billing_access(request, billing_uuid)
-    if isinstance(result, RedirectResponse):
-        return result
-    billing = result
-
+async def billing_theme_save(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
+    billing = ctx.billing
     theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("billing", billing.id)
 
@@ -366,7 +270,7 @@ async def billing_theme_save(request: Request, billing_uuid: str):
     fields = _parse_theme_fields(dict(form))
 
     theme = theme_service.create_or_update_theme("billing", billing.id, **fields)
-    logger.info("theme_saved", scope="billing", billing_uuid=billing_uuid, theme_uuid=theme.uuid)
+    logger.info("theme_saved", scope="billing", billing_uuid=billing.uuid, theme_uuid=theme.uuid)
 
     event_type = AuditEventType.THEME_UPDATE if existing else AuditEventType.THEME_CREATE
     audit = request.state.services.audit
@@ -376,28 +280,24 @@ async def billing_theme_save(request: Request, billing_uuid: str):
         entity_type="theme",
         entity_id=theme.id,
         entity_uuid=theme.uuid,
-        previous_state=_serialize_theme(existing) if existing else None,
-        new_state=_serialize_theme(theme),
+        previous_state=serialize_theme(existing) if existing else None,
+        new_state=serialize_theme(theme),
     )
 
     flash(request, "Tema da cobrança salvo com sucesso!", "success")
     push_event(request, {"event": "rentivo_theme_changed", "scope": "billing"})
-    return RedirectResponse(f"/themes/billing/{billing_uuid}", status_code=302)
+    return RedirectResponse(f"/themes/billing/{billing.uuid}", status_code=302)
 
 
 @router.post("/billing/{billing_uuid}/delete")
-async def billing_theme_delete(request: Request, billing_uuid: str):
-    result, user_id = _check_billing_access(request, billing_uuid)
-    if isinstance(result, RedirectResponse):
-        return result
-    billing = result
-
+async def billing_theme_delete(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
+    billing = ctx.billing
     theme_service = request.state.services.theme
     existing = theme_service.get_theme_for_owner("billing", billing.id)
     deleted = theme_service.delete_theme("billing", billing.id)
 
     if deleted:
-        logger.info("theme_deleted", scope="billing", billing_uuid=billing_uuid)
+        logger.info("theme_deleted", scope="billing", billing_uuid=billing.uuid)
         audit = request.state.services.audit
         audit.safe_log_for(
             request.state.actor,
@@ -405,13 +305,13 @@ async def billing_theme_delete(request: Request, billing_uuid: str):
             entity_type="theme",
             entity_id=existing.id if existing else None,
             entity_uuid=existing.uuid if existing else "",
-            previous_state=_serialize_theme(existing) if existing else None,
+            previous_state=serialize_theme(existing) if existing else None,
         )
         flash(request, "Tema da cobrança redefinido para o padrão.", "success")
     else:
         flash(request, "Nenhum tema personalizado para redefinir.", "warning")
 
-    return RedirectResponse(f"/themes/billing/{billing_uuid}", status_code=302)
+    return RedirectResponse(f"/themes/billing/{billing.uuid}", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -431,10 +331,10 @@ async def theme_preview(request: Request):
         total_amount=150000,
         line_items=[
             BillLineItem(description="Aluguel", amount=120000, item_type=ItemType.FIXED, sort_order=0),
-            BillLineItem(description="\u00c1gua", amount=15000, item_type=ItemType.VARIABLE, sort_order=1),
+            BillLineItem(description="Água", amount=15000, item_type=ItemType.VARIABLE, sort_order=1),
             BillLineItem(description="Luz", amount=15000, item_type=ItemType.VARIABLE, sort_order=2),
         ],
-        notes="Exemplo de fatura para visualiza\u00e7\u00e3o do tema.",
+        notes="Exemplo de fatura para visualização do tema.",
         due_date="2026-01-15",
     )
 
