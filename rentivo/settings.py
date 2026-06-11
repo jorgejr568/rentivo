@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     log_json: bool = False
 
     webauthn_rp_id: str = "localhost"
-    webauthn_rp_name: str = "Landlord"
+    webauthn_rp_name: str = "Rentivo"
     webauthn_origin: str = "http://localhost:8000"
 
     # Canonical public origin (no trailing slash) used for robots.txt / sitemap.xml / OG tags.
