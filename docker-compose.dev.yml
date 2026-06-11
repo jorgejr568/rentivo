@@ -1,0 +1,23 @@
+# Development override: bind-mount the source into the containers and run
+# the web server with auto-reload, so you can develop with Docker only.
+#
+# Usage:
+#   make compose-dev        # up with this override
+#   make compose-dev-down   # down
+#
+# Notes:
+# - Only ./rentivo and ./web are mounted (NOT the repo root) so the
+#   image's /app/.venv is not shadowed by a host directory.
+# - The worker has no auto-reload; after editing job/handler code run:
+#   docker compose restart worker
+services:
+  rentivo:
+    command: uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
+    volumes:
+      - ./rentivo:/app/rentivo
+      - ./web:/app/web
+
+  worker:
+    volumes:
+      - ./rentivo:/app/rentivo
+      - ./web:/app/web

@@ -102,6 +102,12 @@ web-run:
 web-createuser:
 	$(PYTHON) -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
 
+# --- Worker (local) ---
+
+.PHONY: worker
+worker:
+	$(PYTHON) -m rentivo.workers
+
 # --- Docker: Web (standalone) ---
 
 .PHONY: build
@@ -161,10 +167,6 @@ docker-createuser:
 .PHONY: docker-regenerate
 docker-regenerate:
 	docker exec $(CONTAINER) python -m rentivo.scripts.regenerate_pdfs
-
-.PHONY: docker-seed
-docker-seed:
-	docker exec $(CONTAINER) python -m rentivo.scripts.seed
 
 # --- Docker: CLI (standalone) ---
 
@@ -233,6 +235,14 @@ compose-restart:
 	docker compose down
 	docker compose up -d --build
 
+.PHONY: compose-dev
+compose-dev:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+.PHONY: compose-dev-down
+compose-dev-down:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+
 .PHONY: compose-shell
 compose-shell:
 	docker compose exec rentivo bash
@@ -280,10 +290,6 @@ compose-createuser:
 .PHONY: compose-regenerate
 compose-regenerate:
 	docker compose exec cli python -m rentivo.scripts.regenerate_pdfs
-
-.PHONY: compose-seed
-compose-seed:
-	docker compose exec rentivo python -m rentivo.scripts.seed
 
 .PHONY: compose-logs
 compose-logs:
