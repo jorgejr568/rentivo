@@ -20,7 +20,7 @@
 
 ---
 
-Built for Brazilian rentivos — all tenant-facing output is in **PT-BR** with **BRL (R$)** currency and **PIX QR codes** on invoices.
+Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with **BRL (R$)** currency and **PIX QR codes** on invoices.
 
 ## Features
 
