@@ -161,6 +161,60 @@ class TestInviteResponseNotifications:
         assert sent[0]["to"] == "inv@t.com"
         assert sent[0]["org"] == "Test Org"
 
+    def test_accept_not_found_does_not_notify(self, auth_client, csrf_token, monkeypatch):
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
+
+        sent: list[dict] = []
+
+        def _capture(self, job_type, payload, **kwargs):
+            sent.append(payload)
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
+
+        monkeypatch.setattr(JobService, "enqueue", _capture)
+
+        response = auth_client.post(
+            "/invites/nonexistent/accept",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent == []
+
+    def test_decline_not_found_does_not_notify(self, auth_client, csrf_token, monkeypatch):
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
+
+        sent: list[dict] = []
+
+        def _capture(self, job_type, payload, **kwargs):
+            sent.append(payload)
+            return Job(
+                id=1,
+                ulid="01HXYZ",
+                job_type=job_type,
+                payload=payload,
+                attempts=0,
+                max_attempts=5,
+            )
+
+        monkeypatch.setattr(JobService, "enqueue", _capture)
+
+        response = auth_client.post(
+            "/invites/nonexistent/decline",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert sent == []
+
 
 class TestInviteAcceptMFAEnforcement:
     def test_accept_from_enforcing_org_sets_mfa_flag(self, auth_client, test_engine, csrf_token):
