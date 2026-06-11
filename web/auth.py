@@ -229,7 +229,6 @@ async def login(request: Request):
         user=user,
         user_agent=request.headers.get("user-agent", ""),
         client_ip=request.client.host if request.client else "unknown",
-        forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
         job_service=request.state.services.job,
     )
     return RedirectResponse("/billings/", status_code=302)
@@ -345,7 +344,6 @@ async def mfa_verify(request: Request):
             user=user,
             user_agent=request.headers.get("user-agent", ""),
             client_ip=request.client.host if request.client else "unknown",
-            forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
             job_service=request.state.services.job,
         )
     return RedirectResponse("/billings/", status_code=302)

@@ -533,7 +533,6 @@ async def passkey_auth_complete(request: Request):
             user=user,
             user_agent=request.headers.get("user-agent", ""),
             client_ip=request.client.host if request.client else "unknown",
-            forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
             job_service=request.state.services.job,
         )
 

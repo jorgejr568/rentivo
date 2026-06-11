@@ -158,7 +158,6 @@ def _finish_login(request: Request, user: User) -> RedirectResponse:
         user=user,
         user_agent=request.headers.get("user-agent", ""),
         client_ip=client_ip,
-        forgot_password_url=f"{settings.public_app_url.rstrip('/')}/forgot-password",
         job_service=request.state.services.job,
     )
     return RedirectResponse("/billings/", status_code=302)
