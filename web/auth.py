@@ -12,6 +12,7 @@ from rentivo.settings import settings
 from web.analytics import push_event
 from web.context import actor_for
 from web.deps import render
+from web.login_flow import begin_mfa_challenge, complete_login
 
 logger = structlog.get_logger(__name__)
 
@@ -180,58 +181,11 @@ async def login(request: Request):
 
     _login_limiter.clear(client_ip)
 
-    # Check if user has MFA enabled
-    mfa_service = request.state.services.mfa
-    has_mfa = mfa_service.has_any_mfa(user.id)
+    # MFA enrolled? Don't fully authenticate yet — issue the challenge.
+    if request.state.services.mfa.has_any_mfa(user.id):
+        return begin_mfa_challenge(request, user, client_ip=client_ip)
 
-    login_actor = actor_for(user.id, user.email)
-
-    if has_mfa:
-        # Don't fully authenticate yet — redirect to MFA verification
-        request.session.clear()
-        request.session["mfa_pending_user_id"] = user.id
-        request.session["mfa_pending_email"] = user.email
-        logger.info("mfa_verification_required", email=user.email, user_id=user.id)
-
-        audit = request.state.services.audit
-        audit.safe_log_for(
-            login_actor,
-            AuditEventType.MFA_CHALLENGE_ISSUED,
-            entity_type="user",
-            entity_id=user.id,
-            metadata={"ip": client_ip},
-        )
-
-        return RedirectResponse("/mfa-verify", status_code=302)
-
-    # No MFA — complete login
-    request.session.clear()
-    request.session["user_id"] = user.id
-    request.session["email"] = user.email
-    logger.info("user_logged_in", email=user.email, user_id=user.id)
-
-    # Check if MFA setup is required by org enforcement
-    if mfa_service.user_requires_mfa_setup(user.id):
-        request.session["mfa_setup_required"] = True
-
-    audit = request.state.services.audit
-    audit.safe_log_for(
-        login_actor,
-        AuditEventType.USER_LOGIN,
-        entity_type="user",
-        entity_id=user.id,
-        new_state={"user_id": user.id, "email": user.email},
-        metadata={"ip": client_ip},
-    )
-
-    push_event(request, {"event": "rentivo_login_success", "via": "password"})
-    request.state.services.known_device.notify_if_new(
-        user=user,
-        user_agent=request.headers.get("user-agent", ""),
-        client_ip=request.client.host if request.client else "unknown",
-        job_service=request.state.services.job,
-    )
-    return RedirectResponse("/billings/", status_code=302)
+    return complete_login(request, user, via="password", client_ip=client_ip)
 
 
 # --- MFA Verification ---
