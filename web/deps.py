@@ -33,6 +33,7 @@ PUBLIC_PREFIX_PATHS = {
     "/security/passkeys/auth",
     "/forgot-password",
     "/reset-password",
+    "/auth/google",
 }
 PUBLIC_EXACT_PATHS = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
@@ -257,5 +258,6 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     ctx["gtm_initial_push"] = build_page_context(request, template_name, ctx)
     ctx["gtm_pending_events"] = pop_events(request)
     ctx["turnstile_site_key"] = settings.turnstile_site_key
+    ctx["google_auth_enabled"] = settings.google_auth_enabled
 
     return templates.TemplateResponse(request, template_name, ctx)

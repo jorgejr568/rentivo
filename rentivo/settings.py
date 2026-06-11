@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     turnstile_secret_key: str = ""
     turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
+    google_auth_enabled: bool = False
+    google_client_id: str = ""
+    google_client_secret: str = ""
+
     job_worker_batch_size: int = 10
     job_worker_idle_sleep_seconds: float = 5.0
     job_worker_stuck_after_seconds: int = 600
@@ -155,6 +159,15 @@ class Settings(BaseSettings):
         if site != secret:
             raise ValueError(
                 "RENTIVO_TURNSTILE_SITE_KEY and RENTIVO_TURNSTILE_SECRET_KEY must both be set or both empty"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_google_auth(self) -> "Settings":
+        if self.google_auth_enabled and (not self.google_client_id or not self.google_client_secret):
+            raise ValueError(
+                "RENTIVO_GOOGLE_CLIENT_ID and RENTIVO_GOOGLE_CLIENT_SECRET are required "
+                "when RENTIVO_GOOGLE_AUTH_ENABLED=true"
             )
         return self
 

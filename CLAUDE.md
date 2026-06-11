@@ -367,6 +367,15 @@ A generic, reusable key→value cache (`rentivo/cache/`), pluggable across the s
 - Service: `rentivo/services/turnstile_service.py:TurnstileService` exposes `is_enabled` and `async verify(token, remote_ip)`.
 - Wired on: `/login`, `/signup`, `/forgot-password`. The form field name set by Cloudflare's widget is `cf-turnstile-response`.
 
+## Google Authentication
+
+- OAuth 2.0 authorization-code flow, gated by `RENTIVO_GOOGLE_AUTH_ENABLED` (default `false` — routes 404 and no button renders when off, so local dev needs no Google setup).
+- `RENTIVO_GOOGLE_CLIENT_ID` and `RENTIVO_GOOGLE_CLIENT_SECRET` are required when enabled (Settings validator enforces at startup). Register `{RENTIVO_PUBLIC_APP_URL}/auth/google/callback` as the authorized redirect URI in the Google Cloud console.
+- Service: `rentivo/services/google_auth_service.py:GoogleAuthService` — builds the consent URL, exchanges the code, fetches OIDC userinfo via httpx (no JWT parsing; userinfo comes over direct TLS). Routes: `web/routes/google_auth.py` (`GET /auth/google/login`, `GET /auth/google/callback`), public in `web/deps.py:PUBLIC_PREFIX_PATHS`.
+- Account linking is by **verified Google email** (`email_verified` required) through the existing `users.email_hash` blind index. First Google login auto-creates a passwordless user (`password_hash=""`); `UserService.authenticate` rejects passwordless users so they can't password-login until they set one via `/forgot-password`. A duplicate-signup race is caught and falls back to logging in the existing account.
+- **MFA is preserved**: the callback runs the same gate as `POST /login` — users with TOTP/passkeys get `mfa_pending_user_id` in the session and are sent to `/mfa-verify`; org MFA enforcement (`mfa_setup_required`) also applies.
+- CSRF for the OAuth flow is handled with a session-bound single-use `state` parameter (compared with `secrets.compare_digest`). Audit events reuse `user.signup` / `user.login` / `mfa.challenge_issued` with `metadata.method = "google"`.
+
 ## Versioning & Releases
 
 Rentivo follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html). Every release is a `vMAJOR.MINOR.PATCH` git tag plus a matching GitHub Release. The canonical history of releases lives in [`CHANGELOG.md`](CHANGELOG.md) using the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format.

@@ -68,3 +68,22 @@ class TestUserService:
         self.mock_repo.get_by_id.return_value = None
         with pytest.raises(ValueError, match="não encontrado"):
             self.service.update_pix(1, "key@example.com", "Merchant", "Sao Paulo")
+
+    def test_authenticate_returns_none_for_passwordless_user(self):
+        # Google-created users have password_hash="" — bcrypt would raise on it.
+        self.mock_repo.get_by_email.return_value = User(id=1, email="g@b.com", password_hash="")
+        assert self.service.authenticate("g@b.com", "anything") is None
+
+    def test_register_google_user_creates_with_empty_password_hash(self):
+        self.mock_repo.get_by_email.return_value = None
+        self.mock_repo.create.return_value = User(id=7, email="g@b.com", password_hash="")
+        result = self.service.register_google_user("g@b.com")
+        created = self.mock_repo.create.call_args[0][0]
+        assert created.email == "g@b.com"
+        assert created.password_hash == ""
+        assert result.id == 7
+
+    def test_register_google_user_rejects_duplicate(self):
+        self.mock_repo.get_by_email.return_value = User(id=1, email="g@b.com")
+        with pytest.raises(ValueError):
+            self.service.register_google_user("g@b.com")

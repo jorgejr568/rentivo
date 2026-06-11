@@ -29,6 +29,7 @@ from web.deps import (
 from web.middleware.logging import RequestContextMiddleware
 from web.routes.bill import router as bill_router
 from web.routes.billing import router as billing_router
+from web.routes.google_auth import router as google_auth_router
 from web.routes.health import router as health_router
 from web.routes.invite import router as invite_router
 from web.routes.organization import router as organization_router
@@ -87,6 +88,7 @@ templates.env.globals["gtm_container_id"] = settings.gtm_container_id
 templates.env.globals["environment"] = settings.environment
 
 app.include_router(auth_router)
+app.include_router(google_auth_router)
 app.include_router(billing_router)
 app.include_router(bill_router)
 app.include_router(organization_router)

@@ -28,6 +28,7 @@ from rentivo.services.bill_service import BillService
 from rentivo.services.billing_notification_service import BillingNotificationService
 from rentivo.services.billing_service import BillingService
 from rentivo.services.billing_stats_service import BillingStatsService
+from rentivo.services.google_auth_service import GoogleAuthService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.job_service import JobService
 from rentivo.services.known_device_service import KnownDeviceService
@@ -132,6 +133,15 @@ class RequestServices:
             site_key=settings.turnstile_site_key,
             secret_key=settings.turnstile_secret_key,
             verify_url=settings.turnstile_verify_url,
+        )
+
+    @cached_property
+    def google_auth(self) -> GoogleAuthService:
+        return GoogleAuthService(
+            enabled=settings.google_auth_enabled,
+            client_id=settings.google_client_id,
+            client_secret=settings.google_client_secret,
+            redirect_uri=f"{settings.public_app_url.rstrip('/')}/auth/google/callback",
         )
 
     @cached_property

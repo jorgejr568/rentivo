@@ -311,3 +311,39 @@ class TestCacheSettings:
             Settings(_env_file=None, cache_ttl_seconds=0)
         with pytest.raises(ValidationError):
             Settings(_env_file=None, cache_max_entries=0)
+
+
+def test_google_auth_defaults():
+    s = Settings(_env_file=None)
+    assert s.google_auth_enabled is False
+    assert s.google_client_id == ""
+    assert s.google_client_secret == ""
+
+
+def test_google_auth_enabled_requires_credentials():
+    with pytest.raises(ValidationError) as exc:
+        Settings(_env_file=None, google_auth_enabled=True)
+    assert "RENTIVO_GOOGLE_CLIENT_ID" in str(exc.value)
+
+
+def test_google_auth_enabled_requires_secret_too():
+    with pytest.raises(ValidationError) as exc:
+        Settings(_env_file=None, google_auth_enabled=True, google_client_id="cid")
+    assert "RENTIVO_GOOGLE_CLIENT_SECRET" in str(exc.value)
+
+
+def test_google_auth_enabled_with_credentials():
+    s = Settings(
+        _env_file=None,
+        google_auth_enabled=True,
+        google_client_id="cid",
+        google_client_secret="cs",
+    )
+    assert s.google_auth_enabled is True
+    assert s.google_client_id == "cid"
+    assert s.google_client_secret == "cs"
+
+
+def test_google_credentials_allowed_while_disabled():
+    s = Settings(_env_file=None, google_client_id="cid", google_client_secret="cs")
+    assert s.google_auth_enabled is False
