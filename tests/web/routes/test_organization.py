@@ -61,6 +61,7 @@ class TestOrganizationDetail:
     def test_detail_not_found(self, auth_client):
         response = auth_client.get("/organizations/nonexistent", follow_redirects=False)
         assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/"
 
 
 class TestOrganizationEdit:
@@ -332,6 +333,7 @@ class TestOrganizationAccessDenied:
         org = _create_org_as_other_user(test_engine, "Other1")
         response = auth_client.get(f"/organizations/{org.uuid}", follow_redirects=False)
         assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/"
 
     def test_edit_form_not_found(self, auth_client):
         response = auth_client.get("/organizations/nonexistent/edit", follow_redirects=False)
@@ -346,6 +348,7 @@ class TestOrganizationAccessDenied:
             repo.add_member(org.id, user_id, "viewer")
         response = auth_client.get(f"/organizations/{org.uuid}/edit", follow_redirects=False)
         assert response.status_code == 302
+        assert response.headers["location"] == f"/organizations/{org.uuid}"
 
     def test_edit_post_not_admin(self, auth_client, test_engine, csrf_token):
         org = _create_org_as_other_user(test_engine, "Other3")
@@ -380,6 +383,7 @@ class TestOrganizationAccessDenied:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/organizations/"
 
     def test_change_role_not_admin(self, auth_client, test_engine, csrf_token):
         org = _create_org_as_other_user(test_engine, "Other5")
@@ -445,6 +449,7 @@ class TestOrganizationAccessDenied:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == f"/organizations/{org.uuid}"
 
 
 class TestOrganizationTransferBilling:
