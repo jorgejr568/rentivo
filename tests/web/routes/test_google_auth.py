@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -11,6 +13,7 @@ from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 from rentivo.services.google_auth_service import GoogleAuthService, GoogleUserInfo
 from rentivo.services.user_service import UserService
 from tests.web.conftest import get_audit_logs
+from web.app import templates
 
 
 @pytest.fixture()
@@ -20,6 +23,28 @@ def google_enabled(monkeypatch):
     monkeypatch.setattr(settings, "google_auth_enabled", True)
     monkeypatch.setattr(settings, "google_client_id", "test-client-id")
     monkeypatch.setattr(settings, "google_client_secret", "test-client-secret")
+
+
+@pytest.fixture()
+def enable_gtm(monkeypatch):
+    monkeypatch.setattr("rentivo.settings.settings.gtm_container_id", "GTM-EVT")
+    monkeypatch.setattr("rentivo.settings.settings.secret_key", "test-secret")
+    monkeypatch.setitem(templates.env.globals, "gtm_container_id", "GTM-EVT")
+    monkeypatch.setitem(templates.env.globals, "environment", "production")
+    yield
+
+
+def _find_events(html: str, event_name: str) -> list[dict]:
+    matches = re.findall(r"dataLayer\.push\((\{.*?\})\)", html, re.DOTALL)
+    out = []
+    for m in matches:
+        try:
+            data = json.loads(m)
+        except json.JSONDecodeError:
+            continue
+        if data.get("event") == event_name:
+            out.append(data)
+    return out
 
 
 def _stub_exchange(monkeypatch, info: GoogleUserInfo | None):
@@ -139,6 +164,7 @@ class TestGoogleCallbackNewUser:
         assert len(signups) == 1
         logins = get_audit_logs(test_engine, "user.login")
         assert len(logins) == 1
+        assert logins[0].metadata.get("method") == "google"
 
     def test_enqueues_welcome_email(self, client, google_enabled, monkeypatch):
         from rentivo.jobs.base import Job
@@ -178,6 +204,37 @@ class TestGoogleCallbackNewUser:
         )
         assert response.status_code == 200  # no 500 — guard in UserService.authenticate
         assert "E-mail ou senha inválidos" in response.text
+
+    def test_signup_race_uses_existing_user(self, client, google_enabled, monkeypatch, test_engine):
+        """Concurrent callback: get_by_email returns None once, then the real row."""
+        # Pre-create the user that a hypothetical concurrent request would have inserted.
+        raced_user = _create_user(test_engine, "raced@example.com")
+
+        original_get_by_email = UserService.get_by_email
+        call_count = [0]
+
+        def _fake_get_by_email(self, email):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # Simulate the first call returning None (pre-insert check)
+                return None
+            return original_get_by_email(self, email)
+
+        monkeypatch.setattr(UserService, "get_by_email", _fake_get_by_email)
+
+        # register_google_user will raise ValueError because email already exists
+        _stub_exchange(monkeypatch, GoogleUserInfo(sub="g-1", email="raced@example.com", email_verified=True))
+        state = _start_flow(client)
+        response = client.get(f"/auth/google/callback?code=c&state={state}", follow_redirects=False)
+
+        # Should still succeed — logged in as the pre-existing user
+        assert response.status_code == 302
+        assert response.headers["location"] == "/billings/"
+        assert client.get("/billings/", follow_redirects=False).status_code == 200
+
+        # No signup audit row — only a login row
+        assert get_audit_logs(test_engine, "user.signup") == []
+        _ = raced_user  # referenced to silence unused-variable linters
 
 
 class TestGoogleCallbackExistingUser:
@@ -236,7 +293,9 @@ class TestGoogleCallbackMFA:
         assert protected.headers["location"] == "/login"
 
         # a challenge was issued and audited
-        assert len(get_audit_logs(test_engine, "mfa.challenge_issued")) == 1
+        challenges = get_audit_logs(test_engine, "mfa.challenge_issued")
+        assert len(challenges) == 1
+        assert challenges[0].metadata.get("method") == "google"
         assert get_audit_logs(test_engine, "user.login") == []
 
     def test_totp_code_completes_google_login(self, client, google_enabled, monkeypatch, test_engine):
@@ -265,3 +324,21 @@ class TestGoogleCallbackMFA:
         response = client.get("/billings/", follow_redirects=False)
         assert response.status_code == 302
         assert response.headers["location"] == "/security/totp/setup"
+
+
+class TestGoogleSignupAnalytics:
+    def test_signup_completed_event_appears_on_redirect_destination(
+        self, client, google_enabled, enable_gtm, monkeypatch
+    ):
+        """rentivo_signup_completed dataLayer push must survive session.clear() in _finish_login."""
+        _stub_exchange(monkeypatch, GoogleUserInfo(sub="g-1", email="gtm-new@example.com", email_verified=True))
+        state = _start_flow(client)
+        redirect = client.get(f"/auth/google/callback?code=c&state={state}", follow_redirects=False)
+        assert redirect.status_code == 302
+        assert redirect.headers["location"] == "/billings/"
+
+        # The event must appear on the destination page, not be swallowed by session.clear()
+        destination = client.get("/billings/")
+        events = _find_events(destination.text, "rentivo_signup_completed")
+        assert len(events) == 1
+        assert events[0]["via"] == "google"

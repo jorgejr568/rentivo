@@ -5,6 +5,7 @@ import secrets
 import structlog
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy.exc import IntegrityError
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.user import User
@@ -46,7 +47,7 @@ async def google_callback(request: Request):
     code = request.query_params.get("code", "")
     error = request.query_params.get("error", "")
 
-    if error or not code or not expected_state or state != expected_state:
+    if error or not code or not expected_state or not secrets.compare_digest(state, expected_state):
         logger.warning("google_callback_rejected", oauth_error=error, has_code=bool(code))
         return render(request, "login.html", {"error": _GOOGLE_LOGIN_ERROR})
 
@@ -63,14 +64,27 @@ async def google_callback(request: Request):
 
     user_service = request.state.services.user
     user = user_service.get_by_email(info.email)
+    is_new = user is None
     if user is None:
         user = _signup_google_user(request, info.email)
+        if user is None:
+            return render(request, "login.html", {"error": _GOOGLE_LOGIN_ERROR})
 
-    return _finish_login(request, user)
+    response = _finish_login(request, user)
+    if is_new:
+        push_event(request, {"event": "rentivo_signup_completed", "via": "google"})
+    return response
 
 
-def _signup_google_user(request: Request, email: str) -> User:
-    user = request.state.services.user.register_google_user(email)
+def _signup_google_user(request: Request, email: str) -> User | None:
+    user_service = request.state.services.user
+    try:
+        user = user_service.register_google_user(email)
+    except ValueError, IntegrityError:
+        # Race: a concurrent callback created the account between our
+        # get_by_email miss and the insert. Re-fetch and log them in.
+        return user_service.get_by_email(email)
+
     signup_actor = WebActor(user_id=user.id, email=user.email)
     logger.info("google_user_signed_up", email=user.email)
 
@@ -82,7 +96,6 @@ def _signup_google_user(request: Request, email: str) -> User:
         new_state=serialize_user(user),
         metadata={"method": "google"},
     )
-    push_event(request, {"event": "rentivo_signup_completed", "via": "google"})
 
     pix_setup_url = f"{settings.public_app_url.rstrip('/')}/security/pix"
     request.state.services.job.enqueue_for(
