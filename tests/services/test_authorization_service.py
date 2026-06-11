@@ -96,3 +96,28 @@ class TestAuthorizationService:
         billing = Billing(name="Test", owner_type="organization", owner_id=10)
         self.mock_org_repo.get_member.return_value = None
         assert self.service.get_role_for_billing(2, billing) is None
+
+    def test_get_role_for_org_member(self):
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="manager")
+        assert self.service.get_role_for_org(2, 10) == "manager"
+        self.mock_org_repo.get_member.assert_called_once_with(10, 2)
+
+    def test_get_role_for_org_non_member(self):
+        self.mock_org_repo.get_member.return_value = None
+        assert self.service.get_role_for_org(2, 10) is None
+
+    def test_get_role_for_org_without_repo(self):
+        service = AuthorizationService(None)
+        assert service.get_role_for_org(1, 10) is None
+
+    def test_can_admin_org_admin(self):
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="admin")
+        assert self.service.can_admin_org(2, 10) is True
+
+    def test_can_admin_org_non_admin_member(self):
+        self.mock_org_repo.get_member.return_value = OrganizationMember(organization_id=10, user_id=2, role="viewer")
+        assert self.service.can_admin_org(2, 10) is False
+
+    def test_can_admin_org_non_member(self):
+        self.mock_org_repo.get_member.return_value = None
+        assert self.service.can_admin_org(2, 10) is False
