@@ -30,9 +30,10 @@ make docker-regenerate
 
 ## Docker
 
-Two Dockerfiles:
+Three Dockerfiles:
 - **`Dockerfile`** — Web app (FastAPI + uvicorn on port 8000)
 - **`Dockerfile.cli`** — CLI container (health check on port 2019)
+- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `s3.delete`)
 
 ```bash
 # Web container (default)
@@ -55,6 +56,11 @@ make compose-up            # start web + cli
 make compose-down          # stop all
 make compose-rentivo      # run CLI in cli container
 make compose-createuser    # create web user
+make compose-dev           # dev stack with bind mounts + web live reload
+make worker                # run the job worker locally
+
+# Worker container
+make build-worker / up-worker / down-worker / logs-worker / shell-worker
 ```
 
 ## Architecture
@@ -67,6 +73,13 @@ make compose-createuser    # create web user
 - **Services**: `rentivo/services/` — Business logic layer wiring repos + storage + PDF
 - **CLI**: `rentivo/cli/` — Interactive menus using `questionary` + `rich`
 - **Health check**: `healthcheck.py` — HTTP server on port 2019, returns 200 for all requests
+
+## Documentation Map
+
+- `docs/configuration.md` — full env var reference (guarded by `tests/test_env_example.py`; update both together with `rentivo/settings.py`)
+- `docs/development.md` — dev setup (local + compose-only), worker, troubleshooting
+- `CONTRIBUTING.md` — contributor workflow; `SECURITY.md` — vulnerability reporting
+- When adding/renaming a Settings field: update `.env.example` AND `docs/configuration.md`, or the test suite fails.
 
 ## S3 Storage
 
