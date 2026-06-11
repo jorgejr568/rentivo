@@ -243,7 +243,7 @@ class TestRateLimiting:
         import web.auth as auth_module
 
         # Clear any existing attempts
-        auth_module._login_attempts.clear()
+        auth_module._login_limiter.reset()
 
         # Make 5 failed attempts
         for _ in range(5):
@@ -261,7 +261,7 @@ class TestRateLimiting:
         assert "Muitas tentativas" in response.text
 
         # Cleanup
-        auth_module._login_attempts.clear()
+        auth_module._login_limiter.reset()
 
 
 class TestAuthMiddleware:
@@ -435,7 +435,7 @@ class TestMFALoginFlow:
         """After 5 failed MFA attempts, returns rate limit message."""
         import web.auth as auth_module
 
-        auth_module._mfa_attempts.clear()
+        auth_module._mfa_limiter.reset()
 
         self._create_user_with_totp(test_engine)
 
@@ -469,7 +469,7 @@ class TestMFALoginFlow:
         assert "Muitas tentativas" in response.text
 
         # Cleanup
-        auth_module._mfa_attempts.clear()
+        auth_module._mfa_limiter.reset()
 
 
 class TestMFAEnforcement:
@@ -834,3 +834,67 @@ class TestNewDeviceLoginEmail:
         client.cookies.clear()
         client.post("/login", data={"email": "nd@example.com", "password": "secret"})
         assert len(sent) == 1
+
+
+class TestRateLimiterClass:
+    """Unit tests for the consolidated sliding-window RateLimiter."""
+
+    def _limiter(self, max_attempts=3, window_seconds=60):
+        from web.auth import RateLimiter
+
+        return RateLimiter(max_attempts=max_attempts, window_seconds=window_seconds)
+
+    def test_not_limited_below_max_attempts(self):
+        rl = self._limiter()
+        rl.record_failure("ip1")
+        rl.record_failure("ip1")
+        assert rl.is_limited("ip1") is False
+
+    def test_limited_at_max_attempts(self):
+        rl = self._limiter()
+        for _ in range(3):
+            rl.record_failure("ip1")
+        assert rl.is_limited("ip1") is True
+
+    def test_keys_are_independent(self):
+        rl = self._limiter()
+        for _ in range(3):
+            rl.record_failure("ip1")
+        assert rl.is_limited("ip1") is True
+        assert rl.is_limited("ip2") is False
+
+    def test_clear_unblocks_a_key(self):
+        rl = self._limiter()
+        for _ in range(3):
+            rl.record_failure("ip1")
+        rl.clear("ip1")
+        assert rl.is_limited("ip1") is False
+
+    def test_window_expiry(self, monkeypatch):
+        import web.auth as auth_module
+
+        now = [1000.0]
+        monkeypatch.setattr(auth_module.time, "monotonic", lambda: now[0])
+        rl = self._limiter(max_attempts=2, window_seconds=60)
+        rl.record_failure("ip1")
+        rl.record_failure("ip1")
+        assert rl.is_limited("ip1") is True
+        now[0] += 61.0
+        assert rl.is_limited("ip1") is False
+
+    def test_reset_clears_all_keys(self):
+        rl = self._limiter()
+        for _ in range(3):
+            rl.record_failure("ip1")
+            rl.record_failure("ip2")
+        rl.reset()
+        assert rl.is_limited("ip1") is False
+        assert rl.is_limited("ip2") is False
+
+    def test_module_level_limiters_have_historical_constants(self):
+        import web.auth as auth_module
+
+        assert auth_module._login_limiter.max_attempts == 5
+        assert auth_module._login_limiter.window_seconds == 60
+        assert auth_module._mfa_limiter.max_attempts == 5
+        assert auth_module._mfa_limiter.window_seconds == 300
