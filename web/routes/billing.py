@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.billing import BillingItem, ItemType
+from rentivo.models.billing import BillingItem
 from rentivo.services.audit_serializers import serialize_billing
 from web.analytics import analytics_hash, push_event
 from web.deps import render
 from web.flash import flash
-from web.forms import parse_brl, parse_formset
+from web.forms import parse_line_items
+from web.guards import BillingContext, require_billing
 
 logger = structlog.get_logger(__name__)
 
@@ -57,20 +58,10 @@ async def billing_create(request: Request):
         flash(request, "Nome é obrigatório.", "danger")
         return RedirectResponse("/billings/create", status_code=302)
 
-    items_data = parse_formset(dict(form), "items")
-    items: list[BillingItem] = []
-    for row in items_data:
-        desc = row.get("description", "").strip()
-        if not desc:
-            continue
-        try:
-            item_type = ItemType(row.get("item_type", "fixed"))
-        except ValueError:
-            item_type = ItemType.FIXED
-        amount = 0
-        if item_type == ItemType.FIXED:
-            amount = parse_brl(row.get("amount", "")) or 0
-        items.append(BillingItem(description=desc, amount=amount, item_type=item_type))
+    items: list[BillingItem] = [
+        BillingItem(description=p.description, amount=p.amount, item_type=p.item_type)
+        for p in parse_line_items(dict(form), "items", amount_only_for_fixed=True)
+    ]
 
     if not items:
         logger.warning("billing_create_rejected", reason="no_items")
@@ -125,26 +116,13 @@ async def billing_create(request: Request):
 
 
 @router.get("/{billing_uuid}")
-async def billing_detail(request: Request, billing_uuid: str):
-    billing_service = request.state.services.billing
+async def billing_detail(request: Request, ctx: BillingContext = Depends(require_billing("view"))):
+    billing = ctx.billing
     bill_service = request.state.services.bill
     auth_service = request.state.services.authorization
 
-    billing = billing_service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        logger.warning("billing_not_found", billing_uuid=billing_uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_view_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    role = auth_service.get_role_for_billing(user_id, billing)
-
     if billing.id is None:
-        logger.error("billing_missing_id", billing_uuid=billing_uuid)
+        logger.error("billing_missing_id", billing_uuid=billing.uuid)
         flash(request, "Cobrança inválida.", "danger")
         return RedirectResponse("/", status_code=302)
 
@@ -153,7 +131,9 @@ async def billing_detail(request: Request, billing_uuid: str):
     # Load user's orgs for transfer dropdown
     org_service = request.state.services.organization
     user_orgs = (
-        org_service.list_user_organizations(user_id) if auth_service.can_transfer_billing(user_id, billing) else []
+        org_service.list_user_organizations(ctx.user_id)
+        if auth_service.can_transfer_billing(ctx.user_id, billing)
+        else []
     )
 
     pix_service = request.state.services.pix
@@ -165,7 +145,7 @@ async def billing_detail(request: Request, billing_uuid: str):
         {
             "billing": billing,
             "bills": bills,
-            "role": role,
+            "role": ctx.role,
             "user_orgs": user_orgs,
             "pix_needs_setup": pix_needs_setup,
         },
@@ -173,34 +153,14 @@ async def billing_detail(request: Request, billing_uuid: str):
 
 
 @router.get("/{billing_uuid}/edit")
-async def billing_edit_form(request: Request, billing_uuid: str):
-    service = request.state.services.billing
-    auth_service = request.state.services.authorization
-    billing = service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        logger.warning("billing_not_found", billing_uuid=billing_uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-    user_id = request.session.get("user_id")
-    if not auth_service.can_edit_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
-    return render(request, "billing/edit.html", {"billing": billing})
+async def billing_edit_form(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
+    return render(request, "billing/edit.html", {"billing": ctx.billing})
 
 
 @router.post("/{billing_uuid}/edit")
-async def billing_edit(request: Request, billing_uuid: str):
+async def billing_edit(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
+    billing = ctx.billing
     service = request.state.services.billing
-    auth_service = request.state.services.authorization
-    billing = service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        logger.warning("billing_not_found", billing_uuid=billing_uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-    user_id = request.session.get("user_id")
-    if not auth_service.can_edit_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     previous_state = serialize_billing(billing)
 
@@ -211,32 +171,22 @@ async def billing_edit(request: Request, billing_uuid: str):
     billing.pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     billing.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
 
-    items_data = parse_formset(dict(form), "items")
-    items: list[BillingItem] = []
-    for row in items_data:
-        desc = row.get("description", "").strip()
-        if not desc:
-            continue
-        try:
-            item_type = ItemType(row.get("item_type", "fixed"))
-        except ValueError:
-            item_type = ItemType.FIXED
-        amount = 0
-        if item_type == ItemType.FIXED:
-            amount = parse_brl(row.get("amount", "")) or 0
-        items.append(BillingItem(description=desc, amount=amount, item_type=item_type))
+    items: list[BillingItem] = [
+        BillingItem(description=p.description, amount=p.amount, item_type=p.item_type)
+        for p in parse_line_items(dict(form), "items", amount_only_for_fixed=True)
+    ]
 
     if not items:
-        logger.warning("billing_edit_rejected", billing_uuid=billing_uuid, reason="no_items")
+        logger.warning("billing_edit_rejected", billing_uuid=billing.uuid, reason="no_items")
         flash(request, "A cobrança precisa de pelo menos um item.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}/edit", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}/edit", status_code=302)
 
     billing.items = items
     try:
         updated = service.update_billing(billing)
     except ValueError as e:
         flash(request, str(e), "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}/edit", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}/edit", status_code=302)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -251,49 +201,42 @@ async def billing_edit(request: Request, billing_uuid: str):
 
     flash(request, "Cobrança atualizada com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_edited", "billing_uuid_hash": analytics_hash(updated.uuid)})
-    return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+    return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
 
 
 @router.post("/{billing_uuid}/transfer")
-async def billing_transfer(request: Request, billing_uuid: str):
+async def billing_transfer(request: Request, ctx: BillingContext = Depends(require_billing("transfer"))):
+    billing = ctx.billing
     billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-    billing = billing_service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-    user_id = request.session.get("user_id")
-    if not auth_service.can_transfer_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+
     form = await request.form()
     org_id_raw = str(form.get("organization_id", "")).strip()
     if not org_id_raw:
         flash(request, "Selecione uma organização.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
     try:
         org_id = int(org_id_raw)
     except ValueError:
         flash(request, "Organização inválida.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
 
     org_service = request.state.services.organization
-    if org_service.get_member(org_id, user_id) is None:
+    if org_service.get_member(org_id, ctx.user_id) is None:
         logger.warning(
             "billing_transfer_rejected",
-            billing_uuid=billing_uuid,
+            billing_uuid=billing.uuid,
             org_id=org_id,
             reason="not_member",
         )
         flash(request, "Você não é membro dessa organização.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
 
     previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
         billing_service.transfer_to_organization(billing.id, org_id)
     except ValueError as e:
         flash(request, str(e), "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -310,32 +253,22 @@ async def billing_transfer(request: Request, billing_uuid: str):
         billing=billing,
         previous_owner=previous_owner,
         new_org_id=org_id,
-        actor_user_id=user_id,
+        actor_user_id=ctx.user_id,
         actor_email=request.session.get("email", ""),
     )
 
     flash(request, "Cobrança transferida com sucesso!", "success")
-    push_event(request, {"event": "rentivo_billing_transferred", "billing_uuid_hash": analytics_hash(billing_uuid)})
-    return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+    push_event(request, {"event": "rentivo_billing_transferred", "billing_uuid_hash": analytics_hash(billing.uuid)})
+    return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
 
 
 @router.post("/{billing_uuid}/delete")
-async def billing_delete(request: Request, billing_uuid: str):
+async def billing_delete(request: Request, ctx: BillingContext = Depends(require_billing("delete"))):
+    billing = ctx.billing
     service = request.state.services.billing
-    auth_service = request.state.services.authorization
-    billing = service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        logger.warning("billing_not_found", billing_uuid=billing_uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_delete_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     if billing.id is None:
-        logger.error("billing_missing_id", billing_uuid=billing_uuid)
+        logger.error("billing_missing_id", billing_uuid=billing.uuid)
         flash(request, "Cobrança inválida.", "danger")
         return RedirectResponse("/", status_code=302)
     previous_state = serialize_billing(billing)
@@ -344,7 +277,7 @@ async def billing_delete(request: Request, billing_uuid: str):
     cleanup.enqueue_billing_delete_cascade(
         billing,
         source="web",
-        actor_id=user_id,
+        actor_id=ctx.user_id,
         actor_username=request.session.get("email", ""),
     )
 
@@ -361,5 +294,5 @@ async def billing_delete(request: Request, billing_uuid: str):
     )
 
     flash(request, f"Cobrança '{billing.name}' excluída.", "success")
-    push_event(request, {"event": "rentivo_billing_deleted", "billing_uuid_hash": analytics_hash(billing_uuid)})
+    push_event(request, {"event": "rentivo_billing_deleted", "billing_uuid_hash": analytics_hash(billing.uuid)})
     return RedirectResponse("/", status_code=302)
