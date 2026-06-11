@@ -42,10 +42,10 @@ class TestInviteService:
             self.service.send_invite(1, "bob@example.com", "viewer", 1)
 
     def test_accept_invite(self):
-        self.mock_invite_repo.get_by_uuid.return_value = Invite(
-            id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending"
-        )
-        self.service.accept_invite("abc", 2)
+        invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
+        self.mock_invite_repo.get_by_uuid.return_value = invite
+        result = self.service.accept_invite("abc", 2)
+        assert result is invite
         self.mock_org_repo.add_member.assert_called_once_with(1, 2, "viewer")
         self.mock_invite_repo.update_status.assert_called_once_with(1, "accepted")
 
@@ -69,10 +69,10 @@ class TestInviteService:
             self.service.accept_invite("abc", 2)
 
     def test_decline_invite(self):
-        self.mock_invite_repo.get_by_uuid.return_value = Invite(
-            id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending"
-        )
-        self.service.decline_invite("abc", 2)
+        invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
+        self.mock_invite_repo.get_by_uuid.return_value = invite
+        result = self.service.decline_invite("abc", 2)
+        assert result is invite
         self.mock_invite_repo.update_status.assert_called_once_with(1, "declined")
 
     def test_decline_invite_wrong_user(self):

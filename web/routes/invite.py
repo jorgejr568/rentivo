@@ -27,9 +27,8 @@ async def invite_list(request: Request):
 async def invite_accept(request: Request, invite_uuid: str):
     user_id = request.session.get("user_id")
     service = request.state.services.invite
-    invite_record = service.invite_repo.get_by_uuid(invite_uuid)
     try:
-        service.accept_invite(invite_uuid, user_id)
+        invite = service.accept_invite(invite_uuid, user_id)
     except ValueError as e:
         logger.warning("invite_accept_failed", invite_uuid=invite_uuid, error=str(e))
         flash(request, str(e), "danger")
@@ -45,20 +44,19 @@ async def invite_accept(request: Request, invite_uuid: str):
         new_state={"status": "accepted"},
     )
 
-    if invite_record is not None:
-        request.state.services.job.enqueue_for(
-            request.state.actor,
-            "email.send",
-            {
-                "event": "invite_responded",
-                "to_email": invite_record.invited_by_email,
-                "ctx": {
-                    "invitee_email": invite_record.invited_email,
-                    "org_name": invite_record.organization_name,
-                    "response_label": "aceitou",
-                },
+    request.state.services.job.enqueue_for(
+        request.state.actor,
+        "email.send",
+        {
+            "event": "invite_responded",
+            "to_email": invite.invited_by_email,
+            "ctx": {
+                "invitee_email": invite.invited_email,
+                "org_name": invite.organization_name,
+                "response_label": "aceitou",
             },
-        )
+        },
+    )
 
     # Check if user now needs MFA setup (accepted invite from enforcing org)
     mfa_service = request.state.services.mfa
@@ -74,9 +72,8 @@ async def invite_accept(request: Request, invite_uuid: str):
 async def invite_decline(request: Request, invite_uuid: str):
     user_id = request.session.get("user_id")
     service = request.state.services.invite
-    invite_record = service.invite_repo.get_by_uuid(invite_uuid)
     try:
-        service.decline_invite(invite_uuid, user_id)
+        invite = service.decline_invite(invite_uuid, user_id)
     except ValueError as e:
         logger.warning("invite_decline_failed", invite_uuid=invite_uuid, error=str(e))
         flash(request, str(e), "danger")
@@ -92,20 +89,19 @@ async def invite_decline(request: Request, invite_uuid: str):
         new_state={"status": "declined"},
     )
 
-    if invite_record is not None:
-        request.state.services.job.enqueue_for(
-            request.state.actor,
-            "email.send",
-            {
-                "event": "invite_responded",
-                "to_email": invite_record.invited_by_email,
-                "ctx": {
-                    "invitee_email": invite_record.invited_email,
-                    "org_name": invite_record.organization_name,
-                    "response_label": "recusou",
-                },
+    request.state.services.job.enqueue_for(
+        request.state.actor,
+        "email.send",
+        {
+            "event": "invite_responded",
+            "to_email": invite.invited_by_email,
+            "ctx": {
+                "invitee_email": invite.invited_email,
+                "org_name": invite.organization_name,
+                "response_label": "recusou",
             },
-        )
+        },
+    )
 
     flash(request, "Convite recusado.", "info")
     push_event(request, {"event": "rentivo_invite_declined"})
