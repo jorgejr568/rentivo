@@ -21,6 +21,7 @@ from rentivo.models.mfa import UserPasskey
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
+from web.context import actor_for
 from web.deps import render
 from web.flash import flash
 
@@ -473,13 +474,7 @@ async def passkey_auth_complete(request: Request):
     if passkey is None or passkey.user_id != user_id:
         return JSONResponse({"error": "Passkey não encontrada."}, status_code=400)
 
-    # During MFA verification the session has mfa_pending_user_id but NOT
-    # user_id - request.state.actor is ANON_ACTOR. Construct a local actor
-    # so the audit rows in this handler record who attempted / completed
-    # the verification.
-    from web.context import WebActor
-
-    verify_actor = WebActor(user_id=user_id, email=email or "")
+    verify_actor = actor_for(user_id, email)
 
     try:
         verification = webauthn.verify_authentication_response(

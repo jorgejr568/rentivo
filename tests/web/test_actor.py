@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from web.context import ANON_ACTOR, WebActor, actor_from_session
+from web.context import ANON_ACTOR, WebActor, actor_for, actor_from_session
 
 
 class TestWebActor:
@@ -48,3 +48,16 @@ class TestActorOnRequestState:
         # attaches request.state.actor before doing so.
         response = client.get("/login")
         assert response.status_code in (200, 302)
+
+
+class TestActorFor:
+    def test_builds_web_actor_from_id_and_email(self):
+        assert actor_for(7, "x@y.z") == WebActor(user_id=7, email="x@y.z")
+
+    def test_none_email_collapses_to_empty_string(self):
+        # mfa_pending_email can be absent from the session — the actor email
+        # must still be a str (AuditService expects actor_username: str).
+        assert actor_for(7, None) == WebActor(user_id=7, email="")
+
+    def test_source_defaults_to_web(self):
+        assert actor_for(7, "x@y.z").source == "web"

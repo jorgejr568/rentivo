@@ -12,7 +12,7 @@ from rentivo.models.user import User
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
-from web.context import WebActor
+from web.context import actor_for
 from web.deps import render
 
 logger = structlog.get_logger(__name__)
@@ -85,7 +85,7 @@ def _signup_google_user(request: Request, email: str) -> User | None:
         # get_by_email miss and the insert. Re-fetch and log them in.
         return user_service.get_by_email(email)
 
-    signup_actor = WebActor(user_id=user.id, email=user.email)
+    signup_actor = actor_for(user.id, user.email)
     logger.info("google_user_signed_up", email=user.email)
 
     request.state.services.audit.safe_log_for(
@@ -121,7 +121,7 @@ def _finish_login(request: Request, user: User) -> RedirectResponse:
     client_ip = request.client.host if request.client else "unknown"
     mfa_service = request.state.services.mfa
     audit = request.state.services.audit
-    login_actor = WebActor(user_id=user.id, email=user.email)
+    login_actor = actor_for(user.id, user.email)
 
     if mfa_service.has_any_mfa(user.id):
         request.session.clear()

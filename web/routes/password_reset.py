@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from web.analytics import push_event
+from web.context import actor_for
 from web.deps import render
 from web.flash import flash
 
@@ -82,13 +83,8 @@ async def reset_password(request: Request):
     if user_id is None:
         return render(request, "reset_password.html", {"invalid": True})
 
-    # /reset-password is public, so request.state.actor is ANON_ACTOR. Build
-    # a local WebActor from the just-resolved user so the audit row and the
-    # confirmation-email job record who completed the reset.
-    from web.context import WebActor
-
     user = request.state.services.user.get_by_id(user_id)
-    reset_actor = WebActor(user_id=user_id, email=user.email if user else "")
+    reset_actor = actor_for(user_id, user.email if user else None)
 
     if user is not None:
         request.state.services.job.enqueue_for(

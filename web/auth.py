@@ -10,6 +10,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.settings import settings
 from web.analytics import push_event
+from web.context import actor_for
 from web.deps import render
 
 logger = structlog.get_logger(__name__)
@@ -102,12 +103,7 @@ async def signup(request: Request):
     request.session["email"] = user.email
     logger.info("user_signed_up", email=user.email)
 
-    # /signup is public, so request.state.actor is ANON_ACTOR. Build a local
-    # WebActor from the just-created user so both the audit row and the
-    # welcome email job record who completed the signup.
-    from web.context import WebActor
-
-    signup_actor = WebActor(user_id=user.id, email=user.email)
+    signup_actor = actor_for(user.id, user.email)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -188,11 +184,7 @@ async def login(request: Request):
     mfa_service = request.state.services.mfa
     has_mfa = mfa_service.has_any_mfa(user.id)
 
-    # /login is public, so request.state.actor is ANON_ACTOR. Build a local
-    # WebActor from the just-authenticated user for the post-auth audit rows.
-    from web.context import WebActor
-
-    login_actor = WebActor(user_id=user.id, email=user.email)
+    login_actor = actor_for(user.id, user.email)
 
     if has_mfa:
         # Don't fully authenticate yet — redirect to MFA verification
@@ -295,11 +287,7 @@ async def mfa_verify(request: Request):
     else:
         verified = mfa_service.verify_totp(user_id, code)
 
-    # During MFA verification the session has mfa_pending_user_id but NOT
-    # user_id - request.state.actor is ANON_ACTOR. Build a local actor.
-    from web.context import WebActor
-
-    verify_actor = WebActor(user_id=user_id, email=email or "")
+    verify_actor = actor_for(user_id, email)
 
     if not verified:
         _mfa_limiter.record_failure(client_ip)
