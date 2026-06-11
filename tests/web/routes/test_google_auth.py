@@ -236,6 +236,26 @@ class TestGoogleCallbackNewUser:
         assert get_audit_logs(test_engine, "user.signup") == []
         _ = raced_user  # referenced to silence unused-variable linters
 
+    def test_signup_race_fallback_get_returns_none_shows_error(self, client, google_enabled, monkeypatch):
+        """Degenerate race: register raises AND the fallback get_by_email also returns None.
+
+        This covers the ``if user is None: return render(...)`` branch on line 71
+        of web/routes/google_auth.py (_signup_google_user returns None).
+        """
+        # All get_by_email calls return None (first check + fallback inside _signup_google_user).
+        monkeypatch.setattr(UserService, "get_by_email", lambda self, email: None)
+        # register_google_user raises ValueError so the except branch is entered.
+        monkeypatch.setattr(
+            UserService, "register_google_user", lambda self, email: (_ for _ in ()).throw(ValueError("dup"))
+        )
+
+        _stub_exchange(monkeypatch, GoogleUserInfo(sub="g-1", email="ghost@example.com", email_verified=True))
+        state = _start_flow(client)
+        response = client.get(f"/auth/google/callback?code=c&state={state}", follow_redirects=False)
+
+        assert response.status_code == 200
+        assert "Não foi possível entrar com o Google" in response.text
+
 
 class TestGoogleCallbackExistingUser:
     def test_logs_in_existing_user_without_signup(self, client, google_enabled, monkeypatch, test_engine):
