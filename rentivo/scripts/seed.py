@@ -29,7 +29,6 @@ from rentivo.repositories.factory import (
 )
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_service import BillingService
-from rentivo.services.invite_service import InviteService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.pix_service import PixService
 from rentivo.services.user_service import UserService
@@ -226,22 +225,16 @@ def _create_organization(org_service: OrganizationService, users: list):
     return org
 
 
-def _create_invites(invite_service: InviteService, org, users: list) -> None:
-    """Create a few historical invites (already accepted since users are members).
+def _create_invites(org, users: list) -> None:
+    """Create a few historical invites (accepted + declined) for demo data.
 
-    We use send_invite for users NOT yet members, then accept/decline them.
-    Since all users are already members, we create a couple of extra users
-    just for invite history, or we create invites referencing the existing flow.
-
-    Actually, since all users are already members, we'll create invites
-    directly via the repo to avoid service-level validation.
+    All seeded users are already org members, so the invite service would
+    reject these as duplicates. We write the records straight through the
+    repository to bypass that membership check and build realistic history.
     """
     console.print("[cyan]Creating invite history...[/cyan]")
 
-    # The invite service checks membership, so we'll create invite records
-    # directly via the repository for historical records.
     from rentivo.models.invite import Invite, InviteStatus
-    from rentivo.repositories.factory import get_invite_repository
 
     invite_repo = get_invite_repository()
     main_user = users[0]
@@ -433,7 +426,6 @@ def main() -> None:
     billing_repo = get_billing_repository()
     bill_repo = get_bill_repository()
     org_repo = get_organization_repository()
-    invite_repo = get_invite_repository()
     receipt_repo = get_receipt_repository()
     storage = get_storage()
 
@@ -442,12 +434,11 @@ def main() -> None:
     pix_service = PixService(user_repo, org_repo)
     bill_service = BillService(bill_repo, storage, receipt_repo, pix_service=pix_service)
     org_service = OrganizationService(org_repo)
-    invite_service = InviteService(invite_repo, org_repo, user_repo)
 
     # --- Seed ---
     users = _create_users(user_service)
     org = _create_organization(org_service, users)
-    _create_invites(invite_service, org, users)
+    _create_invites(org, users)
     billings = _create_billings(billing_service, users[0], org)
     total_bills = _create_bills(bill_service, billings)
 
