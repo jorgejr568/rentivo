@@ -182,7 +182,7 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 - **Suffering** — `form_submit_error`, `form_field_error`, `form_abandon`, `rage_click`, `js_error`, `promise_rejection`.
 - **Issues** — `network_error`, `file_upload_error`.
 - **Waiting** — `web_vital` (LCP/INP/CLS/TTFB/FCP), `slow_page`, `interaction_slow`, `layout_shift_bad`, `long_task`, `slow_form_submit`.
-- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`.
+- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
 
 ### Privacy
 
@@ -259,6 +259,16 @@ All dispatched via `EmailService.safe_send_*` (swallow failures, never block the
 - `member_changed` — to the affected user when their role changes in an org (`web/routes/organization.py:member_change_role`).
 - `billing_transferred` — fires from `web/routes/billing.py` transfer handler. Notifies the previous user-owner (if any) and every `admin`/`owner` member of the destination organization.
 
+## Tenant Communications
+
+- Billings carry **recipients** (`billing_recipients`, encrypted `name` + `email`). Multiple per billing; each send goes to one recipient — never CC. Managed via a formset on the billing edit page (`RecipientService.replace_for_billing`).
+- **Templates** (`communication_templates`) are polymorphic-owned (`owner_type` ∈ `user` | `organization` | `billing`) per `comm_type`, unique on `(owner_type, owner_id, comm_type)` (`uq_comm_template_owner`). `CommunicationService.resolve_template` resolves most-specific-first: billing → billing owner (user/org) → system default (`rentivo/communications/defaults.py`, seeded from the landlord's PT-BR copy; the synthetic fallback uses `owner_type='system'` / `owner_id=0` and is never persisted). Encrypted `subject` + `body_markdown`.
+- **Bodies are Markdown**, rendered by `rentivo/communications/render.py:render_markdown` with `markdown-it-py` and raw HTML disabled (`MarkdownIt("commonmark", {"html": False})`) — `<tag>` in the source is escaped to inert text, so user input can never inject live HTML. Placeholders: `{{tenant_name}}` (recipient name), `{{unit}}` (billing name), `{{month}}` (e.g. "maio de 2026", via `month_long`), `{{due_date}}`, `{{total}}` (BRL). Substituted at send time and snapshotted onto the communication row; unknown tokens are left verbatim.
+- **Sends** are manual: compose/preview on the bill page (`web/routes/communication.py`, router prefix `/billings/{billing_uuid}/bills/{bill_uuid}/communications`: `GET /compose`, `POST /preview`, `POST /send`), then one `communication.send` job per recipient. The handler (`rentivo/jobs/handlers/communication.py`) renders the stored row, attaches the bill PDF, sends one email, and marks the row `sent`; the registered `register_on_fail` dead-letter hook marks it `failed`.
+- **Communications** (`communications`, the sent log; encrypted `recipient_name` / `recipient_email` / `subject` / `body_markdown`) are listed on the bill page with status (`queued` / `sent` / `failed`). Audit events: `communication.sent`, `communication.template_saved`, `billing.recipients_updated`. GTM: `rentivo_communication_sent`.
+- Email attachments: `EmailAttachment` on `EmailMessage`; `rentivo/email/mime.py:build_mime` is shared by the local backend and SES. SES switches to `send_raw_email` only when attachments are present, preserving `ConfigurationSetName`.
+- Dependency: `markdown-it-py` (core).
+
 ## Field Encryption (KMS)
 
 Selected PII columns are encrypted at rest behind a pluggable backend abstraction.
@@ -274,6 +284,9 @@ Selected PII columns are encrypted at rest behind a pluggable backend abstractio
 | `bills` | `notes` |
 | `bill_line_items` | `description` |
 | `receipts` | `filename` |
+| `billing_recipients` | `name`, `email` |
+| `communication_templates` | `subject`, `body_markdown` |
+| `communications` | `recipient_name`, `recipient_email`, `subject`, `body_markdown` |
 | `user_totp` | `secret` |
 
 Other sensitive values (`password_hash`, `*_token_hash`, `*_code_hash`, `device_hash`) are already one-way hashes; passkey columns are public-by-design WebAuthn material; `user_passkeys.credential_id` is looked up by value (`WHERE = ?`) and requires a deterministic-cipher + blind-index design tracked under future work. See `docs/superpowers/plans/2026-05-03-kms-encryption.md`, `docs/superpowers/plans/2026-05-04-extend-kms-encryption.md`, and `docs/superpowers/plans/2026-05-12-encrypt-user-email.md` for the full rationale.
