@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 
 import structlog
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
@@ -15,7 +15,8 @@ from rentivo.services.audit_serializers import serialize_bill
 from web.analytics import analytics_hash, push_event
 from web.deps import render
 from web.flash import flash
-from web.forms import parse_brl, parse_formset, safe_redirect_path
+from web.forms import parse_brl, parse_extras, parse_line_items, safe_redirect_path
+from web.guards import BillContext, BillingContext, require_bill, require_billing
 
 logger = structlog.get_logger(__name__)
 
@@ -23,44 +24,14 @@ router = APIRouter(prefix="/billings/{billing_uuid}/bills")
 
 
 @router.get("/generate")
-async def bill_generate_form(request: Request, billing_uuid: str):
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-    billing = billing_service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        logger.warning("billing_not_found", billing_uuid=billing_uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
-    if request.state.services.pix.billing_needs_setup(billing):
-        flash(
-            request,
-            "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas.",
-            "warning",
-        )
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
-    return render(request, "bill/generate.html", {"billing": billing})
+async def bill_generate_form(request: Request, ctx: BillingContext = Depends(require_billing("manage", pix=True))):
+    return render(request, "bill/generate.html", {"billing": ctx.billing})
 
 
 @router.post("/generate")
-async def bill_generate(request: Request, billing_uuid: str):
-    billing_service = request.state.services.billing
+async def bill_generate(request: Request, ctx: BillingContext = Depends(require_billing("manage", pix=True))):
+    billing = ctx.billing
     bill_service = request.state.services.bill
-    auth_service = request.state.services.authorization
-
-    billing = billing_service.get_billing_by_uuid(billing_uuid)
-    if not billing:
-        logger.warning("billing_not_found", billing_uuid=billing_uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     form = await request.form()
     reference_month = str(form.get("reference_month", "")).strip()
@@ -70,16 +41,7 @@ async def bill_generate(request: Request, billing_uuid: str):
     if not reference_month:
         logger.warning("bill_generate_rejected", reason="empty_reference_month")
         flash(request, "Mês de referência é obrigatório.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}/bills/generate", status_code=302)
-
-    if request.state.services.pix.billing_needs_setup(billing):
-        logger.warning("bill_generate_rejected", billing_uuid=billing_uuid, reason="pix_not_configured")
-        flash(
-            request,
-            "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas.",
-            "warning",
-        )
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}/bills/generate", status_code=302)
 
     # Parse variable amounts
     variable_amounts: dict[int, int] = {}
@@ -89,14 +51,7 @@ async def bill_generate(request: Request, billing_uuid: str):
             if item.id is not None:
                 variable_amounts[item.id] = parse_brl(val) or 0
 
-    # Parse extras
-    extras_data = parse_formset(dict(form), "extras")
-    extras: list[tuple[str, int]] = []
-    for row in extras_data:
-        desc = row.get("description", "").strip()
-        amount = parse_brl(row.get("amount", ""))
-        if desc and amount and amount > 0:
-            extras.append((desc, amount))
+    extras = parse_extras(dict(form))
 
     bill = bill_service.generate_bill(
         billing=billing,
@@ -153,7 +108,7 @@ async def bill_generate(request: Request, billing_uuid: str):
                 "content_type": receipt.content_type,
                 "file_size": receipt.file_size,
                 "bill_uuid": bill.uuid,
-                "billing_uuid": billing_uuid,
+                "billing_uuid": billing.uuid,
             },
         )
 
@@ -170,105 +125,36 @@ async def bill_generate(request: Request, billing_uuid: str):
             "receipt_count": len(attached_receipts),
         },
     )
-    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
+    return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.get("/{bill_uuid}")
-async def bill_detail(request: Request, billing_uuid: str, bill_uuid: str):
+async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill("view"))):
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_view_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    role = auth_service.get_role_for_billing(user_id, billing)
-    receipts = bill_service.list_receipts(bill.id) if bill.id else []
+    receipts = bill_service.list_receipts(ctx.bill.id) if ctx.bill.id else []
     return render(
         request,
         "bill/detail.html",
         {
-            "bill": bill,
-            "billing": billing,
-            "role": role,
+            "bill": ctx.bill,
+            "billing": ctx.billing,
+            "role": ctx.role,
             "receipts": receipts,
         },
     )
 
 
 @router.get("/{bill_uuid}/edit")
-async def bill_edit_form(request: Request, billing_uuid: str, bill_uuid: str):
+async def bill_edit_form(request: Request, ctx: BillContext = Depends(require_bill("manage"))):
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing or billing.uuid != billing_uuid:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        logger.warning("bill_edit_access_denied", bill_uuid=bill_uuid, user_id=user_id)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    receipts = bill_service.list_receipts(bill.id) if bill.id else []
-    return render(request, "bill/edit.html", {"bill": bill, "billing": billing, "receipts": receipts})
+    receipts = bill_service.list_receipts(ctx.bill.id) if ctx.bill.id else []
+    return render(request, "bill/edit.html", {"bill": ctx.bill, "billing": ctx.billing, "receipts": receipts})
 
 
 @router.post("/{bill_uuid}/edit")
-async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
+async def bill_edit(request: Request, ctx: BillContext = Depends(require_bill("manage", pix=True))):
+    bill, billing = ctx.bill, ctx.billing
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing or billing.uuid != billing_uuid:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        logger.warning("bill_edit_access_denied", bill_uuid=bill_uuid, user_id=user_id)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    if request.state.services.pix.billing_needs_setup(billing):
-        flash(
-            request,
-            "Configure a chave PIX, o nome e a cidade do recebedor antes de editar esta fatura.",
-            "warning",
-        )
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     previous_state = serialize_bill(bill)
 
@@ -276,40 +162,26 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
     due_date = str(form.get("due_date", "")).strip()
     notes = str(form.get("notes", "")).strip()
 
-    items_data = parse_formset(dict(form), "items")
-    line_items: list[BillLineItem] = []
-    for i, row in enumerate(items_data):
-        desc = row.get("description", "").strip()
-        if not desc:
-            continue
-        amount = parse_brl(row.get("amount", "")) or 0
-        try:
-            item_type = ItemType(row.get("item_type", "fixed"))
-        except ValueError:
-            item_type = ItemType.FIXED
+    line_items: list[BillLineItem] = [
+        BillLineItem(
+            description=p.description,
+            amount=p.amount,
+            item_type=p.item_type,
+            sort_order=p.index,
+        )
+        for p in parse_line_items(dict(form), "items")
+    ]
+
+    # Append new extras
+    for description, amount in parse_extras(dict(form)):
         line_items.append(
             BillLineItem(
-                description=desc,
+                description=description,
                 amount=amount,
-                item_type=item_type,
-                sort_order=i,
+                item_type=ItemType.EXTRA,
+                sort_order=len(line_items),
             )
         )
-
-    # Parse new extras
-    extras_data = parse_formset(dict(form), "extras")
-    for row in extras_data:
-        desc = row.get("description", "").strip()
-        amount = parse_brl(row.get("amount", ""))
-        if desc and amount and amount > 0:
-            line_items.append(
-                BillLineItem(
-                    description=desc,
-                    amount=amount,
-                    item_type=ItemType.EXTRA,
-                    sort_order=len(line_items),
-                )
-            )
 
     bill = bill_service.update_bill(
         bill=bill,
@@ -332,41 +204,14 @@ async def bill_edit(request: Request, billing_uuid: str, bill_uuid: str):
     )
 
     flash(request, "Fatura atualizada. O PDF será atualizado em segundo plano.", "success")
-    push_event(request, {"event": "rentivo_bill_edited", "bill_uuid_hash": analytics_hash(bill_uuid)})
-    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
+    push_event(request, {"event": "rentivo_bill_edited", "bill_uuid_hash": analytics_hash(bill.uuid)})
+    return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.post("/{bill_uuid}/regenerate-pdf")
-async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: str):
+async def bill_regenerate_pdf(request: Request, ctx: BillContext = Depends(require_bill("manage", pix=True))):
+    bill, billing = ctx.bill, ctx.billing
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing or billing.uuid != billing_uuid:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        logger.warning("bill_regenerate_access_denied", bill_uuid=bill_uuid, user_id=user_id)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    if request.state.services.pix.billing_needs_setup(billing):
-        flash(
-            request,
-            "Configure a chave PIX, o nome e a cidade do recebedor antes de regenerar o PDF.",
-            "warning",
-        )
-        return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill_uuid}", status_code=302)
 
     old_render_status = bill.pdf_render_status
     bill_service.regenerate_pdf(bill, billing, actor=request.state.actor)
@@ -387,31 +232,14 @@ async def bill_regenerate_pdf(request: Request, billing_uuid: str, bill_uuid: st
         "Regeneração do PDF iniciada. O download estará disponível em alguns segundos.",
         "success",
     )
-    push_event(request, {"event": "rentivo_bill_regenerated", "bill_uuid_hash": analytics_hash(bill_uuid)})
-    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
+    push_event(request, {"event": "rentivo_bill_regenerated", "bill_uuid_hash": analytics_hash(bill.uuid)})
+    return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.post("/{bill_uuid}/change-status")
-async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str):
+async def bill_change_status(request: Request, ctx: BillContext = Depends(require_bill("manage"))):
+    bill, billing = ctx.bill, ctx.billing
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     form = await request.form()
     new_status = str(form.get("status", "")).strip()
@@ -421,7 +249,7 @@ async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str
         bill_service.change_status(bill, new_status)
     except ValueError:
         flash(request, "Status inválido.", "danger")
-        return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill_uuid}", status_code=302)
+        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -439,39 +267,20 @@ async def bill_change_status(request: Request, billing_uuid: str, bill_uuid: str
         request,
         {
             "event": "rentivo_bill_status_changed",
-            "bill_uuid_hash": analytics_hash(bill_uuid),
+            "bill_uuid_hash": analytics_hash(bill.uuid),
             "new_status": new_status,
         },
     )
-    return RedirectResponse(f"/billings/{billing_uuid}/bills/{bill.uuid}", status_code=302)
+    return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
 @router.post("/{bill_uuid}/delete")
-async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
+async def bill_delete(request: Request, ctx: BillContext = Depends(require_bill("delete"))):
+    bill, billing = ctx.bill, ctx.billing
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing or billing.uuid != billing_uuid:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_delete_billing(user_id, billing):
-        logger.warning("bill_delete_access_denied", bill_uuid=bill_uuid, user_id=user_id)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
 
     if bill.id is None:
-        logger.error("bill_missing_id", bill_uuid=bill_uuid)
+        logger.error("bill_missing_id", bill_uuid=bill.uuid)
         flash(request, "Fatura inválida.", "danger")
         return RedirectResponse("/", status_code=302)
     previous_state = serialize_bill(bill)
@@ -480,7 +289,7 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     cleanup.enqueue_bill_delete_cascade(
         bill,
         source="web",
-        actor_id=user_id,
+        actor_id=ctx.user_id,
         actor_username=request.session.get("email", ""),
     )
 
@@ -497,31 +306,18 @@ async def bill_delete(request: Request, billing_uuid: str, bill_uuid: str):
     )
 
     flash(request, "Fatura excluída.", "success")
-    push_event(request, {"event": "rentivo_bill_deleted", "bill_uuid_hash": analytics_hash(bill_uuid)})
-    return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
+    push_event(request, {"event": "rentivo_bill_deleted", "bill_uuid_hash": analytics_hash(bill.uuid)})
+    return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
 
 
 @router.get("/{bill_uuid}/invoice")
-async def bill_invoice(request: Request, billing_uuid: str, bill_uuid: str):
+async def bill_invoice(request: Request, ctx: BillContext = Depends(require_bill("view"))):
+    bill = ctx.bill
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
 
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill or not bill.pdf_path:
-        logger.warning("bill_no_pdf", bill_uuid=bill_uuid)
+    if not bill.pdf_path:
+        logger.warning("bill_no_pdf", bill_uuid=bill.uuid)
         flash(request, "Fatura sem PDF.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_view_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
         return RedirectResponse("/", status_code=302)
 
     logger.debug("bill_pdf_path", storage_key=bill.pdf_path)
@@ -536,29 +332,12 @@ async def bill_invoice(request: Request, billing_uuid: str, bill_uuid: str):
 
 
 @router.get("/{bill_uuid}/receipts/{receipt_uuid}")
-async def receipt_view(request: Request, billing_uuid: str, bill_uuid: str, receipt_uuid: str):
+async def receipt_view(request: Request, receipt_uuid: str, ctx: BillContext = Depends(require_bill("view"))):
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
 
     receipt = bill_service.get_receipt_by_uuid(receipt_uuid)
-    if not receipt or not receipt.storage_key:
+    if not receipt or not receipt.storage_key or receipt.bill_id != ctx.bill.id:
         flash(request, "Comprovante não encontrado.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    bill = bill_service.get_bill(receipt.bill_id)
-    if not bill or bill.uuid != bill_uuid:
-        flash(request, "Comprovante não encontrado.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing or billing.uuid != billing_uuid:
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_view_billing(user_id, billing):
-        flash(request, "Acesso negado.", "danger")
         return RedirectResponse("/", status_code=302)
 
     url_or_path = bill_service.storage.get_url(receipt.storage_key)
@@ -570,49 +349,22 @@ async def receipt_view(request: Request, billing_uuid: str, bill_uuid: str, rece
 
 
 @router.post("/{bill_uuid}/receipts/upload")
-async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
+async def receipt_upload(request: Request, ctx: BillContext = Depends(require_bill("manage", pix=True))):
+    bill, billing = ctx.bill, ctx.billing
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
 
     form = await request.form()
     redirect_url = safe_redirect_path(
         str(form.get("next", "")),
-        f"/billings/{billing_uuid}/bills/{bill_uuid}/edit",
+        f"/billings/{billing.uuid}/bills/{bill.uuid}/edit",
     )
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing or billing.uuid != billing_uuid:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        logger.warning("receipt_upload_access_denied", bill_uuid=bill_uuid, user_id=user_id)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
 
     uploads = form.getlist("receipt_files")
     valid_uploads = [u for u in uploads if isinstance(u, UploadFile) and u.filename]
     if not valid_uploads:
-        logger.warning("receipt_upload_no_file", bill_uuid=bill_uuid)
+        logger.warning("receipt_upload_no_file", bill_uuid=bill.uuid)
         flash(request, "Nenhum arquivo selecionado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
-
-    if request.state.services.pix.billing_needs_setup(billing):
-        flash(
-            request,
-            "Configure a chave PIX, o nome e a cidade do recebedor antes de anexar comprovantes.",
-            "warning",
-        )
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
 
     attached = 0
     skipped = 0
@@ -655,8 +407,8 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
                 "filename": receipt.filename,
                 "content_type": receipt.content_type,
                 "file_size": receipt.file_size,
-                "bill_uuid": bill_uuid,
-                "billing_uuid": billing_uuid,
+                "bill_uuid": bill.uuid,
+                "billing_uuid": billing.uuid,
             },
         )
 
@@ -675,7 +427,7 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
             request,
             {
                 "event": "rentivo_receipt_uploaded",
-                "bill_uuid_hash": analytics_hash(bill_uuid),
+                "bill_uuid_hash": analytics_hash(bill.uuid),
                 "count": attached,
                 "total_bytes": total_bytes,
             },
@@ -684,34 +436,15 @@ async def receipt_upload(request: Request, billing_uuid: str, bill_uuid: str):
 
 
 @router.post("/{bill_uuid}/receipts/{receipt_uuid}/delete")
-async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, receipt_uuid: str):
+async def receipt_delete(request: Request, receipt_uuid: str, ctx: BillContext = Depends(require_bill("manage"))):
+    bill, billing = ctx.bill, ctx.billing
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
 
     form = await request.form()
     redirect_url = safe_redirect_path(
         str(form.get("next", "")),
-        f"/billings/{billing_uuid}/bills/{bill_uuid}/edit",
+        f"/billings/{billing.uuid}/bills/{bill.uuid}/edit",
     )
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        logger.warning("bill_not_found", bill_uuid=bill_uuid)
-        flash(request, "Fatura não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing or billing.uuid != billing_uuid:
-        logger.warning("billing_not_found_for_bill", billing_id=bill.billing_id)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse("/", status_code=302)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        logger.warning("receipt_delete_access_denied", bill_uuid=bill_uuid, user_id=user_id)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse("/", status_code=302)
 
     receipt = bill_service.get_receipt_by_uuid(receipt_uuid)
     if not receipt or receipt.bill_id != bill.id:
@@ -719,20 +452,12 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
         flash(request, "Comprovante não encontrado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
 
-    if request.state.services.pix.billing_needs_setup(billing):
-        flash(
-            request,
-            "Configure a chave PIX, o nome e a cidade do recebedor antes de remover comprovantes.",
-            "warning",
-        )
-        return RedirectResponse(f"/billings/{billing_uuid}", status_code=302)
-
     previous_state = {
         "filename": receipt.filename,
         "content_type": receipt.content_type,
         "file_size": receipt.file_size,
-        "bill_uuid": bill_uuid,
-        "billing_uuid": billing_uuid,
+        "bill_uuid": bill.uuid,
+        "billing_uuid": billing.uuid,
     }
     bill_service.delete_receipt(receipt, bill, billing, actor=request.state.actor)
 
@@ -740,7 +465,7 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
     cleanup.enqueue_receipt_delete(
         receipt,
         source="web",
-        actor_id=user_id,
+        actor_id=ctx.user_id,
         actor_username=request.session.get("email", ""),
     )
 
@@ -755,33 +480,14 @@ async def receipt_delete(request: Request, billing_uuid: str, bill_uuid: str, re
     )
 
     flash(request, "Comprovante removido. O PDF será atualizado em segundo plano.", "success")
-    push_event(request, {"event": "rentivo_receipt_deleted", "bill_uuid_hash": analytics_hash(bill_uuid)})
+    push_event(request, {"event": "rentivo_receipt_deleted", "bill_uuid_hash": analytics_hash(bill.uuid)})
     return RedirectResponse(redirect_url, status_code=302)
 
 
 @router.post("/{bill_uuid}/receipts/reorder")
-async def receipt_reorder(request: Request, billing_uuid: str, bill_uuid: str):
+async def receipt_reorder(request: Request, ctx: BillContext = Depends(require_bill("manage", json=True))):
+    bill, billing = ctx.bill, ctx.billing
     bill_service = request.state.services.bill
-    billing_service = request.state.services.billing
-    auth_service = request.state.services.authorization
-
-    bill = bill_service.get_bill_by_uuid(bill_uuid)
-    if not bill:
-        return JSONResponse({"error": "Fatura não encontrada."}, status_code=404)
-
-    billing = billing_service.get_billing(bill.billing_id)
-    if not billing:
-        return JSONResponse({"error": "Cobrança não encontrada."}, status_code=404)
-
-    user_id = request.session.get("user_id")
-    if not auth_service.can_manage_bills(user_id, billing):
-        return JSONResponse({"error": "Acesso negado."}, status_code=403)
-
-    if request.state.services.pix.billing_needs_setup(billing):
-        return JSONResponse(
-            {"error": "Configure a chave PIX, o nome e a cidade do recebedor antes de reordenar comprovantes."},
-            status_code=400,
-        )
 
     try:
         body = await request.json()

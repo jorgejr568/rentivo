@@ -211,6 +211,7 @@ class TestBillingDelete:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
 
 class TestBillingAccessDenied:
@@ -218,11 +219,13 @@ class TestBillingAccessDenied:
         billing = _create_other_user_billing(test_engine)
         response = auth_client.get(f"/billings/{billing.uuid}", follow_redirects=False)
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
     def test_edit_form_access_denied(self, auth_client, test_engine):
         billing = _create_other_user_billing(test_engine)
         response = auth_client.get(f"/billings/{billing.uuid}/edit", follow_redirects=False)
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
     def test_edit_post_access_denied(self, auth_client, test_engine, csrf_token):
         billing = _create_other_user_billing(test_engine)
@@ -239,6 +242,7 @@ class TestBillingAccessDenied:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
 
 class TestBillingCreateEdgeCases:
@@ -392,6 +396,7 @@ class TestBillingTransfer:
             follow_redirects=False,
         )
         assert response.status_code == 302
+        assert response.headers["location"] == "/"
 
     def test_transfer_no_org_id(self, auth_client, test_engine, csrf_token):
         billing = create_billing_in_db(test_engine)
