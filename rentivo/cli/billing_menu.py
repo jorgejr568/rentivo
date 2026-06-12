@@ -16,6 +16,15 @@ from rentivo.services.billing_service import BillingService
 console = Console()
 
 
+def _item_choice_label(item: BillingItem) -> str:
+    """Format a billing item as a selectable choice label: 'Aluguel (R$ 100,00)'."""
+    if item.item_type == ItemType.FIXED:
+        value = format_brl(item.amount)
+    else:
+        value = "Variável"
+    return f"{item.description} ({value})"
+
+
 def create_billing_menu(billing_service: BillingService, audit_service: AuditService) -> None:
     console.print()
     console.print("[bold]Nova Cobrança[/bold]", style="cyan")
@@ -254,10 +263,7 @@ def _edit_item(billing, billing_service: BillingService, audit_service: AuditSer
         console.print("[yellow]Nenhum item para editar.[/yellow]")
         return billing
 
-    choices = [
-        f"{item.description} ({format_brl(item.amount) if item.item_type == ItemType.FIXED else 'Variável'})"
-        for item in billing.items
-    ] + ["Voltar"]
+    choices = [_item_choice_label(item) for item in billing.items] + ["Voltar"]
 
     choice = questionary.select("Selecione o item:", choices=choices).ask()
     if choice is None or choice == "Voltar":
@@ -359,10 +365,7 @@ def _remove_item(billing, billing_service: BillingService, audit_service: AuditS
 
     previous_state = serialize_billing(billing)
 
-    choices = [
-        f"{item.description} ({format_brl(item.amount) if item.item_type == ItemType.FIXED else 'Variável'})"
-        for item in billing.items
-    ] + ["Voltar"]
+    choices = [_item_choice_label(item) for item in billing.items] + ["Voltar"]
 
     choice = questionary.select("Selecione o item para remover:", choices=choices).ask()
     if choice is None or choice == "Voltar":
