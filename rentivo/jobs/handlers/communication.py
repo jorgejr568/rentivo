@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from email.utils import formataddr
 
 import structlog
 
@@ -14,6 +15,7 @@ from rentivo.jobs.base import PermanentJobError
 from rentivo.jobs.registry import register, register_on_fail
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.communication import SQLAlchemyCommunicationRepository
+from rentivo.repositories.sqlalchemy.reply_to import SQLAlchemyReplyToRecipientRepository
 from rentivo.services.email_service import EmailService
 from rentivo.settings import settings
 from rentivo.storage.factory import get_storage
@@ -62,14 +64,20 @@ def handle_communication_send(payload: dict) -> None:
             # reappear, so fail permanently instead of burning every retry.
             raise PermanentJobError(f"bill {comm.bill_id} PDF object missing at {bill.pdf_path!r}") from exc
 
-        service = EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
+        reply_to_contacts = SQLAlchemyReplyToRecipientRepository(conn, encryption).list_by_billing(bill.billing_id)
+        reply_to = [formataddr((r.name, r.email)) for r in reply_to_contacts]
+
+        from_address = settings.communications_from_email or settings.ses_from_email or "noreply@localhost"
+        service = EmailService(get_email_backend(), from_address=from_address)
         body_html = render_markdown(comm.body_markdown)
         attachment = EmailAttachment(
             filename=f"fatura-{bill.reference_month}.pdf",
             content=pdf_bytes,
             content_type="application/pdf",
         )
-        service.send_communication(comm.recipient_email, comm.subject, body_html, comm.body_markdown, [attachment])
+        service.send_communication(
+            comm.recipient_email, comm.subject, body_html, comm.body_markdown, [attachment], reply_to=reply_to
+        )
         comm_repo.mark_sent(comm.id, datetime.now(SP_TZ))
         logger.info("communication_sent", communication_id=comm.id, bill_id=bill.id)
 

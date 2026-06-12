@@ -76,6 +76,74 @@ def test_handler_sends_and_marks_sent(engine, monkeypatch, tmp_path):
         assert repo.get_by_id(comm.id).status == "sent"
 
 
+def test_handler_sets_reply_to_and_from_override(engine, monkeypatch):
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.jobs.handlers.communication import handle_communication_send
+    from rentivo.models.recipient import Recipient
+    from rentivo.repositories.sqlalchemy.reply_to import SQLAlchemyReplyToRecipientRepository
+
+    comm = _seed_comm(engine)
+    with engine.connect() as c:
+        SQLAlchemyReplyToRecipientRepository(c, Base64Backend()).replace_for_billing(
+            1,
+            [
+                Recipient(billing_id=1, name="Ana", email="ana@example.com"),
+                Recipient(billing_id=1, name="", email="bruno@example.com"),
+            ],
+        )
+
+    sent = {}
+
+    class FakeStorage:
+        def get(self, key):
+            return b"%PDF-1.4 fake"
+
+    class FakeBackend:
+        def send(self, message):
+            sent["msg"] = message
+            return "msg-1"
+
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    monkeypatch.setattr(mod, "get_storage", lambda: FakeStorage())
+    monkeypatch.setattr(mod, "get_email_backend", lambda: FakeBackend())
+    monkeypatch.setattr(mod.settings, "communications_from_email", "cobranca@example.com", raising=False)
+
+    handle_communication_send({"communication_id": comm.id})
+
+    assert sent["msg"].from_address == "cobranca@example.com"
+    assert sent["msg"].reply_to == ("Ana <ana@example.com>", "bruno@example.com")
+
+
+def test_handler_no_reply_to_and_no_from_override(engine, monkeypatch):
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.jobs.handlers.communication import handle_communication_send
+
+    comm = _seed_comm(engine)
+    sent = {}
+
+    class FakeStorage:
+        def get(self, key):
+            return b"%PDF"
+
+    class FakeBackend:
+        def send(self, message):
+            sent["msg"] = message
+            return "msg-1"
+
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    monkeypatch.setattr(mod, "get_storage", lambda: FakeStorage())
+    monkeypatch.setattr(mod, "get_email_backend", lambda: FakeBackend())
+    monkeypatch.setattr(mod.settings, "communications_from_email", "", raising=False)
+    monkeypatch.setattr(mod.settings, "ses_from_email", "", raising=False)
+
+    handle_communication_send({"communication_id": comm.id})
+
+    assert sent["msg"].reply_to == ()
+    assert sent["msg"].from_address == "noreply@localhost"
+
+
 def test_handler_rejects_non_int_id():
     from rentivo.jobs.handlers.communication import handle_communication_send
 

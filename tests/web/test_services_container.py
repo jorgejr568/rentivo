@@ -28,6 +28,11 @@ def test_recipient_and_communication_services_resolve():
     assert isinstance(services.communication, CommunicationService)
 
 
+def test_reply_to_service_resolves():
+    services = _services()
+    assert isinstance(services.reply_to, RecipientService)
+
+
 class TestLazyProperties:
     def test_property_memoises(self):
         services = RequestServices(conn=MagicMock(), encryption=MagicMock())

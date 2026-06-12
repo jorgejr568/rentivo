@@ -22,6 +22,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyReceiptRepository,
     SQLAlchemyRecipientRepository,
     SQLAlchemyRecoveryCodeRepository,
+    SQLAlchemyReplyToRecipientRepository,
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
@@ -174,6 +175,12 @@ class RequestServices:
     @cached_property
     def recipient(self) -> RecipientService:
         return RecipientService(SQLAlchemyRecipientRepository(self._conn, self._encryption))
+
+    @cached_property
+    def reply_to(self) -> RecipientService:
+        # Reuses RecipientService (same name+email contract) over the separate
+        # billing_reply_to table.
+        return RecipientService(SQLAlchemyReplyToRecipientRepository(self._conn, self._encryption))
 
     @cached_property
     def communication(self) -> CommunicationService:
