@@ -107,6 +107,54 @@ def test_handler_permanent_error_when_pdf_missing(engine, monkeypatch):
         handle_communication_send({"communication_id": comm.id})
 
 
+def test_handler_skips_already_sent_communication(engine, monkeypatch):
+    """A retry of an already-delivered communication must not re-send the email."""
+    from datetime import datetime
+
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.constants import SP_TZ
+    from rentivo.jobs.handlers.communication import handle_communication_send
+
+    comm = _seed_comm(engine)
+    with engine.connect() as c:
+        SQLAlchemyCommunicationRepository(c, Base64Backend()).mark_sent(comm.id, datetime(2026, 6, 12, tzinfo=SP_TZ))
+
+    sent = {}
+
+    class BoomBackend:
+        def send(self, message):  # pragma: no cover - must never be called
+            sent["called"] = True
+            return "msg"
+
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    monkeypatch.setattr(mod, "get_email_backend", lambda: BoomBackend())
+
+    handle_communication_send({"communication_id": comm.id})
+
+    assert "called" not in sent
+    with engine.connect() as c:
+        assert SQLAlchemyCommunicationRepository(c, Base64Backend()).get_by_id(comm.id).status == "sent"
+
+
+def test_handler_permanent_error_when_pdf_object_missing(engine, monkeypatch):
+    """A key present in the DB but absent in storage fails permanently, not retried."""
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.jobs.handlers.communication import handle_communication_send
+
+    comm = _seed_comm(engine)
+
+    class MissingStorage:
+        def get(self, key):
+            raise FileNotFoundError(key)
+
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    monkeypatch.setattr(mod, "get_storage", lambda: MissingStorage())
+    with pytest.raises(PermanentJobError):
+        handle_communication_send({"communication_id": comm.id})
+
+
 def test_fail_hook_marks_failed(engine, monkeypatch):
     import rentivo.jobs.handlers.communication as mod
     from rentivo.jobs.handlers.communication import _on_communication_send_failed
@@ -118,3 +166,22 @@ def test_fail_hook_marks_failed(engine, monkeypatch):
     with engine.connect() as c:
         repo = SQLAlchemyCommunicationRepository(c, Base64Backend())
         assert repo.get_by_id(comm.id).status == "failed"
+
+
+def test_fail_hook_does_not_overwrite_sent(engine, monkeypatch):
+    """A late dead-letter must not flip a delivered row back to 'failed'."""
+    from datetime import datetime
+
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.constants import SP_TZ
+    from rentivo.jobs.handlers.communication import _on_communication_send_failed
+
+    comm = _seed_comm(engine)
+    with engine.connect() as c:
+        SQLAlchemyCommunicationRepository(c, Base64Backend()).mark_sent(comm.id, datetime(2026, 6, 12, tzinfo=SP_TZ))
+
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    _on_communication_send_failed({"communication_id": comm.id})
+    with engine.connect() as c:
+        assert SQLAlchemyCommunicationRepository(c, Base64Backend()).get_by_id(comm.id).status == "sent"

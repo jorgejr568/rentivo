@@ -180,8 +180,11 @@ def serialize_theme(theme: Theme) -> dict:
 def serialize_communication(comm: Communication) -> dict:
     """Serialize a Communication for audit state.
 
-    The recipient email is partial-mask redacted; recipient name and body are
-    omitted entirely (free-text PII not needed for the audit trail).
+    The recipient email is partial-mask redacted; recipient name, subject, and
+    body are omitted entirely. The subject is rendered from the template at
+    send time and may carry substituted PII (``{{tenant_name}}`` / ``{{unit}}``,
+    the latter the encrypted billing name), so it must not land in plaintext in
+    the audit trail.
     """
     return {
         "id": comm.id,
@@ -189,7 +192,6 @@ def serialize_communication(comm: Communication) -> dict:
         "bill_id": comm.bill_id,
         "comm_type": comm.comm_type,
         "recipient_email": redact(comm.recipient_email or "", PIIKind.EMAIL),
-        "subject": comm.subject,
         "status": comm.status,
     }
 

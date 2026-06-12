@@ -78,6 +78,34 @@ def test_edit_clearing_recipients_deletes_and_audits(auth_client, test_engine, c
     assert cleared[0].previous_state == {"recipient_count": 1}
 
 
+def test_edit_without_recipients_formset_preserves_existing(auth_client, test_engine, csrf_token):
+    """A billing edit that omits the recipients formset entirely (e.g. a stale
+    cached form) must leave existing recipients intact, not silently wipe them."""
+    billing = create_billing_in_db(test_engine)
+    auth_client.post(
+        f"/billings/{billing.uuid}/edit",
+        data=_form(
+            csrf_token,
+            **{
+                "recipients-TOTAL_FORMS": "1",
+                "recipients-0-name": "Rodrigo",
+                "recipients-0-email": "rodrigo@example.com",
+            },
+        ),
+        follow_redirects=False,
+    )
+    # Re-submit with no recipients-* keys at all.
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/edit",
+        data=_form(csrf_token, name="Apt 202"),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with test_engine.connect() as c:
+        n = c.execute(text("SELECT COUNT(*) FROM billing_recipients WHERE billing_id = :b"), {"b": billing.id}).scalar()
+    assert n == 1
+
+
 def test_edit_renders_existing_recipients(auth_client, test_engine, csrf_token):
     billing = create_billing_in_db(test_engine)
     auth_client.post(

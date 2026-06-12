@@ -12,7 +12,7 @@ import re
 
 from markdown_it import MarkdownIt
 
-from rentivo.constants import MONTHS_PT
+from rentivo.constants import MONTHS_PT, split_month_ref
 
 # commonmark preset, but raw HTML explicitly disabled: the commonmark preset
 # turns html on, so we override it to keep any <tag> in the source escaped
@@ -49,9 +49,10 @@ def month_long(ref: str) -> str:
 
     Returns the input unchanged when it is empty or not ``YYYY-MM`` shaped.
     """
-    if not ref or "-" not in ref:
+    parts = split_month_ref(ref)
+    if parts is None:
         return ref or ""
-    year, _, month = ref.partition("-")
+    year, month = parts
     name = MONTHS_PT.get(month)
     if name is None:
         return ref

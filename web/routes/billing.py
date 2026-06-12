@@ -200,19 +200,26 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
         new_state=serialize_billing(updated),
     )
 
-    previous_recipients = request.state.services.recipient.list_for_billing(updated.id)
-    recipient_rows = parse_formset(dict(form), "recipients")
-    saved_recipients = request.state.services.recipient.replace_for_billing(updated.id, recipient_rows)
-    if recipient_rows or previous_recipients:
-        request.state.services.audit.safe_log_for(
-            request.state.actor,
-            AuditEventType.BILLING_RECIPIENTS_UPDATED,
-            entity_type="billing",
-            entity_id=updated.id,
-            entity_uuid=updated.uuid,
-            previous_state={"recipient_count": len(previous_recipients)},
-            new_state={"recipient_count": len(saved_recipients)},
-        )
+    # Only touch recipients when the submission actually carries the recipients
+    # formset. Replacing them is destructive (delete-all + re-insert), so a POST
+    # that omits the formset entirely (a stale cached form, a non-recipient-aware
+    # client) must leave the existing encrypted recipients intact rather than
+    # silently wiping them as a side effect of an unrelated field edit.
+    form_dict = dict(form)
+    if "recipients-TOTAL_FORMS" in form_dict:
+        previous_recipients = request.state.services.recipient.list_for_billing(updated.id)
+        recipient_rows = parse_formset(form_dict, "recipients")
+        saved_recipients = request.state.services.recipient.replace_for_billing(updated.id, recipient_rows)
+        if recipient_rows or previous_recipients:
+            request.state.services.audit.safe_log_for(
+                request.state.actor,
+                AuditEventType.BILLING_RECIPIENTS_UPDATED,
+                entity_type="billing",
+                entity_id=updated.id,
+                entity_uuid=updated.uuid,
+                previous_state={"recipient_count": len(previous_recipients)},
+                new_state={"recipient_count": len(saved_recipients)},
+            )
 
     flash(request, "Cobrança atualizada com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_edited", "billing_uuid_hash": analytics_hash(updated.uuid)})

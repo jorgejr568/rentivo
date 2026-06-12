@@ -63,7 +63,9 @@
                 <select class="select" name="save_scope">
                     <option value="">Não salvar como modelo</option>
                     <option value="billing">Salvar para esta cobrança</option>
+                    {% if role in ("owner", "admin") %}
                     <option value="owner">Salvar para {{ "a organização" if billing.owner_type == "organization" else "minha conta" }}</option>
+                    {% endif %}
                 </select>
             </div>
         </div>

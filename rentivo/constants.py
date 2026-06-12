@@ -32,8 +32,22 @@ STATUS_LABELS = {
 }
 
 
-def format_month(ref: str) -> str:
+def split_month_ref(ref: str) -> tuple[str, str] | None:
+    """Split a ``YYYY-MM`` reference into ``(year, month)`` parts.
+
+    Returns ``None`` when ``ref`` is empty or not ``-``-separated, so callers
+    can apply their own passthrough. The month is everything after the first
+    ``-`` (so a stray ``YYYY-MM-DD`` degrades gracefully instead of raising).
+    """
     if not ref or "-" not in ref:
+        return None
+    year, _, month = ref.partition("-")
+    return year, month
+
+
+def format_month(ref: str) -> str:
+    parts = split_month_ref(ref)
+    if parts is None:
         return ref or ""
-    year, month = ref.split("-")
+    year, month = parts
     return f"{MONTHS_PT.get(month, month)}/{year}"

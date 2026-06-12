@@ -9,7 +9,7 @@ from ulid import ULID
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.repositories.base import CommunicationRepository, CommunicationTemplateRepository
-from rentivo.repositories.sqlalchemy._common import _now
+from rentivo.repositories.sqlalchemy._common import _now, decrypt_columns
 
 
 class SQLAlchemyCommunicationTemplateRepository(CommunicationTemplateRepository):
@@ -50,7 +50,12 @@ class SQLAlchemyCommunicationTemplateRepository(CommunicationTemplateRepository)
     def upsert(self, template: CommunicationTemplate) -> CommunicationTemplate:
         now = _now()
         existing = self.get(template.owner_type, template.owner_id, template.comm_type)
+        cipher = {
+            "subject": self.encryption.encrypt(template.subject),
+            "body": self.encryption.encrypt(template.body_markdown),
+        }
         if existing is None:
+            uuid = str(ULID())
             self.conn.execute(
                 text(
                     "INSERT INTO communication_templates "
@@ -58,37 +63,35 @@ class SQLAlchemyCommunicationTemplateRepository(CommunicationTemplateRepository)
                     "VALUES (:uuid, :ot, :oid, :ct, :subject, :body, :created_at, :updated_at)"
                 ),
                 {
-                    "uuid": str(ULID()),
+                    "uuid": uuid,
                     "ot": template.owner_type,
                     "oid": template.owner_id,
                     "ct": template.comm_type,
-                    "subject": self.encryption.encrypt(template.subject),
-                    "body": self.encryption.encrypt(template.body_markdown),
+                    **cipher,
                     "created_at": now,
                     "updated_at": now,
                 },
             )
-        else:
-            self.conn.execute(
-                text(
-                    "UPDATE communication_templates "
-                    "SET subject = :subject, body_markdown = :body, updated_at = :updated_at "
-                    "WHERE owner_type = :ot AND owner_id = :oid AND comm_type = :ct"
-                ),
-                {
-                    "subject": self.encryption.encrypt(template.subject),
-                    "body": self.encryption.encrypt(template.body_markdown),
-                    "updated_at": now,
-                    "ot": template.owner_type,
-                    "oid": template.owner_id,
-                    "ct": template.comm_type,
-                },
-            )
+            self.conn.commit()
+            return template.model_copy(update={"uuid": uuid, "created_at": now, "updated_at": now})
+        self.conn.execute(
+            text(
+                "UPDATE communication_templates "
+                "SET subject = :subject, body_markdown = :body, updated_at = :updated_at "
+                "WHERE owner_type = :ot AND owner_id = :oid AND comm_type = :ct"
+            ),
+            {
+                **cipher,
+                "updated_at": now,
+                "ot": template.owner_type,
+                "oid": template.owner_id,
+                "ct": template.comm_type,
+            },
+        )
         self.conn.commit()
-        result = self.get(template.owner_type, template.owner_id, template.comm_type)
-        if result is None:  # pragma: no cover - sanity guard
-            raise RuntimeError("Failed to retrieve template after upsert")
-        return result
+        return template.model_copy(
+            update={"id": existing.id, "uuid": existing.uuid, "created_at": existing.created_at, "updated_at": now}
+        )
 
 
 class SQLAlchemyCommunicationRepository(CommunicationRepository):
@@ -99,19 +102,8 @@ class SQLAlchemyCommunicationRepository(CommunicationRepository):
     def _build(self, rows: list[RowMapping]) -> list[Communication]:
         if not rows:
             return []
-        plaintexts = iter(
-            self.encryption.decrypt_many(
-                [
-                    v
-                    for row in rows
-                    for v in (
-                        row["recipient_name"] or "",
-                        row["recipient_email"] or "",
-                        row["subject"] or "",
-                        row["body_markdown"] or "",
-                    )
-                ]
-            )
+        plaintexts = decrypt_columns(
+            self.encryption, rows, ("recipient_name", "recipient_email", "subject", "body_markdown")
         )
         return [
             Communication(

@@ -43,11 +43,24 @@ def handle_communication_send(payload: dict) -> None:
         if comm is None:
             raise PermanentJobError(f"communication {communication_id} not found")
 
+        # Idempotency: the job framework is at-least-once (a crash after the email
+        # is sent but before mark_sent leaves the job to be retried). Only a still-
+        # queued row should be sent, so a retry of an already-delivered one is a
+        # no-op instead of a duplicate invoice email to the tenant.
+        if comm.status != "queued":
+            logger.info("communication_send_skipped", communication_id=comm.id, status=comm.status)
+            return
+
         bill = SQLAlchemyBillRepository(conn, encryption).get_by_id(comm.bill_id)
         if bill is None or not bill.pdf_path:
             raise PermanentJobError(f"bill {comm.bill_id} missing or has no PDF")
 
-        pdf_bytes = get_storage().get(bill.pdf_path)
+        try:
+            pdf_bytes = get_storage().get(bill.pdf_path)
+        except FileNotFoundError as exc:
+            # The DB still references a key whose object is gone — it will never
+            # reappear, so fail permanently instead of burning every retry.
+            raise PermanentJobError(f"bill {comm.bill_id} PDF object missing at {bill.pdf_path!r}") from exc
 
         service = EmailService(get_email_backend(), from_address=settings.ses_from_email or "noreply@localhost")
         body_html = render_markdown(comm.body_markdown)
@@ -70,4 +83,11 @@ def _on_communication_send_failed(payload: dict) -> None:
     engine = get_engine()
     with engine.connect() as conn:
         repo = SQLAlchemyCommunicationRepository(conn, get_encryption())
+        comm = repo.get_by_id(communication_id)
+        # If a prior attempt actually delivered the email (status already 'sent'),
+        # don't flip it back to 'failed' — that would mislead the operator into
+        # resending and double-mailing the tenant.
+        if comm is not None and comm.status == "sent":
+            logger.info("communication_fail_hook_skipped_sent", communication_id=communication_id)
+            return
         repo.mark_failed(communication_id, "Falha no envio após múltiplas tentativas.")

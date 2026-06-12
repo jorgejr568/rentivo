@@ -31,6 +31,7 @@ async def communication_compose(request: Request, ctx: BillContext = Depends(req
             "billing": billing,
             "template": template,
             "recipients": recipients,
+            "role": ctx.role,
         },
     )
 
@@ -65,6 +66,15 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
         flash(request, "Preencha o assunto e o corpo da mensagem.", "danger")
         return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
 
+    # The owner scope writes the user/organization-wide default template, which
+    # resolve_template applies to *every* billing of that owner — so it requires
+    # billing-edit authority (owner/admin), not the broader can_manage_bills
+    # ("manager") gate this route runs under.
+    save_scope = str(form.get("save_scope", "")).strip()
+    if save_scope == "owner" and ctx.role not in ("owner", "admin"):
+        flash(request, "Você não tem permissão para salvar o modelo para toda a organização.", "danger")
+        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
+
     comms = services.communication.send(
         bill=bill,
         billing=billing,
@@ -74,7 +84,6 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
         actor=request.state.actor,
     )
 
-    save_scope = str(form.get("save_scope", "")).strip()
     if save_scope == "billing":
         services.communication.save_template("billing", billing.id, "bill_ready", subject, body)
     elif save_scope == "owner":

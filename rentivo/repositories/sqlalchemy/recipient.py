@@ -7,7 +7,7 @@ from ulid import ULID
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.recipient import Recipient
 from rentivo.repositories.base import RecipientRepository
-from rentivo.repositories.sqlalchemy._common import _now
+from rentivo.repositories.sqlalchemy._common import _now, decrypt_columns
 
 
 class SQLAlchemyRecipientRepository(RecipientRepository):
@@ -18,9 +18,7 @@ class SQLAlchemyRecipientRepository(RecipientRepository):
     def _build(self, rows: list[RowMapping]) -> list[Recipient]:
         if not rows:
             return []
-        plaintexts = iter(
-            self.encryption.decrypt_many([v for row in rows for v in (row["name"] or "", row["email"] or "")])
-        )
+        plaintexts = decrypt_columns(self.encryption, rows, ("name", "email"))
         return [
             Recipient(
                 id=row["id"],

@@ -120,3 +120,26 @@ def test_list_for_bill(ctx):
     service, _job, _c = ctx
     service.send(_bill(), _billing(), [Recipient(billing_id=1, name="R", email="r@x.com")], "s", "b", actor=None)
     assert len(service.list_for_bill(5)) == 1
+
+
+def test_send_marks_failed_and_reraises_when_enqueue_fails(ctx):
+    """If enqueue raises, the just-created row is marked 'failed' (not left a stuck
+    'queued' orphan with no job) and the error propagates."""
+    _service, _job, c = ctx
+
+    class _BoomJobService:
+        def enqueue_for(self, *a, **k):
+            raise RuntimeError("queue down")
+
+    service = CommunicationService(
+        communication_repo=SQLAlchemyCommunicationRepository(c, Base64Backend()),
+        template_repo=SQLAlchemyCommunicationTemplateRepository(c, Base64Backend()),
+        job_service=_BoomJobService(),
+    )
+    with pytest.raises(RuntimeError):
+        service.send(_bill(), _billing(), [Recipient(billing_id=1, name="R", email="r@x.com")], "s", "b", actor=None)
+
+    rows = SQLAlchemyCommunicationRepository(c, Base64Backend()).list_by_bill(5)
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert rows[0].job_ulid == ""

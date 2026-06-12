@@ -75,8 +75,9 @@ class CommunicationService:
         """Create one queued communication per recipient and enqueue a send job each."""
         results: list[Communication] = []
         # Per-recipient: create row, enqueue job, stamp job_ulid. Not atomic across
-        # recipients — if enqueue fails mid-loop, earlier recipients are already
-        # queued; a failed recipient leaves a queued row with empty job_ulid.
+        # recipients — earlier recipients stay queued if a later one fails. If the
+        # enqueue itself fails we mark that row 'failed' so it surfaces in the UI
+        # instead of sitting 'queued' forever with no job to process it.
         for recipient in recipients:
             ctx = self._context(bill, billing, recipient)
             comm = self.communication_repo.create(
@@ -89,9 +90,14 @@ class CommunicationService:
                     body_markdown=substitute(body_template, ctx),
                 )
             )
-            job = self.job_service.enqueue_for(
-                actor, "communication.send", {"communication_id": comm.id}, max_attempts=3
-            )
+            try:
+                job = self.job_service.enqueue_for(
+                    actor, "communication.send", {"communication_id": comm.id}, max_attempts=3
+                )
+            except Exception:
+                self.communication_repo.mark_failed(comm.id, "Falha ao enfileirar o envio.")
+                logger.exception("communication_enqueue_failed", communication_id=comm.id)
+                raise
             self.communication_repo.set_job_ulid(comm.id, job.ulid)
             comm.job_ulid = job.ulid
             results.append(comm)
