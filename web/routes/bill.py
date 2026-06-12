@@ -251,12 +251,7 @@ async def bill_delete(request: Request, ctx: BillContext = Depends(require_bill(
     previous_state = serialize_bill(bill)
 
     cleanup = request.state.services.storage_cleanup
-    cleanup.enqueue_bill_delete_cascade(
-        bill,
-        source="web",
-        actor_id=ctx.user_id,
-        actor_username=request.session.get("email", ""),
-    )
+    cleanup.enqueue_bill_delete_cascade(request.state.actor, bill)
 
     bill_service.delete_bill(bill.id)
 
@@ -366,12 +361,7 @@ async def receipt_delete(request: Request, receipt_uuid: str, ctx: BillContext =
     bill_service.delete_receipt(receipt, bill, billing, actor=request.state.actor)
 
     cleanup = request.state.services.storage_cleanup
-    cleanup.enqueue_receipt_delete(
-        receipt,
-        source="web",
-        actor_id=ctx.user_id,
-        actor_username=request.session.get("email", ""),
-    )
+    cleanup.enqueue_receipt_delete(request.state.actor, receipt)
 
     audit = request.state.services.audit
     audit.safe_log_for(
