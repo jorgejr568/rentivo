@@ -5,10 +5,7 @@ template exists for a communication type.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from rentivo.models.communication import CommunicationTemplate
+from rentivo.models.communication import CommunicationTemplate
 
 DEFAULT_BILL_READY_SUBJECT = "Cobrança {{unit}} — {{month}}"
 
@@ -30,14 +27,12 @@ _DEFAULTS: dict[str, tuple[str, str]] = {
 }
 
 
-def system_default_template(comm_type: str) -> "CommunicationTemplate":
+def system_default_template(comm_type: str) -> CommunicationTemplate:
     """Return the built-in default template for ``comm_type``.
 
     ``owner_type='system'`` / ``owner_id=0`` mark it as the synthetic fallback;
     it is never persisted.
     """
-    from rentivo.models.communication import CommunicationTemplate
-
     subject, body = _DEFAULTS[comm_type]
     return CommunicationTemplate(
         owner_type="system",
