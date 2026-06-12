@@ -151,6 +151,33 @@ def test_send_with_attachment_includes_configuration_set(boto3_mock):
 
 
 @patch("rentivo.email.ses.boto3")
+def test_send_raw_email_carries_reply_to_header(boto3_mock):
+    client = MagicMock()
+    client.send_raw_email.return_value = {"MessageId": "raw-reply-to-id"}
+    boto3_mock.client.return_value = client
+
+    backend = SESEmailBackend(
+        region="us-east-1",
+        access_key_id="k",
+        secret_access_key="s",
+        from_address="from@x.com",
+    )
+    msg = EmailMessage(
+        to="t@x.com",
+        subject="s",
+        text_body="t",
+        html_body="<p>t</p>",
+        from_address="from@x.com",
+        attachments=(EmailAttachment(filename="f.pdf", content=b"%PDF", content_type="application/pdf"),),
+        reply_to=("Ana <ana@x.com>", "bruno@x.com"),
+    )
+    backend.send(msg)
+    raw = client.send_raw_email.call_args.kwargs["RawMessage"]["Data"]
+    parsed = message_from_bytes(raw)
+    assert parsed["Reply-To"] == "Ana <ana@x.com>, bruno@x.com"
+
+
+@patch("rentivo.email.ses.boto3")
 def test_send_passes_endpoint_url_when_provided(boto3_mock):
     client = MagicMock()
     client.send_email.return_value = {"MessageId": "id"}
