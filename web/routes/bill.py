@@ -10,13 +10,13 @@ from starlette.datastructures import UploadFile
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
-from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE
-from rentivo.services.audit_serializers import serialize_bill
+from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
 from web.deps import render
 from web.flash import flash
 from web.forms import parse_brl, parse_extras, parse_line_items, safe_redirect_path
 from web.guards import BillContext, BillingContext, require_bill, require_billing
+from web.receipts import attach_receipts
 
 logger = structlog.get_logger(__name__)
 
@@ -63,30 +63,6 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
         actor=request.state.actor,
     )
 
-    # Attach uploaded receipt files
-    receipt_files = form.getlist("receipt_files")
-    attached_receipts = []
-    for upload in receipt_files:
-        if not isinstance(upload, UploadFile) or not upload.filename:
-            continue
-        file_bytes = await upload.read()
-        content_type = upload.content_type or ""
-        if not file_bytes or content_type not in ALLOWED_RECEIPT_TYPES:
-            continue
-        if len(file_bytes) > MAX_RECEIPT_SIZE:
-            continue
-        receipt, _ = bill_service.add_receipt(
-            bill=bill,
-            billing=billing,
-            filename=upload.filename,
-            file_bytes=file_bytes,
-            content_type=content_type,
-            actor=request.state.actor,
-        )
-        attached_receipts.append(receipt)
-    if attached_receipts:
-        logger.info("receipts_attached", bill_uuid=bill.uuid, count=len(attached_receipts))
-
     audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
@@ -96,21 +72,12 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
         entity_uuid=bill.uuid,
         new_state=serialize_bill(bill),
     )
-    for receipt in attached_receipts:
-        audit.safe_log_for(
-            request.state.actor,
-            AuditEventType.RECEIPT_UPLOAD,
-            entity_type="receipt",
-            entity_id=receipt.id,
-            entity_uuid=receipt.uuid,
-            new_state={
-                "filename": receipt.filename,
-                "content_type": receipt.content_type,
-                "file_size": receipt.file_size,
-                "bill_uuid": bill.uuid,
-                "billing_uuid": billing.uuid,
-            },
-        )
+
+    # Attach uploaded receipt files (BILL_CREATE is audited first so audit row
+    # order — bill.create then receipt.upload — matches the pre-refactor flow).
+    result = await attach_receipts(request, bill, billing, form.getlist("receipt_files"))
+    if result.attached:
+        logger.info("receipts_attached", bill_uuid=bill.uuid, count=result.attached)
 
     flash(request, "Fatura gerada com sucesso!", "success")
     push_event(
@@ -122,7 +89,7 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
             "reference_month": bill.reference_month,
             "line_item_count": len(bill.line_items),
             "total_amount_brl": round(bill.total_amount / 100),
-            "receipt_count": len(attached_receipts),
+            "receipt_count": result.attached,
         },
     )
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
@@ -351,7 +318,6 @@ async def receipt_view(request: Request, receipt_uuid: str, ctx: BillContext = D
 @router.post("/{bill_uuid}/receipts/upload")
 async def receipt_upload(request: Request, ctx: BillContext = Depends(require_bill("manage", pix=True))):
     bill, billing = ctx.bill, ctx.billing
-    bill_service = request.state.services.bill
 
     form = await request.form()
     redirect_url = safe_redirect_path(
@@ -359,77 +325,30 @@ async def receipt_upload(request: Request, ctx: BillContext = Depends(require_bi
         f"/billings/{billing.uuid}/bills/{bill.uuid}/edit",
     )
 
-    uploads = form.getlist("receipt_files")
-    valid_uploads = [u for u in uploads if isinstance(u, UploadFile) and u.filename]
-    if not valid_uploads:
+    uploads = [u for u in form.getlist("receipt_files") if isinstance(u, UploadFile) and u.filename]
+    if not uploads:
         logger.warning("receipt_upload_no_file", bill_uuid=bill.uuid)
         flash(request, "Nenhum arquivo selecionado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
 
-    attached = 0
-    skipped = 0
-    total_bytes = 0
-    audit = request.state.services.audit
-    for upload in valid_uploads:
-        file_bytes = await upload.read()
-        content_type = upload.content_type or ""
+    result = await attach_receipts(request, bill, billing, uploads)
 
-        if content_type not in ALLOWED_RECEIPT_TYPES:
-            logger.warning("receipt_upload_invalid_type", content_type=content_type)
-            skipped += 1
-            continue
-        if not file_bytes:
-            skipped += 1
-            continue
-        if len(file_bytes) > MAX_RECEIPT_SIZE:
-            skipped += 1
-            continue
-
-        total_bytes += len(file_bytes)
-        receipt, _ = bill_service.add_receipt(
-            bill=bill,
-            billing=billing,
-            filename=upload.filename,
-            file_bytes=file_bytes,
-            content_type=content_type,
-            actor=request.state.actor,
-        )
-
-        attached += 1
-
-        audit.safe_log_for(
-            request.state.actor,
-            AuditEventType.RECEIPT_UPLOAD,
-            entity_type="receipt",
-            entity_id=receipt.id,
-            entity_uuid=receipt.uuid,
-            new_state={
-                "filename": receipt.filename,
-                "content_type": receipt.content_type,
-                "file_size": receipt.file_size,
-                "bill_uuid": bill.uuid,
-                "billing_uuid": billing.uuid,
-            },
-        )
-
-    if attached == 1:
+    if result.attached == 1:
         flash(request, "Comprovante anexado. O PDF será atualizado em segundo plano.", "success")
-    elif attached > 1:
+    elif result.attached > 1:
         flash(
             request,
-            f"{attached} comprovantes anexados. O PDF será atualizado em segundo plano.",
+            f"{result.attached} comprovantes anexados. O PDF será atualizado em segundo plano.",
             "success",
         )
-    if skipped:
-        flash(request, f"{skipped} arquivo(s) ignorado(s) (tipo inválido, vazio ou muito grande).", "warning")
-    if attached > 0:
+    if result.attached > 0:
         push_event(
             request,
             {
                 "event": "rentivo_receipt_uploaded",
                 "bill_uuid_hash": analytics_hash(bill.uuid),
-                "count": attached,
-                "total_bytes": total_bytes,
+                "count": result.attached,
+                "total_bytes": result.total_bytes,
             },
         )
     return RedirectResponse(redirect_url, status_code=302)
@@ -452,13 +371,7 @@ async def receipt_delete(request: Request, receipt_uuid: str, ctx: BillContext =
         flash(request, "Comprovante não encontrado.", "danger")
         return RedirectResponse(redirect_url, status_code=302)
 
-    previous_state = {
-        "filename": receipt.filename,
-        "content_type": receipt.content_type,
-        "file_size": receipt.file_size,
-        "bill_uuid": bill.uuid,
-        "billing_uuid": billing.uuid,
-    }
+    previous_state = serialize_receipt(receipt, bill_uuid=bill.uuid, billing_uuid=billing.uuid)
     bill_service.delete_receipt(receipt, bill, billing, actor=request.state.actor)
 
     cleanup = request.state.services.storage_cleanup

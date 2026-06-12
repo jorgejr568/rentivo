@@ -1147,6 +1147,56 @@ class TestBillGenerateWithReceipts:
         assert response.status_code == 302
 
 
+class TestBillGenerateSkipWarning:
+    """Deliberate behavior change (Plan E): bill_generate no longer drops
+    invalid receipt files silently — it flashes the same skip warning as
+    receipt_upload."""
+
+    def test_generate_flashes_skip_warning_for_invalid_receipt(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-10",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                files={"receipt_files": ("file.gif", b"GIF89a", "image/gif")},
+                follow_redirects=True,
+            )
+        assert response.status_code == 200
+        assert "1 arquivo(s) ignorado(s)" in response.text
+        assert "Fatura gerada com sucesso!" in response.text
+        logs = get_audit_logs(test_engine, AuditEventType.RECEIPT_UPLOAD)
+        assert len(logs) == 0
+
+    def test_generate_with_valid_receipt_has_no_skip_warning(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-11",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                files={"receipt_files": ("receipt.pdf", b"%PDF-test-receipt", "application/pdf")},
+                follow_redirects=True,
+            )
+        assert response.status_code == 200
+        assert "ignorado(s)" not in response.text
+        logs = get_audit_logs(test_engine, AuditEventType.RECEIPT_UPLOAD)
+        assert len(logs) == 1
+        assert logs[0].new_state["filename"] == "receipt.pdf"
+        assert logs[0].new_state["bill_uuid"] != ""
+        assert logs[0].new_state["billing_uuid"] == billing.uuid
+
+
 class TestReceiptViewS3Redirect:
     """Cover line 445: receipt view redirects to presigned URL for S3."""
 
