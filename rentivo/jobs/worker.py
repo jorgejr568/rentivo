@@ -70,43 +70,45 @@ class Worker:
             self._run_one(job)
         return len(jobs)
 
-    def _run_one(self, job: Job) -> None:
-        handler = registry.get(job.job_type)
-        if handler is None:
-            self._fail_permanent(job, f"no handler registered for job_type {job.job_type!r}")
-            return
-        try:
-            handler(job.payload)
-        except PermanentJobError as exc:
-            self._fail_permanent(job, str(exc))
-        except Exception as exc:
-            self._reschedule_or_fail(job, exc)
-        else:
-            self.repo.mark_succeeded(job.id)
-            self.audit.safe_log(
-                event_type=AuditEventType.JOB_SUCCEEDED,
-                source="worker",
-                actor_id=None,
-                actor_username="",
-                entity_type="job",
-                entity_uuid=job.ulid,
-                previous_state=None,
-                new_state={"job_type": job.job_type, "ulid": job.ulid, "attempts": job.attempts},
-            )
-            logger.info("job_succeeded", ulid=job.ulid, attempts=job.attempts)
-
-    def _fail(self, job: Job, err: str) -> None:
-        err = _truncate(err, _MAX_ERROR_LEN)
-        self.repo.mark_failed(job.id, err)
+    def _audit_job(self, job: Job, event_type: AuditEventType, new_state: dict) -> None:
         self.audit.safe_log(
-            event_type=AuditEventType.JOB_FAILED,
+            event_type=event_type,
             source="worker",
             actor_id=None,
             actor_username="",
             entity_type="job",
             entity_uuid=job.ulid,
             previous_state=None,
-            new_state={"job_type": job.job_type, "ulid": job.ulid, "attempts": job.attempts, "error": err},
+            new_state=new_state,
+        )
+
+    def _run_one(self, job: Job) -> None:
+        handler = registry.get(job.job_type)
+        if handler is None:
+            self._fail(job, f"no handler registered for job_type {job.job_type!r}")
+            return
+        try:
+            handler(job.payload)
+        except PermanentJobError as exc:
+            self._fail(job, str(exc))
+        except Exception as exc:
+            self._reschedule_or_fail(job, exc)
+        else:
+            self.repo.mark_succeeded(job.id)
+            self._audit_job(
+                job,
+                AuditEventType.JOB_SUCCEEDED,
+                {"job_type": job.job_type, "ulid": job.ulid, "attempts": job.attempts},
+            )
+            logger.info("job_succeeded", ulid=job.ulid, attempts=job.attempts)
+
+    def _fail(self, job: Job, err: str) -> None:
+        err = _truncate(err, _MAX_ERROR_LEN)
+        self.repo.mark_failed(job.id, err)
+        self._audit_job(
+            job,
+            AuditEventType.JOB_FAILED,
+            {"job_type": job.job_type, "ulid": job.ulid, "attempts": job.attempts, "error": err},
         )
         hook = registry.get_fail_hook(job.job_type)
         if hook is not None:
@@ -116,9 +118,6 @@ class Worker:
                 logger.exception("job_fail_hook_failed", ulid=job.ulid, job_type=job.job_type)
         logger.warning("job_failed", ulid=job.ulid, attempts=job.attempts, error=err)
 
-    def _fail_permanent(self, job: Job, err: str) -> None:
-        self._fail(job, err)
-
     def _reschedule_or_fail(self, job: Job, exc: Exception) -> None:
         err = _truncate(repr(exc), _MAX_ERROR_LEN)
         if job.attempts >= job.max_attempts:
@@ -126,15 +125,10 @@ class Worker:
             return
         next_run = next_run_after(job.attempts, datetime.now(UTC))
         self.repo.reschedule(job.id, next_run, err)
-        self.audit.safe_log(
-            event_type=AuditEventType.JOB_RETRY_SCHEDULED,
-            source="worker",
-            actor_id=None,
-            actor_username="",
-            entity_type="job",
-            entity_uuid=job.ulid,
-            previous_state=None,
-            new_state={
+        self._audit_job(
+            job,
+            AuditEventType.JOB_RETRY_SCHEDULED,
+            {
                 "job_type": job.job_type,
                 "ulid": job.ulid,
                 "attempts": job.attempts,
