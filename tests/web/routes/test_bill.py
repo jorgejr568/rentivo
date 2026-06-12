@@ -310,7 +310,11 @@ class TestBillDelete:
 class TestBillInvoice:
     def test_invoice_local_file(self, auth_client, test_engine, tmp_path):
         billing = create_billing_in_db(test_engine)
-        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+        # The invoice GET now resolves the PDF through the active storage backend
+        # (LocalStorage.get_ref -> _safe_path), so the request-time backend must
+        # share generate_bill_in_db's base_dir. Patch where the request builds it
+        # (web.services_container.get_storage), not just the web.deps re-export.
+        with patch("web.services_container.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
             response = auth_client.get(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/invoice",
@@ -675,14 +679,19 @@ class TestBillInvoiceS3Redirect:
             total_amount=0,
             pdf_path="s3-bucket/key.pdf",
         )
+        from rentivo.storage.base import FileRef
+
         mock_svc.get_bill_by_uuid.return_value = mock_bill
-        mock_svc.get_invoice_url.return_value = "https://presigned-url.example.com/file.pdf"
+        mock_svc.get_invoice_ref.return_value = FileRef(
+            kind="url", location="https://presigned-url.example.com/file.pdf"
+        )
         with patch.object(RequestServices, "bill", new=mock_svc):
             response = auth_client.get(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/invoice",
                 follow_redirects=False,
             )
         assert response.status_code == 302
+        assert "presigned-url.example.com" in response.headers.get("location", "")
 
 
 class TestReceiptUpload:
@@ -1218,9 +1227,11 @@ class TestReceiptViewS3Redirect:
 
         # Mock bill_service to return a non-local URL
         mock_svc = MagicMock()
+        from rentivo.storage.base import FileRef
+
         mock_svc.get_receipt_by_uuid.return_value = receipts[0]
         mock_svc.get_bill_by_uuid.return_value = bill
-        mock_svc.storage.get_url.return_value = "https://s3.example.com/receipt.pdf"
+        mock_svc.get_receipt_ref.return_value = FileRef(kind="url", location="https://s3.example.com/receipt.pdf")
         with patch.object(RequestServices, "bill", new=mock_svc):
             response = auth_client.get(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipts[0].uuid}",

@@ -15,7 +15,7 @@ from rentivo.repositories.base import BillRepository, ReceiptRepository
 from rentivo.services.job_service import JobService
 from rentivo.services.pix_service import PixConfig, PixService
 from rentivo.settings import settings
-from rentivo.storage.base import StorageBackend
+from rentivo.storage.base import FileRef, StorageBackend
 
 PIX_NOT_CONFIGURED_MESSAGE = "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas."
 
@@ -307,6 +307,22 @@ class BillService:
             return ""
         logger.debug("invoice_url_resolve", storage_key=pdf_path)
         return self.storage.get_url(pdf_path)
+
+    def get_invoice_ref(self, bill: Bill) -> FileRef:
+        """Resolve the bill's stored PDF to a FileRef (local path or URL).
+
+        Callers must ensure ``bill.pdf_path`` is non-empty first.
+        """
+        logger.debug("invoice_ref_resolve", storage_key=bill.pdf_path)
+        return self.storage.get_ref(bill.pdf_path or "")
+
+    def get_receipt_ref(self, receipt: Receipt) -> FileRef:
+        """Resolve a receipt's stored file to a FileRef (local path or URL).
+
+        Callers must ensure ``receipt.storage_key`` is non-empty first.
+        """
+        logger.debug("receipt_ref_resolve", storage_key=receipt.storage_key)
+        return self.storage.get_ref(receipt.storage_key)
 
     def list_bills(self, billing_id: int) -> list[Bill]:
         result = self.bill_repo.list_by_billing(billing_id)

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
@@ -280,22 +278,17 @@ async def bill_delete(request: Request, ctx: BillContext = Depends(require_bill(
 @router.get("/{bill_uuid}/invoice")
 async def bill_invoice(request: Request, ctx: BillContext = Depends(require_bill("view"))):
     bill = ctx.bill
-    bill_service = request.state.services.bill
 
     if not bill.pdf_path:
         logger.warning("bill_no_pdf", bill_uuid=bill.uuid)
         flash(request, "Fatura sem PDF.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    logger.debug("bill_pdf_path", storage_key=bill.pdf_path)
-
-    # Local storage: serve file directly. S3: redirect to presigned URL.
-    if os.path.isfile(bill.pdf_path):
-        return FileResponse(bill.pdf_path, media_type="application/pdf")
-
-    url = bill_service.get_invoice_url(bill.pdf_path)
-
-    return RedirectResponse(url, status_code=302)
+    ref = request.state.services.bill.get_invoice_ref(bill)
+    logger.debug("bill_pdf_ref", storage_key=bill.pdf_path, kind=ref.kind)
+    if ref.kind == "local":
+        return FileResponse(ref.location, media_type="application/pdf")
+    return RedirectResponse(ref.location, status_code=302)
 
 
 @router.get("/{bill_uuid}/receipts/{receipt_uuid}")
@@ -307,12 +300,10 @@ async def receipt_view(request: Request, receipt_uuid: str, ctx: BillContext = D
         flash(request, "Comprovante não encontrado.", "danger")
         return RedirectResponse("/", status_code=302)
 
-    url_or_path = bill_service.storage.get_url(receipt.storage_key)
-
-    if os.path.isfile(url_or_path):
-        return FileResponse(url_or_path, media_type=receipt.content_type)
-
-    return RedirectResponse(url_or_path, status_code=302)
+    ref = bill_service.get_receipt_ref(receipt)
+    if ref.kind == "local":
+        return FileResponse(ref.location, media_type=receipt.content_type)
+    return RedirectResponse(ref.location, status_code=302)
 
 
 @router.post("/{bill_uuid}/receipts/upload")
