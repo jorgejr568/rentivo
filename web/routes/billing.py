@@ -200,17 +200,19 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
         new_state=serialize_billing(updated),
     )
 
+    previous_recipients = request.state.services.recipient.list_for_billing(updated.id)
     recipient_rows = [
         {"name": r.get("name", ""), "email": r.get("email", "")} for r in parse_formset(dict(form), "recipients")
     ]
     saved_recipients = request.state.services.recipient.replace_for_billing(updated.id, recipient_rows)
-    if saved_recipients or recipient_rows:
+    if recipient_rows or previous_recipients:
         request.state.services.audit.safe_log_for(
             request.state.actor,
             AuditEventType.BILLING_RECIPIENTS_UPDATED,
             entity_type="billing",
             entity_id=updated.id,
             entity_uuid=updated.uuid,
+            previous_state={"recipient_count": len(previous_recipients)},
             new_state={"recipient_count": len(saved_recipients)},
         )
 

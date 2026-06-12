@@ -44,6 +44,40 @@ def test_edit_persists_recipients(auth_client, test_engine, csrf_token):
     assert n == 2
 
 
+def test_edit_clearing_recipients_deletes_and_audits(auth_client, test_engine, csrf_token):
+    from tests.web.conftest import get_audit_logs
+
+    billing = create_billing_in_db(test_engine)
+    # First add a recipient.
+    auth_client.post(
+        f"/billings/{billing.uuid}/edit",
+        data=_form(
+            csrf_token,
+            **{
+                "recipients-TOTAL_FORMS": "1",
+                "recipients-0-name": "Rodrigo",
+                "recipients-0-email": "rodrigo@example.com",
+            },
+        ),
+        follow_redirects=False,
+    )
+    # Then submit the edit with an empty recipients formset (cleared).
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/edit",
+        data=_form(csrf_token, **{"recipients-TOTAL_FORMS": "0"}),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with test_engine.connect() as c:
+        n = c.execute(text("SELECT COUNT(*) FROM billing_recipients WHERE billing_id = :b"), {"b": billing.id}).scalar()
+    assert n == 0
+    logs = get_audit_logs(test_engine, event_type="billing.recipients_updated")
+    # The clear is audited: a recipients_updated log records new count 0 (and the previous count 1).
+    cleared = [log for log in logs if log.new_state == {"recipient_count": 0}]
+    assert cleared
+    assert cleared[0].previous_state == {"recipient_count": 1}
+
+
 def test_edit_renders_existing_recipients(auth_client, test_engine, csrf_token):
     billing = create_billing_in_db(test_engine)
     auth_client.post(
