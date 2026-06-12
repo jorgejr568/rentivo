@@ -37,7 +37,7 @@ dependencies = [
 include = ["rentivo*", "web*"]
 
 [project.optional-dependencies]
-cache = ["redis>=5.0,<8"]
+cache = ["redis>=5.0,<9"]
 s3 = ["boto3>=1.35,<2"]
 dev = [
     "ruff>=0.9,<1",
@@ -53,7 +53,7 @@ test = [
     "boto3>=1.35,<2",
     "faker>=33.0,<41",
     "fakeredis>=2.20,<3",
-    "redis>=5.0,<8",
+    "redis>=5.0,<9",
 ]
 
 [project.scripts]
