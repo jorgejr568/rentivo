@@ -7,12 +7,23 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 > Note: this changelog was seeded from 187 commits of pre-SemVer history. Some pre-v3.0.0 dates are not strictly monotonic top-to-bottom (rebase artifacts) — entries are ordered by SemVer, not by date.
 
 ## [Unreleased]
+
+## [3.11.0] - 2026-06-12
 ### Added
+- Google sign-in (OAuth 2.0 authorization-code flow) behind `RENTIVO_GOOGLE_AUTH_ENABLED` (default `false` — routes 404 and no button renders when off). New `RENTIVO_GOOGLE_CLIENT_ID` / `RENTIVO_GOOGLE_CLIENT_SECRET` (required when enabled). Account linking is by verified Google email through the existing `users.email_hash` blind index; first login auto-creates a passwordless user. The callback runs the same MFA gate as `POST /login`, so TOTP/passkey users and org MFA enforcement are preserved. New `GoogleAuthService` + `web/routes/google_auth.py` (`/auth/google/login`, `/auth/google/callback`) (#72).
 - Year-to-date KPI rollups (faturado · ano / recebido / pendente / em atraso, January through the current month in São Paulo time) and the current-bill status per property on the billings dashboard and organization detail pages. Backed by a new `BillRepository.list_summaries(billing_ids)` lightweight query (all bills per billing, no decryption) and `BillingStatsService`, which derives both the latest bill per property (table) and the YTD rollup (cards) from one query (#66).
 - Generic, reusable key→value cache (`rentivo/cache/`) mirroring the decryption cache's backends — `none` / `memory` / `redis` — selected by its own `RENTIVO_CACHE_BACKEND` env (plus `RENTIVO_CACHE_TTL_SECONDS`, `RENTIVO_CACHE_MAX_ENTRIES`; Redis reuses `RENTIVO_REDIS_URL`). Values are any JSON-serialisable data; every backend is fail-open. Defaults to `memory` so it stays on out of the box. The billing KPI rollups are its first consumer (keyed `billing_stats:…`) (#66).
 
 ### Changed
+- Dependency management migrated from pip to **uv**: explicit `build-system`, a pinned Python, and a committed `uv.lock`. `make install` drives `uv sync --all-extras`; CI, the deploy test job, and all three Docker images (web/cli/worker) install via uv. Contributors must run tools through `uv run` / `.venv/bin/` rather than bare `python`/`pip`/`pytest` (#67).
 - Refined neobrutalist redesign of the web UI. New design-token system in `custom.css` (OKLCH palette; Space Grotesk / Hanken Grotesk / JetBrains Mono; refined shadows) plus new components (KPI stat cards, segmented form sections, sticky action bar, org card grid, bank-style invoice document, danger zone). Legacy class names and CSS vars are preserved and restyled so every page inherits the new look. The landing, login, billing list/detail, invoice, billing create/edit, and organization list/detail/create screens were rebuilt to match the design handoff. No route or form-contract changes (#66).
+- Documentation overhaul: `.env.example` rewritten with every `RENTIVO_` var (4 stale `LANDLORD_` vars removed, 14 missing settings added) and guarded by a new drift test; new compose-only dev path with a `make compose-dev` live-reload override; refreshed `docs/configuration.md`, `docs/development.md`, and contribution guide (#73).
+- Behavior-preserving refactors across the stack — web app wiring and middleware simplification, guard-dependency migration of the bill/billing/organization/theme routes, login completion consolidated into `web/login_flow.py`, `RequestContextMiddleware` converted to pure ASGI, and cleanups to the repositories, services, encryption/cache/storage/jobs plumbing, scripts, and CLI menus (#74, #75, #76, #77, #78, #79, #80, #81, #82, #83, #84, #85, #87).
+- Dependency bumps: structlog `<27`, dev redis `<9`, `astral-sh/setup-uv` 5→7, `codecov/codecov-action` 6→7, and a `uv.lock` refresh for dependabot constraint bumps (#68, #69, #70, #71, #86).
+
+### Fixed
+- Compose-only setup now works out of the box: `RENTIVO_DB_URL` is pinned to the internal `db` service for app containers (the host-side `.env` localhost URL no longer crashes the web container on boot), and the shared `invoices` volume is mounted into the worker so `pdf.render` jobs are visible to the web app (#73).
+- Finished the Landlord → Rentivo rename in the WebAuthn RP name, template titles, and README (#73).
 
 ## [3.10.1] - 2026-05-23
 ### Security
