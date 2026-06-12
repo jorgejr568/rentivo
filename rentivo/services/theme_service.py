@@ -54,9 +54,8 @@ class ThemeService:
                 if hasattr(existing, key):
                     setattr(existing, key, value)
             return self.theme_repo.update(existing)
-        else:
-            theme = Theme(owner_type=owner_type, owner_id=owner_id, **fields)
-            return self.theme_repo.create(theme)
+        theme = Theme(owner_type=owner_type, owner_id=owner_id, **fields)
+        return self.theme_repo.create(theme)
 
     def delete_theme(self, owner_type: str, owner_id: int) -> bool:
         theme = self.theme_repo.get_by_owner(owner_type, owner_id)

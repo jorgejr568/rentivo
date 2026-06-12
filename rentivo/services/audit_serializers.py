@@ -25,6 +25,21 @@ def _dt(val: datetime | None) -> str | None:
     return val.isoformat()
 
 
+def _serialize_line_item(item) -> dict:
+    """Serialize a billing item / bill line item for audit state.
+
+    Both ``BillingItem`` and ``BillLineItem`` expose the same shape; their
+    ``item_type`` may be an enum (``.value``) or a plain string.
+    """
+    return {
+        "id": item.id,
+        "description": item.description,
+        "amount": item.amount,
+        "item_type": item.item_type.value if hasattr(item.item_type, "value") else str(item.item_type),
+        "sort_order": item.sort_order,
+    }
+
+
 def serialize_billing(billing: Billing) -> dict:
     """Serialize a Billing (with items) for audit state.
 
@@ -40,16 +55,7 @@ def serialize_billing(billing: Billing) -> dict:
         "pix_merchant_city": redact(billing.pix_merchant_city or "", PIIKind.PIX),
         "owner_type": billing.owner_type,
         "owner_id": billing.owner_id,
-        "items": [
-            {
-                "id": item.id,
-                "description": item.description,
-                "amount": item.amount,
-                "item_type": item.item_type.value if hasattr(item.item_type, "value") else str(item.item_type),
-                "sort_order": item.sort_order,
-            }
-            for item in billing.items
-        ],
+        "items": [_serialize_line_item(item) for item in billing.items],
         "created_at": _dt(billing.created_at),
         "updated_at": _dt(billing.updated_at),
     }
@@ -63,16 +69,7 @@ def serialize_bill(bill: Bill) -> dict:
         "billing_id": bill.billing_id,
         "reference_month": bill.reference_month,
         "total_amount": bill.total_amount,
-        "line_items": [
-            {
-                "id": item.id,
-                "description": item.description,
-                "amount": item.amount,
-                "item_type": item.item_type.value if hasattr(item.item_type, "value") else str(item.item_type),
-                "sort_order": item.sort_order,
-            }
-            for item in bill.line_items
-        ],
+        "line_items": [_serialize_line_item(item) for item in bill.line_items],
         "pdf_path": bill.pdf_path,
         "notes": bill.notes,
         "due_date": bill.due_date,

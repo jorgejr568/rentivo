@@ -29,19 +29,19 @@ CONTENT_TYPE_EXTENSIONS = {
 }
 
 
-def _storage_key(billing_uuid: str, bill_uuid: str) -> str:
+def _prefixed(path: str) -> str:
+    """Prepend the configured storage prefix to a relative key, if any."""
     prefix = settings.storage_prefix
-    if prefix:
-        return f"{prefix}/{billing_uuid}/{bill_uuid}.pdf"
-    return f"{billing_uuid}/{bill_uuid}.pdf"
+    return f"{prefix}/{path}" if prefix else path
+
+
+def _storage_key(billing_uuid: str, bill_uuid: str) -> str:
+    return _prefixed(f"{billing_uuid}/{bill_uuid}.pdf")
 
 
 def _receipt_storage_key(billing_uuid: str, bill_uuid: str, receipt_uuid: str, content_type: str) -> str:
     ext = CONTENT_TYPE_EXTENSIONS.get(content_type, "")
-    prefix = settings.storage_prefix
-    if prefix:
-        return f"{prefix}/{billing_uuid}/{bill_uuid}/receipts/{receipt_uuid}{ext}"
-    return f"{billing_uuid}/{bill_uuid}/receipts/{receipt_uuid}{ext}"
+    return _prefixed(f"{billing_uuid}/{bill_uuid}/receipts/{receipt_uuid}{ext}")
 
 
 class BillService:
