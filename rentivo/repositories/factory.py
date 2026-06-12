@@ -2,6 +2,8 @@ from rentivo.repositories.base import (
     AuditLogRepository,
     BillingRepository,
     BillRepository,
+    CommunicationRepository,
+    CommunicationTemplateRepository,
     InviteRepository,
     KnownDeviceRepository,
     MFATOTPRepository,
@@ -70,6 +72,22 @@ def get_recipient_repository() -> RecipientRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyRecipientRepository
 
     return SQLAlchemyRecipientRepository(get_connection(), get_encryption())
+
+
+def get_communication_template_repository() -> CommunicationTemplateRepository:
+    from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
+    from rentivo.repositories.sqlalchemy import SQLAlchemyCommunicationTemplateRepository
+
+    return SQLAlchemyCommunicationTemplateRepository(get_connection(), get_encryption())
+
+
+def get_communication_repository() -> CommunicationRepository:
+    from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
+    from rentivo.repositories.sqlalchemy import SQLAlchemyCommunicationRepository
+
+    return SQLAlchemyCommunicationRepository(get_connection(), get_encryption())
 
 
 def get_audit_log_repository() -> AuditLogRepository:

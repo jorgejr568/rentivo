@@ -14,6 +14,10 @@ from rentivo.repositories.sqlalchemy.auth import (
 )
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
+from rentivo.repositories.sqlalchemy.communication import (
+    SQLAlchemyCommunicationRepository,
+    SQLAlchemyCommunicationTemplateRepository,
+)
 from rentivo.repositories.sqlalchemy.invite import SQLAlchemyInviteRepository
 from rentivo.repositories.sqlalchemy.mfa import (
     SQLAlchemyMFATOTPRepository,
@@ -30,6 +34,8 @@ __all__ = [
     "SQLAlchemyAuditLogRepository",
     "SQLAlchemyBillRepository",
     "SQLAlchemyBillingRepository",
+    "SQLAlchemyCommunicationRepository",
+    "SQLAlchemyCommunicationTemplateRepository",
     "SQLAlchemyInviteRepository",
     "SQLAlchemyKnownDeviceRepository",
     "SQLAlchemyMFATOTPRepository",

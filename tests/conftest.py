@@ -155,6 +155,35 @@ CREATE TABLE billing_recipients (
     created_at DATETIME NOT NULL
 );
 
+CREATE TABLE communication_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    owner_type VARCHAR(20) NOT NULL,
+    owner_id INTEGER NOT NULL,
+    comm_type VARCHAR(32) NOT NULL,
+    subject TEXT NOT NULL,
+    body_markdown TEXT NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    UNIQUE (owner_type, owner_id, comm_type)
+);
+
+CREATE TABLE communications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    bill_id INTEGER NOT NULL REFERENCES bills(id) ON DELETE CASCADE,
+    comm_type VARCHAR(32) NOT NULL,
+    recipient_name TEXT NOT NULL,
+    recipient_email TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    body_markdown TEXT NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'queued',
+    error TEXT,
+    job_ulid VARCHAR(26) NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL,
+    sent_at DATETIME
+);
+
 CREATE TABLE user_totp (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,

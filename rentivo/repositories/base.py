@@ -4,6 +4,7 @@ from datetime import datetime
 from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
+from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.invite import Invite
 from rentivo.models.known_device import KnownDevice
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
@@ -294,3 +295,34 @@ class KnownDeviceRepository(ABC):
 
     @abstractmethod
     def upsert(self, device: KnownDevice) -> KnownDevice: ...
+
+
+class CommunicationTemplateRepository(ABC):
+    @abstractmethod
+    def get(self, owner_type: str, owner_id: int, comm_type: str) -> CommunicationTemplate | None: ...
+
+    @abstractmethod
+    def upsert(self, template: CommunicationTemplate) -> CommunicationTemplate: ...
+
+
+class CommunicationRepository(ABC):
+    @abstractmethod
+    def create(self, communication: Communication) -> Communication: ...
+
+    @abstractmethod
+    def get_by_id(self, communication_id: int) -> Communication | None: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> Communication | None: ...
+
+    @abstractmethod
+    def list_by_bill(self, bill_id: int) -> list[Communication]: ...
+
+    @abstractmethod
+    def set_job_ulid(self, communication_id: int, job_ulid: str) -> None: ...
+
+    @abstractmethod
+    def mark_sent(self, communication_id: int, sent_at) -> None: ...
+
+    @abstractmethod
+    def mark_failed(self, communication_id: int, error: str) -> None: ...
