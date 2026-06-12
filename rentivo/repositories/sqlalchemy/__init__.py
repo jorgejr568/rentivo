@@ -22,6 +22,7 @@ from rentivo.repositories.sqlalchemy.mfa import (
 )
 from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
 from rentivo.repositories.sqlalchemy.receipt import SQLAlchemyReceiptRepository
+from rentivo.repositories.sqlalchemy.recipient import SQLAlchemyRecipientRepository
 from rentivo.repositories.sqlalchemy.theme import SQLAlchemyThemeRepository
 from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
@@ -36,6 +37,7 @@ __all__ = [
     "SQLAlchemyPasskeyRepository",
     "SQLAlchemyPasswordResetTokenRepository",
     "SQLAlchemyReceiptRepository",
+    "SQLAlchemyRecipientRepository",
     "SQLAlchemyRecoveryCodeRepository",
     "SQLAlchemyThemeRepository",
     "SQLAlchemyUserRepository",

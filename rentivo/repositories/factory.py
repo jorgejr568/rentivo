@@ -9,6 +9,7 @@ from rentivo.repositories.base import (
     PasskeyRepository,
     PasswordResetTokenRepository,
     ReceiptRepository,
+    RecipientRepository,
     RecoveryCodeRepository,
     ThemeRepository,
     UserRepository,
@@ -61,6 +62,14 @@ def get_receipt_repository() -> ReceiptRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
     return SQLAlchemyReceiptRepository(get_connection(), get_encryption())
+
+
+def get_recipient_repository() -> RecipientRepository:
+    from rentivo.db import get_connection
+    from rentivo.encryption.factory import get_encryption
+    from rentivo.repositories.sqlalchemy import SQLAlchemyRecipientRepository
+
+    return SQLAlchemyRecipientRepository(get_connection(), get_encryption())
 
 
 def get_audit_log_repository() -> AuditLogRepository:

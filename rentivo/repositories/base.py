@@ -10,6 +10,7 @@ from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.models.receipt import Receipt
+from rentivo.models.recipient import Recipient
 from rentivo.models.theme import Theme
 from rentivo.models.user import User
 
@@ -189,6 +190,17 @@ class ReceiptRepository(ABC):
 
     @abstractmethod
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None: ...
+
+
+class RecipientRepository(ABC):
+    @abstractmethod
+    def list_by_billing(self, billing_id: int) -> list[Recipient]: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> Recipient | None: ...
+
+    @abstractmethod
+    def replace_for_billing(self, billing_id: int, recipients: list[Recipient]) -> None: ...
 
 
 class MFATOTPRepository(ABC):
