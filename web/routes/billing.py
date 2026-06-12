@@ -10,7 +10,7 @@ from rentivo.services.audit_serializers import serialize_billing
 from web.analytics import analytics_hash, push_event
 from web.deps import render
 from web.flash import flash
-from web.forms import parse_line_items
+from web.forms import parse_formset, parse_line_items
 from web.guards import BillingContext, require_billing
 
 logger = structlog.get_logger(__name__)
@@ -154,7 +154,8 @@ async def billing_detail(request: Request, ctx: BillingContext = Depends(require
 
 @router.get("/{billing_uuid}/edit")
 async def billing_edit_form(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
-    return render(request, "billing/edit.html", {"billing": ctx.billing})
+    recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
+    return render(request, "billing/edit.html", {"billing": ctx.billing, "recipients": recipients})
 
 
 @router.post("/{billing_uuid}/edit")
@@ -198,6 +199,20 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
         previous_state=previous_state,
         new_state=serialize_billing(updated),
     )
+
+    recipient_rows = [
+        {"name": r.get("name", ""), "email": r.get("email", "")} for r in parse_formset(dict(form), "recipients")
+    ]
+    saved_recipients = request.state.services.recipient.replace_for_billing(updated.id, recipient_rows)
+    if saved_recipients or recipient_rows:
+        request.state.services.audit.safe_log_for(
+            request.state.actor,
+            AuditEventType.BILLING_RECIPIENTS_UPDATED,
+            entity_type="billing",
+            entity_id=updated.id,
+            entity_uuid=updated.uuid,
+            new_state={"recipient_count": len(saved_recipients)},
+        )
 
     flash(request, "Cobrança atualizada com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_edited", "billing_uuid_hash": analytics_hash(updated.uuid)})
