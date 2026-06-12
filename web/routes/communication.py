@@ -61,6 +61,10 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
         flash(request, "Selecione ao menos um destinatário.", "danger")
         return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
 
+    if not subject or not body:
+        flash(request, "Preencha o assunto e o corpo da mensagem.", "danger")
+        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
+
     comms = services.communication.send(
         bill=bill,
         billing=billing,

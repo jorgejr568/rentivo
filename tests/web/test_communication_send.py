@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from sqlalchemy import text
 
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs
@@ -22,6 +24,30 @@ def _seed_recipient(auth_client, billing, csrf):
             "recipients-TOTAL_FORMS": "1",
             "recipients-0-name": "Rodrigo",
             "recipients-0-email": "rodrigo@example.com",
+        },
+        follow_redirects=False,
+    )
+
+
+def _seed_two_recipients(auth_client, billing, csrf):
+    auth_client.post(
+        f"/billings/{billing.uuid}/edit",
+        data={
+            "csrf_token": csrf,
+            "name": "Apt 101",
+            "description": "",
+            "pix_key": "",
+            "pix_merchant_name": "",
+            "pix_merchant_city": "",
+            "items-TOTAL_FORMS": "1",
+            "items-0-description": "Aluguel",
+            "items-0-item_type": "fixed",
+            "items-0-amount": "2850,00",
+            "recipients-TOTAL_FORMS": "2",
+            "recipients-0-name": "Rodrigo",
+            "recipients-0-email": "rodrigo@example.com",
+            "recipients-1-name": "Ana",
+            "recipients-1-email": "ana@example.com",
         },
         follow_redirects=False,
     )
@@ -55,6 +81,51 @@ def test_send_creates_communication_and_enqueues_job(auth_client, test_engine, c
     assert comm_n == 1
     assert job_n == 1
     assert any(log.event_type == "communication.sent" for log in get_audit_logs(test_engine))
+
+
+def test_send_with_empty_body_redirects_to_compose(auth_client, test_engine, csrf_token, tmp_path):
+    billing = create_billing_in_db(test_engine)
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)
+    _seed_recipient(auth_client, billing, csrf_token)
+    ruuid = _recipient_uuid(test_engine)
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
+        data={"csrf_token": csrf_token, "subject": "Assunto", "body": "  ", "recipient_uuids": ruuid},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"].endswith("/communications/compose")
+    with test_engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
+
+
+def test_send_fans_out_to_multiple_recipients(auth_client, test_engine, csrf_token, tmp_path):
+    billing = create_billing_in_db(test_engine)
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)
+    _seed_two_recipients(auth_client, billing, csrf_token)
+    with test_engine.connect() as c:
+        uuids = [row[0] for row in c.execute(text("SELECT uuid FROM billing_recipients")).fetchall()]
+    assert len(uuids) == 2
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
+        content=urlencode(
+            [
+                ("csrf_token", csrf_token),
+                ("subject", "Cobrança {{unit}}"),
+                ("body", "Prezado {{tenant_name}}"),
+                ("recipient_uuids", uuids[0]),
+                ("recipient_uuids", uuids[1]),
+            ]
+        ),
+        headers={"content-type": "application/x-www-form-urlencoded"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with test_engine.connect() as c:
+        comm_n = c.execute(text("SELECT COUNT(*) FROM communications WHERE bill_id = :b"), {"b": bill.id}).scalar()
+        job_n = c.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'communication.send'")).scalar()
+    assert comm_n == 2
+    assert job_n == 2
 
 
 def test_send_without_recipient_selected_redirects_to_compose(auth_client, test_engine, csrf_token, tmp_path):
