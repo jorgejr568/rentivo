@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Enviar comunicação - Rentivo{% endblock %}
+
+{% block content %}
+<a class="crumb" href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    Fatura {{ format_month(bill.reference_month) }}
+</a>
+
+<div class="pagehead">
+    <div>
+        <h1 class="pagehead__title">Enviar comunicação</h1>
+        <p class="pagehead__sub">{{ billing.name }} · {{ format_month(bill.reference_month) }}. Cada destinatário recebe um e-mail separado com o PDF anexado.</p>
+    </div>
+</div>
+
+{% if not recipients %}
+<div class="panel"><div class="panel__body">
+    <p class="text-muted">Nenhum destinatário cadastrado. <a href="/billings/{{ billing.uuid }}/edit">Adicione destinatários</a> na cobrança antes de enviar.</p>
+</div></div>
+{% else %}
+<form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/send" id="comm-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <div class="panel">
+        <div class="panel__head"><h3>Destinatários</h3></div>
+        <div class="panel__body">
+            {% for r in recipients %}
+            <label class="field" style="display:flex; gap:.5rem; align-items:center;">
+                <input type="checkbox" name="recipient_uuids" value="{{ r.uuid }}" checked>
+                <span>{{ r.name }} &lt;{{ r.email }}&gt;</span>
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel__head"><h3>Mensagem</h3><span class="panel__title-eyebrow">Markdown</span></div>
+        <div class="panel__body">
+            <div class="field">
+                <label for="subject" class="field__label">Assunto</label>
+                <input type="text" class="input" id="subject" name="subject" value="{{ template.subject }}">
+            </div>
+            <div class="field">
+                <label for="body" class="field__label">Corpo (Markdown — HTML não é permitido)</label>
+                <textarea class="input" id="body" name="body" rows="12">{{ template.body_markdown }}</textarea>
+                <span class="field__hint">Variáveis: {{ '{{tenant_name}}' }}, {{ '{{unit}}' }}, {{ '{{month}}' }}, {{ '{{due_date}}' }}, {{ '{{total}}' }}.</span>
+            </div>
+            <button type="button" class="btn btn--sm" id="preview-btn">Atualizar pré-visualização</button>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel__head"><h3>Pré-visualização</h3></div>
+        <div class="panel__body"><div id="preview" class="email-preview"></div></div>
+    </div>
+
+    <div class="panel">
+        <div class="panel__head"><h3>Salvar modelo (opcional)</h3></div>
+        <div class="panel__body">
+            <div class="field">
+                <select class="select" name="save_scope">
+                    <option value="">Não salvar como modelo</option>
+                    <option value="billing">Salvar para esta cobrança</option>
+                    <option value="owner">Salvar para {{ "a organização" if billing.owner_type == "organization" else "minha conta" }}</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="btn-row">
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" class="btn btn--ghost">Cancelar</a>
+        <button type="submit" class="btn btn--primary">Enviar comunicação</button>
+    </div>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+    var btn = document.getElementById('preview-btn');
+    var body = document.getElementById('body');
+    var out = document.getElementById('preview');
+    if (!btn || !body || !out) return;
+    var url = "/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/preview";
+    function refresh() {
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': "{{ csrf_token }}" },
+            body: JSON.stringify({ body: body.value })
+        }).then(function (r) { return r.json(); }).then(function (d) { out.innerHTML = d.html; });
+    }
+    btn.addEventListener('click', refresh);
+    refresh();
+})();
+</script>
+{% endblock %}
