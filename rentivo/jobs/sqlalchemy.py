@@ -15,6 +15,17 @@ def _now() -> datetime:
     return datetime.now(SP_TZ).replace(tzinfo=None)
 
 
+def _to_naive_sp(dt: datetime) -> datetime:
+    """Normalise a datetime to naive SP_TZ wall-clock (the storage convention).
+
+    Naive inputs are assumed to already be SP_TZ and pass through unchanged;
+    aware inputs are converted to SP_TZ before the tzinfo is dropped.
+    """
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(SP_TZ).replace(tzinfo=None)
+
+
 class SQLAlchemyJobRepository(JobRepository):
     def __init__(self, conn: Connection, *, stuck_after_seconds: int = 600) -> None:
         self.conn = conn
@@ -29,12 +40,7 @@ class SQLAlchemyJobRepository(JobRepository):
     ) -> Job:
         ulid = str(ULID())
         now = _now()
-        if run_after is None:
-            run_at = now
-        elif run_after.tzinfo is None:
-            run_at = run_after
-        else:
-            run_at = run_after.astimezone(SP_TZ).replace(tzinfo=None)
+        run_at = now if run_after is None else _to_naive_sp(run_after)
         result = self.conn.execute(
             text(
                 "INSERT INTO jobs (ulid, job_type, payload, status, attempts, max_attempts, "
@@ -114,7 +120,7 @@ class SQLAlchemyJobRepository(JobRepository):
         self.conn.commit()
 
     def reschedule(self, job_id: int, run_after: datetime, last_error: str) -> None:
-        run_at = run_after if run_after.tzinfo is None else run_after.astimezone(SP_TZ).replace(tzinfo=None)
+        run_at = _to_naive_sp(run_after)
         self.conn.execute(
             text(
                 "UPDATE jobs SET status = 'pending', run_after = :run_after, "
