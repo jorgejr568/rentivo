@@ -10,6 +10,7 @@ from rentivo.models.billing import Billing
 from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.recipient import Recipient
 from rentivo.repositories.base import CommunicationRepository, CommunicationTemplateRepository
+from rentivo.services.job_service import JobService
 
 logger = structlog.get_logger(__name__)
 
@@ -19,7 +20,7 @@ class CommunicationService:
         self,
         communication_repo: CommunicationRepository,
         template_repo: CommunicationTemplateRepository,
-        job_service: object,
+        job_service: JobService,
     ) -> None:
         self.communication_repo = communication_repo
         self.template_repo = template_repo
@@ -73,6 +74,9 @@ class CommunicationService:
     ) -> list[Communication]:
         """Create one queued communication per recipient and enqueue a send job each."""
         results: list[Communication] = []
+        # Per-recipient: create row, enqueue job, stamp job_ulid. Not atomic across
+        # recipients — if enqueue fails mid-loop, earlier recipients are already
+        # queued; a failed recipient leaves a queued row with empty job_ulid.
         for recipient in recipients:
             ctx = self._context(bill, billing, recipient)
             comm = self.communication_repo.create(
