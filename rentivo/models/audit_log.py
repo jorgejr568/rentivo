@@ -68,6 +68,11 @@ class AuditEventType:
     THEME_UPDATE = "theme.update"
     THEME_DELETE = "theme.delete"
 
+    # Communication events
+    COMMUNICATION_SENT = "communication.sent"
+    COMMUNICATION_TEMPLATE_SAVED = "communication.template_saved"
+    BILLING_RECIPIENTS_UPDATED = "billing.recipients_updated"
+
     # Job queue events
     JOB_ENQUEUED = "job.enqueued"
     JOB_SUCCEEDED = "job.succeeded"
