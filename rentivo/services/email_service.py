@@ -88,7 +88,7 @@ class EmailService:
         subject: str,
         body_html_inner: str,
         body_text: str,
-        attachments: "list[EmailAttachment] | tuple[EmailAttachment, ...]" = (),
+        attachments: list[EmailAttachment] | tuple[EmailAttachment, ...] = (),
     ) -> str:
         """Send a dynamic (non-registry) communication: a Markdown-rendered body
         wrapped in the shared email layout, with optional file attachments.

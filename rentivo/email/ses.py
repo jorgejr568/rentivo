@@ -41,11 +41,14 @@ class SESEmailBackend(EmailBackend):
     def send(self, message: EmailMessage) -> str:
         if message.attachments:
             raw = build_mime(message).as_bytes()
-            response = self.client.send_raw_email(
-                Source=message.from_address or self.from_address,
-                Destinations=[message.to],
-                RawMessage={"Data": raw},
-            )
+            raw_kwargs = {
+                "Source": message.from_address or self.from_address,
+                "Destinations": [message.to],
+                "RawMessage": {"Data": raw},
+            }
+            if self.configuration_set:
+                raw_kwargs["ConfigurationSetName"] = self.configuration_set
+            response = self.client.send_raw_email(**raw_kwargs)
             message_id = response.get("MessageId", "")
             logger.info("email_ses_sent_raw", to=message.to, subject=message.subject, message_id=message_id)
             return message_id
