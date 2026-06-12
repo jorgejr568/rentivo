@@ -123,3 +123,44 @@ def test_edit_renders_existing_recipients(auth_client, test_engine, csrf_token):
     page = auth_client.get(f"/billings/{billing.uuid}/edit")
     assert "rodrigo@example.com" in page.text
     assert "Rodrigo" in page.text
+
+
+def test_create_form_shows_recipients_panel(auth_client, csrf_token):
+    page = auth_client.get("/billings/create")
+    assert page.status_code == 200
+    assert "Destinatários" in page.text
+    assert 'name="recipients-TOTAL_FORMS"' in page.text
+
+
+def test_create_persists_recipients(auth_client, test_engine, csrf_token):
+    resp = auth_client.post(
+        "/billings/create",
+        data=_form(
+            csrf_token,
+            name="Nova Cobrança",
+            **{
+                "recipients-TOTAL_FORMS": "2",
+                "recipients-0-name": "Rodrigo",
+                "recipients-0-email": "rodrigo@example.com",
+                "recipients-1-name": "Ana",
+                "recipients-1-email": "ana@example.com",
+            },
+        ),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with test_engine.connect() as c:
+        n = c.execute(text("SELECT COUNT(*) FROM billing_recipients")).scalar()
+    assert n == 2
+
+
+def test_create_with_empty_recipients_formset_persists_none(auth_client, test_engine, csrf_token):
+    resp = auth_client.post(
+        "/billings/create",
+        data=_form(csrf_token, name="Sem Destinatários", **{"recipients-TOTAL_FORMS": "0"}),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with test_engine.connect() as c:
+        n = c.execute(text("SELECT COUNT(*) FROM billing_recipients")).scalar()
+    assert n == 0

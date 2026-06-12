@@ -102,6 +102,22 @@ async def billing_create(request: Request):
         new_state=serialize_billing(billing),
     )
 
+    # Mirror billing_edit: only touch recipients when the submission carries the
+    # formset, so the behaviour is identical across create and edit.
+    form_dict = dict(form)
+    if "recipients-TOTAL_FORMS" in form_dict:
+        recipient_rows = parse_formset(form_dict, "recipients")
+        saved_recipients = request.state.services.recipient.replace_for_billing(billing.id, recipient_rows)
+        if saved_recipients or recipient_rows:
+            audit.safe_log_for(
+                request.state.actor,
+                AuditEventType.BILLING_RECIPIENTS_UPDATED,
+                entity_type="billing",
+                entity_id=billing.id,
+                entity_uuid=billing.uuid,
+                new_state={"recipient_count": len(saved_recipients)},
+            )
+
     flash(request, f"Cobrança '{billing.name}' criada com sucesso!", "success")
     push_event(
         request,
