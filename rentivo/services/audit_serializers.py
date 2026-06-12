@@ -182,7 +182,7 @@ def serialize_communication(comm: Communication) -> dict:
 
     The recipient email is partial-mask redacted; recipient name, subject, and
     body are omitted entirely. The subject is rendered from the template at
-    send time and may carry substituted PII (``{{tenant_name}}`` / ``{{unit}}``,
+    send time and may carry substituted PII (``{{nome_inquilino}}`` / ``{{unidade}}``,
     the latter the encrypted billing name), so it must not land in plaintext in
     the audit trail.
     """

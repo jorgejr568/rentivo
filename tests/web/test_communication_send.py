@@ -74,8 +74,8 @@ def test_send_creates_communication_and_enqueues_job(auth_client, test_engine, c
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
         data={
             "csrf_token": csrf_token,
-            "subject": "Cobrança {{unit}}",
-            "body": "Prezado {{tenant_name}}",
+            "subject": "Cobrança {{unidade}}",
+            "body": "Prezado {{nome_inquilino}}",
             "recipient_uuids": ruuid,
         },
         follow_redirects=False,
@@ -117,8 +117,8 @@ def test_send_fans_out_to_multiple_recipients(auth_client, test_engine, csrf_tok
         content=urlencode(
             [
                 ("csrf_token", csrf_token),
-                ("subject", "Cobrança {{unit}}"),
-                ("body", "Prezado {{tenant_name}}"),
+                ("subject", "Cobrança {{unidade}}"),
+                ("body", "Prezado {{nome_inquilino}}"),
                 ("recipient_uuids", uuids[0]),
                 ("recipient_uuids", uuids[1]),
             ]

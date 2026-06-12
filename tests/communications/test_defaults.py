@@ -8,7 +8,7 @@ from rentivo.communications.defaults import (
 
 
 def test_default_body_contains_expected_placeholders():
-    for token in ("{{tenant_name}}", "{{unit}}", "{{month}}"):
+    for token in ("{{nome_inquilino}}", "{{unidade}}", "{{mes}}"):
         assert token in DEFAULT_BILL_READY_BODY
 
 

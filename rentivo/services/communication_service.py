@@ -56,10 +56,10 @@ class CommunicationService:
     @staticmethod
     def _context(bill: Bill, billing: Billing, recipient: Recipient) -> dict[str, str]:
         return {
-            "tenant_name": recipient.name,
-            "unit": billing.name,
-            "month": month_long(bill.reference_month),
-            "due_date": bill.due_date or "",
+            "nome_inquilino": recipient.name,
+            "unidade": billing.name,
+            "mes": month_long(bill.reference_month),
+            "vencimento": bill.due_date or "",
             "total": format_brl(bill.total_amount),
         }
 

@@ -95,8 +95,8 @@ def test_send_creates_one_communication_per_recipient_and_enqueues(ctx):
         bill=_bill(),
         billing=_billing(),
         recipients=recipients,
-        subject_template="Cobrança {{unit}} — {{month}}",
-        body_template="Prezado {{tenant_name}}, unidade {{unit}}, mês {{month}}, total {{total}}.",
+        subject_template="Cobrança {{unidade}} — {{mes}}",
+        body_template="Prezado {{nome_inquilino}}, unidade {{unidade}}, mês {{mes}}, total {{total}}.",
         actor=None,
     )
     assert len(comms) == 2

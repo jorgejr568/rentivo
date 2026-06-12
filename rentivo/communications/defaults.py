@@ -7,15 +7,15 @@ from __future__ import annotations
 
 from rentivo.models.communication import CommunicationTemplate
 
-DEFAULT_BILL_READY_SUBJECT = "Cobrança {{unit}} — {{month}}"
+DEFAULT_BILL_READY_SUBJECT = "Cobrança {{unidade}} — {{mes}}"
 
 DEFAULT_BILL_READY_BODY = (
-    "Prezado {{tenant_name}},\n"
+    "Prezado {{nome_inquilino}},\n"
     "\n"
     "Espero que este e-mail o encontre bem.\n"
     "\n"
-    "Estou enviando este e-mail referente à unidade {{unit}}. Segue em anexo "
-    "a cobrança referente aos valores do mês de {{month}}.\n"
+    "Estou enviando este e-mail referente à unidade {{unidade}}. Segue em anexo "
+    "a cobrança referente aos valores do mês de {{mes}}.\n"
     "\n"
     "Por favor, sinta-se à vontade para entrar em contato caso tenha alguma dúvida.\n"
     "\n"
