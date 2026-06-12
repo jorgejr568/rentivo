@@ -60,21 +60,15 @@ def _redact_state(state_json: str | None) -> tuple[str | None, bool]:
         return state_json, False
 
     changed = False
-    for key in _PII_KEYS:
-        if key in data:
-            value = data[key]
-            redacted = redact(value or "", PIIKind.PIX)
-            if redacted != value:
-                data[key] = redacted
-                changed = True
-
     # email.send job payloads stored plaintext to_email before this PR.
     # Invite audit rows stored plaintext invited_email / invited_by_email
     # before the redact-serialize-invite change.
-    for key in _EMAIL_KEYS:
-        if key in data:
+    for keys, kind in ((_PII_KEYS, PIIKind.PIX), (_EMAIL_KEYS, PIIKind.EMAIL)):
+        for key in keys:
+            if key not in data:
+                continue
             value = data[key]
-            redacted = redact(value or "", PIIKind.EMAIL)
+            redacted = redact(value or "", kind)
             if redacted != value:
                 data[key] = redacted
                 changed = True
