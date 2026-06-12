@@ -11,7 +11,7 @@ from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.bill import Bill, BillLineItem, BillSummary
 from rentivo.models.billing import ItemType
 from rentivo.repositories.base import BillRepository
-from rentivo.repositories.sqlalchemy._common import _now
+from rentivo.repositories.sqlalchemy._common import _group_rows_by, _now
 
 
 class SQLAlchemyBillRepository(BillRepository):
@@ -170,9 +170,7 @@ class SQLAlchemyBillRepository(BillRepository):
             bindparam("bill_ids", expanding=True)
         )
         all_items = self.conn.execute(stmt, {"bill_ids": bill_ids}).mappings().fetchall()
-        items_by_bill: dict[int, list[RowMapping]] = {}
-        for item_row in all_items:
-            items_by_bill.setdefault(item_row["bill_id"], []).append(item_row)
+        items_by_bill = _group_rows_by(all_items, "bill_id")
         ciphertexts = self._gather_bill_ciphertexts(rows, items_by_bill)
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return [self._build_bill(row, items_by_bill.get(row["id"], []), plaintexts) for row in rows]

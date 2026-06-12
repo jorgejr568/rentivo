@@ -9,7 +9,7 @@ from ulid import ULID
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.repositories.base import BillingRepository
-from rentivo.repositories.sqlalchemy._common import _now
+from rentivo.repositories.sqlalchemy._common import _group_rows_by, _now
 
 
 class SQLAlchemyBillingRepository(BillingRepository):
@@ -118,7 +118,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         return ciphertexts
 
     def _row_to_billing(self, row: RowMapping) -> Billing:
-        items = (
+        items = list(
             self.conn.execute(
                 text("SELECT * FROM billing_items WHERE billing_id = :billing_id ORDER BY sort_order"),
                 {"billing_id": row["id"]},
@@ -126,10 +126,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
             .mappings()
             .fetchall()
         )
-        items_by_billing = {row["id"]: list(items)}
-        ciphertexts = self._gather_billing_ciphertexts([row], items_by_billing)
+        ciphertexts = self._gather_billing_ciphertexts([row], {row["id"]: items})
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
-        return self._build_billing(row, list(items), plaintexts)
+        return self._build_billing(row, items, plaintexts)
 
     def get_by_id(self, billing_id: int) -> Billing | None:
         row = (
@@ -190,9 +189,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             bindparam("billing_ids", expanding=True)
         )
         all_items = self.conn.execute(stmt, {"billing_ids": billing_ids}).mappings().fetchall()
-        items_by_billing: dict[int, list[RowMapping]] = {}
-        for item_row in all_items:
-            items_by_billing.setdefault(item_row["billing_id"], []).append(item_row)
+        items_by_billing = _group_rows_by(all_items, "billing_id")
         ciphertexts = self._gather_billing_ciphertexts(rows, items_by_billing)
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return [self._build_billing(row, items_by_billing.get(row["id"], []), plaintexts) for row in rows]
