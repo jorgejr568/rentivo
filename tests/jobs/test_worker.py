@@ -219,7 +219,7 @@ def test_fail_invokes_registered_hook_with_payload():
 
     captured: list[dict] = []
 
-    @registry.register_on_fail("pdf.render")
+    @registry.register_on_fail("test.worker.hook")
     def _hook(payload: dict) -> None:
         captured.append(payload)
 
@@ -230,7 +230,7 @@ def test_fail_invokes_registered_hook_with_payload():
         job = Job(
             id=99,
             ulid="01HXYZ",
-            job_type="pdf.render",
+            job_type="test.worker.hook",
             payload={"bill_id": 7},
             attempts=3,
             max_attempts=3,
@@ -240,7 +240,7 @@ def test_fail_invokes_registered_hook_with_payload():
         repo.mark_failed.assert_called_once_with(99, "boom")
         assert captured == [{"bill_id": 7}]
     finally:
-        registry._FAIL_HOOKS.clear()
+        registry._FAIL_HOOKS.pop("test.worker.hook", None)
 
 
 def test_fail_swallows_hook_exception(caplog):
@@ -248,7 +248,7 @@ def test_fail_swallows_hook_exception(caplog):
     from rentivo.jobs.base import Job
     from rentivo.jobs.worker import Worker
 
-    @registry.register_on_fail("pdf.render")
+    @registry.register_on_fail("test.worker.hook")
     def _hook(payload: dict) -> None:
         raise RuntimeError("hook bug")
 
@@ -259,7 +259,7 @@ def test_fail_swallows_hook_exception(caplog):
         job = Job(
             id=99,
             ulid="01HXYZ",
-            job_type="pdf.render",
+            job_type="test.worker.hook",
             payload={"bill_id": 7},
             attempts=3,
             max_attempts=3,
@@ -268,7 +268,7 @@ def test_fail_swallows_hook_exception(caplog):
         worker._fail(job, "boom")
         repo.mark_failed.assert_called_once_with(99, "boom")
     finally:
-        registry._FAIL_HOOKS.clear()
+        registry._FAIL_HOOKS.pop("test.worker.hook", None)
 
 
 def test_fail_no_hook_registered_does_not_raise():
