@@ -326,6 +326,18 @@ def test_google_auth_enabled_requires_credentials():
     assert "RENTIVO_GOOGLE_CLIENT_ID" in str(exc.value)
 
 
+def test_communications_from_email_defaults_empty(monkeypatch):
+    monkeypatch.delenv("RENTIVO_COMMUNICATIONS_FROM_EMAIL", raising=False)
+    s = Settings(_env_file=None)
+    assert s.communications_from_email == ""
+
+
+def test_communications_from_email_reads_env(monkeypatch):
+    monkeypatch.setenv("RENTIVO_COMMUNICATIONS_FROM_EMAIL", "cobranca@example.com")
+    s = Settings(_env_file=None)
+    assert s.communications_from_email == "cobranca@example.com"
+
+
 def test_google_auth_enabled_requires_secret_too():
     with pytest.raises(ValidationError) as exc:
         Settings(_env_file=None, google_auth_enabled=True, google_client_id="cid")
