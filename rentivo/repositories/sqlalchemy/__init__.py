@@ -27,6 +27,7 @@ from rentivo.repositories.sqlalchemy.mfa import (
 from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
 from rentivo.repositories.sqlalchemy.receipt import SQLAlchemyReceiptRepository
 from rentivo.repositories.sqlalchemy.recipient import SQLAlchemyRecipientRepository
+from rentivo.repositories.sqlalchemy.reply_to import SQLAlchemyReplyToRecipientRepository
 from rentivo.repositories.sqlalchemy.theme import SQLAlchemyThemeRepository
 from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
@@ -45,6 +46,7 @@ __all__ = [
     "SQLAlchemyReceiptRepository",
     "SQLAlchemyRecipientRepository",
     "SQLAlchemyRecoveryCodeRepository",
+    "SQLAlchemyReplyToRecipientRepository",
     "SQLAlchemyThemeRepository",
     "SQLAlchemyUserRepository",
 ]

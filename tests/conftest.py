@@ -155,6 +155,16 @@ CREATE TABLE billing_recipients (
     created_at DATETIME NOT NULL
 );
 
+CREATE TABLE billing_reply_to (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    billing_id INTEGER NOT NULL REFERENCES billings(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL
+);
+
 CREATE TABLE communication_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid VARCHAR(26) NOT NULL UNIQUE,
