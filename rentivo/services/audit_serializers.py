@@ -12,6 +12,7 @@ from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
+from rentivo.models.receipt import Receipt
 from rentivo.models.theme import Theme
 from rentivo.models.user import User
 from rentivo.pii_redaction import PIIKind, redact
@@ -78,6 +79,22 @@ def serialize_bill(bill: Bill) -> dict:
         "status": bill.status,
         "status_updated_at": _dt(bill.status_updated_at),
         "created_at": _dt(bill.created_at),
+    }
+
+
+def serialize_receipt(receipt: Receipt, *, bill_uuid: str, billing_uuid: str) -> dict:
+    """Serialize a Receipt for audit state.
+
+    ``bill_uuid`` / ``billing_uuid`` come from the calling context — the
+    Receipt model only carries the numeric ``bill_id``. ``filename`` is stored
+    as provided, matching the pre-refactor inline dicts in web/routes/bill.py.
+    """
+    return {
+        "filename": receipt.filename,
+        "content_type": receipt.content_type,
+        "file_size": receipt.file_size,
+        "bill_uuid": bill_uuid,
+        "billing_uuid": billing_uuid,
     }
 
 
