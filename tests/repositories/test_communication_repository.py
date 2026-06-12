@@ -89,6 +89,8 @@ def test_communication_create_list_and_status_transitions(conn):
     assert listed[0].recipient_name == "Rodrigo"
     assert listed[0].job_ulid == "01JOBULID0000000000000000"
     assert listed[0].sent_at is not None
+    assert listed[0].subject == "Cobrança"
+    assert listed[0].body_markdown == "Prezado Rodrigo"
 
 
 def test_communication_mark_failed(conn):
