@@ -262,6 +262,8 @@ All dispatched via `EmailService.safe_send_*` (swallow failures, never block the
 ## Tenant Communications
 
 - Billings carry **recipients** (`billing_recipients`, encrypted `name` + `email`). Multiple per billing; each send goes to one recipient — never CC. Managed via a formset on the billing edit page (`RecipientService.replace_for_billing`).
+- **Reply-To**: billings also carry an optional **reply-to** contact list (`billing_reply_to`, encrypted `name` + `email`) managed by a second formset on the billing create/edit forms (`RecipientService` reused over `SQLAlchemyReplyToRecipientRepository`). At send time the `communication.send` handler formats each as `Name <email>` (`email.utils.formataddr`) and sets the email `Reply-To` header — resolved fresh from the billing at send time, NOT snapshotted onto the communication row. Audit event: `billing.reply_to_updated`.
+- **From override**: `RENTIVO_COMMUNICATIONS_FROM_EMAIL` (optional) overrides the `From` for communication emails only; empty falls back to `RENTIVO_SES_FROM_EMAIL` then `noreply@localhost`. Account/security/transactional emails always use `RENTIVO_SES_FROM_EMAIL`.
 - **Templates** (`communication_templates`) are polymorphic-owned (`owner_type` ∈ `user` | `organization` | `billing`) per `comm_type`, unique on `(owner_type, owner_id, comm_type)` (`uq_comm_template_owner`). `CommunicationService.resolve_template` resolves most-specific-first: billing → billing owner (user/org) → system default (`rentivo/communications/defaults.py`, seeded from the landlord's PT-BR copy; the synthetic fallback uses `owner_type='system'` / `owner_id=0` and is never persisted). Encrypted `subject` + `body_markdown`.
 - **Bodies are Markdown**, rendered by `rentivo/communications/render.py:render_markdown` with `markdown-it-py` and raw HTML disabled (`MarkdownIt("commonmark", {"html": False})`) — `<tag>` in the source is escaped to inert text, so user input can never inject live HTML. Placeholders (PT-BR): `{{nome_inquilino}}` (recipient name), `{{unidade}}` (billing name), `{{mes}}` (e.g. "maio de 2026", via `month_long`), `{{vencimento}}` (due date), `{{total}}` (BRL). Substituted at send time and snapshotted onto the communication row; unknown tokens are left verbatim.
 - **Sends** are manual: compose/preview on the bill page (`web/routes/communication.py`, router prefix `/billings/{billing_uuid}/bills/{bill_uuid}/communications`: `GET /compose`, `POST /preview`, `POST /send`), then one `communication.send` job per recipient. The handler (`rentivo/jobs/handlers/communication.py`) renders the stored row, attaches the bill PDF, sends one email, and marks the row `sent`; the registered `register_on_fail` dead-letter hook marks it `failed`.
@@ -285,6 +287,7 @@ Selected PII columns are encrypted at rest behind a pluggable backend abstractio
 | `bill_line_items` | `description` |
 | `receipts` | `filename` |
 | `billing_recipients` | `name`, `email` |
+| `billing_reply_to` | `name`, `email` |
 | `communication_templates` | `subject`, `body_markdown` |
 | `communications` | `recipient_name`, `recipient_email`, `subject`, `body_markdown` |
 | `user_totp` | `secret` |
