@@ -7,7 +7,7 @@ try:
 except ImportError:  # pragma: no cover
     boto3 = None  # type: ignore[assignment]
 
-from rentivo.storage.base import StorageBackend
+from rentivo.storage.base import FileRef, StorageBackend
 
 logger = structlog.get_logger(__name__)
 
@@ -62,6 +62,9 @@ class S3Storage(StorageBackend):
         )
         logger.debug("storage_url", backend="s3", bucket=self.bucket, key=key)
         return url
+
+    def get_ref(self, key: str) -> FileRef:
+        return FileRef(kind="url", location=self.get_url(key))
 
     def delete(self, key: str) -> None:
         try:

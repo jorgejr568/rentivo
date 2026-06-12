@@ -34,6 +34,11 @@ class TestLocalStoragePathTraversal:
         storage = LocalStorage(str(tmp_path))
         storage.delete("../outside.pdf")  # logs warning, no raise
 
+    def test_get_ref_rejects_traversal(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        with pytest.raises(ValueError):
+            storage.get_ref("../../etc/passwd")
+
 
 class TestLocalStorage:
     def test_save_creates_file(self, tmp_path):
@@ -48,6 +53,20 @@ class TestLocalStorage:
         storage = LocalStorage(str(tmp_path))
         url = storage.get_url("test/file.pdf")
         assert url == str((tmp_path / "test" / "file.pdf").resolve())
+
+    def test_get_ref_returns_local_kind_with_resolved_path(self, tmp_path):
+        storage = LocalStorage(str(tmp_path))
+        ref = storage.get_ref("test/file.pdf")
+        assert ref.kind == "local"
+        assert ref.location == str((tmp_path / "test" / "file.pdf").resolve())
+
+    def test_get_ref_accepts_absolute_path_under_base_dir(self, tmp_path):
+        """Legacy local rows store the resolved absolute path in pdf_path."""
+        storage = LocalStorage(str(tmp_path))
+        absolute = str((tmp_path / "a" / "file.pdf").resolve())
+        ref = storage.get_ref(absolute)
+        assert ref.kind == "local"
+        assert ref.location == absolute
 
     def test_creates_base_dir(self, tmp_path):
         new_dir = tmp_path / "new_dir"

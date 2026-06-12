@@ -2,7 +2,7 @@ from pathlib import Path
 
 import structlog
 
-from rentivo.storage.base import StorageBackend
+from rentivo.storage.base import FileRef, StorageBackend
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +37,11 @@ class LocalStorage(StorageBackend):
         resolved = str(self._safe_path(key))
         logger.debug("storage_url", backend="local", key=key, path=resolved)
         return resolved
+
+    def get_ref(self, key: str) -> FileRef:
+        resolved = str(self._safe_path(key))
+        logger.debug("storage_ref", backend="local", key=key, path=resolved)
+        return FileRef(kind="local", location=resolved)
 
     def delete(self, key: str) -> None:
         try:

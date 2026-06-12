@@ -66,6 +66,31 @@ class TestS3Storage:
         assert url == "https://presigned-url"
 
     @patch("rentivo.storage.s3.boto3")
+    def test_get_ref_returns_url_kind_with_presigned_url(self, mock_boto3):
+        mock_client = MagicMock()
+        mock_client.generate_presigned_url.return_value = "https://presigned-url"
+        mock_boto3.client.return_value = mock_client
+
+        from rentivo.storage.s3 import S3Storage
+
+        storage = S3Storage(
+            bucket="my-bucket",
+            region="us-east-1",
+            access_key_id="key",
+            secret_access_key="secret",
+            presigned_expiry=3600,
+        )
+        ref = storage.get_ref("path/to/file.pdf")
+
+        assert ref.kind == "url"
+        assert ref.location == "https://presigned-url"
+        mock_client.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={"Bucket": "my-bucket", "Key": "path/to/file.pdf"},
+            ExpiresIn=3600,
+        )
+
+    @patch("rentivo.storage.s3.boto3")
     def test_endpoint_url_passed(self, mock_boto3):
         mock_boto3.client.return_value = MagicMock()
 
