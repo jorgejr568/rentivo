@@ -143,6 +143,13 @@ def _fail(message: str, url: str, status_code: int, *, json: bool, category: str
     raise FlashRedirect(message, url, category)
 
 
+def _check_pix_complete(request: Request, billing: Billing, *, json: bool) -> None:
+    """Raise the canonical PIX-setup failure if the billing's PIX is incomplete."""
+    if request.state.services.pix.billing_needs_setup(billing):
+        logger.warning("pix_setup_required", billing_uuid=billing.uuid, path=request.url.path)
+        _fail(PIX_SETUP_REQUIRED_MESSAGE, f"/billings/{billing.uuid}", 400, json=json, category="warning")
+
+
 def require_billing(level: str, *, pix: bool = False, json: bool = False):
     """Dependency factory: resolve the billing by ``billing_uuid`` and authorize ``level``.
 
@@ -163,9 +170,8 @@ def require_billing(level: str, *, pix: bool = False, json: bool = False):
         if not getattr(auth, method_name)(user_id, billing):
             logger.warning("billing_access_denied", billing_uuid=billing_uuid, level=level, path=request.url.path)
             _fail(ACCESS_DENIED_MESSAGE, "/", 403, json=json)
-        if pix and services.pix.billing_needs_setup(billing):
-            logger.warning("pix_setup_required", billing_uuid=billing.uuid, path=request.url.path)
-            _fail(PIX_SETUP_REQUIRED_MESSAGE, f"/billings/{billing.uuid}", 400, json=json, category="warning")
+        if pix:
+            _check_pix_complete(request, billing, json=json)
         role = auth.get_role_for_billing(user_id, billing) or ""
         return BillingContext(billing=billing, role=role, user_id=user_id)
 
@@ -200,9 +206,8 @@ def require_bill(level: str, *, pix: bool = False, json: bool = False):
         if not getattr(auth, method_name)(user_id, billing):
             logger.warning("bill_access_denied", bill_uuid=bill_uuid, level=level, path=request.url.path)
             _fail(ACCESS_DENIED_MESSAGE, "/", 403, json=json)
-        if pix and services.pix.billing_needs_setup(billing):
-            logger.warning("pix_setup_required", billing_uuid=billing.uuid, path=request.url.path)
-            _fail(PIX_SETUP_REQUIRED_MESSAGE, f"/billings/{billing.uuid}", 400, json=json, category="warning")
+        if pix:
+            _check_pix_complete(request, billing, json=json)
         role = auth.get_role_for_billing(user_id, billing) or ""
         return BillContext(bill=bill, billing=billing, role=role, user_id=user_id)
 
