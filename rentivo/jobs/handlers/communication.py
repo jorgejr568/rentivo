@@ -64,6 +64,8 @@ def handle_communication_send(payload: dict) -> None:
             # reappear, so fail permanently instead of burning every retry.
             raise PermanentJobError(f"bill {comm.bill_id} PDF object missing at {bill.pdf_path!r}") from exc
 
+        # Reply-To is delivery config, resolved fresh from the billing at send time
+        # (unlike subject/body, which are snapshotted onto the communication row).
         reply_to_contacts = SQLAlchemyReplyToRecipientRepository(conn, encryption).list_by_billing(bill.billing_id)
         reply_to = [formataddr((r.name, r.email)) for r in reply_to_contacts]
 
