@@ -1,6 +1,7 @@
+from email import message_from_bytes
 from unittest.mock import MagicMock, patch
 
-from rentivo.email.base import EmailMessage
+from rentivo.email.base import EmailAttachment, EmailMessage
 from rentivo.email.ses import SESEmailBackend
 
 
@@ -64,6 +65,36 @@ def test_missing_boto3_raises():
 
     with pytest.raises(ImportError):
         SESEmailBackend(region="r", access_key_id="k", secret_access_key="s", from_address="f@x.com")
+
+
+@patch("rentivo.email.ses.boto3")
+def test_send_with_attachment_uses_send_raw_email(boto3_mock):
+    client = MagicMock()
+    client.send_raw_email.return_value = {"MessageId": "raw-msg-id"}
+    boto3_mock.client.return_value = client
+
+    backend = SESEmailBackend(
+        region="us-east-1",
+        access_key_id="k",
+        secret_access_key="s",
+        from_address="from@x.com",
+    )
+    msg = EmailMessage(
+        to="to@x.com",
+        subject="Cobrança",
+        text_body="t",
+        html_body="<p>t</p>",
+        from_address="from@x.com",
+        attachments=(EmailAttachment(filename="fatura.pdf", content=b"%PDF", content_type="application/pdf"),),
+    )
+    result = backend.send(msg)
+    assert result == "raw-msg-id"
+    client.send_email.assert_not_called()
+    raw_kwargs = client.send_raw_email.call_args.kwargs
+    assert raw_kwargs["Source"] == "from@x.com"
+    assert raw_kwargs["Destinations"] == ["to@x.com"]
+    parsed = message_from_bytes(raw_kwargs["RawMessage"]["Data"])
+    assert any(p.get_filename() == "fatura.pdf" for p in parsed.walk())
 
 
 @patch("rentivo.email.ses.boto3")
