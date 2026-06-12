@@ -1,9 +1,15 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.receipt import Receipt
 from rentivo.services.storage_cleanup_service import StorageCleanupService
+
+
+def _actor():
+    """Duck-typed actor (same shape as web.context.WebActor)."""
+    return SimpleNamespace(source="web", user_id=7, email="a@x")
 
 
 def _make_service(*, bills=None, receipts_by_bill=None):
@@ -23,69 +29,45 @@ def _make_service(*, bills=None, receipts_by_bill=None):
 def test_enqueue_key_skips_empty_string():
     svc, job, _, _ = _make_service()
 
-    svc.enqueue_key("")
+    svc.enqueue_key(_actor(), "")
 
-    job.enqueue.assert_not_called()
+    job.enqueue_for.assert_not_called()
 
 
 def test_enqueue_key_skips_none():
     svc, job, _, _ = _make_service()
 
-    svc.enqueue_key(None)  # type: ignore[arg-type]
+    svc.enqueue_key(_actor(), None)
 
-    job.enqueue.assert_not_called()
+    job.enqueue_for.assert_not_called()
 
 
-def test_enqueue_key_calls_job_service_with_correct_shape():
+def test_enqueue_key_passes_actor_to_enqueue_for():
     svc, job, _, _ = _make_service()
+    actor = _actor()
 
-    svc.enqueue_key("billing/bill.pdf", source="web", actor_id=7, actor_username="a@x")
+    svc.enqueue_key(actor, "billing/bill.pdf")
 
-    job.enqueue.assert_called_once_with(
-        "s3.delete",
-        {"key": "billing/bill.pdf"},
-        source="web",
-        actor_id=7,
-        actor_username="a@x",
-    )
-
-
-def test_enqueue_key_default_actor_args():
-    svc, job, _, _ = _make_service()
-
-    svc.enqueue_key("k")
-
-    job.enqueue.assert_called_once_with(
-        "s3.delete",
-        {"key": "k"},
-        source="web",
-        actor_id=None,
-        actor_username="",
-    )
+    job.enqueue_for.assert_called_once_with(actor, "s3.delete", {"key": "billing/bill.pdf"})
 
 
 def test_enqueue_receipt_delete_uses_storage_key():
     svc, job, _, _ = _make_service()
+    actor = _actor()
     receipt = Receipt(id=1, bill_id=1, filename="r.pdf", storage_key="b/r.pdf")
 
-    svc.enqueue_receipt_delete(receipt, source="web", actor_id=7, actor_username="a@x")
+    svc.enqueue_receipt_delete(actor, receipt)
 
-    job.enqueue.assert_called_once_with(
-        "s3.delete",
-        {"key": "b/r.pdf"},
-        source="web",
-        actor_id=7,
-        actor_username="a@x",
-    )
+    job.enqueue_for.assert_called_once_with(actor, "s3.delete", {"key": "b/r.pdf"})
 
 
 def test_enqueue_receipt_delete_skips_empty_storage_key():
     svc, job, _, _ = _make_service()
     receipt = Receipt(id=1, bill_id=1, filename="r.pdf", storage_key="")
 
-    svc.enqueue_receipt_delete(receipt)
+    svc.enqueue_receipt_delete(_actor(), receipt)
 
-    job.enqueue.assert_not_called()
+    job.enqueue_for.assert_not_called()
 
 
 def test_enqueue_bill_delete_cascade_emits_receipts_then_pdf():
@@ -95,15 +77,16 @@ def test_enqueue_bill_delete_cascade_emits_receipts_then_pdf():
         Receipt(id=2, bill_id=10, filename="r2.pdf", storage_key="b/bill/r2.pdf"),
     ]
     svc, job, _, receipt_repo = _make_service(receipts_by_bill={10: receipts})
+    actor = _actor()
 
-    svc.enqueue_bill_delete_cascade(bill, source="web", actor_id=7, actor_username="a@x")
+    svc.enqueue_bill_delete_cascade(actor, bill)
 
     receipt_repo.list_by_bill.assert_called_once_with(10)
-    keys = [call.args[1]["key"] for call in job.enqueue.call_args_list]
+    keys = [call.args[2]["key"] for call in job.enqueue_for.call_args_list]
     assert keys == ["b/bill/r1.pdf", "b/bill/r2.pdf", "b/bill.pdf"]
-    for call in job.enqueue.call_args_list:
-        assert call.args[0] == "s3.delete"
-        assert call.kwargs == {"source": "web", "actor_id": 7, "actor_username": "a@x"}
+    for call in job.enqueue_for.call_args_list:
+        assert call.args[0] is actor
+        assert call.args[1] == "s3.delete"
 
 
 def test_enqueue_bill_delete_cascade_skips_empty_pdf_path():
@@ -116,9 +99,9 @@ def test_enqueue_bill_delete_cascade_skips_empty_pdf_path():
         }
     )
 
-    svc.enqueue_bill_delete_cascade(bill)
+    svc.enqueue_bill_delete_cascade(_actor(), bill)
 
-    keys = [call.args[1]["key"] for call in job.enqueue.call_args_list]
+    keys = [call.args[2]["key"] for call in job.enqueue_for.call_args_list]
     assert keys == ["b/bill/r.pdf"]
 
 
@@ -126,10 +109,10 @@ def test_enqueue_bill_delete_cascade_handles_bill_id_none():
     bill = Bill(id=None, uuid="u", billing_id=1, reference_month="2025-03", pdf_path="b/bill.pdf")
     svc, job, _, receipt_repo = _make_service()
 
-    svc.enqueue_bill_delete_cascade(bill)
+    svc.enqueue_bill_delete_cascade(_actor(), bill)
 
     receipt_repo.list_by_bill.assert_not_called()
-    keys = [call.args[1]["key"] for call in job.enqueue.call_args_list]
+    keys = [call.args[2]["key"] for call in job.enqueue_for.call_args_list]
     assert keys == ["b/bill.pdf"]
 
 
@@ -147,11 +130,12 @@ def test_enqueue_billing_delete_cascade_walks_bills_and_receipts():
         ],
     }
     svc, job, bill_repo, receipt_repo = _make_service(bills=bills, receipts_by_bill=receipts_by_bill)
+    actor = _actor()
 
-    svc.enqueue_billing_delete_cascade(billing, source="web", actor_id=7, actor_username="a@x")
+    svc.enqueue_billing_delete_cascade(actor, billing)
 
     bill_repo.list_by_billing.assert_called_once_with(99)
-    keys = [call.args[1]["key"] for call in job.enqueue.call_args_list]
+    keys = [call.args[2]["key"] for call in job.enqueue_for.call_args_list]
     assert keys == [
         "b/b1/r1.pdf",
         "b/b1.pdf",
@@ -159,23 +143,25 @@ def test_enqueue_billing_delete_cascade_walks_bills_and_receipts():
         "b/b2/r2.pdf",
         "b/b2.pdf",
     ]
+    for call in job.enqueue_for.call_args_list:
+        assert call.args[0] is actor
 
 
 def test_enqueue_billing_delete_cascade_billing_id_none_is_noop():
     billing = Billing(id=None, uuid="u", name="Apt")
     svc, job, bill_repo, _ = _make_service()
 
-    svc.enqueue_billing_delete_cascade(billing)
+    svc.enqueue_billing_delete_cascade(_actor(), billing)
 
     bill_repo.list_by_billing.assert_not_called()
-    job.enqueue.assert_not_called()
+    job.enqueue_for.assert_not_called()
 
 
 def test_enqueue_billing_delete_cascade_with_no_bills_is_noop():
     billing = Billing(id=99, uuid="u", name="Apt")
     svc, job, bill_repo, _ = _make_service(bills=[])
 
-    svc.enqueue_billing_delete_cascade(billing)
+    svc.enqueue_billing_delete_cascade(_actor(), billing)
 
     bill_repo.list_by_billing.assert_called_once_with(99)
-    job.enqueue.assert_not_called()
+    job.enqueue_for.assert_not_called()

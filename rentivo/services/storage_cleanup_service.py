@@ -23,6 +23,10 @@ class StorageCleanupService:
 
     Empty keys are silently skipped -- bills can have ``pdf_path=""`` if a
     PDF render previously failed.
+
+    Every method takes the acting principal first — a duck-typed object with
+    ``.source`` / ``.user_id`` / ``.email`` (typically ``web.context.WebActor``,
+    i.e. ``request.state.actor``) — mirroring ``JobService.enqueue_for``.
     """
 
     def __init__(
@@ -35,76 +39,22 @@ class StorageCleanupService:
         self.bill_repo = bill_repo
         self.receipt_repo = receipt_repo
 
-    def enqueue_key(
-        self,
-        key: str | None,
-        *,
-        source: str = "web",
-        actor_id: int | None = None,
-        actor_username: str = "",
-    ) -> None:
+    def enqueue_key(self, actor, key: str | None) -> None:
         if not key:
             return
-        self.job_service.enqueue(
-            "s3.delete",
-            {"key": key},
-            source=source,
-            actor_id=actor_id,
-            actor_username=actor_username,
-        )
+        self.job_service.enqueue_for(actor, "s3.delete", {"key": key})
 
-    def enqueue_receipt_delete(
-        self,
-        receipt: Receipt,
-        *,
-        source: str = "web",
-        actor_id: int | None = None,
-        actor_username: str = "",
-    ) -> None:
-        self.enqueue_key(
-            receipt.storage_key,
-            source=source,
-            actor_id=actor_id,
-            actor_username=actor_username,
-        )
+    def enqueue_receipt_delete(self, actor, receipt: Receipt) -> None:
+        self.enqueue_key(actor, receipt.storage_key)
 
-    def enqueue_bill_delete_cascade(
-        self,
-        bill: Bill,
-        *,
-        source: str = "web",
-        actor_id: int | None = None,
-        actor_username: str = "",
-    ) -> None:
+    def enqueue_bill_delete_cascade(self, actor, bill: Bill) -> None:
         if bill.id is not None:
             for receipt in self.receipt_repo.list_by_bill(bill.id):
-                self.enqueue_key(
-                    receipt.storage_key,
-                    source=source,
-                    actor_id=actor_id,
-                    actor_username=actor_username,
-                )
-        self.enqueue_key(
-            bill.pdf_path or "",
-            source=source,
-            actor_id=actor_id,
-            actor_username=actor_username,
-        )
+                self.enqueue_key(actor, receipt.storage_key)
+        self.enqueue_key(actor, bill.pdf_path or "")
 
-    def enqueue_billing_delete_cascade(
-        self,
-        billing: Billing,
-        *,
-        source: str = "web",
-        actor_id: int | None = None,
-        actor_username: str = "",
-    ) -> None:
+    def enqueue_billing_delete_cascade(self, actor, billing: Billing) -> None:
         if billing.id is None:
             return
         for bill in self.bill_repo.list_by_billing(billing.id):
-            self.enqueue_bill_delete_cascade(
-                bill,
-                source=source,
-                actor_id=actor_id,
-                actor_username=actor_username,
-            )
+            self.enqueue_bill_delete_cascade(actor, bill)

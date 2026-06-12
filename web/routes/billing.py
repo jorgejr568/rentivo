@@ -274,12 +274,7 @@ async def billing_delete(request: Request, ctx: BillingContext = Depends(require
     previous_state = serialize_billing(billing)
 
     cleanup = request.state.services.storage_cleanup
-    cleanup.enqueue_billing_delete_cascade(
-        billing,
-        source="web",
-        actor_id=ctx.user_id,
-        actor_username=request.session.get("email", ""),
-    )
+    cleanup.enqueue_billing_delete_cascade(request.state.actor, billing)
 
     service.delete_billing(billing.id)
 

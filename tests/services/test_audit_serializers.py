@@ -4,6 +4,7 @@ from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
+from rentivo.models.receipt import Receipt
 from rentivo.models.theme import Theme
 from rentivo.models.user import User
 from rentivo.services.audit_serializers import (
@@ -12,6 +13,7 @@ from rentivo.services.audit_serializers import (
     serialize_invite,
     serialize_job_payload,
     serialize_organization,
+    serialize_receipt,
     serialize_theme,
     serialize_user,
 )
@@ -533,3 +535,43 @@ class TestSerializeTheme:
             "text_color": "#555555",
             "text_contrast": "#666666",
         }
+
+
+class TestSerializeReceipt:
+    def test_basic_receipt(self):
+        receipt = Receipt(
+            id=5,
+            uuid="01RECEIPTULID000000000000",
+            bill_id=9,
+            filename="comprovante.pdf",
+            storage_key="billing-u/bill-u/receipts/01RECEIPTULID000000000000.pdf",
+            content_type="application/pdf",
+            file_size=1234,
+            sort_order=0,
+        )
+
+        result = serialize_receipt(receipt, bill_uuid="bill-u", billing_uuid="billing-u")
+
+        assert result == {
+            "filename": "comprovante.pdf",
+            "content_type": "application/pdf",
+            "file_size": 1234,
+            "bill_uuid": "bill-u",
+            "billing_uuid": "billing-u",
+        }
+
+    def test_image_receipt(self):
+        receipt = Receipt(
+            id=6,
+            uuid="01RECEIPTULID000000000001",
+            bill_id=9,
+            filename="foto.png",
+            content_type="image/png",
+            file_size=10,
+        )
+
+        result = serialize_receipt(receipt, bill_uuid="b", billing_uuid="g")
+
+        assert result["filename"] == "foto.png"
+        assert result["content_type"] == "image/png"
+        assert result["file_size"] == 10

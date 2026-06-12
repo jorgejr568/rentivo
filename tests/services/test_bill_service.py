@@ -159,6 +159,28 @@ class TestBillService:
         assert self.service.get_invoice_url(None) == ""
         assert self.service.get_invoice_url("") == ""
 
+    def test_get_invoice_ref_delegates_to_storage(self):
+        from rentivo.storage.base import FileRef
+
+        self.mock_storage.get_ref.return_value = FileRef(kind="url", location="https://x/file.pdf")
+        bill = Bill(id=1, uuid="u", billing_id=1, reference_month="2025-03", pdf_path="key/file.pdf")
+
+        ref = self.service.get_invoice_ref(bill)
+
+        self.mock_storage.get_ref.assert_called_once_with("key/file.pdf")
+        assert ref == FileRef(kind="url", location="https://x/file.pdf")
+
+    def test_get_receipt_ref_delegates_to_storage(self):
+        from rentivo.storage.base import FileRef
+
+        self.mock_storage.get_ref.return_value = FileRef(kind="local", location="/abs/r.pdf")
+        receipt = Receipt(id=1, bill_id=1, filename="r.pdf", storage_key="b/bill/receipts/r.pdf")
+
+        ref = self.service.get_receipt_ref(receipt)
+
+        self.mock_storage.get_ref.assert_called_once_with("b/bill/receipts/r.pdf")
+        assert ref == FileRef(kind="local", location="/abs/r.pdf")
+
     def test_list_bills(self):
         self.mock_repo.list_by_billing.return_value = []
         self.service.list_bills(1)
