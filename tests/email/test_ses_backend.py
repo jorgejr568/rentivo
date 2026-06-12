@@ -59,6 +59,31 @@ def test_send_omits_configuration_set_when_empty(boto3_mock):
     assert "ConfigurationSetName" not in client.send_email.call_args.kwargs
 
 
+@patch("rentivo.email.ses.boto3")
+def test_send_email_includes_reply_to_addresses(boto3_mock):
+    client = MagicMock()
+    client.send_email.return_value = {"MessageId": "reply-to-id"}
+    boto3_mock.client.return_value = client
+
+    backend = SESEmailBackend(
+        region="us-east-1",
+        access_key_id="k",
+        secret_access_key="s",
+        from_address="from@x.com",
+    )
+    msg = EmailMessage(
+        to="to@x.com",
+        subject="s",
+        text_body="t",
+        html_body="<p>t</p>",
+        from_address="from@x.com",
+        reply_to=("ana@x.com", "bruno@x.com"),
+    )
+    result = backend.send(msg)
+    assert result == "reply-to-id"
+    assert client.send_email.call_args.kwargs["ReplyToAddresses"] == ["ana@x.com", "bruno@x.com"]
+
+
 @patch("rentivo.email.ses.boto3", None)
 def test_missing_boto3_raises():
     import pytest

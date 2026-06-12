@@ -89,9 +89,10 @@ class EmailService:
         body_html_inner: str,
         body_text: str,
         attachments: list[EmailAttachment] | tuple[EmailAttachment, ...] = (),
+        reply_to: list[str] | tuple[str, ...] = (),
     ) -> str:
         """Send a dynamic (non-registry) communication: a Markdown-rendered body
-        wrapped in the shared email layout, with optional file attachments.
+        wrapped in the shared email layout, with optional attachments and Reply-To.
         """
         html_body, text_body = self._render("communication", {"body_html": body_html_inner, "body_text": body_text})
         message = EmailMessage(
@@ -101,6 +102,7 @@ class EmailService:
             html_body=html_body,
             from_address=self.from_address,
             attachments=tuple(attachments),
+            reply_to=tuple(reply_to),
         )
         result = self.backend.send(message)
         logger.info("email_communication_sent", to=to_email)

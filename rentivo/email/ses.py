@@ -66,6 +66,8 @@ class SESEmailBackend(EmailBackend):
         }
         if self.configuration_set:
             kwargs["ConfigurationSetName"] = self.configuration_set
+        if message.reply_to:
+            kwargs["ReplyToAddresses"] = list(message.reply_to)
         response = self.client.send_email(**kwargs)
         message_id = response.get("MessageId", "")
         logger.info("email_ses_sent", to=message.to, subject=message.subject, message_id=message_id)

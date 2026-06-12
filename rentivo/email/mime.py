@@ -11,6 +11,8 @@ def build_mime(message: EmailMessage) -> MIMEMessage:
     mime["From"] = message.from_address
     mime["To"] = message.to
     mime["Subject"] = message.subject
+    if message.reply_to:
+        mime["Reply-To"] = ", ".join(message.reply_to)
     mime.set_content(message.text_body)
     mime.add_alternative(message.html_body, subtype="html")
     for att in message.attachments:
