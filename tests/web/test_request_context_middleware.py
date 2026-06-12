@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from io import StringIO
@@ -70,6 +71,20 @@ def _log_lines(buf: StringIO) -> list[dict]:
         except json.JSONDecodeError:
             continue
     return out
+
+
+class TestRequestContextMiddlewareNonHTTP:
+    def test_non_http_scope_passes_through(self):
+        """Pure-ASGI guard: non-http scopes (websocket, lifespan) bypass untouched."""
+        called = False
+
+        async def inner_app(scope, receive, send):
+            nonlocal called
+            called = True
+
+        middleware = RequestContextMiddleware(inner_app)
+        asyncio.run(middleware({"type": "websocket"}, None, None))
+        assert called
 
 
 class TestRequestContextMiddleware:
