@@ -106,7 +106,7 @@ app.include_router(health_router)
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404:
-        from web.analytics import build_page_context, pop_events
+        from web.analytics import attach_to_context
         from web.csrf import get_csrf_token
         from web.flash import get_flashed_messages
 
@@ -118,8 +118,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
             "pending_invite_count": 0,
             "asset_version": ASSET_VERSION,
         }
-        ctx["gtm_initial_push"] = build_page_context(request, "404.html", ctx)
-        ctx["gtm_pending_events"] = pop_events(request)
+        attach_to_context(request, "404.html", ctx)
         return templates.TemplateResponse(request, "404.html", ctx, status_code=404)
     return HTMLResponse(exc.detail or "Error", status_code=exc.status_code)
 
@@ -134,12 +133,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 async def home(request: Request):
     if request.session.get("user_id"):
         return RedirectResponse("/billings/", status_code=302)
-    from web.analytics import build_page_context, pop_events
+    from web.analytics import attach_to_context
 
     ctx = {
         "asset_version": ASSET_VERSION,
         "user": request.session.get("email"),
     }
-    ctx["gtm_initial_push"] = build_page_context(request, "landing.html", ctx)
-    ctx["gtm_pending_events"] = pop_events(request)
+    attach_to_context(request, "landing.html", ctx)
     return templates.TemplateResponse(request, "landing.html", ctx)

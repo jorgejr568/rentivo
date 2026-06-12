@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import TYPE_CHECKING
 
 import structlog
 from fastapi import Request
 from fastapi.responses import RedirectResponse
 from starlette.responses import Response
 from starlette.types import ASGIApp, Receive, Scope, Send
-
-if TYPE_CHECKING:
-    pass
 
 from rentivo.db import get_engine
 from rentivo.repositories.sqlalchemy import (
@@ -20,7 +16,7 @@ from rentivo.repositories.sqlalchemy import (
 )
 from rentivo.settings import settings
 from rentivo.storage.factory import get_storage  # noqa: F401 — re-exported for test patches
-from web.analytics import build_page_context, pop_events
+from web.analytics import attach_to_context
 from web.flash import get_flashed_messages
 
 logger = structlog.get_logger(__name__)
@@ -255,8 +251,7 @@ def render(request: Request, template_name: str, context: dict | None = None) ->
     else:
         ctx.setdefault("pending_invite_count", 0)
 
-    ctx["gtm_initial_push"] = build_page_context(request, template_name, ctx)
-    ctx["gtm_pending_events"] = pop_events(request)
+    attach_to_context(request, template_name, ctx)
     ctx["turnstile_site_key"] = settings.turnstile_site_key
     ctx["google_auth_enabled"] = settings.google_auth_enabled
 

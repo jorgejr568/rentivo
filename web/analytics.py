@@ -103,6 +103,16 @@ def build_page_context(request: Request, template_name: str, ctx: dict) -> dict 
     }
 
 
+def attach_to_context(request: Request, template_name: str, ctx: dict) -> None:
+    """Inject the GTM keys (initial push + drained pending events) into ``ctx``.
+
+    Shared by ``web.deps.render`` and the standalone template responses in
+    ``web.app`` so the dataLayer wiring lives in one place.
+    """
+    ctx["gtm_initial_push"] = build_page_context(request, template_name, ctx)
+    ctx["gtm_pending_events"] = pop_events(request)
+
+
 def push_event(request: Request, event: dict) -> None:
     """Queue a one-shot dataLayer event for the next rendered page (flash-style).
 

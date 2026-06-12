@@ -54,6 +54,13 @@ def _verify_csrf_token(request: Request, form_token: str) -> bool:
     return secrets.compare_digest(session_token, form_token)
 
 
+def _reject(request: Request) -> RedirectResponse:
+    """Flash an expired-session message and redirect back to the referer."""
+    flash(request, "Sessão expirada. Tente novamente.", "danger")
+    referer = request.headers.get("referer", "/")
+    return RedirectResponse(referer, status_code=302)
+
+
 class CSRFMiddleware:
     """Pure ASGI middleware for CSRF verification.
 
@@ -85,10 +92,7 @@ class CSRFMiddleware:
         if header_token:
             if not _verify_csrf_token(request, header_token):
                 logger.warning("csrf_token_mismatch", source="header")
-                flash(request, "Sessão expirada. Tente novamente.", "danger")
-                referer = request.headers.get("referer", "/")
-                response = RedirectResponse(referer, status_code=302)
-                await response(scope, receive, send)
+                await _reject(request)(scope, receive, send)
                 return
             await self.app(scope, receive, send)
             return
@@ -98,10 +102,7 @@ class CSRFMiddleware:
         if "multipart/form-data" not in content_type and "application/x-www-form-urlencoded" not in content_type:
             # No header token AND no form body — nothing to verify. Reject.
             logger.warning("csrf_token_missing", content_type=content_type)
-            flash(request, "Sessão expirada. Tente novamente.", "danger")
-            referer = request.headers.get("referer", "/")
-            response = RedirectResponse(referer, status_code=302)
-            await response(scope, receive, send)
+            await _reject(request)(scope, receive, send)
             return
 
         body = await request.body()
@@ -111,10 +112,7 @@ class CSRFMiddleware:
 
         if not _verify_csrf_token(request, form_token):
             logger.warning("csrf_token_mismatch", source="form")
-            flash(request, "Sessão expirada. Tente novamente.", "danger")
-            referer = request.headers.get("referer", "/")
-            response = RedirectResponse(referer, status_code=302)
-            await response(scope, receive, send)
+            await _reject(request)(scope, receive, send)
             return
 
         # Replay body so downstream handlers can read request.form()
