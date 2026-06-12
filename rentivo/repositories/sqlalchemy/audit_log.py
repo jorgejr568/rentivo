@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import Connection, text
 from sqlalchemy.engine import RowMapping
 from ulid import ULID
@@ -9,24 +11,16 @@ from rentivo.repositories.base import AuditLogRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
 
+def _decode_json(value: object) -> object:
+    return json.loads(value) if isinstance(value, str) else value
+
+
 class SQLAlchemyAuditLogRepository(AuditLogRepository):
     def __init__(self, conn: Connection) -> None:
         self.conn = conn
 
     @staticmethod
     def _row_to_audit_log(row: RowMapping) -> AuditLog:
-        import json
-
-        previous_state = row["previous_state"]
-        if isinstance(previous_state, str):
-            previous_state = json.loads(previous_state)
-        new_state = row["new_state"]
-        if isinstance(new_state, str):
-            new_state = json.loads(new_state)
-        metadata = row["metadata"]
-        if isinstance(metadata, str):
-            metadata = json.loads(metadata)
-
         return AuditLog(
             id=row["id"],
             uuid=row["uuid"],
@@ -37,15 +31,13 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
             entity_type=row["entity_type"],
             entity_id=row["entity_id"],
             entity_uuid=row["entity_uuid"],
-            previous_state=previous_state,
-            new_state=new_state,
-            metadata=metadata,
+            previous_state=_decode_json(row["previous_state"]),
+            new_state=_decode_json(row["new_state"]),
+            metadata=_decode_json(row["metadata"]),
             created_at=row["created_at"],
         )
 
     def create(self, audit_log: AuditLog) -> AuditLog:
-        import json
-
         audit_uuid = str(ULID())
         now = _now()
         self.conn.execute(
