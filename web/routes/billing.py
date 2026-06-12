@@ -266,6 +266,7 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
                 entity_type="billing",
                 entity_id=updated.id,
                 entity_uuid=updated.uuid,
+                previous_state={"reply_to_count": len(previous_reply_to)},
                 new_state={"reply_to_count": len(saved_reply_to)},
             )
 
