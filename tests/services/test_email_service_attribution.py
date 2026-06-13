@@ -40,3 +40,14 @@ def test_attribution_default_param_is_empty_fallback():
     backend = _CapturingBackend()
     EmailService(backend, from_address="n@x.com").send_communication("a@x.com", "s", "<p>b</p>", "b")
     assert "o responsável" in backend.sent.html_body
+
+
+def test_attribution_is_after_body_and_sender_is_escaped():
+    backend = _CapturingBackend()
+    EmailService(backend, from_address="n@x.com").send_communication(
+        "a@x.com", "s", "<p>CORPO-MARCADOR</p>", "CORPO-MARCADOR", sender_name="A&<b>"
+    )
+    html = backend.sent.html_body
+    assert html.index("CORPO-MARCADOR") < html.index("através do Rentivo")
+    assert "&lt;b&gt;" in html  # sender_name autoescaped
+    assert "<b>" not in html  # the injected tag is not live
