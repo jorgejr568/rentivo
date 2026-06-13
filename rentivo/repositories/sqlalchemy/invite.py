@@ -9,6 +9,17 @@ from rentivo.models.invite import Invite
 from rentivo.repositories.base import InviteRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
+# Shared SELECT that hydrates an invite with its organization + both user emails.
+# Each caller appends its own WHERE/ORDER clause.
+_INVITE_SELECT = (
+    "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
+    "u1.email AS invited_email, u2.email AS invited_by_email "
+    "FROM invites i "
+    "JOIN organizations o ON i.organization_id = o.id "
+    "JOIN users u1 ON i.invited_user_id = u1.id "
+    "JOIN users u2 ON i.invited_by_user_id = u2.id "
+)
+
 
 class SQLAlchemyInviteRepository(InviteRepository):
     def __init__(self, conn: Connection, encryption: EncryptionBackend) -> None:
@@ -61,15 +72,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
     def get_by_uuid(self, uuid: str) -> Invite | None:
         row = (
             self.conn.execute(
-                text(
-                    "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.email AS invited_email, u2.email AS invited_by_email "
-                    "FROM invites i "
-                    "JOIN organizations o ON i.organization_id = o.id "
-                    "JOIN users u1 ON i.invited_user_id = u1.id "
-                    "JOIN users u2 ON i.invited_by_user_id = u2.id "
-                    "WHERE i.uuid = :uuid"
-                ),
+                text(_INVITE_SELECT + "WHERE i.uuid = :uuid"),
                 {"uuid": uuid},
             )
             .mappings()
@@ -83,14 +86,8 @@ class SQLAlchemyInviteRepository(InviteRepository):
         rows = (
             self.conn.execute(
                 text(
-                    "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.email AS invited_email, u2.email AS invited_by_email "
-                    "FROM invites i "
-                    "JOIN organizations o ON i.organization_id = o.id "
-                    "JOIN users u1 ON i.invited_user_id = u1.id "
-                    "JOIN users u2 ON i.invited_by_user_id = u2.id "
-                    "WHERE i.invited_user_id = :uid AND i.status = 'pending' "
-                    "ORDER BY i.created_at DESC"
+                    _INVITE_SELECT
+                    + "WHERE i.invited_user_id = :uid AND i.status = 'pending' ORDER BY i.created_at DESC"
                 ),
                 {"uid": user_id},
             )
@@ -102,16 +99,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
     def list_by_organization(self, org_id: int) -> list[Invite]:
         rows = (
             self.conn.execute(
-                text(
-                    "SELECT i.*, o.name AS org_name, o.enforce_mfa, "
-                    "u1.email AS invited_email, u2.email AS invited_by_email "
-                    "FROM invites i "
-                    "JOIN organizations o ON i.organization_id = o.id "
-                    "JOIN users u1 ON i.invited_user_id = u1.id "
-                    "JOIN users u2 ON i.invited_by_user_id = u2.id "
-                    "WHERE i.organization_id = :org_id "
-                    "ORDER BY i.created_at DESC"
-                ),
+                text(_INVITE_SELECT + "WHERE i.organization_id = :org_id ORDER BY i.created_at DESC"),
                 {"org_id": org_id},
             )
             .mappings()
