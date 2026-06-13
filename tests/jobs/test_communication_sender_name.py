@@ -192,3 +192,16 @@ def test_from_falls_back_to_ses_from_name(conn, monkeypatch):
 
     mod.handle_communication_send({"communication_id": comm_id})
     assert sent["msg"].from_address.startswith("Rentivo <")
+
+
+def test_from_pairs_comm_email_with_ses_name_when_comm_name_empty(conn, monkeypatch):
+    import rentivo.jobs.handlers.communication as mod
+
+    comm_id = _seed_org_comm(conn)
+    sent = _capture_send(mod, conn, monkeypatch)
+    monkeypatch.setattr(mod.settings, "communications_from_email", "cobranca@x.com")
+    monkeypatch.setattr(mod.settings, "communications_from_name", "")
+    monkeypatch.setattr(mod.settings, "ses_from_name", "Rentivo")
+
+    mod.handle_communication_send({"communication_id": comm_id})
+    assert sent["msg"].from_address == "Rentivo <cobranca@x.com>"

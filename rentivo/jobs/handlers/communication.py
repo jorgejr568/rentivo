@@ -95,6 +95,9 @@ def handle_communication_send(payload: dict) -> None:
         billing = SQLAlchemyBillingRepository(conn, encryption).get_by_id(bill.billing_id)
         sender_name = _resolve_sender_name(conn, encryption, billing)
 
+        # From email and name fall back to their SES-level defaults INDEPENDENTLY:
+        # setting only communications_from_email (no name) pairs that email with
+        # ses_from_name, and vice-versa. Intended — configure only what differs.
         from_email = settings.communications_from_email or settings.ses_from_email or "noreply@localhost"
         from_name = settings.communications_from_name or settings.ses_from_name
         from_address = formataddr((from_name, from_email))
