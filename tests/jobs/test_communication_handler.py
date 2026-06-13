@@ -36,10 +36,10 @@ def _seed_comm(engine):
             Communication(
                 bill_id=5,
                 comm_type="bill_ready",
-                recipient_name="Rodrigo",
-                recipient_email="rodrigo@example.com",
+                recipient_name="João",
+                recipient_email="joao@example.com",
                 subject="Cobrança",
-                body_markdown="Prezado **Rodrigo**",
+                body_markdown="Prezado **João**",
             )
         )
 
@@ -67,9 +67,9 @@ def test_handler_sends_and_marks_sent(engine, monkeypatch, tmp_path):
 
     handle_communication_send({"communication_id": comm.id})
 
-    assert sent["msg"].to == "rodrigo@example.com"
+    assert sent["msg"].to == "joao@example.com"
     assert sent["msg"].attachments[0].content == b"%PDF-1.4 fake"
-    assert "<strong>Rodrigo</strong>" in sent["msg"].html_body
+    assert "<strong>João</strong>" in sent["msg"].html_body
     assert ("X-Entity-Ref-ID", comm.uuid) in sent["msg"].headers
 
     with engine.connect() as c:

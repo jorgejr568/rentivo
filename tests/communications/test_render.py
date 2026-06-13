@@ -4,8 +4,8 @@ from rentivo.communications.render import month_long, render_markdown, substitut
 
 
 def test_render_markdown_paragraphs():
-    html = render_markdown("Prezado Rodrigo,\n\nSegue a cobrança.")
-    assert "<p>Prezado Rodrigo,</p>" in html
+    html = render_markdown("Prezado João,\n\nSegue a cobrança.")
+    assert "<p>Prezado João,</p>" in html
     assert "<p>Segue a cobrança.</p>" in html
 
 
@@ -20,9 +20,9 @@ def test_render_markdown_strips_raw_html():
 def test_substitute_replaces_known_tokens_with_and_without_spaces():
     out = substitute(
         "Olá {{tenant_name}}, unidade {{ unit }}.",
-        {"tenant_name": "Rodrigo", "unit": "Joy 105"},
+        {"tenant_name": "João", "unit": "Joy 105"},
     )
-    assert out == "Olá Rodrigo, unidade Joy 105."
+    assert out == "Olá João, unidade Joy 105."
 
 
 def test_substitute_leaves_unknown_tokens_untouched():

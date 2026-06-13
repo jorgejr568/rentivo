@@ -17,7 +17,7 @@ def _send(sender_name):
     backend = _CapturingBackend()
     service = EmailService(backend, from_address="noreply@localhost")
     service.send_communication(
-        "rodrigo@example.com", "Assunto", "<p>Prezado Rodrigo</p>", "Prezado Rodrigo", sender_name=sender_name
+        "joao@example.com", "Assunto", "<p>Prezado João</p>", "Prezado João", sender_name=sender_name
     )
     return backend.sent
 

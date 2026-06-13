@@ -9,7 +9,7 @@ from rentivo.email.mime import build_mime
 
 def _msg(**over):
     base = dict(
-        to="rodrigo@example.com",
+        to="joao@example.com",
         subject="Cobrança",
         text_body="corpo",
         html_body="<p>corpo</p>",

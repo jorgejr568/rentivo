@@ -73,10 +73,10 @@ def test_communication_create_list_and_status_transitions(conn):
         Communication(
             bill_id=5,
             comm_type="bill_ready",
-            recipient_name="Rodrigo",
-            recipient_email="rodrigo@example.com",
+            recipient_name="João",
+            recipient_email="joao@example.com",
             subject="Cobrança",
-            body_markdown="Prezado Rodrigo",
+            body_markdown="Prezado João",
         )
     )
     assert comm.id is not None and comm.status == "queued"
@@ -86,11 +86,11 @@ def test_communication_create_list_and_status_transitions(conn):
     listed = repo.list_by_bill(5)
     assert len(listed) == 1
     assert listed[0].status == "sent"
-    assert listed[0].recipient_name == "Rodrigo"
+    assert listed[0].recipient_name == "João"
     assert listed[0].job_ulid == "01JOBULID0000000000000000"
     assert listed[0].sent_at is not None
     assert listed[0].subject == "Cobrança"
-    assert listed[0].body_markdown == "Prezado Rodrigo"
+    assert listed[0].body_markdown == "Prezado João"
 
 
 def test_communication_mark_failed(conn):
@@ -116,7 +116,7 @@ def test_communication_encrypted_at_rest_and_get_by_uuid(conn):
         Communication(
             bill_id=5,
             comm_type="bill_ready",
-            recipient_name="Rodrigo",
+            recipient_name="João",
             recipient_email="r@x.com",
             subject="s",
             body_markdown="b",
@@ -126,5 +126,5 @@ def test_communication_encrypted_at_rest_and_get_by_uuid(conn):
         text("SELECT recipient_name, recipient_email, subject, body_markdown FROM communications")
     ).fetchone()
     assert all(v.startswith("b64:v1:") for v in raw)
-    assert repo.get_by_uuid(comm.uuid).recipient_name == "Rodrigo"
+    assert repo.get_by_uuid(comm.uuid).recipient_name == "João"
     assert repo.get_by_uuid("missing") is None

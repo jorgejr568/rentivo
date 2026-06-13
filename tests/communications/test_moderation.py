@@ -4,7 +4,7 @@ from rentivo.communications.moderation import ModerationResult, scan
 
 
 def test_clean_text_is_not_flagged():
-    r = scan("Prezado Rodrigo, segue a cobrança do mês. Atenciosamente.")
+    r = scan("Prezado João, segue a cobrança do mês. Atenciosamente.")
     assert r.severe == ()
     assert r.mild == ()
     assert not r.blocked
