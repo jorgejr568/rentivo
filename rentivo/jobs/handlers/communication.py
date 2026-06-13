@@ -95,7 +95,9 @@ def handle_communication_send(payload: dict) -> None:
         billing = SQLAlchemyBillingRepository(conn, encryption).get_by_id(bill.billing_id)
         sender_name = _resolve_sender_name(conn, encryption, billing)
 
-        from_address = settings.communications_from_email or settings.ses_from_email or "noreply@localhost"
+        from_email = settings.communications_from_email or settings.ses_from_email or "noreply@localhost"
+        from_name = settings.communications_from_name or settings.ses_from_name
+        from_address = formataddr((from_name, from_email))
         service = EmailService(get_email_backend(), from_address=from_address)
         body_html = render_markdown(comm.body_markdown)
         attachment = EmailAttachment(

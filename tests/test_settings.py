@@ -338,6 +338,20 @@ def test_communications_from_email_reads_env(monkeypatch):
     assert s.communications_from_email == "cobranca@example.com"
 
 
+def test_ses_from_name_defaults_empty_and_reads_env(monkeypatch):
+    monkeypatch.delenv("RENTIVO_SES_FROM_NAME", raising=False)
+    assert Settings(_env_file=None).ses_from_name == ""
+    monkeypatch.setenv("RENTIVO_SES_FROM_NAME", "Rentivo")
+    assert Settings(_env_file=None).ses_from_name == "Rentivo"
+
+
+def test_communications_from_name_defaults_empty_and_reads_env(monkeypatch):
+    monkeypatch.delenv("RENTIVO_COMMUNICATIONS_FROM_NAME", raising=False)
+    assert Settings(_env_file=None).communications_from_name == ""
+    monkeypatch.setenv("RENTIVO_COMMUNICATIONS_FROM_NAME", "Cobranças Aurora")
+    assert Settings(_env_file=None).communications_from_name == "Cobranças Aurora"
+
+
 def test_google_auth_enabled_requires_secret_too():
     with pytest.raises(ValidationError) as exc:
         Settings(_env_file=None, google_auth_enabled=True, google_client_id="cid")
