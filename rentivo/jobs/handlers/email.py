@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from email.utils import formataddr
+
 from jinja2 import TemplateError, TemplateNotFound
 
 from rentivo.email.factory import get_email_backend
@@ -14,7 +16,7 @@ def handle_email_send(payload: dict) -> None:
     backend = get_email_backend()
     service = EmailService(
         backend,
-        from_address=settings.ses_from_email or "noreply@localhost",
+        from_address=formataddr((settings.ses_from_name, settings.ses_from_email or "noreply@localhost")),
     )
     event = payload["event"]
     to_email = payload["to_email"]

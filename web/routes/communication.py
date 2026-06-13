@@ -4,6 +4,7 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from rentivo.communications.moderation import scan
 from rentivo.communications.render import render_markdown
 from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_communication
@@ -38,8 +39,11 @@ async def communication_compose(request: Request, ctx: BillContext = Depends(req
 
 @router.post("/preview")
 async def communication_preview(request: Request, ctx: BillContext = Depends(require_bill("manage", json=True))):
-    body = await request.json()
-    return JSONResponse({"html": render_markdown(str(body.get("body", "")))})
+    payload = await request.json()
+    subject = str(payload.get("subject", ""))
+    body = str(payload.get("body", ""))
+    result = scan(f"{subject}\n{body}")
+    return JSONResponse({"html": render_markdown(body), "severe": list(result.severe), "mild": list(result.mild)})
 
 
 @router.post("/send")
@@ -65,6 +69,34 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
     if not subject or not body:
         flash(request, "Preencha o assunto e o corpo da mensagem.", "danger")
         return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
+
+    moderation = scan(f"{subject}\n{body}")
+    compose_url = f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose"
+    if moderation.blocked:
+        services.audit.safe_log_for(
+            request.state.actor,
+            AuditEventType.COMMUNICATION_BLOCKED,
+            entity_type="bill",
+            entity_id=bill.id,
+            entity_uuid=bill.uuid,
+            new_state={"severe_count": len(moderation.severe), "mild_count": len(moderation.mild)},
+        )
+        flash(
+            request,
+            "A mensagem contém conteúdo não permitido (ofensa grave ou ameaça) e não pode ser enviada. "
+            "Edite o texto destacado.",
+            "danger",
+        )
+        return RedirectResponse(compose_url, status_code=302)
+    acknowledged = str(form.get("acknowledge_warning", "")).strip() != ""
+    if moderation.flagged and not acknowledged:
+        flash(
+            request,
+            "A mensagem contém linguagem possivelmente ofensiva. Revise e marque "
+            "“Reconheço e quero enviar” para continuar.",
+            "warning",
+        )
+        return RedirectResponse(compose_url, status_code=302)
 
     # The owner scope writes the user/organization-wide default template, which
     # resolve_template applies to *every* billing of that owner — so it requires
@@ -106,6 +138,16 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
             entity_id=comm.id,
             entity_uuid=comm.uuid,
             new_state=serialize_communication(comm),
+        )
+
+    if moderation.flagged:  # mild + acknowledged (severe already returned above)
+        services.audit.safe_log_for(
+            request.state.actor,
+            AuditEventType.COMMUNICATION_FLAGGED_OVERRIDE,
+            entity_type="bill",
+            entity_id=bill.id,
+            entity_uuid=bill.uuid,
+            new_state={"mild_count": len(moderation.mild)},
         )
 
     logger.info("communications_sent", bill_uuid=bill.uuid, count=len(comms))

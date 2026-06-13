@@ -65,11 +65,16 @@ class Settings(BaseSettings):
     ses_secret_access_key: str = ""
     ses_endpoint_url: str = ""
     ses_from_email: str = ""
+    # Optional display name for the From of account/security/transactional emails
+    # (rendered as "Name <email>"); empty sends a bare address.
+    ses_from_name: str = ""
     ses_configuration_set: str = ""
     # Optional override for the From address of tenant communication emails only.
     # Empty falls back to ses_from_email (then "noreply@localhost"). Account /
     # security / transactional emails always use ses_from_email.
     communications_from_email: str = ""
+    # Optional display name for communication emails only; empty falls back to ses_from_name.
+    communications_from_name: str = ""
     public_app_url: str = "http://localhost:8000"
 
     encryption_backend: str = "base64"

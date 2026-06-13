@@ -61,8 +61,10 @@ The `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MY
 | `RENTIVO_SES_SECRET_ACCESS_KEY` | *(empty)* | AWS secret key. |
 | `RENTIVO_SES_ENDPOINT_URL` | *(empty)* | Custom endpoint (LocalStack). |
 | `RENTIVO_SES_FROM_EMAIL` | *(empty)* | From address (must be SES-verified). |
+| `RENTIVO_SES_FROM_NAME` | *(empty)* | Optional display name for account/security/transactional email From, rendered as `Name <email>`; empty sends a bare address. |
 | `RENTIVO_SES_CONFIGURATION_SET` | *(empty)* | Optional SES configuration set. |
 | `RENTIVO_COMMUNICATIONS_FROM_EMAIL` | *(empty)* | From address used only for tenant communication emails; empty falls back to `RENTIVO_SES_FROM_EMAIL`; account/security emails unaffected. |
+| `RENTIVO_COMMUNICATIONS_FROM_NAME` | *(empty)* | Display name for tenant communication email From only; empty falls back to `RENTIVO_SES_FROM_NAME`. |
 
 ## Field encryption (PII at rest)
 

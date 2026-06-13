@@ -128,3 +128,33 @@ def test_handler_propagates_other_exceptions_for_retry():
                     "ctx": {},
                 }
             )
+
+
+def test_email_from_uses_ses_from_name(monkeypatch):
+    import rentivo.jobs.handlers.email as mod
+
+    monkeypatch.setattr(mod.settings, "ses_from_name", "Rentivo")
+    monkeypatch.setattr(mod.settings, "ses_from_email", "noreply@x.com")
+    with (
+        patch("rentivo.jobs.handlers.email.EmailService") as svc_cls,
+        patch("rentivo.jobs.handlers.email.get_email_backend"),
+    ):
+        svc_cls.return_value = MagicMock()
+        mod.handle_email_send({"event": "welcome", "to_email": "alice@example.com"})
+
+        assert svc_cls.call_args.kwargs["from_address"] == "Rentivo <noreply@x.com>"
+
+
+def test_email_from_empty_name_is_bare_email(monkeypatch):
+    import rentivo.jobs.handlers.email as mod
+
+    monkeypatch.setattr(mod.settings, "ses_from_name", "")
+    monkeypatch.setattr(mod.settings, "ses_from_email", "noreply@x.com")
+    with (
+        patch("rentivo.jobs.handlers.email.EmailService") as svc_cls,
+        patch("rentivo.jobs.handlers.email.get_email_backend"),
+    ):
+        svc_cls.return_value = MagicMock()
+        mod.handle_email_send({"event": "welcome", "to_email": "alice@example.com"})
+
+        assert svc_cls.call_args.kwargs["from_address"] == "noreply@x.com"

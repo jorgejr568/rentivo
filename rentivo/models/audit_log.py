@@ -73,6 +73,8 @@ class AuditEventType:
     COMMUNICATION_TEMPLATE_SAVED = "communication.template_saved"
     BILLING_RECIPIENTS_UPDATED = "billing.recipients_updated"
     BILLING_REPLY_TO_UPDATED = "billing.reply_to_updated"
+    COMMUNICATION_BLOCKED = "communication.blocked"
+    COMMUNICATION_FLAGGED_OVERRIDE = "communication.flagged_override"
 
     # Job queue events
     JOB_ENQUEUED = "job.enqueued"

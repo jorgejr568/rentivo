@@ -56,3 +56,12 @@ def test_preview_renders_markdown(auth_client, test_engine, csrf_token, tmp_path
     assert resp.status_code == 200
     assert "<strong>Rodrigo</strong>" in resp.json()["html"]
     assert "<script>" not in resp.json()["html"]
+
+
+def test_compose_has_moderation_panel_and_ack(auth_client, test_engine, csrf_token, tmp_path):
+    billing = create_billing_in_db(test_engine)
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)
+    _seed_recipient(auth_client, billing, csrf_token)
+    page = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose")
+    assert 'id="moderation-panel"' in page.text
+    assert 'name="acknowledge_warning"' in page.text

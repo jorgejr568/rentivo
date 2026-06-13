@@ -90,11 +90,16 @@ class EmailService:
         body_text: str,
         attachments: list[EmailAttachment] | tuple[EmailAttachment, ...] = (),
         reply_to: list[str] | tuple[str, ...] = (),
+        sender_name: str = "",
     ) -> str:
         """Send a dynamic (non-registry) communication: a Markdown-rendered body
-        wrapped in the shared email layout, with optional attachments and Reply-To.
+        wrapped in the shared email layout, with optional attachments and Reply-To,
+        plus a system-controlled sender-attribution block.
         """
-        html_body, text_body = self._render("communication", {"body_html": body_html_inner, "body_text": body_text})
+        html_body, text_body = self._render(
+            "communication",
+            {"body_html": body_html_inner, "body_text": body_text, "sender_name": sender_name},
+        )
         message = EmailMessage(
             to=to_email,
             subject=subject,
