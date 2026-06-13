@@ -116,6 +116,8 @@ def handle_communication_send(payload: dict) -> None:
             [attachment],
             reply_to=reply_to,
             sender_name=sender_name,
+            # Unique X-Entity-Ref-ID per communication so Gmail does not thread them.
+            headers=(("X-Entity-Ref-ID", comm.uuid),),
         )
         comm_repo.mark_sent(comm.id, datetime.now(SP_TZ))
         logger.info("communication_sent", communication_id=comm.id, bill_id=bill.id)

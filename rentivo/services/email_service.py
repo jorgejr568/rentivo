@@ -91,10 +91,14 @@ class EmailService:
         attachments: list[EmailAttachment] | tuple[EmailAttachment, ...] = (),
         reply_to: list[str] | tuple[str, ...] = (),
         sender_name: str = "",
+        headers: tuple[tuple[str, str], ...] = (),
     ) -> str:
         """Send a dynamic (non-registry) communication: a Markdown-rendered body
         wrapped in the shared email layout, with optional attachments and Reply-To,
         plus a system-controlled sender-attribution block.
+
+        ``headers`` carries extra per-message MIME headers (e.g. a unique
+        ``X-Entity-Ref-ID``) so Gmail does not thread distinct communications.
         """
         html_body, text_body = self._render(
             "communication",
@@ -108,6 +112,7 @@ class EmailService:
             from_address=self.from_address,
             attachments=tuple(attachments),
             reply_to=tuple(reply_to),
+            headers=tuple(headers),
         )
         result = self.backend.send(message)
         logger.info("email_communication_sent", to=to_email)
