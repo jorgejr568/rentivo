@@ -5,6 +5,8 @@ from rentivo.repositories.factory import (
     get_audit_log_repository,
     get_bill_repository,
     get_billing_repository,
+    get_communication_repository,
+    get_communication_template_repository,
     get_invite_repository,
     get_job_repository,
     get_known_device_repository,
@@ -13,6 +15,7 @@ from rentivo.repositories.factory import (
     get_passkey_repository,
     get_password_reset_token_repository,
     get_receipt_repository,
+    get_recipient_repository,
     get_recovery_code_repository,
     get_theme_repository,
     get_user_repository,
@@ -21,6 +24,8 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
+    SQLAlchemyCommunicationRepository,
+    SQLAlchemyCommunicationTemplateRepository,
     SQLAlchemyInviteRepository,
     SQLAlchemyKnownDeviceRepository,
     SQLAlchemyMFATOTPRepository,
@@ -28,6 +33,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyPasskeyRepository,
     SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyReceiptRepository,
+    SQLAlchemyRecipientRepository,
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
@@ -70,6 +76,24 @@ class TestRepoFactory:
         mock_conn.return_value = MagicMock()
         repo = get_receipt_repository()
         assert isinstance(repo, SQLAlchemyReceiptRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_recipient_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_recipient_repository()
+        assert isinstance(repo, SQLAlchemyRecipientRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_communication_template_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_communication_template_repository()
+        assert isinstance(repo, SQLAlchemyCommunicationTemplateRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_communication_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_communication_repository()
+        assert isinstance(repo, SQLAlchemyCommunicationRepository)
 
     @patch("rentivo.db.get_connection")
     def test_get_audit_log_repository(self, mock_conn):

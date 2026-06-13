@@ -5,7 +5,7 @@ from typing import Callable
 import structlog
 from jinja2 import Environment, PackageLoader, select_autoescape
 
-from rentivo.email.base import EmailBackend, EmailMessage
+from rentivo.email.base import EmailAttachment, EmailBackend, EmailMessage
 
 logger = structlog.get_logger(__name__)
 
@@ -80,4 +80,30 @@ class EmailService:
         message = self._build_message(to_email, subject, event, ctx)
         result = self.backend.send(message)
         logger.info("email_sent", to=to_email, email_event=event)
+        return result
+
+    def send_communication(
+        self,
+        to_email: str,
+        subject: str,
+        body_html_inner: str,
+        body_text: str,
+        attachments: list[EmailAttachment] | tuple[EmailAttachment, ...] = (),
+        reply_to: list[str] | tuple[str, ...] = (),
+    ) -> str:
+        """Send a dynamic (non-registry) communication: a Markdown-rendered body
+        wrapped in the shared email layout, with optional attachments and Reply-To.
+        """
+        html_body, text_body = self._render("communication", {"body_html": body_html_inner, "body_text": body_text})
+        message = EmailMessage(
+            to=to_email,
+            subject=subject,
+            text_body=text_body,
+            html_body=html_body,
+            from_address=self.from_address,
+            attachments=tuple(attachments),
+            reply_to=tuple(reply_to),
+        )
+        result = self.backend.send(message)
+        logger.info("email_communication_sent", to=to_email)
         return result

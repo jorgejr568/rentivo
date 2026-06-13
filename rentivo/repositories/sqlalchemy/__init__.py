@@ -14,6 +14,10 @@ from rentivo.repositories.sqlalchemy.auth import (
 )
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
+from rentivo.repositories.sqlalchemy.communication import (
+    SQLAlchemyCommunicationRepository,
+    SQLAlchemyCommunicationTemplateRepository,
+)
 from rentivo.repositories.sqlalchemy.invite import SQLAlchemyInviteRepository
 from rentivo.repositories.sqlalchemy.mfa import (
     SQLAlchemyMFATOTPRepository,
@@ -22,6 +26,8 @@ from rentivo.repositories.sqlalchemy.mfa import (
 )
 from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
 from rentivo.repositories.sqlalchemy.receipt import SQLAlchemyReceiptRepository
+from rentivo.repositories.sqlalchemy.recipient import SQLAlchemyRecipientRepository
+from rentivo.repositories.sqlalchemy.reply_to import SQLAlchemyReplyToRecipientRepository
 from rentivo.repositories.sqlalchemy.theme import SQLAlchemyThemeRepository
 from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
@@ -29,6 +35,8 @@ __all__ = [
     "SQLAlchemyAuditLogRepository",
     "SQLAlchemyBillRepository",
     "SQLAlchemyBillingRepository",
+    "SQLAlchemyCommunicationRepository",
+    "SQLAlchemyCommunicationTemplateRepository",
     "SQLAlchemyInviteRepository",
     "SQLAlchemyKnownDeviceRepository",
     "SQLAlchemyMFATOTPRepository",
@@ -36,7 +44,9 @@ __all__ = [
     "SQLAlchemyPasskeyRepository",
     "SQLAlchemyPasswordResetTokenRepository",
     "SQLAlchemyReceiptRepository",
+    "SQLAlchemyRecipientRepository",
     "SQLAlchemyRecoveryCodeRepository",
+    "SQLAlchemyReplyToRecipientRepository",
     "SQLAlchemyThemeRepository",
     "SQLAlchemyUserRepository",
 ]

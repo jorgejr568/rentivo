@@ -11,6 +11,8 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
+    SQLAlchemyCommunicationRepository,
+    SQLAlchemyCommunicationTemplateRepository,
     SQLAlchemyInviteRepository,
     SQLAlchemyKnownDeviceRepository,
     SQLAlchemyMFATOTPRepository,
@@ -18,7 +20,9 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyPasskeyRepository,
     SQLAlchemyPasswordResetTokenRepository,
     SQLAlchemyReceiptRepository,
+    SQLAlchemyRecipientRepository,
     SQLAlchemyRecoveryCodeRepository,
+    SQLAlchemyReplyToRecipientRepository,
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
@@ -28,6 +32,7 @@ from rentivo.services.bill_service import BillService
 from rentivo.services.billing_notification_service import BillingNotificationService
 from rentivo.services.billing_service import BillingService
 from rentivo.services.billing_stats_service import BillingStatsService
+from rentivo.services.communication_service import CommunicationService
 from rentivo.services.google_auth_service import GoogleAuthService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.job_service import JobService
@@ -36,6 +41,7 @@ from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.password_reset_service import PasswordResetService
 from rentivo.services.pix_service import PixService
+from rentivo.services.recipient_service import RecipientService
 from rentivo.services.storage_cleanup_service import StorageCleanupService
 from rentivo.services.theme_service import ThemeService
 from rentivo.services.turnstile_service import TurnstileService
@@ -163,6 +169,24 @@ class RequestServices:
             SQLAlchemyReceiptRepository(self._conn, self._encryption),
             theme_service=self.theme,
             pix_service=self.pix,
+            job_service=self.job,
+        )
+
+    @cached_property
+    def recipient(self) -> RecipientService:
+        return RecipientService(SQLAlchemyRecipientRepository(self._conn, self._encryption))
+
+    @cached_property
+    def reply_to(self) -> RecipientService:
+        # Reuses RecipientService (same name+email contract) over the separate
+        # billing_reply_to table.
+        return RecipientService(SQLAlchemyReplyToRecipientRepository(self._conn, self._encryption))
+
+    @cached_property
+    def communication(self) -> CommunicationService:
+        return CommunicationService(
+            communication_repo=SQLAlchemyCommunicationRepository(self._conn, self._encryption),
+            template_repo=SQLAlchemyCommunicationTemplateRepository(self._conn, self._encryption),
             job_service=self.job,
         )
 

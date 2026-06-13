@@ -1,3 +1,3 @@
 """Importing this package registers every handler via decorator side-effects."""
 
-from rentivo.jobs.handlers import email, pdf, s3  # noqa: F401
+from rentivo.jobs.handlers import communication, email, pdf, s3  # noqa: F401

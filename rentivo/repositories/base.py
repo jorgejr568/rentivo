@@ -4,12 +4,14 @@ from datetime import datetime
 from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
+from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.invite import Invite
 from rentivo.models.known_device import KnownDevice
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.models.receipt import Receipt
+from rentivo.models.recipient import Recipient
 from rentivo.models.theme import Theme
 from rentivo.models.user import User
 
@@ -191,6 +193,17 @@ class ReceiptRepository(ABC):
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None: ...
 
 
+class RecipientRepository(ABC):
+    @abstractmethod
+    def list_by_billing(self, billing_id: int) -> list[Recipient]: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> Recipient | None: ...
+
+    @abstractmethod
+    def replace_for_billing(self, billing_id: int, recipients: list[Recipient]) -> None: ...
+
+
 class MFATOTPRepository(ABC):
     @abstractmethod
     def get_by_user_id(self, user_id: int) -> UserTOTP | None: ...
@@ -282,3 +295,34 @@ class KnownDeviceRepository(ABC):
 
     @abstractmethod
     def upsert(self, device: KnownDevice) -> KnownDevice: ...
+
+
+class CommunicationTemplateRepository(ABC):
+    @abstractmethod
+    def get(self, owner_type: str, owner_id: int, comm_type: str) -> CommunicationTemplate | None: ...
+
+    @abstractmethod
+    def upsert(self, template: CommunicationTemplate) -> CommunicationTemplate: ...
+
+
+class CommunicationRepository(ABC):
+    @abstractmethod
+    def create(self, communication: Communication) -> Communication: ...
+
+    @abstractmethod
+    def get_by_id(self, communication_id: int) -> Communication | None: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> Communication | None: ...
+
+    @abstractmethod
+    def list_by_bill(self, bill_id: int) -> list[Communication]: ...
+
+    @abstractmethod
+    def set_job_ulid(self, communication_id: int, job_ulid: str) -> None: ...
+
+    @abstractmethod
+    def mark_sent(self, communication_id: int, sent_at: datetime) -> None: ...
+
+    @abstractmethod
+    def mark_failed(self, communication_id: int, error: str) -> None: ...

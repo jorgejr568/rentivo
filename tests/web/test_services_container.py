@@ -2,7 +2,35 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
+
+from rentivo.encryption.base64 import Base64Backend
+from rentivo.services.communication_service import CommunicationService
+from rentivo.services.recipient_service import RecipientService
+from tests.conftest import SCHEMA_DDL
 from web.services_container import RequestServices
+
+
+def _services():
+    eng = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    with eng.connect() as c:
+        for stmt in SCHEMA_DDL.strip().split(";"):
+            if stmt.strip():
+                c.execute(text(stmt))
+        c.commit()
+        return RequestServices(conn=c, encryption=Base64Backend())
+
+
+def test_recipient_and_communication_services_resolve():
+    services = _services()
+    assert isinstance(services.recipient, RecipientService)
+    assert isinstance(services.communication, CommunicationService)
+
+
+def test_reply_to_service_resolves():
+    services = _services()
+    assert isinstance(services.reply_to, RecipientService)
 
 
 class TestLazyProperties:

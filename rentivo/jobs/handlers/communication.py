@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+from datetime import datetime
+from email.utils import formataddr
+
+import structlog
+
+from rentivo.communications.render import render_markdown
+from rentivo.constants import SP_TZ
+from rentivo.db import get_engine
+from rentivo.email.base import EmailAttachment
+from rentivo.email.factory import get_email_backend
+from rentivo.encryption.factory import get_encryption
+from rentivo.jobs.base import PermanentJobError
+from rentivo.jobs.registry import register, register_on_fail
+from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
+from rentivo.repositories.sqlalchemy.communication import SQLAlchemyCommunicationRepository
+from rentivo.repositories.sqlalchemy.reply_to import SQLAlchemyReplyToRecipientRepository
+from rentivo.services.email_service import EmailService
+from rentivo.settings import settings
+from rentivo.storage.factory import get_storage
+
+logger = structlog.get_logger(__name__)
+
+
+def _require_int_id(payload: dict) -> int:
+    communication_id = payload.get("communication_id")
+    if not isinstance(communication_id, int):
+        raise PermanentJobError(f"communication.send requires int communication_id, got {communication_id!r}")
+    return communication_id
+
+
+@register("communication.send")
+def handle_communication_send(payload: dict) -> None:
+    """Render a stored communication, attach the bill PDF, send one email, mark sent.
+
+    Payload shape: ``{"communication_id": int}``.
+    """
+    communication_id = _require_int_id(payload)
+    engine = get_engine()
+    encryption = get_encryption()
+    with engine.connect() as conn:
+        comm_repo = SQLAlchemyCommunicationRepository(conn, encryption)
+        comm = comm_repo.get_by_id(communication_id)
+        if comm is None:
+            raise PermanentJobError(f"communication {communication_id} not found")
+
+        # Idempotency: the job framework is at-least-once (a crash after the email
+        # is sent but before mark_sent leaves the job to be retried). Only a still-
+        # queued row should be sent, so a retry of an already-delivered one is a
+        # no-op instead of a duplicate invoice email to the tenant.
+        if comm.status != "queued":
+            logger.info("communication_send_skipped", communication_id=comm.id, status=comm.status)
+            return
+
+        bill = SQLAlchemyBillRepository(conn, encryption).get_by_id(comm.bill_id)
+        if bill is None or not bill.pdf_path:
+            raise PermanentJobError(f"bill {comm.bill_id} missing or has no PDF")
+
+        try:
+            pdf_bytes = get_storage().get(bill.pdf_path)
+        except FileNotFoundError as exc:
+            # The DB still references a key whose object is gone — it will never
+            # reappear, so fail permanently instead of burning every retry.
+            raise PermanentJobError(f"bill {comm.bill_id} PDF object missing at {bill.pdf_path!r}") from exc
+
+        # Reply-To is delivery config, resolved fresh from the billing at send time
+        # (unlike subject/body, which are snapshotted onto the communication row).
+        reply_to_contacts = SQLAlchemyReplyToRecipientRepository(conn, encryption).list_by_billing(bill.billing_id)
+        reply_to = [formataddr((r.name, r.email)) for r in reply_to_contacts]
+
+        from_address = settings.communications_from_email or settings.ses_from_email or "noreply@localhost"
+        service = EmailService(get_email_backend(), from_address=from_address)
+        body_html = render_markdown(comm.body_markdown)
+        attachment = EmailAttachment(
+            filename=f"fatura-{bill.reference_month}.pdf",
+            content=pdf_bytes,
+            content_type="application/pdf",
+        )
+        service.send_communication(
+            comm.recipient_email, comm.subject, body_html, comm.body_markdown, [attachment], reply_to=reply_to
+        )
+        comm_repo.mark_sent(comm.id, datetime.now(SP_TZ))
+        logger.info("communication_sent", communication_id=comm.id, bill_id=bill.id)
+
+
+@register_on_fail("communication.send")
+def _on_communication_send_failed(payload: dict) -> None:
+    """Dead-letter hook: mark the communication failed so the UI can show it."""
+    communication_id = payload.get("communication_id")
+    if not isinstance(communication_id, int):  # pragma: no cover - guarded upstream
+        return
+    engine = get_engine()
+    with engine.connect() as conn:
+        repo = SQLAlchemyCommunicationRepository(conn, get_encryption())
+        comm = repo.get_by_id(communication_id)
+        # If a prior attempt actually delivered the email (status already 'sent'),
+        # don't flip it back to 'failed' — that would mislead the operator into
+        # resending and double-mailing the tenant.
+        if comm is not None and comm.status == "sent":
+            logger.info("communication_fail_hook_skipped_sent", communication_id=communication_id)
+            return
+        repo.mark_failed(communication_id, "Falha no envio após múltiplas tentativas.")

@@ -1,0 +1,3 @@
+{% extends "_email_layout.html" %}
+{# body_html MUST be pre-sanitized HTML from rentivo.communications.render.render_markdown (raw HTML disabled) — never pass raw user input here #}
+{% block content %}{{ body_html | safe }}{% endblock %}

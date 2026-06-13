@@ -8,6 +8,7 @@ except ImportError:  # pragma: no cover
     boto3 = None  # type: ignore[assignment]
 
 from rentivo.email.base import EmailBackend, EmailMessage
+from rentivo.email.mime import build_mime
 
 logger = structlog.get_logger(__name__)
 
@@ -38,6 +39,20 @@ class SESEmailBackend(EmailBackend):
         self.client = boto3.client(**client_kwargs)
 
     def send(self, message: EmailMessage) -> str:
+        if message.attachments:
+            raw = build_mime(message).as_bytes()
+            raw_kwargs = {
+                "Source": message.from_address or self.from_address,
+                "Destinations": [message.to],
+                "RawMessage": {"Data": raw},
+            }
+            if self.configuration_set:
+                raw_kwargs["ConfigurationSetName"] = self.configuration_set
+            response = self.client.send_raw_email(**raw_kwargs)
+            message_id = response.get("MessageId", "")
+            logger.info("email_ses_sent_raw", to=message.to, subject=message.subject, message_id=message_id)
+            return message_id
+
         kwargs = {
             "Source": message.from_address or self.from_address,
             "Destination": {"ToAddresses": [message.to]},
@@ -51,6 +66,8 @@ class SESEmailBackend(EmailBackend):
         }
         if self.configuration_set:
             kwargs["ConfigurationSetName"] = self.configuration_set
+        if message.reply_to:
+            kwargs["ReplyToAddresses"] = list(message.reply_to)
         response = self.client.send_email(**kwargs)
         message_id = response.get("MessageId", "")
         logger.info("email_ses_sent", to=message.to, subject=message.subject, message_id=message_id)

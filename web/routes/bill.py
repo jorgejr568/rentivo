@@ -97,6 +97,7 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
 async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill("view"))):
     bill_service = request.state.services.bill
     receipts = bill_service.list_receipts(ctx.bill.id) if ctx.bill.id else []
+    communications = request.state.services.communication.list_for_bill(ctx.bill.id) if ctx.bill.id else []
     return render(
         request,
         "bill/detail.html",
@@ -105,6 +106,7 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
             "billing": ctx.billing,
             "role": ctx.role,
             "receipts": receipts,
+            "communications": communications,
         },
     )
 

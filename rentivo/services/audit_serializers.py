@@ -10,6 +10,7 @@ from datetime import datetime
 
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
+from rentivo.models.communication import Communication
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
 from rentivo.models.receipt import Receipt
@@ -173,6 +174,25 @@ def serialize_theme(theme: Theme) -> dict:
         "secondary_dark": theme.secondary_dark,
         "text_color": theme.text_color,
         "text_contrast": theme.text_contrast,
+    }
+
+
+def serialize_communication(comm: Communication) -> dict:
+    """Serialize a Communication for audit state.
+
+    The recipient email is partial-mask redacted; recipient name, subject, and
+    body are omitted entirely. The subject is rendered from the template at
+    send time and may carry substituted PII (``{{nome_inquilino}}`` / ``{{unidade}}``,
+    the latter the encrypted billing name), so it must not land in plaintext in
+    the audit trail.
+    """
+    return {
+        "id": comm.id,
+        "uuid": comm.uuid,
+        "bill_id": comm.bill_id,
+        "comm_type": comm.comm_type,
+        "recipient_email": redact(comm.recipient_email or "", PIIKind.EMAIL),
+        "status": comm.status,
     }
 
 

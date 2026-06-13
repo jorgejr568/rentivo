@@ -10,7 +10,7 @@ from rentivo.services.audit_serializers import serialize_billing
 from web.analytics import analytics_hash, push_event
 from web.deps import render
 from web.flash import flash
-from web.forms import parse_line_items
+from web.forms import parse_formset, parse_line_items
 from web.guards import BillingContext, require_billing
 
 logger = structlog.get_logger(__name__)
@@ -102,6 +102,35 @@ async def billing_create(request: Request):
         new_state=serialize_billing(billing),
     )
 
+    # Mirror billing_edit: only touch recipients when the submission carries the
+    # formset, so the behaviour is identical across create and edit.
+    form_dict = dict(form)
+    if "recipients-TOTAL_FORMS" in form_dict:
+        recipient_rows = parse_formset(form_dict, "recipients")
+        saved_recipients = request.state.services.recipient.replace_for_billing(billing.id, recipient_rows)
+        if saved_recipients or recipient_rows:
+            audit.safe_log_for(
+                request.state.actor,
+                AuditEventType.BILLING_RECIPIENTS_UPDATED,
+                entity_type="billing",
+                entity_id=billing.id,
+                entity_uuid=billing.uuid,
+                new_state={"recipient_count": len(saved_recipients)},
+            )
+
+    if "reply_to-TOTAL_FORMS" in form_dict:
+        reply_to_rows = parse_formset(form_dict, "reply_to")
+        saved_reply_to = request.state.services.reply_to.replace_for_billing(billing.id, reply_to_rows)
+        if saved_reply_to or reply_to_rows:
+            audit.safe_log_for(
+                request.state.actor,
+                AuditEventType.BILLING_REPLY_TO_UPDATED,
+                entity_type="billing",
+                entity_id=billing.id,
+                entity_uuid=billing.uuid,
+                new_state={"reply_to_count": len(saved_reply_to)},
+            )
+
     flash(request, f"Cobrança '{billing.name}' criada com sucesso!", "success")
     push_event(
         request,
@@ -154,7 +183,13 @@ async def billing_detail(request: Request, ctx: BillingContext = Depends(require
 
 @router.get("/{billing_uuid}/edit")
 async def billing_edit_form(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
-    return render(request, "billing/edit.html", {"billing": ctx.billing})
+    recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
+    reply_to = request.state.services.reply_to.list_for_billing(ctx.billing.id) if ctx.billing.id else []
+    return render(
+        request,
+        "billing/edit.html",
+        {"billing": ctx.billing, "recipients": recipients, "reply_to": reply_to},
+    )
 
 
 @router.post("/{billing_uuid}/edit")
@@ -198,6 +233,42 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
         previous_state=previous_state,
         new_state=serialize_billing(updated),
     )
+
+    # Only touch recipients when the submission actually carries the recipients
+    # formset. Replacing them is destructive (delete-all + re-insert), so a POST
+    # that omits the formset entirely (a stale cached form, a non-recipient-aware
+    # client) must leave the existing encrypted recipients intact rather than
+    # silently wiping them as a side effect of an unrelated field edit.
+    form_dict = dict(form)
+    if "recipients-TOTAL_FORMS" in form_dict:
+        previous_recipients = request.state.services.recipient.list_for_billing(updated.id)
+        recipient_rows = parse_formset(form_dict, "recipients")
+        saved_recipients = request.state.services.recipient.replace_for_billing(updated.id, recipient_rows)
+        if recipient_rows or previous_recipients:
+            request.state.services.audit.safe_log_for(
+                request.state.actor,
+                AuditEventType.BILLING_RECIPIENTS_UPDATED,
+                entity_type="billing",
+                entity_id=updated.id,
+                entity_uuid=updated.uuid,
+                previous_state={"recipient_count": len(previous_recipients)},
+                new_state={"recipient_count": len(saved_recipients)},
+            )
+
+    if "reply_to-TOTAL_FORMS" in form_dict:
+        previous_reply_to = request.state.services.reply_to.list_for_billing(updated.id)
+        reply_to_rows = parse_formset(form_dict, "reply_to")
+        saved_reply_to = request.state.services.reply_to.replace_for_billing(updated.id, reply_to_rows)
+        if reply_to_rows or previous_reply_to:
+            request.state.services.audit.safe_log_for(
+                request.state.actor,
+                AuditEventType.BILLING_REPLY_TO_UPDATED,
+                entity_type="billing",
+                entity_id=updated.id,
+                entity_uuid=updated.uuid,
+                previous_state={"reply_to_count": len(previous_reply_to)},
+                new_state={"reply_to_count": len(saved_reply_to)},
+            )
 
     flash(request, "Cobrança atualizada com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_edited", "billing_uuid_hash": analytics_hash(updated.uuid)})
