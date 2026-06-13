@@ -10,5 +10,4 @@ def flash(request: Request, message: str, category: str = "info") -> None:
 
 
 def get_flashed_messages(request: Request) -> list[dict[str, str]]:
-    messages = request.session.pop("_messages", [])
-    return messages
+    return request.session.pop("_messages", [])

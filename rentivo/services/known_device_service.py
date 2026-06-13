@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 
 import structlog
 
@@ -62,8 +63,6 @@ class KnownDeviceService:
         The password-reset CTA URL is derived here from settings so the four
         login call sites don't each assemble it.
         """
-        from datetime import datetime
-
         if self.register_login(user.id, user_agent, client_ip):
             return
 

@@ -24,11 +24,11 @@ def _complete(pix_key: str, merchant_name: str, merchant_city: str) -> PixConfig
 
 
 class PixService:
-    """Resolves PIX configuration for billings using an owner-first hierarchy.
+    """Resolves PIX configuration for billings, most-specific-wins.
 
-    Resolution order (mirrors ThemeService pattern, owner-first per product spec):
-    1. Owner (user or organization, based on billing.owner_type) — if all three fields set
-    2. Billing override — if all three billing fields set
+    Resolution order (mirrors ThemeService pattern, billing override first):
+    1. Billing override — if all three billing fields set
+    2. Owner (user or organization, based on billing.owner_type) — if all three fields set
     3. None — caller must block invoice generation and prompt the user
     """
 
