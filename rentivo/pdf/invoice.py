@@ -10,6 +10,7 @@ from fpdf import FPDF
 from rentivo.constants import TYPE_LABELS, format_month
 from rentivo.models import format_brl
 from rentivo.models.bill import Bill
+from rentivo.observability import traced
 
 if TYPE_CHECKING:
     from rentivo.models.theme import Theme
@@ -50,6 +51,7 @@ def _derive_colors(theme: Theme) -> dict[str, tuple[int, int, int]]:
 
 
 class InvoicePDF:
+    @traced("pdf.generate")
     def generate(
         self,
         bill: Bill,

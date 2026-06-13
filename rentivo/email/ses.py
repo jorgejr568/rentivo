@@ -9,6 +9,7 @@ except ImportError:  # pragma: no cover
 
 from rentivo.email.base import EmailBackend, EmailMessage
 from rentivo.email.mime import build_mime
+from rentivo.observability import traced
 
 logger = structlog.get_logger(__name__)
 
@@ -38,6 +39,7 @@ class SESEmailBackend(EmailBackend):
             client_kwargs["endpoint_url"] = endpoint_url
         self.client = boto3.client(**client_kwargs)
 
+    @traced("ses.send")
     def send(self, message: EmailMessage) -> str:
         if message.attachments:
             raw = build_mime(message).as_bytes()

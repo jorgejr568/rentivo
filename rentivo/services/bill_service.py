@@ -8,6 +8,7 @@ from rentivo.constants import SP_TZ
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
+from rentivo.observability import traced
 from rentivo.pdf.invoice import InvoicePDF
 from rentivo.pdf.merger import merge_receipts
 from rentivo.pix import generate_pix_payload, generate_pix_qrcode_png
@@ -118,6 +119,7 @@ class BillService:
                 )
         return data, ordered
 
+    @traced("bill.render_pdf_sync")
     def _render_pdf_sync(self, bill: Bill, billing: Billing) -> tuple[str, list[str]]:
         """Generate PDF, save to storage, and update bill's pdf_path.
 
@@ -203,6 +205,7 @@ class BillService:
             )
         return None, []
 
+    @traced("bill.generate")
     def generate_bill(
         self,
         billing: Billing,

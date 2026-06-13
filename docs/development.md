@@ -75,6 +75,10 @@ Tuning knobs: `RENTIVO_JOB_WORKER_*` (see [configuration.md](configuration.md)).
 
 With `RENTIVO_EMAIL_BACKEND=local`, sent emails are `.eml` files in `./outbox` (host) or `/app/outbox` inside the worker container (`docker compose exec worker ls outbox`).
 
+## Tracing (optional)
+
+Distributed tracing is off by default. To try it locally: `uv sync --extra otel`, `make jaeger-up`, set `RENTIVO_OTEL_ENABLED=true` in `.env`, then open http://localhost:16686. Full guide: [`docs/observability.md`](observability.md).
+
 ## Database migrations
 
 Schema is managed by Alembic (`alembic/versions/`).

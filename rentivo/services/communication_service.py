@@ -9,6 +9,7 @@ from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.recipient import Recipient
+from rentivo.observability import traced
 from rentivo.repositories.base import CommunicationRepository, CommunicationTemplateRepository
 from rentivo.services.job_service import JobService
 
@@ -63,6 +64,7 @@ class CommunicationService:
             "total": format_brl(bill.total_amount),
         }
 
+    @traced("communication.send")
     def send(
         self,
         bill: Bill,

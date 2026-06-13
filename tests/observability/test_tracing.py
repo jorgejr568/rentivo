@@ -97,6 +97,17 @@ def test_traced_records_and_reraises_error(span_exporter):
 
 
 @pytest.mark.asyncio
+async def test_traced_async_noop_when_disabled():
+    @traced("async.disabled")
+    async def f(x):
+        return x * 2
+
+    # No span_exporter fixture → tracing disabled. The async wrapper must take
+    # its tracer-is-None fast path and just await the wrapped coroutine.
+    assert await f(4) == 8
+
+
+@pytest.mark.asyncio
 async def test_traced_supports_async(span_exporter):
     @traced("async.op")
     async def f():

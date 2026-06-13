@@ -392,6 +392,19 @@ A generic, reusable key→value cache (`rentivo/cache/`), pluggable across the s
 
 `BillingStatsService` is the first consumer. `BillingStats` (in `rentivo/services/billing_stats.py`, separate from the service) provides `to_dict`/`from_dict`; the service stores `stats.to_dict()` under key `billing_stats:{year}|{month}|{sorted billing ids}` (the YTD window + exact billing set, so entries are correct across month rollovers and shared across users since bill ids are globally unique) and rebuilds via `from_dict` on a hit.
 
+## Observability (OpenTelemetry Tracing)
+
+Optional distributed tracing, off by default. One module — `rentivo/observability/tracing.py` — owns every `opentelemetry` import behind a `try/except ImportError`; when the `otel` extra is absent or `RENTIVO_OTEL_ENABLED=false`, the global tracer is `None` and `traced` / `span` / `set_attributes` / `inject_context` / `extract_context` all no-op.
+
+- **Enable:** install the `otel` extra (`uv sync --extra otel`) and set `RENTIVO_OTEL_ENABLED=true` + `RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP/HTTP, the SDK appends `/v1/traces`). Four settings: `RENTIVO_OTEL_ENABLED`, `RENTIVO_OTEL_SERVICE_NAME`, `RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT`, `RENTIVO_OTEL_SAMPLE_RATIO`.
+- **Instrument anything** with `@traced("name")` (sync or async; defaults to `__qualname__`). Sub-spans via `with span("name"):`. Dynamic non-PII attributes via `set_attributes(...)`.
+- **Root spans:** the outermost pure-ASGI `TracingMiddleware` (`rentivo/observability/middleware.py`) opens `HTTP <method>`; the worker opens `job <type>`. Decorated calls nest automatically through OpenTelemetry's active-span contextvar.
+- **Cross-process nesting:** `JobService.enqueue` injects a W3C `traceparent` into the payload's `_otel` key; `Worker._run_one` extracts it so worker spans re-parent onto the enqueuing request.
+- **Instrumented:** KMS (`kms.*`), S3 (`s3.*`), SES (`ses.send`), `EmailService` (`email.*`), PDF (`pdf.*`), and headline service ops (`bill.*`, `communication.send`). Local storage/email backends are not (no network I/O).
+- **Privacy:** never put PII in span attributes — non-PII only (method/path, job type/ulid, counts, sizes, backend names).
+- **Local Jaeger:** `make jaeger-up` (compose profile `observability`, opt-in), UI at http://localhost:16686, endpoint `http://jaeger:4318` on the compose network. Full guide: `docs/observability.md`.
+- Tests assert spans with `InMemorySpanExporter`; `tests/observability/conftest.py` provides `reset_tracing` (autouse) + `span_exporter`. Other test packages re-export those fixtures via a one-line conftest. The coverage env runs `uv sync --all-extras`, so the otel branches execute (only the `except ImportError` guard carries `# pragma: no cover`).
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).
