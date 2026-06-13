@@ -28,8 +28,8 @@ def _seed_recipient(auth_client, billing, csrf):
             "items-0-item_type": "fixed",
             "items-0-amount": "2850,00",
             "recipients-TOTAL_FORMS": "1",
-            "recipients-0-name": "Rodrigo",
-            "recipients-0-email": "rodrigo@example.com",
+            "recipients-0-name": "João",
+            "recipients-0-email": "joao@example.com",
         },
         follow_redirects=False,
     )
@@ -50,8 +50,8 @@ def _seed_two_recipients(auth_client, billing, csrf):
             "items-0-item_type": "fixed",
             "items-0-amount": "2850,00",
             "recipients-TOTAL_FORMS": "2",
-            "recipients-0-name": "Rodrigo",
-            "recipients-0-email": "rodrigo@example.com",
+            "recipients-0-name": "João",
+            "recipients-0-email": "joao@example.com",
             "recipients-1-name": "Ana",
             "recipients-1-email": "ana@example.com",
         },
@@ -244,7 +244,7 @@ def test_send_owner_scope_blocked_for_manager(auth_client, test_engine, csrf_tok
     bill = generate_bill_in_db(test_engine, billing, tmp_path)
     with test_engine.connect() as conn:
         SQLAlchemyRecipientRepository(conn, Base64Backend()).replace_for_billing(
-            billing.id, [Recipient(billing_id=billing.id, name="Rodrigo", email="rodrigo@example.com")]
+            billing.id, [Recipient(billing_id=billing.id, name="João", email="joao@example.com")]
         )
         ruuid = conn.execute(text("SELECT uuid FROM billing_recipients LIMIT 1")).scalar()
 
@@ -277,10 +277,10 @@ def test_bill_detail_lists_sent_communication(auth_client, test_engine, csrf_tok
     ruuid = _recipient_uuid(test_engine)
     auth_client.post(
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
-        data={"csrf_token": csrf_token, "subject": "Cobrança Joy", "body": "Prezado Rodrigo", "recipient_uuids": ruuid},
+        data={"csrf_token": csrf_token, "subject": "Cobrança Joy", "body": "Prezado João", "recipient_uuids": ruuid},
         follow_redirects=False,
     )
     page = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
     assert "Comunicações" in page.text
-    assert "rodrigo@example.com" in page.text
+    assert "joao@example.com" in page.text
     assert "Cobrança Joy" in page.text

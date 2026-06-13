@@ -10,7 +10,7 @@ from rentivo.services.email_service import EmailService
 
 def _msg(reply_to=()):
     return EmailMessage(
-        to="rodrigo@example.com",
+        to="joao@example.com",
         subject="Cobrança",
         text_body="corpo",
         html_body="<p>corpo</p>",
@@ -54,7 +54,7 @@ def test_send_communication_passes_reply_to():
     backend = _CapturingBackend()
     service = EmailService(backend, from_address="cobranca@example.com")
     service.send_communication(
-        "rodrigo@example.com", "Assunto", "<p>oi</p>", "oi", [], reply_to=["ana@x.com", "bruno@x.com"]
+        "joao@example.com", "Assunto", "<p>oi</p>", "oi", [], reply_to=["ana@x.com", "bruno@x.com"]
     )
     assert backend.sent.reply_to == ("ana@x.com", "bruno@x.com")
     assert backend.sent.from_address == "cobranca@example.com"

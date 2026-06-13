@@ -88,7 +88,7 @@ def test_resolve_template_uses_owner_when_no_billing_template(ctx):
 def test_send_creates_one_communication_per_recipient_and_enqueues(ctx):
     service, job, _c = ctx
     recipients = [
-        Recipient(billing_id=1, name="Rodrigo", email="rodrigo@example.com"),
+        Recipient(billing_id=1, name="João", email="joao@example.com"),
         Recipient(billing_id=1, name="Ana", email="ana@example.com"),
     ]
     comms = service.send(
@@ -104,7 +104,7 @@ def test_send_creates_one_communication_per_recipient_and_enqueues(ctx):
     assert job.enqueued[0][0] == "communication.send"
     first = comms[0]
     assert first.subject == "Cobrança Joy 105 Bloco 2 — maio de 2026"
-    assert "Prezado Rodrigo" in first.body_markdown
+    assert "Prezado João" in first.body_markdown
     assert "R$ 1.285,00" in first.body_markdown
     assert first.status == "queued"
     assert first.job_ulid == "01JOBULID0000000000000000"

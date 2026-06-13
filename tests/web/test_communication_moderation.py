@@ -20,8 +20,8 @@ def _seed_recipient(auth_client, billing, csrf):
             "items-0-item_type": "fixed",
             "items-0-amount": "2850,00",
             "recipients-TOTAL_FORMS": "1",
-            "recipients-0-name": "Rodrigo",
-            "recipients-0-email": "rodrigo@example.com",
+            "recipients-0-name": "João",
+            "recipients-0-email": "joao@example.com",
         },
         follow_redirects=False,
     )

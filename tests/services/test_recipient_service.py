@@ -25,14 +25,14 @@ def test_replace_skips_blank_rows_and_trims(service):
     service.replace_for_billing(
         1,
         [
-            {"name": " Rodrigo ", "email": " rodrigo@example.com "},
+            {"name": " João ", "email": " joao@example.com "},
             {"name": "", "email": ""},  # blank — skipped
             {"name": "Ana", "email": "ana@example.com"},
         ],
     )
     rows = service.list_for_billing(1)
     assert [(r.name, r.email) for r in rows] == [
-        ("Rodrigo", "rodrigo@example.com"),
+        ("João", "joao@example.com"),
         ("Ana", "ana@example.com"),
     ]
 

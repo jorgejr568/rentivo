@@ -83,10 +83,10 @@ def test_handler_threads_org_name_into_sent_email(conn, monkeypatch):
         Communication(
             bill_id=5,
             comm_type="bill_ready",
-            recipient_name="Rodrigo",
-            recipient_email="rodrigo@example.com",
+            recipient_name="João",
+            recipient_email="joao@example.com",
             subject="Cobrança",
-            body_markdown="Prezado Rodrigo",
+            body_markdown="Prezado João",
         )
     )
     sent = {}
@@ -138,10 +138,10 @@ def _seed_org_comm(conn):
         Communication(
             bill_id=5,
             comm_type="bill_ready",
-            recipient_name="Rodrigo",
-            recipient_email="rodrigo@example.com",
+            recipient_name="João",
+            recipient_email="joao@example.com",
             subject="Cobrança",
-            body_markdown="Prezado Rodrigo",
+            body_markdown="Prezado João",
         )
     )
     return comm.id

@@ -18,14 +18,14 @@ def test_send_communication_wraps_body_and_attaches():
     service = EmailService(backend, from_address="noreply@localhost")
     att = EmailAttachment(filename="fatura.pdf", content=b"%PDF", content_type="application/pdf")
     result = service.send_communication(
-        "rodrigo@example.com",
+        "joao@example.com",
         "Cobrança Joy 105",
-        "<p>Prezado Rodrigo</p>",
-        "Prezado Rodrigo",
+        "<p>Prezado João</p>",
+        "Prezado João",
         [att],
     )
     assert result == "id-123"
-    assert backend.sent.to == "rodrigo@example.com"
+    assert backend.sent.to == "joao@example.com"
     assert backend.sent.subject == "Cobrança Joy 105"
-    assert "Prezado Rodrigo" in backend.sent.html_body  # rendered into the layout
+    assert "Prezado João" in backend.sent.html_body  # rendered into the layout
     assert backend.sent.attachments == (att,)

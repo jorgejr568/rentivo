@@ -30,8 +30,8 @@ def test_edit_persists_recipients(auth_client, test_engine, csrf_token):
             csrf_token,
             **{
                 "recipients-TOTAL_FORMS": "2",
-                "recipients-0-name": "Rodrigo",
-                "recipients-0-email": "rodrigo@example.com",
+                "recipients-0-name": "João",
+                "recipients-0-email": "joao@example.com",
                 "recipients-1-name": "Ana",
                 "recipients-1-email": "ana@example.com",
             },
@@ -55,8 +55,8 @@ def test_edit_clearing_recipients_deletes_and_audits(auth_client, test_engine, c
             csrf_token,
             **{
                 "recipients-TOTAL_FORMS": "1",
-                "recipients-0-name": "Rodrigo",
-                "recipients-0-email": "rodrigo@example.com",
+                "recipients-0-name": "João",
+                "recipients-0-email": "joao@example.com",
             },
         ),
         follow_redirects=False,
@@ -88,8 +88,8 @@ def test_edit_without_recipients_formset_preserves_existing(auth_client, test_en
             csrf_token,
             **{
                 "recipients-TOTAL_FORMS": "1",
-                "recipients-0-name": "Rodrigo",
-                "recipients-0-email": "rodrigo@example.com",
+                "recipients-0-name": "João",
+                "recipients-0-email": "joao@example.com",
             },
         ),
         follow_redirects=False,
@@ -114,15 +114,15 @@ def test_edit_renders_existing_recipients(auth_client, test_engine, csrf_token):
             csrf_token,
             **{
                 "recipients-TOTAL_FORMS": "1",
-                "recipients-0-name": "Rodrigo",
-                "recipients-0-email": "rodrigo@example.com",
+                "recipients-0-name": "João",
+                "recipients-0-email": "joao@example.com",
             },
         ),
         follow_redirects=False,
     )
     page = auth_client.get(f"/billings/{billing.uuid}/edit")
-    assert "rodrigo@example.com" in page.text
-    assert "Rodrigo" in page.text
+    assert "joao@example.com" in page.text
+    assert "João" in page.text
 
 
 def test_create_form_shows_recipients_panel(auth_client, csrf_token):
@@ -140,8 +140,8 @@ def test_create_persists_recipients(auth_client, test_engine, csrf_token):
             name="Nova Cobrança",
             **{
                 "recipients-TOTAL_FORMS": "2",
-                "recipients-0-name": "Rodrigo",
-                "recipients-0-email": "rodrigo@example.com",
+                "recipients-0-name": "João",
+                "recipients-0-email": "joao@example.com",
                 "recipients-1-name": "Ana",
                 "recipients-1-email": "ana@example.com",
             },
