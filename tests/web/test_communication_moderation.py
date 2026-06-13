@@ -63,6 +63,7 @@ def test_mild_content_requires_acknowledgment(auth_client, test_engine, csrf_tok
     assert resp.headers["location"].endswith("/communications/compose")
     with test_engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
+        assert c.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type='communication.send'")).scalar() == 0
 
 
 def test_mild_content_sends_with_acknowledgment(auth_client, test_engine, csrf_token, tmp_path):
@@ -74,6 +75,17 @@ def test_mild_content_sends_with_acknowledgment(auth_client, test_engine, csrf_t
     with test_engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 1
     assert any(log.event_type == "communication.flagged_override" for log in get_audit_logs(test_engine))
+
+
+def test_clean_send_emits_no_moderation_audit(auth_client, test_engine, csrf_token, tmp_path):
+    billing = create_billing_in_db(test_engine)
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)
+    _seed_recipient(auth_client, billing, csrf_token)
+    resp = _send(auth_client, billing, bill, csrf_token, "Prezado, segue a cobrança.", _ruuid(test_engine))
+    assert resp.status_code == 302
+    events = {log.event_type for log in get_audit_logs(test_engine)}
+    assert "communication.blocked" not in events
+    assert "communication.flagged_override" not in events
 
 
 def test_preview_returns_moderation(auth_client, test_engine, csrf_token, tmp_path):
