@@ -1,3 +1,7 @@
 {{ body_text }}
 
+—
+Enviado por {{ sender_name or "o responsável" }} através do Rentivo.
+O conteúdo desta mensagem é de responsabilidade do remetente, não do Rentivo.
+
 {% include "_email_footer.txt" %}
