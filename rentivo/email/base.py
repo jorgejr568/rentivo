@@ -20,6 +20,7 @@ class EmailMessage:
     from_address: str
     attachments: tuple[EmailAttachment, ...] = field(default_factory=tuple)
     reply_to: tuple[str, ...] = field(default_factory=tuple)
+    headers: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
 
 class EmailBackend(ABC):

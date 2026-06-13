@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 from email.message import EmailMessage as MIMEMessage
+from email.utils import make_msgid
 
 from rentivo.email.base import EmailMessage
 
 
 def build_mime(message: EmailMessage) -> MIMEMessage:
-    """Build a stdlib MIME message (text + html alternative + attachments)."""
+    """Build a stdlib MIME message (text + html alternative + attachments).
+
+    Each message gets a unique Message-ID, and any extra ``message.headers`` are
+    applied — e.g. a per-communication ``X-Entity-Ref-ID`` so Gmail does not
+    thread distinct communications into a single conversation.
+    """
     mime = MIMEMessage()
     mime["From"] = message.from_address
     mime["To"] = message.to
     mime["Subject"] = message.subject
+    mime["Message-ID"] = make_msgid()
     if message.reply_to:
         mime["Reply-To"] = ", ".join(message.reply_to)
+    for key, value in message.headers:
+        mime[key] = value
     mime.set_content(message.text_body)
     mime.add_alternative(message.html_body, subtype="html")
     for att in message.attachments:

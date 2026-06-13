@@ -70,6 +70,7 @@ def test_handler_sends_and_marks_sent(engine, monkeypatch, tmp_path):
     assert sent["msg"].to == "rodrigo@example.com"
     assert sent["msg"].attachments[0].content == b"%PDF-1.4 fake"
     assert "<strong>Rodrigo</strong>" in sent["msg"].html_body
+    assert ("X-Entity-Ref-ID", comm.uuid) in sent["msg"].headers
 
     with engine.connect() as c:
         repo = SQLAlchemyCommunicationRepository(c, Base64Backend())
