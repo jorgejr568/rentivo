@@ -31,7 +31,6 @@ _MILD: frozenset[str] = frozenset(
         "otario",
         "imbecil",
         "desgracado",
-        "lixo",
     }
 )
 
@@ -39,7 +38,6 @@ _MILD: frozenset[str] = frozenset(
 _SEVERE_WORDS: frozenset[str] = frozenset(
     {
         "viado",
-        "bicha",
         "retardado",
     }
 )
@@ -53,9 +51,12 @@ _SEVERE_PHRASES: tuple[str, ...] = (
     "vou acabar com voce",
 )
 
+# Intentionally aggressive leetspeak folding — favors catching evasion over
+# avoiding rare false positives (the lexicon words are alphabetic).
 _LEET = str.maketrans({"@": "a", "4": "a", "3": "e", "1": "i", "0": "o", "$": "s", "5": "s", "7": "t"})
 _WORD = re.compile(r"\w+")
 _REPEATS = re.compile(r"(.)\1{2,}")
+_WS = re.compile(r"\s+")
 
 
 @dataclass(frozen=True)
@@ -73,10 +74,12 @@ class ModerationResult:
 
 
 def _normalize(text: str) -> str:
-    """Lowercase, strip accents, undo simple leetspeak, collapse repeated chars."""
+    """Lowercase, strip accents, undo simple leetspeak, collapse repeated chars
+    and whitespace (so multi-word phrases match across newlines / extra spaces)."""
     stripped = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode("ascii")
     lowered = stripped.lower().translate(_LEET)
-    return _REPEATS.sub(r"\1", lowered)
+    collapsed = _REPEATS.sub(r"\1", lowered)
+    return _WS.sub(" ", collapsed).strip()
 
 
 def scan(text: str) -> ModerationResult:

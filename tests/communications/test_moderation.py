@@ -50,3 +50,12 @@ def test_empty_text_is_safe():
 def test_matches_are_sorted_and_deduped():
     r = scan("merda merda porra")
     assert r.mild == ("merda", "porra")
+
+
+def test_whitespace_does_not_evade_severe_phrase():
+    assert scan("vou  te  matar").blocked  # double spaces
+    assert scan("vou\nte matar").blocked  # newline (subject + body join)
+
+
+def test_leetspeak_severe_phrase_blocks():
+    assert "vou te matar" in scan("v0u te m4tar").severe
