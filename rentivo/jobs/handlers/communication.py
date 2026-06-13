@@ -14,8 +14,11 @@ from rentivo.encryption.factory import get_encryption
 from rentivo.jobs.base import PermanentJobError
 from rentivo.jobs.registry import register, register_on_fail
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
+from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
 from rentivo.repositories.sqlalchemy.communication import SQLAlchemyCommunicationRepository
+from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
 from rentivo.repositories.sqlalchemy.reply_to import SQLAlchemyReplyToRecipientRepository
+from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 from rentivo.services.email_service import EmailService
 from rentivo.settings import settings
 from rentivo.storage.factory import get_storage
@@ -28,6 +31,26 @@ def _require_int_id(payload: dict) -> int:
     if not isinstance(communication_id, int):
         raise PermanentJobError(f"communication.send requires int communication_id, got {communication_id!r}")
     return communication_id
+
+
+def _resolve_sender_name(conn, encryption, billing) -> str:
+    """Human-facing sender name for the attribution block.
+
+    Org-owned billing → organization name; user-owned → the account email.
+    Resolved fresh at send time (like reply-to); never written to the plaintext
+    job payload. Falls back to a generic label if a name can't be resolved.
+    """
+    name = ""
+    if billing is not None:
+        if billing.owner_type == "organization":
+            org = SQLAlchemyOrganizationRepository(conn, encryption).get_by_id(billing.owner_id)
+            if org is not None:
+                name = org.name
+        else:
+            user = SQLAlchemyUserRepository(conn, encryption).get_by_id(billing.owner_id)
+            if user is not None:
+                name = user.email
+    return name or "o responsável"
 
 
 @register("communication.send")
@@ -69,6 +92,9 @@ def handle_communication_send(payload: dict) -> None:
         reply_to_contacts = SQLAlchemyReplyToRecipientRepository(conn, encryption).list_by_billing(bill.billing_id)
         reply_to = [formataddr((r.name, r.email)) for r in reply_to_contacts]
 
+        billing = SQLAlchemyBillingRepository(conn, encryption).get_by_id(bill.billing_id)
+        sender_name = _resolve_sender_name(conn, encryption, billing)
+
         from_address = settings.communications_from_email or settings.ses_from_email or "noreply@localhost"
         service = EmailService(get_email_backend(), from_address=from_address)
         body_html = render_markdown(comm.body_markdown)
@@ -78,7 +104,13 @@ def handle_communication_send(payload: dict) -> None:
             content_type="application/pdf",
         )
         service.send_communication(
-            comm.recipient_email, comm.subject, body_html, comm.body_markdown, [attachment], reply_to=reply_to
+            comm.recipient_email,
+            comm.subject,
+            body_html,
+            comm.body_markdown,
+            [attachment],
+            reply_to=reply_to,
+            sender_name=sender_name,
         )
         comm_repo.mark_sent(comm.id, datetime.now(SP_TZ))
         logger.info("communication_sent", communication_id=comm.id, bill_id=bill.id)
