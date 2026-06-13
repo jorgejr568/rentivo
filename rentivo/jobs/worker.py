@@ -11,6 +11,7 @@ import structlog
 from rentivo.jobs import registry
 from rentivo.jobs.base import Job, JobRepository, PermanentJobError
 from rentivo.models.audit_log import AuditEventType
+from rentivo.observability import extract_context, span
 from rentivo.services.audit_service import AuditService
 
 logger = structlog.get_logger(__name__)
@@ -87,8 +88,11 @@ class Worker:
         if handler is None:
             self._fail(job, f"no handler registered for job_type {job.job_type!r}")
             return
+        parent = extract_context(job.payload.get("_otel", {}))
+        attributes = {"job.type": job.job_type, "job.ulid": job.ulid, "job.attempts": job.attempts}
         try:
-            handler(job.payload)
+            with span(f"job {job.job_type}", parent=parent, attributes=attributes):
+                handler(job.payload)
         except PermanentJobError as exc:
             self._fail(job, str(exc))
         except Exception as exc:
