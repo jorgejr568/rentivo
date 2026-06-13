@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 60
     cache_max_entries: int = 2_048
 
+    # OpenTelemetry tracing. Fully optional: off unless RENTIVO_OTEL_ENABLED=true
+    # AND the `otel` extra is installed. No collector dependency is forced.
+    otel_enabled: bool = False
+    otel_service_name: str = "rentivo"
+    otel_exporter_otlp_endpoint: str = "http://localhost:4318"
+    otel_sample_ratio: float = 1.0
+
     turnstile_site_key: str = ""
     turnstile_secret_key: str = ""
     turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
@@ -159,6 +166,13 @@ class Settings(BaseSettings):
     def _validate_cache_max_entries(cls, v: int) -> int:
         if v < 1:
             raise ValueError("RENTIVO_CACHE_MAX_ENTRIES must be >= 1")
+        return v
+
+    @field_validator("otel_sample_ratio")
+    @classmethod
+    def _validate_otel_sample_ratio(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("RENTIVO_OTEL_SAMPLE_RATIO must be between 0.0 and 1.0")
         return v
 
     @model_validator(mode="after")

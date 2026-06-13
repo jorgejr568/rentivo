@@ -21,6 +21,17 @@ The `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MY
 | `RENTIVO_PUBLIC_APP_URL` | `http://localhost:8000` | Canonical app URL used inside transactional emails (links, CTAs). |
 | `RENTIVO_ENVIRONMENT` | `production` | One of `production` / `staging` / `dev`. Populates the analytics environment dimension. |
 
+## Observability (OpenTelemetry)
+
+Optional distributed tracing. Disabled by default; see [`docs/observability.md`](observability.md) for the full guide.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RENTIVO_OTEL_ENABLED` | `false` | Master switch. When `false` (or the `otel` extra is not installed) no spans are produced and no network calls are made. |
+| `RENTIVO_OTEL_SERVICE_NAME` | `rentivo` | `service.name` resource attribute shown in the trace UI. |
+| `RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP/HTTP base URL; the SDK appends `/v1/traces`. Use `http://jaeger:4318` on the compose network. |
+| `RENTIVO_OTEL_SAMPLE_RATIO` | `1.0` | Head sampling ratio (0.0–1.0), parent-based. |
+
 ## Logging
 
 | Variable | Default | Description |
