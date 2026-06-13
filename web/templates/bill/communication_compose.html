@@ -56,6 +56,18 @@
         <div class="panel__body"><div id="preview"></div></div>
     </div>
 
+    <div class="panel" id="moderation-panel" style="display:none;">
+        <div class="panel__head"><h3>Verificação de conteúdo</h3></div>
+        <div class="panel__body">
+            <div id="moderation-severe" style="display:none; color:#c0392b;"></div>
+            <div id="moderation-mild" style="display:none; color:#b9770e;"></div>
+            <label id="ack-wrap" style="display:none; gap:.5rem; align-items:center;">
+                <input type="checkbox" name="acknowledge_warning" value="1" id="ack-box">
+                <span>Reconheço o aviso e quero enviar mesmo assim.</span>
+            </label>
+        </div>
+    </div>
+
     <div class="panel">
         <div class="panel__head"><h3>Salvar modelo (opcional)</h3></div>
         <div class="panel__body">
@@ -73,7 +85,7 @@
 
     <div class="btn-row">
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" class="btn btn--ghost">Cancelar</a>
-        <button type="submit" class="btn btn--primary">Enviar comunicação</button>
+        <button type="submit" class="btn btn--primary" id="comm-send-btn">Enviar comunicação</button>
     </div>
 </form>
 {% endif %}
@@ -83,18 +95,49 @@
 <script>
 (function () {
     var btn = document.getElementById('preview-btn');
+    var subjectEl = document.getElementById('subject');
     var body = document.getElementById('body');
     var out = document.getElementById('preview');
+    var panel = document.getElementById('moderation-panel');
+    var severeEl = document.getElementById('moderation-severe');
+    var mildEl = document.getElementById('moderation-mild');
+    var ackWrap = document.getElementById('ack-wrap');
+    var ackBox = document.getElementById('ack-box');
+    var sendBtn = document.getElementById('comm-send-btn');
     if (!btn || !body || !out) return;
     var url = "/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/preview";
+
+    function syncSend() {
+        var severe = panel.dataset.severe === '1';
+        var mild = panel.dataset.mild === '1';
+        sendBtn.disabled = severe || (mild && !ackBox.checked);
+    }
+
     function refresh() {
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': "{{ csrf_token }}" },
-            body: JSON.stringify({ body: body.value })
-        }).then(function (r) { return r.json(); }).then(function (d) { out.innerHTML = d.html; });
+            body: JSON.stringify({ subject: subjectEl ? subjectEl.value : "", body: body.value })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            out.innerHTML = d.html;
+            var severe = (d.severe || []).length > 0;
+            var mild = (d.mild || []).length > 0;
+            panel.dataset.severe = severe ? '1' : '0';
+            panel.dataset.mild = mild ? '1' : '0';
+            panel.style.display = (severe || mild) ? '' : 'none';
+            severeEl.style.display = severe ? '' : 'none';
+            mildEl.style.display = mild ? '' : 'none';
+            ackWrap.style.display = (mild && !severe) ? 'flex' : 'none';
+            severeEl.textContent = severe
+                ? 'Conteúdo não permitido (ofensa grave ou ameaça): ' + d.severe.join(', ') + '. Edite para enviar.'
+                : '';
+            mildEl.textContent = mild ? 'Linguagem possivelmente ofensiva: ' + d.mild.join(', ') + '.' : '';
+            syncSend();
+        });
     }
+
     btn.addEventListener('click', refresh);
+    if (ackBox) ackBox.addEventListener('change', syncSend);
     refresh();
 })();
 </script>
