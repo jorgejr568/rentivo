@@ -8,6 +8,7 @@ from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.observability import traced
 from rentivo.repositories.base import BillingRepository
 from rentivo.repositories.sqlalchemy._common import _group_rows_by, _now
 
@@ -17,6 +18,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         self.conn = conn
         self.encryption = encryption
 
+    @traced("billing_repo.create")
     def create(self, billing: Billing) -> Billing:
         billing_uuid = str(ULID())
         now = _now()
@@ -130,6 +132,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return self._build_billing(row, items, plaintexts)
 
+    @traced("billing_repo.get_by_id")
     def get_by_id(self, billing_id: int) -> Billing | None:
         row = (
             self.conn.execute(
@@ -143,6 +146,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             return None
         return self._row_to_billing(row)
 
+    @traced("billing_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Billing | None:
         row = (
             self.conn.execute(
@@ -156,6 +160,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             return None
         return self._row_to_billing(row)
 
+    @traced("billing_repo.list_all")
     def list_all(self) -> list[Billing]:
         rows = (
             self.conn.execute(text("SELECT * FROM billings WHERE deleted_at IS NULL ORDER BY created_at DESC"))
@@ -164,6 +169,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         )
         return self._build_billings_from_rows(rows)
 
+    @traced("billing_repo.list_for_user")
     def list_for_user(self, user_id: int) -> list[Billing]:
         rows = (
             self.conn.execute(
@@ -194,6 +200,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return [self._build_billing(row, items_by_billing.get(row["id"], []), plaintexts) for row in rows]
 
+    @traced("billing_repo.update")
     def update(self, billing: Billing) -> Billing:
         self.conn.execute(
             text(
@@ -237,6 +244,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             raise RuntimeError(f"Failed to retrieve billing after update (id={billing.id})")
         return result
 
+    @traced("billing_repo.delete")
     def delete(self, billing_id: int) -> None:
         self.conn.execute(
             text("UPDATE billings SET deleted_at = :deleted_at WHERE id = :id"),
@@ -244,6 +252,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         )
         self.conn.commit()
 
+    @traced("billing_repo.transfer_owner")
     def transfer_owner(self, billing_id: int, owner_type: str, owner_id: int) -> None:
         self.conn.execute(
             text(

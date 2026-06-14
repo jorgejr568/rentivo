@@ -7,6 +7,8 @@ from urllib.parse import urlencode
 import httpx
 import structlog
 
+from rentivo.observability import traced
+
 logger = structlog.get_logger(__name__)
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -72,6 +74,7 @@ class GoogleAuthService:
     def is_enabled(self) -> bool:
         return bool(self.enabled and self.client_id and self.client_secret)
 
+    @traced("google_auth.build_authorization_url")
     def build_authorization_url(self, state: str) -> str:
         params = {
             "client_id": self.client_id,
@@ -83,6 +86,7 @@ class GoogleAuthService:
         }
         return f"{self.auth_url}?{urlencode(params)}"
 
+    @traced("google_auth.exchange_code")
     async def exchange_code(self, code: str) -> GoogleUserInfo | None:
         if not self.is_enabled:
             return None

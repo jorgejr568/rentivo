@@ -5,6 +5,7 @@ from sqlalchemy.engine import RowMapping
 
 from rentivo.models.known_device import KnownDevice
 from rentivo.models.password_reset_token import PasswordResetToken
+from rentivo.observability import traced
 from rentivo.repositories.base import (
     KnownDeviceRepository,
     PasswordResetTokenRepository,
@@ -27,6 +28,7 @@ class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
             created_at=row.get("created_at"),
         )
 
+    @traced("password_reset_repo.create")
     def create(self, token: PasswordResetToken) -> PasswordResetToken:
         self.conn.execute(
             text(
@@ -46,6 +48,7 @@ class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
             raise RuntimeError("Failed to retrieve password reset token after create")
         return result
 
+    @traced("password_reset_repo.get_by_hash")
     def get_by_hash(self, token_hash: str) -> PasswordResetToken | None:
         row = (
             self.conn.execute(
@@ -57,6 +60,7 @@ class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
         )
         return None if row is None else self._row(row)
 
+    @traced("password_reset_repo.mark_used")
     def mark_used(self, token_id: int) -> None:
         self.conn.execute(
             text("UPDATE password_reset_tokens SET used_at = :now WHERE id = :id"),
@@ -64,6 +68,7 @@ class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
         )
         self.conn.commit()
 
+    @traced("password_reset_repo.invalidate_all_for_user")
     def invalidate_all_for_user(self, user_id: int) -> None:
         self.conn.execute(
             text("UPDATE password_reset_tokens SET used_at = :now WHERE user_id = :uid AND used_at IS NULL"),
@@ -76,6 +81,7 @@ class SQLAlchemyKnownDeviceRepository(KnownDeviceRepository):
     def __init__(self, conn: Connection) -> None:
         self.conn = conn
 
+    @traced("known_device_repo.get")
     def get(self, user_id: int, device_hash: str) -> KnownDevice | None:
         row = (
             self.conn.execute(
@@ -96,6 +102,7 @@ class SQLAlchemyKnownDeviceRepository(KnownDeviceRepository):
             last_seen_at=row.get("last_seen_at"),
         )
 
+    @traced("known_device_repo.upsert")
     def upsert(self, device: KnownDevice) -> KnownDevice:
         existing = self.get(device.user_id, device.device_hash)
         now = _now()

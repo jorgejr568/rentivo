@@ -10,6 +10,7 @@ from ulid import ULID
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.bill import Bill, BillLineItem, BillSummary
 from rentivo.models.billing import ItemType
+from rentivo.observability import traced
 from rentivo.repositories.base import BillRepository
 from rentivo.repositories.sqlalchemy._common import _group_rows_by, _now
 
@@ -19,6 +20,7 @@ class SQLAlchemyBillRepository(BillRepository):
         self.conn = conn
         self.encryption = encryption
 
+    @traced("bill_repo.create")
     def create(self, bill: Bill) -> Bill:
         bill_uuid = str(ULID())
         now = _now()
@@ -125,6 +127,7 @@ class SQLAlchemyBillRepository(BillRepository):
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return self._build_bill(row, items, plaintexts)
 
+    @traced("bill_repo.get_by_id")
     def get_by_id(self, bill_id: int) -> Bill | None:
         row = (
             self.conn.execute(
@@ -138,6 +141,7 @@ class SQLAlchemyBillRepository(BillRepository):
             return None
         return self._row_to_bill(row)
 
+    @traced("bill_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Bill | None:
         row = (
             self.conn.execute(
@@ -151,6 +155,7 @@ class SQLAlchemyBillRepository(BillRepository):
             return None
         return self._row_to_bill(row)
 
+    @traced("bill_repo.list_by_billing")
     def list_by_billing(self, billing_id: int) -> list[Bill]:
         rows = (
             self.conn.execute(
@@ -175,6 +180,7 @@ class SQLAlchemyBillRepository(BillRepository):
         plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
         return [self._build_bill(row, items_by_bill.get(row["id"], []), plaintexts) for row in rows]
 
+    @traced("bill_repo.list_summaries")
     def list_summaries(self, billing_ids: list[int]) -> list[BillSummary]:
         if not billing_ids:
             return []
@@ -195,6 +201,7 @@ class SQLAlchemyBillRepository(BillRepository):
             for row in rows
         ]
 
+    @traced("bill_repo.update")
     def update(self, bill: Bill) -> Bill:
         self.conn.execute(
             text(
@@ -235,6 +242,7 @@ class SQLAlchemyBillRepository(BillRepository):
             raise RuntimeError(f"Failed to retrieve bill after update (id={bill.id})")
         return result
 
+    @traced("bill_repo.update_pdf_path")
     def update_pdf_path(self, bill_id: int, pdf_path: str) -> None:
         self.conn.execute(
             text("UPDATE bills SET pdf_path = :pdf_path WHERE id = :id"),
@@ -242,6 +250,7 @@ class SQLAlchemyBillRepository(BillRepository):
         )
         self.conn.commit()
 
+    @traced("bill_repo.update_status")
     def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None:
         self.conn.execute(
             text("UPDATE bills SET status = :status, status_updated_at = :status_updated_at WHERE id = :id"),
@@ -249,6 +258,7 @@ class SQLAlchemyBillRepository(BillRepository):
         )
         self.conn.commit()
 
+    @traced("bill_repo.update_pdf_render_status")
     def update_pdf_render_status(self, bill_id: int, status: str | None) -> None:
         self.conn.execute(
             text("UPDATE bills SET pdf_render_status = :status WHERE id = :id"),
@@ -256,6 +266,7 @@ class SQLAlchemyBillRepository(BillRepository):
         )
         self.conn.commit()
 
+    @traced("bill_repo.delete")
     def delete(self, bill_id: int) -> None:
         self.conn.execute(
             text("UPDATE bills SET deleted_at = :deleted_at WHERE id = :id"),

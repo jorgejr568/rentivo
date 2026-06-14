@@ -11,6 +11,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.organization import OrgRole
+from rentivo.observability import traced
 
 logger = structlog.get_logger(__name__)
 
@@ -21,6 +22,7 @@ class BillingNotificationService:
         self._org_service = org_service
         self._job_service = job_service
 
+    @traced("billing_notification.notify_transferred")
     def notify_transferred(
         self,
         *,

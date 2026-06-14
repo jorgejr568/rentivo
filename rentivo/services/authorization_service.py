@@ -4,6 +4,7 @@ import structlog
 
 from rentivo.models.billing import Billing
 from rentivo.models.organization import OrgRole
+from rentivo.observability import traced
 from rentivo.repositories.base import OrganizationRepository
 
 logger = structlog.get_logger(__name__)
@@ -13,6 +14,7 @@ class AuthorizationService:
     def __init__(self, org_repo: OrganizationRepository | None = None) -> None:
         self.org_repo = org_repo
 
+    @traced("authorization.get_role_for_billing")
     def get_role_for_billing(self, user_id: int, billing: Billing) -> str | None:
         if billing.owner_type == "user" and billing.owner_id == user_id:
             logger.debug("authz_role", user_id=user_id, billing_id=billing.id, role="owner")
@@ -25,33 +27,39 @@ class AuthorizationService:
         logger.debug("authz_role", user_id=user_id, billing_id=billing.id, role=None)
         return None
 
+    @traced("authorization.can_view_billing")
     def can_view_billing(self, user_id: int, billing: Billing) -> bool:
         result = self.get_role_for_billing(user_id, billing) is not None
         logger.debug("authz_check", user_id=user_id, billing_id=billing.id, action="view", allowed=result)
         return result
 
+    @traced("authorization.can_edit_billing")
     def can_edit_billing(self, user_id: int, billing: Billing) -> bool:
         role = self.get_role_for_billing(user_id, billing)
         result = role in ("owner", "admin")
         logger.debug("authz_check", user_id=user_id, billing_id=billing.id, action="edit", allowed=result)
         return result
 
+    @traced("authorization.can_delete_billing")
     def can_delete_billing(self, user_id: int, billing: Billing) -> bool:
         result = self.can_edit_billing(user_id, billing)
         logger.debug("authz_check", user_id=user_id, billing_id=billing.id, action="delete", allowed=result)
         return result
 
+    @traced("authorization.can_manage_bills")
     def can_manage_bills(self, user_id: int, billing: Billing) -> bool:
         role = self.get_role_for_billing(user_id, billing)
         result = role in ("owner", "admin", "manager")
         logger.debug("authz_check", user_id=user_id, billing_id=billing.id, action="manage_bills", allowed=result)
         return result
 
+    @traced("authorization.can_transfer_billing")
     def can_transfer_billing(self, user_id: int, billing: Billing) -> bool:
         result = billing.owner_type == "user" and billing.owner_id == user_id
         logger.debug("authz_check", user_id=user_id, billing_id=billing.id, action="transfer", allowed=result)
         return result
 
+    @traced("authorization.get_role_for_org")
     def get_role_for_org(self, user_id: int, org_id: int) -> str | None:
         if self.org_repo is None:
             logger.debug("authz_org_role", user_id=user_id, org_id=org_id, role=None)
@@ -61,6 +69,7 @@ class AuthorizationService:
         logger.debug("authz_org_role", user_id=user_id, org_id=org_id, role=role)
         return role
 
+    @traced("authorization.can_admin_org")
     def can_admin_org(self, user_id: int, org_id: int) -> bool:
         result = self.get_role_for_org(user_id, org_id) == OrgRole.ADMIN.value
         logger.debug("authz_check", user_id=user_id, org_id=org_id, action="admin_org", allowed=result)

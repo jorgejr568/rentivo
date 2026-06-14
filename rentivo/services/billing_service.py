@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.billing import Billing, BillingItem
+from rentivo.observability import traced
 from rentivo.pix import validate_pix_key
 from rentivo.repositories.base import BillingRepository
 
@@ -20,6 +21,7 @@ class BillingService:
     def __init__(self, repo: BillingRepository) -> None:
         self.repo = repo
 
+    @traced("billing.create_billing")
     def create_billing(
         self,
         name: str,
@@ -45,26 +47,31 @@ class BillingService:
         logger.info("billing_created", billing_id=result.id, name=result.name)
         return result
 
+    @traced("billing.list_billings")
     def list_billings(self) -> list[Billing]:
         result = self.repo.list_all()
         logger.debug("billings_listed_all", count=len(result))
         return result
 
+    @traced("billing.list_billings_for_user")
     def list_billings_for_user(self, user_id: int) -> list[Billing]:
         result = self.repo.list_for_user(user_id)
         logger.debug("billings_listed_for_user", count=len(result), user_id=user_id)
         return result
 
+    @traced("billing.get_billing")
     def get_billing(self, billing_id: int) -> Billing | None:
         result = self.repo.get_by_id(billing_id)
         logger.debug("billing_get", billing_id=billing_id, found=result is not None)
         return result
 
+    @traced("billing.get_billing_by_uuid")
     def get_billing_by_uuid(self, uuid: str) -> Billing | None:
         result = self.repo.get_by_uuid(uuid)
         logger.debug("billing_get_by_uuid", billing_uuid=uuid, found=result is not None)
         return result
 
+    @traced("billing.update_billing")
     def update_billing(self, billing: Billing) -> Billing:
         billing.pix_key = _normalize_pix_key(billing.pix_key)
         billing.pix_merchant_name = billing.pix_merchant_name.strip()
@@ -73,10 +80,12 @@ class BillingService:
         logger.info("billing_updated", billing_id=result.id, name=result.name)
         return result
 
+    @traced("billing.delete_billing")
     def delete_billing(self, billing_id: int) -> None:
         self.repo.delete(billing_id)
         logger.info("billing_deleted", billing_id=billing_id)
 
+    @traced("billing.transfer_to_organization")
     def transfer_to_organization(self, billing_id: int, org_id: int) -> None:
         billing = self.repo.get_by_id(billing_id)
         if billing is None:

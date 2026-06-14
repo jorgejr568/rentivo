@@ -26,6 +26,7 @@ from rentivo.cache.base import Cache
 from rentivo.cache.factory import get_cache
 from rentivo.constants import SP_TZ
 from rentivo.models.bill import BillStatus, BillSummary
+from rentivo.observability import traced
 from rentivo.repositories.base import BillRepository
 from rentivo.services.billing_stats import BillingStats
 
@@ -81,6 +82,7 @@ class BillingStatsService:
         self._bill_repo = bill_repo
         self._cache = cache or get_cache()
 
+    @traced("billing_stats.stats_for_ids")
     def stats_for_ids(self, billing_ids: list[int], *, today: date | None = None) -> BillingStats:
         if today is None:
             today = datetime.now(SP_TZ).date()

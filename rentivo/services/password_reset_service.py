@@ -8,6 +8,7 @@ from typing import Callable
 import structlog
 
 from rentivo.models.password_reset_token import PasswordResetToken
+from rentivo.observability import traced
 from rentivo.repositories.base import PasswordResetTokenRepository, UserRepository
 from rentivo.services.job_service import JobService
 from rentivo.services.user_service import UserService
@@ -49,6 +50,7 @@ class PasswordResetService:
     def _hash(raw: str) -> str:
         return hashlib.sha256(raw.encode()).hexdigest()
 
+    @traced("password_reset.request_reset")
     def request_reset(self, email: str) -> str | None:
         user = self.user_repo.get_by_email(email)
         if user is None:
@@ -77,6 +79,7 @@ class PasswordResetService:
         logger.info("password_reset_requested", user_id=user.id)
         return raw
 
+    @traced("password_reset.consume")
     def consume(self, raw_token: str, new_password: str) -> int | None:
         token_hash = self._hash(raw_token)
         token = self.token_repo.get_by_hash(token_hash)

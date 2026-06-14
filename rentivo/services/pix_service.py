@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import structlog
 
 from rentivo.models.billing import Billing
+from rentivo.observability import traced
 from rentivo.repositories.base import OrganizationRepository, UserRepository
 
 logger = structlog.get_logger(__name__)
@@ -36,6 +37,7 @@ class PixService:
         self.user_repo = user_repo
         self.org_repo = org_repo
 
+    @traced("pix.resolve_for_billing")
     def resolve_for_billing(self, billing: Billing) -> PixConfig | None:
         owner_cfg = self.get_owner_config(billing.owner_type, billing.owner_id)
         billing_cfg = _complete(billing.pix_key, billing.pix_merchant_name, billing.pix_merchant_city)
@@ -43,6 +45,7 @@ class PixService:
         # theme service pattern (most-specific wins).
         return billing_cfg or owner_cfg
 
+    @traced("pix.get_owner_config")
     def get_owner_config(self, owner_type: str, owner_id: int) -> PixConfig | None:
         if owner_type == "organization":
             org = self.org_repo.get_by_id(owner_id)
@@ -54,8 +57,10 @@ class PixService:
             return None
         return _complete(user.pix_key, user.pix_merchant_name, user.pix_merchant_city)
 
+    @traced("pix.owner_needs_setup")
     def owner_needs_setup(self, owner_type: str, owner_id: int) -> bool:
         return self.get_owner_config(owner_type, owner_id) is None
 
+    @traced("pix.billing_needs_setup")
     def billing_needs_setup(self, billing: Billing) -> bool:
         return self.resolve_for_billing(billing) is None

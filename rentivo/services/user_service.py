@@ -4,6 +4,7 @@ import bcrypt
 import structlog
 
 from rentivo.models.user import User
+from rentivo.observability import span, traced
 from rentivo.pix import validate_pix_key
 from rentivo.repositories.base import UserRepository
 
@@ -14,6 +15,7 @@ class UserService:
     def __init__(self, repo: UserRepository) -> None:
         self.repo = repo
 
+    @traced("user.create_user")
     def create_user(self, email: str, password: str) -> User:
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user = User(email=email, password_hash=password_hash)
@@ -21,6 +23,7 @@ class UserService:
         logger.info("user_created", email=email)
         return result
 
+    @traced("user.register_user")
     def register_user(self, email: str, password: str) -> User:
         existing = self.repo.get_by_email(email)
         if existing is not None:
@@ -31,6 +34,7 @@ class UserService:
         logger.info("user_registered", email=email)
         return result
 
+    @traced("user.register_google_user")
     def register_google_user(self, email: str) -> User:
         existing = self.repo.get_by_email(email)
         if existing is not None:
@@ -40,14 +44,17 @@ class UserService:
         logger.info("google_user_registered", email=email)
         return result
 
+    @traced("user.get_by_id")
     def get_by_id(self, user_id: int) -> User | None:
         result = self.repo.get_by_id(user_id)
         logger.debug("user_get_by_id", user_id=user_id, found=result is not None)
         return result
 
+    @traced("user.get_by_email")
     def get_by_email(self, email: str) -> User | None:
         return self.repo.get_by_email(email)
 
+    @traced("user.authenticate")
     def authenticate(self, email: str, password: str) -> User | None:
         user = self.repo.get_by_email(email)
         if user is None:
@@ -56,22 +63,27 @@ class UserService:
         if not user.password_hash:
             logger.warning("auth_failed", email=email, reason="no_password_set")
             return None
-        if bcrypt.checkpw(password.encode(), user.password_hash.encode()):
+        with span("auth.verify_password"):
+            password_ok = bcrypt.checkpw(password.encode(), user.password_hash.encode())
+        if password_ok:
             logger.info("user_authenticated", email=email)
             return user
         logger.warning("auth_failed", email=email, reason="invalid_password")
         return None
 
+    @traced("user.change_password")
     def change_password(self, user_id: int, new_password: str) -> None:
         password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
         self.repo.update_password_hash(user_id, password_hash)
         logger.info("password_changed", user_id=user_id)
 
+    @traced("user.list_users")
     def list_users(self) -> list[User]:
         result = self.repo.list_all()
         logger.debug("users_listed", count=len(result))
         return result
 
+    @traced("user.update_pix")
     def update_pix(
         self,
         user_id: int,

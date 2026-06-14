@@ -6,7 +6,7 @@ import structlog
 
 from rentivo.jobs.base import Job, JobRepository
 from rentivo.models.audit_log import AuditEventType
-from rentivo.observability import inject_context
+from rentivo.observability import inject_context, traced
 from rentivo.services.audit_serializers import serialize_job_payload
 from rentivo.services.audit_service import AuditService
 
@@ -18,6 +18,7 @@ class JobService:
         self.repo = repo
         self.audit = audit
 
+    @traced("job.enqueue")
     def enqueue(
         self,
         job_type: str,
@@ -51,6 +52,7 @@ class JobService:
         logger.info("job_enqueued", job_type=job_type, ulid=job.ulid)
         return job
 
+    @traced("job.enqueue_for")
     def enqueue_for(
         self,
         actor,

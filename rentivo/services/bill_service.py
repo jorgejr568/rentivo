@@ -273,6 +273,7 @@ class BillService:
 
         return bill
 
+    @traced("bill.update_bill")
     def update_bill(
         self,
         bill: Bill,
@@ -294,6 +295,7 @@ class BillService:
 
         return bill
 
+    @traced("bill.regenerate_pdf")
     def regenerate_pdf(self, bill: Bill, billing: Billing, actor=None) -> Bill:
         """Regenerate the PDF using current billing info (PIX key, etc.).
 
@@ -305,12 +307,14 @@ class BillService:
         self._render_or_enqueue(bill, billing, actor=actor)
         return bill
 
+    @traced("bill.get_invoice_url")
     def get_invoice_url(self, pdf_path: str | None) -> str:
         if not pdf_path:
             return ""
         logger.debug("invoice_url_resolve", storage_key=pdf_path)
         return self.storage.get_url(pdf_path)
 
+    @traced("bill.get_invoice_ref")
     def get_invoice_ref(self, bill: Bill) -> FileRef:
         """Resolve the bill's stored PDF to a FileRef (local path or URL).
 
@@ -319,6 +323,7 @@ class BillService:
         logger.debug("invoice_ref_resolve", storage_key=bill.pdf_path)
         return self.storage.get_ref(bill.pdf_path or "")
 
+    @traced("bill.get_receipt_ref")
     def get_receipt_ref(self, receipt: Receipt) -> FileRef:
         """Resolve a receipt's stored file to a FileRef (local path or URL).
 
@@ -327,11 +332,13 @@ class BillService:
         logger.debug("receipt_ref_resolve", storage_key=receipt.storage_key)
         return self.storage.get_ref(receipt.storage_key)
 
+    @traced("bill.list_bills")
     def list_bills(self, billing_id: int) -> list[Bill]:
         result = self.bill_repo.list_by_billing(billing_id)
         logger.debug("bills_listed", billing_id=billing_id, count=len(result))
         return result
 
+    @traced("bill.change_status")
     def change_status(self, bill: Bill, new_status: str) -> Bill:
         from rentivo.models.bill import BillStatus
 
@@ -345,22 +352,26 @@ class BillService:
         logger.info("bill_status_changed", bill_id=bill.id, new_status=new_status)
         return bill
 
+    @traced("bill.get_bill")
     def get_bill(self, bill_id: int) -> Bill | None:
         result = self.bill_repo.get_by_id(bill_id)
         logger.debug("bill_get", bill_id=bill_id, found=result is not None)
         return result
 
+    @traced("bill.get_bill_by_uuid")
     def get_bill_by_uuid(self, uuid: str) -> Bill | None:
         result = self.bill_repo.get_by_uuid(uuid)
         logger.debug("bill_get_by_uuid", bill_uuid=uuid, found=result is not None)
         return result
 
+    @traced("bill.delete_bill")
     def delete_bill(self, bill_id: int) -> None:
         self.bill_repo.delete(bill_id)
         logger.info("bill_deleted", bill_id=bill_id)
 
     # ---- Receipt methods ----
 
+    @traced("bill.add_receipt")
     def add_receipt(
         self,
         bill: Bill,
@@ -426,6 +437,7 @@ class BillService:
         _, failed_uuids = self._render_or_enqueue(bill, billing, actor=actor)
         return receipt, failed_uuids
 
+    @traced("bill.delete_receipt")
     def delete_receipt(self, receipt: Receipt, bill: Bill, billing: Billing, actor=None) -> None:
         """Delete a receipt and regenerate the bill PDF."""
         if self.receipt_repo is None:
@@ -439,18 +451,21 @@ class BillService:
         # Regenerate PDF without this receipt
         self._render_or_enqueue(bill, billing, actor=actor)
 
+    @traced("bill.list_receipts")
     def list_receipts(self, bill_id: int) -> list[Receipt]:
         """List receipts for a bill."""
         if self.receipt_repo is None:
             return []
         return self.receipt_repo.list_by_bill(bill_id)
 
+    @traced("bill.get_receipt_by_uuid")
     def get_receipt_by_uuid(self, uuid: str) -> Receipt | None:
         """Get a receipt by UUID."""
         if self.receipt_repo is None:
             return None
         return self.receipt_repo.get_by_uuid(uuid)
 
+    @traced("bill.reorder_receipts")
     def reorder_receipts(self, bill: Bill, billing: Billing, receipt_uuids: list[str], actor=None) -> None:
         """Reorder receipts by the given UUID list and regenerate the PDF."""
         if self.receipt_repo is None:
