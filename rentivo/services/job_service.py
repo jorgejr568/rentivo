@@ -4,7 +4,8 @@ from datetime import datetime
 
 import structlog
 
-from rentivo.jobs.base import Job, JobRepository
+from rentivo.jobs.backend import JobBackend
+from rentivo.jobs.base import Job
 from rentivo.models.audit_log import AuditEventType
 from rentivo.observability import inject_context, traced
 from rentivo.services.audit_serializers import serialize_job_payload
@@ -14,8 +15,8 @@ logger = structlog.get_logger(__name__)
 
 
 class JobService:
-    def __init__(self, repo: JobRepository, audit: AuditService) -> None:
-        self.repo = repo
+    def __init__(self, backend: JobBackend, audit: AuditService) -> None:
+        self.backend = backend
         self.audit = audit
 
     @traced("job.enqueue")
@@ -33,7 +34,7 @@ class JobService:
         carrier: dict = {}
         inject_context(carrier)
         enqueue_payload = {**payload, "_otel": carrier} if carrier else payload
-        job = self.repo.enqueue(job_type, enqueue_payload, run_after, max_attempts)
+        job = self.backend.enqueue(job_type, enqueue_payload, run_after, max_attempts)
         # Audit records the business payload only — the _otel carrier is transport.
         new_state = serialize_job_payload({"job_type": job_type, **payload})
         new_state["job_type"] = job_type

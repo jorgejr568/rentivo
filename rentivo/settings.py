@@ -120,6 +120,19 @@ class Settings(BaseSettings):
     job_worker_idle_sleep_seconds: float = 5.0
     job_worker_stuck_after_seconds: int = 600
 
+    # Background-job execution driver. `database` (default) uses the built-in
+    # polling worker over the `jobs` table — zero extra dependencies. `temporal`
+    # offloads execution to a Temporal cluster (requires the `temporal` extra;
+    # NOT required for production — the database driver is fully supported).
+    job_backend: str = "database"
+
+    # Temporal connection (only used when RENTIVO_JOB_BACKEND=temporal).
+    temporal_host: str = "localhost:7233"
+    temporal_namespace: str = "default"
+    temporal_task_queue: str = "rentivo-jobs"
+    temporal_tls: bool = False
+    temporal_activity_start_to_close_timeout_seconds: int = 600
+
     # Ship logs to CloudWatch Logs (additive — stdout is unaffected). Off by
     # default; uses the standard AWS credential chain unless explicit creds set.
     log_cloudwatch_enabled: bool = False
@@ -169,6 +182,13 @@ class Settings(BaseSettings):
     def _validate_cache_backend(cls, v: str) -> str:
         if v not in ("none", "memory", "redis"):
             raise ValueError("RENTIVO_CACHE_BACKEND must be one of: none, memory, redis")
+        return v
+
+    @field_validator("job_backend")
+    @classmethod
+    def _validate_job_backend(cls, v: str) -> str:
+        if v not in ("database", "temporal"):
+            raise ValueError("RENTIVO_JOB_BACKEND must be one of: database, temporal")
         return v
 
     @field_validator("cache_ttl_seconds")
@@ -225,6 +245,17 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION are required when RENTIVO_ENCRYPTION_BACKEND=kms"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_temporal(self) -> "Settings":
+        if self.job_backend == "temporal":
+            if not self.temporal_host:
+                raise ValueError("RENTIVO_TEMPORAL_HOST is required when RENTIVO_JOB_BACKEND=temporal")
+            if not self.temporal_namespace:
+                raise ValueError("RENTIVO_TEMPORAL_NAMESPACE is required when RENTIVO_JOB_BACKEND=temporal")
+            if not self.temporal_task_queue:
+                raise ValueError("RENTIVO_TEMPORAL_TASK_QUEUE is required when RENTIVO_JOB_BACKEND=temporal")
         return self
 
     @model_validator(mode="after")

@@ -6,6 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /bin/uv
 
+# `temporal` is included by default so CLI flows that enqueue jobs (e.g.
+# regenerate-pdfs) work on either driver without a rebuild. Override to slim,
+# e.g. --build-arg CLI_EXTRAS="cache".
+ARG CLI_EXTRAS="cache temporal"
+
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH"
@@ -16,10 +21,10 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 RUN mkdir -p rentivo web && touch rentivo/__init__.py web/__init__.py
-RUN uv sync --frozen --no-install-project --extra cache
+RUN uv sync --frozen --no-install-project $(for e in $CLI_EXTRAS; do echo --extra $e; done)
 
 COPY . .
-RUN uv sync --frozen --extra cache \
+RUN uv sync --frozen $(for e in $CLI_EXTRAS; do echo --extra $e; done) \
     && mkdir -p /app/invoices \
     && chown -R appuser:appuser /app
 

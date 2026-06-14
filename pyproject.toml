@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rentivo"
-version = "3.11.0"
+version = "3.12.0"
 description = "Apartment billing management and invoice generation"
 requires-python = ">=3.14"
 dependencies = [
@@ -48,6 +48,7 @@ otel = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-sdk-extension-aws>=2.0,<4",
 ]
+temporal = ["temporalio>=1.8,<2"]
 dev = [
     "ruff>=0.9,<1",
     "pre-commit>=4.0,<5",

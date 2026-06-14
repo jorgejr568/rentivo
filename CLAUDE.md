@@ -407,6 +407,14 @@ Optional distributed tracing, off by default. One module — `rentivo/observabil
 - **Local Jaeger:** `make jaeger-up` (compose profile `observability`, opt-in), UI at http://localhost:16686, endpoint `http://jaeger:4318` on the compose network. Full guide: `docs/observability.md`.
 - Tests assert spans with `InMemorySpanExporter`; `tests/observability/conftest.py` provides `reset_tracing` (autouse) + `span_exporter`. Other test packages re-export those fixtures via a one-line conftest. The coverage env runs `uv sync --all-extras`, so the otel branches execute (only the `except ImportError` guard carries `# pragma: no cover`).
 
+## Job Drivers
+
+Background jobs run through a pluggable driver selected by `RENTIVO_JOB_BACKEND` (`database` default | `temporal`). The producer seam is `rentivo/jobs/backend.py:JobBackend.enqueue`; `JobService` depends on it. `rentivo/jobs/factory.py:get_job_backend(conn)` dispatches.
+
+- **database** — `DatabaseJobBackend` over `SQLAlchemyJobRepository`; the polling `Worker` (`rentivo/jobs/worker.py`) drains the `jobs` table. Zero extra deps; the supported production default.
+- **temporal** (optional, `temporal` extra; NOT required even in production) — `TemporalJobBackend` starts one workflow per enqueue. Per-job-type workflows/activities in `rentivo/jobs/temporal/` wrap the **unchanged** registry handlers. The workflow retry loop mirrors the DB backoff (`rentivo/jobs/backoff.py`, 60s/5m/15m/1h/6h, max 5), maps `PermanentJobError` → non-retryable, and fires the same fail-hooks + `JOB_*` audit events via the `rentivo.finalize_job` activity. OTel `_otel` carrier propagates identically.
+- Worker entrypoint `python -m rentivo.workers` dispatches on the backend. Local Temporal: `make temporal-up` (opt-in compose profile). Shared backoff lives in `rentivo/jobs/backoff.py`. Full guide: `docs/jobs.md`.
+
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).

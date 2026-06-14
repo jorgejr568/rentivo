@@ -35,8 +35,12 @@ class TestRegeneratePdfs:
     @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     @patch("rentivo.scripts.regenerate_pdfs.get_audit_log_repository")
     @patch("rentivo.scripts.regenerate_pdfs.get_job_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_connection")
+    @patch("rentivo.scripts.regenerate_pdfs.get_job_backend")
     def test_dry_run(
         self,
+        mock_job_backend,
+        mock_get_connection,
         mock_job_repo,
         mock_audit_repo,
         mock_storage,
@@ -58,7 +62,7 @@ class TestRegeneratePdfs:
         with patch("sys.argv", ["prog", "--dry-run"]):
             main()
 
-        mock_job_repo.return_value.enqueue.assert_not_called()
+        mock_job_backend.return_value.enqueue.assert_not_called()
 
     @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
     @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
@@ -69,10 +73,14 @@ class TestRegeneratePdfs:
     @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     @patch("rentivo.scripts.regenerate_pdfs.get_audit_log_repository")
     @patch("rentivo.scripts.regenerate_pdfs.get_job_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_connection")
+    @patch("rentivo.scripts.regenerate_pdfs.get_job_backend")
     @patch("rentivo.scripts.regenerate_pdfs.PixService")
     def test_enqueues_one_job_per_bill(
         self,
         mock_pix_cls,
+        mock_job_backend,
+        mock_get_connection,
         mock_job_repo,
         mock_audit_repo,
         mock_storage,
@@ -93,7 +101,7 @@ class TestRegeneratePdfs:
         mock_storage.return_value.get_url.return_value = "https://example.com/file.pdf"
         # PIX is configured for this billing.
         mock_pix_cls.return_value.resolve_for_billing.return_value = object()
-        mock_job_repo.return_value.enqueue.return_value = Job(
+        mock_job_backend.return_value.enqueue.return_value = Job(
             id=1,
             ulid="01HXYZ",
             job_type="pdf.render",
@@ -107,8 +115,8 @@ class TestRegeneratePdfs:
             main()
 
         # Exactly one enqueue, no synchronous storage write.
-        assert mock_job_repo.return_value.enqueue.call_count == 1
-        call_args = mock_job_repo.return_value.enqueue.call_args
+        assert mock_job_backend.return_value.enqueue.call_count == 1
+        call_args = mock_job_backend.return_value.enqueue.call_args
         assert call_args.args[0] == "pdf.render"
         assert call_args.args[1] == {"bill_id": 1}
         mock_storage.return_value.save.assert_not_called()
@@ -122,8 +130,12 @@ class TestRegeneratePdfs:
     @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     @patch("rentivo.scripts.regenerate_pdfs.get_audit_log_repository")
     @patch("rentivo.scripts.regenerate_pdfs.get_job_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_connection")
+    @patch("rentivo.scripts.regenerate_pdfs.get_job_backend")
     def test_no_billings(
         self,
+        mock_job_backend,
+        mock_get_connection,
         mock_job_repo,
         mock_audit_repo,
         mock_storage,
@@ -141,7 +153,7 @@ class TestRegeneratePdfs:
         with patch("sys.argv", ["prog"]):
             main()
 
-        mock_job_repo.return_value.enqueue.assert_not_called()
+        mock_job_backend.return_value.enqueue.assert_not_called()
 
     @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
     @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
@@ -152,8 +164,12 @@ class TestRegeneratePdfs:
     @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     @patch("rentivo.scripts.regenerate_pdfs.get_audit_log_repository")
     @patch("rentivo.scripts.regenerate_pdfs.get_job_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_connection")
+    @patch("rentivo.scripts.regenerate_pdfs.get_job_backend")
     def test_no_bills(
         self,
+        mock_job_backend,
+        mock_get_connection,
         mock_job_repo,
         mock_audit_repo,
         mock_storage,
@@ -173,7 +189,7 @@ class TestRegeneratePdfs:
         with patch("sys.argv", ["prog"]):
             main()
 
-        mock_job_repo.return_value.enqueue.assert_not_called()
+        mock_job_backend.return_value.enqueue.assert_not_called()
 
     @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
     @patch("rentivo.scripts.regenerate_pdfs.get_billing_repository")
@@ -184,10 +200,14 @@ class TestRegeneratePdfs:
     @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     @patch("rentivo.scripts.regenerate_pdfs.get_audit_log_repository")
     @patch("rentivo.scripts.regenerate_pdfs.get_job_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_connection")
+    @patch("rentivo.scripts.regenerate_pdfs.get_job_backend")
     @patch("rentivo.scripts.regenerate_pdfs.PixService")
     def test_skips_bills_with_missing_pix(
         self,
         mock_pix_cls,
+        mock_job_backend,
+        mock_get_connection,
         mock_job_repo,
         mock_audit_repo,
         mock_storage,
@@ -212,7 +232,7 @@ class TestRegeneratePdfs:
         with patch("sys.argv", ["prog"]):
             main()
 
-        mock_job_repo.return_value.enqueue.assert_not_called()
+        mock_job_backend.return_value.enqueue.assert_not_called()
         mock_storage.return_value.save.assert_not_called()
 
     @patch("rentivo.scripts.regenerate_pdfs.initialize_db")
@@ -224,10 +244,14 @@ class TestRegeneratePdfs:
     @patch("rentivo.scripts.regenerate_pdfs.get_storage")
     @patch("rentivo.scripts.regenerate_pdfs.get_audit_log_repository")
     @patch("rentivo.scripts.regenerate_pdfs.get_job_repository")
+    @patch("rentivo.scripts.regenerate_pdfs.get_connection")
+    @patch("rentivo.scripts.regenerate_pdfs.get_job_backend")
     @patch("rentivo.scripts.regenerate_pdfs.PixService")
     def test_summary_reports_pending_running_count(
         self,
         mock_pix_cls,
+        mock_job_backend,
+        mock_get_connection,
         mock_job_repo,
         mock_audit_repo,
         mock_storage,
@@ -248,7 +272,7 @@ class TestRegeneratePdfs:
         mock_bill_repo.return_value.list_by_billing.return_value = [bill]
         mock_storage.return_value.get_url.return_value = "https://example.com/file.pdf"
         mock_pix_cls.return_value.resolve_for_billing.return_value = object()
-        mock_job_repo.return_value.enqueue.return_value = Job(
+        mock_job_backend.return_value.enqueue.return_value = Job(
             id=1,
             ulid="01HXYZ",
             job_type="pdf.render",

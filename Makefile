@@ -304,3 +304,12 @@ jaeger-up:
 .PHONY: jaeger-down
 jaeger-down:
 	docker compose --profile observability stop jaeger
+
+.PHONY: temporal-up
+temporal-up:
+	docker compose --profile temporal up -d temporal temporal-ui
+	@echo "Temporal UI at http://localhost:8233 — set RENTIVO_JOB_BACKEND=temporal and RENTIVO_TEMPORAL_HOST=temporal:7233 (compose) or localhost:7233 (host)."
+
+.PHONY: temporal-down
+temporal-down:
+	docker compose --profile temporal stop temporal temporal-ui

@@ -78,6 +78,26 @@ services:
       - "4318:4318"     # OTLP/HTTP
       - "4317:4317"     # OTLP/gRPC
 
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    profiles: ["temporal"]
+    restart: unless-stopped
+    environment:
+      DB: sqlite3
+    ports:
+      - "7233:7233"  # frontend gRPC
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    profiles: ["temporal"]
+    restart: unless-stopped
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "8233:8080"  # web UI at http://localhost:8233
+    depends_on:
+      - temporal
+
 volumes:
   mysql-data:
   invoices:

@@ -6,7 +6,6 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 from rentivo.encryption.factory import get_encryption  # noqa: F401
-from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingRepository,
@@ -121,11 +120,10 @@ class RequestServices:
 
     @cached_property
     def job(self) -> JobService:
+        from rentivo.jobs.factory import get_job_backend
+
         return JobService(
-            SQLAlchemyJobRepository(
-                self._conn,
-                stuck_after_seconds=settings.job_worker_stuck_after_seconds,
-            ),
+            get_job_backend(self._conn),
             AuditService(SQLAlchemyAuditLogRepository(self._conn)),
         )
 

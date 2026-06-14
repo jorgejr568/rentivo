@@ -145,3 +145,11 @@ Used for KPI rollups on the billing list, and future consumers.
 | `RENTIVO_JOB_WORKER_BATCH_SIZE` | `10` | Jobs claimed per polling cycle. |
 | `RENTIVO_JOB_WORKER_IDLE_SLEEP_SECONDS` | `5.0` | Sleep between polls when the queue is empty. |
 | `RENTIVO_JOB_WORKER_STUCK_AFTER_SECONDS` | `600` | Jobs claimed longer than this are considered stuck and re-queued. |
+| `RENTIVO_JOB_BACKEND` | `database` | Job driver: `database` (built-in polling worker, no extra deps) or `temporal`. |
+| `RENTIVO_TEMPORAL_HOST` | `localhost:7233` | Temporal frontend host:port. Only used when `RENTIVO_JOB_BACKEND=temporal`. |
+| `RENTIVO_TEMPORAL_NAMESPACE` | `default` | Temporal namespace. |
+| `RENTIVO_TEMPORAL_TASK_QUEUE` | `rentivo-jobs` | Task queue shared by enqueuers and workers. |
+| `RENTIVO_TEMPORAL_TLS` | `false` | Connect to Temporal over TLS (e.g. Temporal Cloud). |
+| `RENTIVO_TEMPORAL_ACTIVITY_START_TO_CLOSE_TIMEOUT_SECONDS` | `600` | Per-attempt activity timeout. |
+
+Temporal is an optional driver — the `database` driver is fully supported in production and requires no additional services. See `docs/jobs.md`.

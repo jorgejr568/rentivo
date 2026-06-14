@@ -373,3 +373,37 @@ def test_google_auth_enabled_with_credentials():
 def test_google_credentials_allowed_while_disabled():
     s = Settings(_env_file=None, google_client_id="cid", google_client_secret="cs")
     assert s.google_auth_enabled is False
+
+
+def test_job_backend_defaults_to_database():
+    s = Settings(_env_file=None)
+    assert s.job_backend == "database"
+
+
+def test_job_backend_rejects_unknown_value():
+    with pytest.raises(ValueError, match="RENTIVO_JOB_BACKEND"):
+        Settings(_env_file=None, job_backend="rabbitmq")
+
+
+def test_temporal_defaults():
+    s = Settings(_env_file=None)
+    assert s.temporal_host == "localhost:7233"
+    assert s.temporal_namespace == "default"
+    assert s.temporal_task_queue == "rentivo-jobs"
+    assert s.temporal_tls is False
+    assert s.temporal_activity_start_to_close_timeout_seconds == 600
+
+
+def test_temporal_backend_requires_host():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_HOST"):
+        Settings(_env_file=None, job_backend="temporal", temporal_host="")
+
+
+def test_temporal_backend_requires_namespace():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_NAMESPACE"):
+        Settings(_env_file=None, job_backend="temporal", temporal_namespace="")
+
+
+def test_temporal_backend_requires_task_queue():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_TASK_QUEUE"):
+        Settings(_env_file=None, job_backend="temporal", temporal_task_queue="")
