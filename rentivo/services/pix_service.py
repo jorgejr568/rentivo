@@ -36,6 +36,11 @@ class PixService:
     def __init__(self, user_repo: UserRepository, org_repo: OrganizationRepository) -> None:
         self.user_repo = user_repo
         self.org_repo = org_repo
+        # Request-scoped memo: a PixService is built per request, and a single
+        # billing-list render resolves PIX for N billings that usually share one
+        # owner (the logged-in user). Caching by (owner_type, owner_id) collapses
+        # those N identical owner fetches into one query.
+        self._owner_cache: dict[tuple[str, int], PixConfig | None] = {}
 
     @traced("pix.resolve_for_billing")
     def resolve_for_billing(self, billing: Billing) -> PixConfig | None:
@@ -47,6 +52,12 @@ class PixService:
 
     @traced("pix.get_owner_config")
     def get_owner_config(self, owner_type: str, owner_id: int) -> PixConfig | None:
+        key = (owner_type, owner_id)
+        if key not in self._owner_cache:
+            self._owner_cache[key] = self._load_owner_config(owner_type, owner_id)
+        return self._owner_cache[key]
+
+    def _load_owner_config(self, owner_type: str, owner_id: int) -> PixConfig | None:
         if owner_type == "organization":
             org = self.org_repo.get_by_id(owner_id)
             if org is None:
