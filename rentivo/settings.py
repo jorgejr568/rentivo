@@ -120,6 +120,15 @@ class Settings(BaseSettings):
     job_worker_idle_sleep_seconds: float = 5.0
     job_worker_stuck_after_seconds: int = 600
 
+    # Ship logs to CloudWatch Logs (additive — stdout is unaffected). Off by
+    # default; uses the standard AWS credential chain unless explicit creds set.
+    log_cloudwatch_enabled: bool = False
+    log_cloudwatch_group: str = "rentivo"
+    log_cloudwatch_stream: str = ""  # empty → watchtower default ("{machine_name}/{program_name}")
+    log_cloudwatch_region: str = ""
+    log_cloudwatch_access_key_id: str = ""
+    log_cloudwatch_secret_access_key: str = ""
+
     @field_validator("email_backend")
     @classmethod
     def _validate_email_backend(cls, v: str) -> str:
@@ -230,6 +239,12 @@ class Settings(BaseSettings):
     def _validate_otel_cloudwatch(self) -> "Settings":
         if self.otel_enabled and self.otel_exporter == "cloudwatch" and not self.otel_aws_region:
             raise ValueError("RENTIVO_OTEL_AWS_REGION is required when RENTIVO_OTEL_EXPORTER=cloudwatch")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_log_cloudwatch(self) -> "Settings":
+        if self.log_cloudwatch_enabled and not self.log_cloudwatch_region:
+            raise ValueError("RENTIVO_LOG_CLOUDWATCH_REGION is required when RENTIVO_LOG_CLOUDWATCH_ENABLED=true")
         return self
 
     def get_secret_key(self) -> str:

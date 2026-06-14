@@ -25,6 +25,7 @@ def app_and_buffer(monkeypatch):
     class _Settings:
         log_level = "DEBUG"
         log_json = True
+        log_cloudwatch_enabled = False
 
     monkeypatch.setattr("rentivo.logging.settings", _Settings())
 

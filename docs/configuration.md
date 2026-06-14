@@ -42,6 +42,12 @@ Optional distributed tracing. Disabled by default; see [`docs/observability.md`]
 |----------|---------|-------------|
 | `RENTIVO_LOG_LEVEL` | `INFO` | structlog level. |
 | `RENTIVO_LOG_JSON` | `false` | Emit JSON logs (recommended in production). |
+| `RENTIVO_LOG_CLOUDWATCH_ENABLED` | `false` | Ship a JSON copy of logs to CloudWatch Logs via watchtower (stdout is unaffected). When tracing is on, each log also carries `trace_id`/`span_id`. |
+| `RENTIVO_LOG_CLOUDWATCH_GROUP` | `rentivo` | Target CloudWatch log group. |
+| `RENTIVO_LOG_CLOUDWATCH_STREAM` | *(empty)* | Log stream name; empty = watchtower default `{machine_name}/{program_name}`. |
+| `RENTIVO_LOG_CLOUDWATCH_REGION` | *(empty)* | Required when `RENTIVO_LOG_CLOUDWATCH_ENABLED=true`. |
+| `RENTIVO_LOG_CLOUDWATCH_ACCESS_KEY_ID` | *(empty)* | Optional; empty = standard AWS credential chain. |
+| `RENTIVO_LOG_CLOUDWATCH_SECRET_ACCESS_KEY` | *(empty)* | Optional secret for the above. |
 
 ## WebAuthn / Passkeys
 

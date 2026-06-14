@@ -283,6 +283,17 @@ def suppress_tracing() -> Iterator[None]:
         _otel_ctx.detach(token)
 
 
+def current_trace_ids() -> tuple[str, str] | None:
+    """``(trace_id, span_id)`` hex of the active span, or ``None`` when tracing is
+    disabled or no span is active. Used to stamp logs for trace↔log correlation."""
+    if _tracer is None:
+        return None
+    ctx = _trace.get_current_span().get_span_context()
+    if not ctx.is_valid:
+        return None
+    return format(ctx.trace_id, "032x"), format(ctx.span_id, "016x")
+
+
 def inject_context(carrier: dict) -> dict:
     """Write the current trace context into ``carrier`` (W3C ``traceparent``).
     Returns the same dict. No-op when disabled, so the carrier stays empty."""
