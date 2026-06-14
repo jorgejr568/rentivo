@@ -5,6 +5,7 @@ from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
 from rentivo.models.communication import Communication, CommunicationTemplate
+from rentivo.models.expense import Expense
 from rentivo.models.invite import Invite
 from rentivo.models.known_device import KnownDevice
 from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
@@ -191,6 +192,26 @@ class ReceiptRepository(ABC):
 
     @abstractmethod
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None: ...
+
+
+class ExpenseRepository(ABC):
+    @abstractmethod
+    def create(self, expense: Expense) -> Expense: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> Expense | None: ...
+
+    @abstractmethod
+    def list_by_billing(self, billing_id: int) -> list[Expense]: ...
+
+    @abstractmethod
+    def delete(self, expense_id: int) -> None: ...
+
+    @abstractmethod
+    def total_for_billings(self, billing_ids: list[int]) -> int:
+        """Sum of ``amount`` (centavos) over all non-deleted expenses for the
+        given billings. Returns 0 for an empty id list."""
+        ...
 
 
 class RecipientRepository(ABC):
