@@ -17,8 +17,15 @@ def web_span_exporter():
     tracing._reset_for_tests()
 
 
-def test_health_request_emits_server_span(client, web_span_exporter):
-    resp = client.get("/health")
+def test_request_emits_server_span(client, web_span_exporter):
+    # /login is public and traced (/health and /static are deliberately excluded).
+    resp = client.get("/login")
     assert resp.status_code == 200
     names = [s.name for s in web_span_exporter.get_finished_spans()]
     assert "HTTP GET" in names
+
+
+def test_health_is_not_traced(client, web_span_exporter):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert web_span_exporter.get_finished_spans() == ()

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from rentivo.observability import set_attributes, traced
+
 
 class EncryptionBackend(ABC):
     """Abstract field-encryption backend.
@@ -33,6 +35,7 @@ class EncryptionBackend(ABC):
         """True iff ``value`` has the ciphertext shape this backend produces."""
         ...
 
+    @traced("encryption.decrypt_many")
     def decrypt_many(self, values: list[str]) -> list[str]:
         """Decrypt a batch of values, returning plaintexts in the same order.
 
@@ -40,5 +43,11 @@ class EncryptionBackend(ABC):
         network round-trips per call (e.g. KMS) should override this to
         parallelise the work — the repository read paths invoke this once per
         list/detail query, so the override turns N sequential RTTs into one.
+
+        This batch call is the *only* traced layer of decryption — individual
+        ``decrypt`` calls are intentionally not spanned, so a row read produces
+        one ``decrypt_many`` span (with a ``count``) rather than one span per
+        encrypted field.
         """
+        set_attributes(count=len(values))
         return [self.decrypt(v) for v in values]

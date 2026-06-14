@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover
     boto3 = None  # type: ignore[assignment]
 
 from rentivo.encryption.base import EncryptionBackend
-from rentivo.observability import traced
+from rentivo.observability import set_attributes, traced
 
 logger = structlog.get_logger(__name__)
 
@@ -57,7 +57,6 @@ class KMSBackend(EncryptionBackend):
             client_kwargs["endpoint_url"] = endpoint_url
         self.client = boto3.client(**client_kwargs)
 
-    @traced("kms.encrypt")
     def encrypt(self, plaintext: str) -> str:
         if plaintext == "":
             return ""
@@ -72,7 +71,6 @@ class KMSBackend(EncryptionBackend):
         logger.debug("encryption_encrypted", backend="kms", bytes=len(blob))
         return _PREFIX + encoded
 
-    @traced("kms.decrypt")
     def decrypt(self, value: str) -> str:
         if value == "":
             return ""
@@ -97,6 +95,7 @@ class KMSBackend(EncryptionBackend):
     def decrypt_many(self, values: list[str]) -> list[str]:
         if not values:
             return []
+        set_attributes(count=len(values))
         # Boto3 KMS clients are thread-safe; fan out the per-value Decrypt RTTs
         # so a list page with N×M encrypted columns finishes in ~max RTT
         # instead of N×M × RTT.

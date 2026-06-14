@@ -13,7 +13,17 @@ def _app():
     async def boom(request):
         raise RuntimeError("kaboom")
 
-    app = Starlette(routes=[Route("/ok", ok), Route("/boom", boom)])
+    async def noise(request):
+        return PlainTextResponse("noise")
+
+    app = Starlette(
+        routes=[
+            Route("/ok", ok),
+            Route("/boom", boom),
+            Route("/health", noise),
+            Route("/static/app.css", noise),
+        ]
+    )
     app.add_middleware(TracingMiddleware)
     return app
 
@@ -43,6 +53,16 @@ def test_error_marks_span(span_exporter):
     client.get("/boom")
     span_obj = span_exporter.get_finished_spans()[0]
     assert span_obj.status.status_code.name == "ERROR"
+
+
+def test_health_and_static_are_not_traced(span_exporter):
+    client = TestClient(_app())
+    assert client.get("/health").text == "noise"
+    assert client.get("/static/app.css").text == "noise"
+    assert span_exporter.get_finished_spans() == ()  # no spans for either
+    # A real route still gets one.
+    client.get("/ok")
+    assert [s.name for s in span_exporter.get_finished_spans()] == ["HTTP GET"]
 
 
 def test_disabled_passes_through():

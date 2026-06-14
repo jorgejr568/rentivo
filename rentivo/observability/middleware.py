@@ -10,6 +10,11 @@ from typing import Any
 
 from rentivo.observability import extract_context, get_tracer, span
 
+# High-frequency, zero-insight paths: container/LB health probes and static
+# assets. Tracing them is pure noise and ingestion/indexing cost.
+_UNTRACED_PATHS = ("/health",)
+_UNTRACED_PREFIXES = ("/static/",)
+
 
 class TracingMiddleware:
     def __init__(self, app: Any) -> None:
@@ -17,6 +22,11 @@ class TracingMiddleware:
 
     async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
         if scope["type"] != "http" or get_tracer() is None:
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        if path in _UNTRACED_PATHS or path.startswith(_UNTRACED_PREFIXES):
             await self.app(scope, receive, send)
             return
 

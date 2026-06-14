@@ -117,3 +117,24 @@ class TestNeedsSetup:
         service = _make_service()  # org defaults to None
         billing = Billing(id=10, name="Apt", owner_type="organization", owner_id=5)
         assert service.resolve_for_billing(billing) is None
+
+
+class TestOwnerConfigMemoization:
+    def test_repeated_owner_resolution_queries_once(self):
+        """N billings sharing an owner must not refetch the owner N times."""
+        service = _make_service(
+            user=User(
+                id=1,
+                email="u@example.com",
+                pix_key="owner@pix",
+                pix_merchant_name="Owner",
+                pix_merchant_city="Sao Paulo",
+            )
+        )
+        billings = [Billing(id=i, name=f"Apt {i}", owner_type="user", owner_id=1) for i in range(5)]
+
+        results = [service.resolve_for_billing(b) for b in billings]
+
+        assert all(r == PixConfig("owner@pix", "Owner", "Sao Paulo") for r in results)
+        # Five resolves, one owner fetch.
+        service.user_repo.get_by_id.assert_called_once_with(1)
