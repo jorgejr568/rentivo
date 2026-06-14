@@ -1,14 +1,16 @@
-"""Worker entrypoint — drains the jobs table.
+"""Worker entrypoint — runs the configured job driver.
 
 Run with: ``python -m rentivo.workers``
 
-The worker is generic and dispatches any registered handler (currently
-just ``email.send``; future handlers like ``pdf.render`` plug in via the
-registry without touching this file).
+Dispatches on ``RENTIVO_JOB_BACKEND``: the ``database`` driver runs the
+polling ``Worker`` over the jobs table; the ``temporal`` driver hands off to
+``rentivo.jobs.temporal.runner``. Either way the registered handlers
+(``email.send``, ``communication.send``, ``pdf.render``, ``s3.delete``) plug
+in via the registry without touching this file.
 
-This module is omitted from coverage; its job is to wire the production
-DB connection into the Worker loop. The Worker class itself is fully
-unit-tested (see tests/jobs/test_worker.py).
+This module is omitted from coverage; its job is to wire production config
+into the chosen driver. The ``Worker`` class and the Temporal runner are
+fully unit-tested (see tests/jobs/test_worker.py and tests/jobs/temporal/).
 """
 
 from __future__ import annotations

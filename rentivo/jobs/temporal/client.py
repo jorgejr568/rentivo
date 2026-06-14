@@ -17,8 +17,10 @@ class AsyncBridge:
     path) is sync. One daemon thread owns one event loop for the process; every
     enqueue submits its coroutine via ``run_coroutine_threadsafe`` and blocks for
     the result. ``run()`` is safe to call concurrently from the request thread
-    pool. ``close()`` is not: the owning lifecycle (the Task 9 backend singleton)
-    is expected to call it exactly once, after all ``run()`` callers have drained.
+    pool. ``close()`` is not, and is optional: the daemon thread dies with the
+    process, so the process-global ``TemporalJobBackend`` never needs to close
+    the bridge; an owner that does close it must call ``close()`` exactly once,
+    after all ``run()`` callers have drained.
     """
 
     def __init__(self) -> None:
