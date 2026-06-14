@@ -27,3 +27,4 @@ class BillingAttachment(BaseModel):
 
 ALLOWED_ATTACHMENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_ATTACHMENT_NAME_LENGTH = 255  # cap the user-supplied label before storing

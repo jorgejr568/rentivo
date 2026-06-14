@@ -58,6 +58,19 @@ def test_add_attachment_blank_name_defaults_to_filename(service, billing):
     assert a.name == "lease.pdf"
 
 
+def test_add_attachment_truncates_long_name(service, billing):
+    from rentivo.models.billing_attachment import MAX_ATTACHMENT_NAME_LENGTH
+
+    a = service.add_attachment(
+        billing,
+        name="x" * 500,
+        filename="c.pdf",
+        file_bytes=b"%PDF-x",
+        content_type="application/pdf",
+    )
+    assert len(a.name) == MAX_ATTACHMENT_NAME_LENGTH
+
+
 def test_add_attachment_rejects_bad_type(service, billing):
     with pytest.raises(ValueError, match="Unsupported file type"):
         service.add_attachment(billing, name="x", filename="x.gif", file_bytes=b"GIF89a", content_type="image/gif")

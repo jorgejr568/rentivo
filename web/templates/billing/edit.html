@@ -304,7 +304,7 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="field">
                 <label for="attachment_name" class="field__label">Nome do documento</label>
-                <input type="text" class="input" id="attachment_name" name="name" placeholder="Ex.: Contrato de locação">
+                <input type="text" class="input" id="attachment_name" name="name" maxlength="255" placeholder="Ex.: Contrato de locação">
             </div>
             <div class="field">
                 <label for="attachment_file" class="field__label">Arquivo</label>

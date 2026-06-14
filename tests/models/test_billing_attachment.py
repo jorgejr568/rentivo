@@ -1,5 +1,6 @@
 from rentivo.models.billing_attachment import (
     ALLOWED_ATTACHMENT_TYPES,
+    MAX_ATTACHMENT_NAME_LENGTH,
     MAX_ATTACHMENT_SIZE,
     BillingAttachment,
 )
@@ -22,3 +23,4 @@ def test_defaults():
 def test_constants():
     assert ALLOWED_ATTACHMENT_TYPES == {"application/pdf", "image/jpeg", "image/png"}
     assert MAX_ATTACHMENT_SIZE == 10 * 1024 * 1024
+    assert MAX_ATTACHMENT_NAME_LENGTH == 255

@@ -7,7 +7,6 @@ from starlette.datastructures import UploadFile
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.billing import BillingItem
-from rentivo.models.billing_attachment import ALLOWED_ATTACHMENT_TYPES, MAX_ATTACHMENT_SIZE
 from rentivo.services.audit_serializers import serialize_billing, serialize_billing_attachment
 from web.analytics import analytics_hash, push_event
 from web.deps import render
@@ -400,22 +399,18 @@ async def attachment_upload(request: Request, ctx: BillingContext = Depends(requ
         return flash_redirect(request, "Nenhum arquivo selecionado.", redirect_url)
 
     file_bytes = await upload.read()
-    content_type = upload.content_type or ""
-    if content_type not in ALLOWED_ATTACHMENT_TYPES or not file_bytes or len(file_bytes) > MAX_ATTACHMENT_SIZE:
-        logger.warning("attachment_upload_skipped", billing_uuid=billing.uuid, content_type=content_type)
-        return flash_redirect(request, "Arquivo inválido (tipo não suportado, vazio ou maior que 10 MB).", redirect_url)
-
+    # The service is the single source of file validation (type / size / empty).
     try:
         attachment = service.add_attachment(
             billing=billing,
             name=name,
             filename=upload.filename,
             file_bytes=file_bytes,
-            content_type=content_type,
+            content_type=upload.content_type or "",
         )
     except ValueError as e:
         logger.warning("attachment_upload_rejected", billing_uuid=billing.uuid, error=str(e))
-        return flash_redirect(request, "Não foi possível anexar o arquivo.", redirect_url)
+        return flash_redirect(request, "Arquivo inválido (tipo não suportado, vazio ou maior que 10 MB).", redirect_url)
 
     request.state.services.audit.safe_log_for(
         request.state.actor,
@@ -426,6 +421,10 @@ async def attachment_upload(request: Request, ctx: BillingContext = Depends(requ
         new_state=serialize_billing_attachment(attachment, billing_uuid=billing.uuid),
     )
     flash(request, "Documento anexado.", "success")
+    push_event(
+        request,
+        {"event": "rentivo_billing_attachment_uploaded", "billing_uuid_hash": analytics_hash(billing.uuid)},
+    )
     return RedirectResponse(redirect_url, status_code=302)
 
 
@@ -468,4 +467,8 @@ async def attachment_delete(
         previous_state=previous_state,
     )
     flash(request, "Documento removido.", "success")
+    push_event(
+        request,
+        {"event": "rentivo_billing_attachment_deleted", "billing_uuid_hash": analytics_hash(billing.uuid)},
+    )
     return RedirectResponse(redirect_url, status_code=302)

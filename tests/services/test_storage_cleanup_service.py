@@ -12,14 +12,16 @@ def _actor():
     return SimpleNamespace(source="web", user_id=7, email="a@x")
 
 
-def _make_service(*, bills=None, receipts_by_bill=None):
+def _make_service(*, bills=None, receipts_by_bill=None, attachments=None):
     job_service = MagicMock()
     bill_repo = MagicMock()
     receipt_repo = MagicMock()
+    attachment_repo = MagicMock()
     bill_repo.list_by_billing.return_value = bills or []
     receipt_repo.list_by_bill.side_effect = lambda bill_id: (receipts_by_bill or {}).get(bill_id, [])
+    attachment_repo.list_by_billing.return_value = attachments or []
     return (
-        StorageCleanupService(job_service, bill_repo, receipt_repo),
+        StorageCleanupService(job_service, bill_repo, receipt_repo, attachment_repo),
         job_service,
         bill_repo,
         receipt_repo,
@@ -170,50 +172,30 @@ def test_enqueue_billing_delete_cascade_with_no_bills_is_noop():
 def test_billing_cascade_enqueues_attachment_keys():
     from rentivo.models.billing_attachment import BillingAttachment
 
-    job_service = MagicMock()
-    bill_repo = MagicMock()
-    receipt_repo = MagicMock()
-    attachment_repo = MagicMock()
-    bill_repo.list_by_billing.return_value = []
-    attachment_repo.list_by_billing.return_value = [
-        BillingAttachment(
-            id=1,
-            billing_id=3,
-            name="c",
-            filename="c.pdf",
-            storage_key="b-uuid/attachments/x.pdf",
-            content_type="application/pdf",
-            file_size=1,
-        ),
-    ]
-    svc = StorageCleanupService(job_service, bill_repo, receipt_repo, attachment_repo)
+    attachment = BillingAttachment(
+        id=1,
+        billing_id=3,
+        name="c",
+        filename="c.pdf",
+        storage_key="b-uuid/attachments/x.pdf",
+        content_type="application/pdf",
+        file_size=1,
+    )
+    svc, job, bill_repo, _ = _make_service(bills=[], attachments=[attachment])
 
     svc.enqueue_billing_delete_cascade(_actor(), Billing(id=3, uuid="b-uuid", name="A", items=[]))
 
-    keys = [c.args[2]["key"] for c in job_service.enqueue_for.call_args_list]
-    assert "b-uuid/attachments/x.pdf" in keys
-
-
-def test_billing_cascade_without_attachment_repo_is_safe():
-    job_service = MagicMock()
-    bill_repo = MagicMock()
-    receipt_repo = MagicMock()
-    bill_repo.list_by_billing.return_value = []
-    svc = StorageCleanupService(job_service, bill_repo, receipt_repo)  # no attachment_repo
-
-    svc.enqueue_billing_delete_cascade(_actor(), Billing(id=3, uuid="b", name="A", items=[]))
-    assert job_service.enqueue_for.call_count == 0
+    keys = [c.args[2]["key"] for c in job.enqueue_for.call_args_list]
+    assert keys == ["b-uuid/attachments/x.pdf"]
 
 
 def test_enqueue_attachment_delete():
     from rentivo.models.billing_attachment import BillingAttachment
 
-    job_service = MagicMock()
-    svc = StorageCleanupService(job_service, MagicMock(), MagicMock(), MagicMock())
+    svc, job, _, _ = _make_service()
+    actor = _actor()
     svc.enqueue_attachment_delete(
-        _actor(),
+        actor,
         BillingAttachment(id=1, billing_id=1, name="n", filename="f.pdf", storage_key="k.pdf"),
     )
-    job_service.enqueue_for.assert_called_once_with(
-        _actor().__class__(source="web", user_id=7, email="a@x"), "s3.delete", {"key": "k.pdf"}
-    )
+    job.enqueue_for.assert_called_once_with(actor, "s3.delete", {"key": "k.pdf"})

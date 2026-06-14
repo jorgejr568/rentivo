@@ -144,7 +144,7 @@ make web-run             # start uvicorn at http://localhost:8000
 - Repository: `BillingAttachmentRepository` / `SQLAlchemyBillingAttachmentRepository`. Service: `BillingAttachmentService` (repo + storage). Wired in `web/services_container.py` as `billing_attachment`.
 - Routes on the billing router (`web/routes/billing.py`): `POST /billings/<id>/attachments/upload` (single file + name), `GET /billings/<id>/attachments/<att_id>` (download), `POST /billings/<id>/attachments/<att_id>/delete`. Upload/delete need `edit`; download needs `view`.
 - UI: upload + list + delete panel on the billing edit page; read-only download list on the billing detail page.
-- Audit events: `attachment.upload`, `attachment.delete` (serializer omits `storage_key`). Deleting a billing cascades attachment-file cleanup via `StorageCleanupService.enqueue_billing_delete_cascade` (its optional `attachment_repo`).
+- Audit events: `attachment.upload`, `attachment.delete` (serializer omits `storage_key`). GTM: `rentivo_billing_attachment_uploaded/deleted`. Deleting a billing cascades attachment-file cleanup via `StorageCleanupService.enqueue_billing_delete_cascade` (which requires an `attachment_repo`).
 
 ## Audit Logging
 
@@ -181,7 +181,7 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 - **Suffering** — `form_submit_error`, `form_field_error`, `form_abandon`, `rage_click`, `js_error`, `promise_rejection`.
 - **Issues** — `network_error`, `file_upload_error`.
 - **Waiting** — `web_vital` (LCP/INP/CLS/TTFB/FCP), `slow_page`, `interaction_slow`, `layout_shift_bad`, `long_task`, `slow_form_submit`.
-- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
+- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_billing_attachment_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
 
 ### Privacy
 

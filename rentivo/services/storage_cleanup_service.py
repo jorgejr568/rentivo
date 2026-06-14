@@ -21,7 +21,7 @@ class StorageCleanupService:
 
     - delete_receipt -> 1 job (the receipt's storage_key)
     - delete_bill    -> N+1 jobs (each receipt + the bill PDF)
-    - delete_billing -> walks bills then receipts under each bill
+    - delete_billing -> walks bills (then receipts under each) + billing attachments
 
     Empty keys are silently skipped -- bills can have ``pdf_path=""`` if a
     PDF render previously failed.
@@ -36,7 +36,7 @@ class StorageCleanupService:
         job_service: JobService,
         bill_repo: BillRepository,
         receipt_repo: ReceiptRepository,
-        attachment_repo: BillingAttachmentRepository | None = None,
+        attachment_repo: BillingAttachmentRepository,
     ) -> None:
         self.job_service = job_service
         self.bill_repo = bill_repo
@@ -70,6 +70,5 @@ class StorageCleanupService:
             return
         for bill in self.bill_repo.list_by_billing(billing.id):
             self.enqueue_bill_delete_cascade(actor, bill)
-        if self.attachment_repo is not None:
-            for attachment in self.attachment_repo.list_by_billing(billing.id):
-                self.enqueue_key(actor, attachment.storage_key)
+        for attachment in self.attachment_repo.list_by_billing(billing.id):
+            self.enqueue_key(actor, attachment.storage_key)

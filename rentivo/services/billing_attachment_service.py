@@ -6,6 +6,7 @@ from ulid import ULID
 from rentivo.models.billing import Billing
 from rentivo.models.billing_attachment import (
     ALLOWED_ATTACHMENT_TYPES,
+    MAX_ATTACHMENT_NAME_LENGTH,
     MAX_ATTACHMENT_SIZE,
     BillingAttachment,
 )
@@ -59,7 +60,7 @@ class BillingAttachmentService:
         if not file_bytes:
             raise ValueError("Empty file")
 
-        label = name.strip() or filename
+        label = (name.strip() or filename)[:MAX_ATTACHMENT_NAME_LENGTH]
         attachment_uuid = str(ULID())
         storage_key = _attachment_storage_key(billing.uuid, attachment_uuid, content_type)
 
