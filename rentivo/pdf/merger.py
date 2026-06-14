@@ -37,11 +37,8 @@ def _image_to_pdf(image_bytes: bytes) -> bytes:
     max_w = page_w - 2 * margin
     max_h = page_h - 2 * margin
 
-    # Scale to fit
-    scale_w = max_w / width_px
-    scale_h = max_h / height_px
-    scale = min(scale_w, scale_h)
-
+    # Scale to fit while preserving aspect ratio
+    scale = min(max_w / width_px, max_h / height_px)
     img_w = width_px * scale
     img_h = height_px * scale
 
@@ -60,6 +57,13 @@ def _image_to_pdf(image_bytes: bytes) -> bytes:
     pdf.image(img_buf, x=x, y=y, w=img_w, h=img_h)
 
     return bytes(pdf.output())
+
+
+def _append_pages(writer: PdfWriter, pdf_bytes: bytes) -> None:
+    """Append every page of ``pdf_bytes`` to ``writer``."""
+    reader = PdfReader(BytesIO(pdf_bytes))
+    for page in reader.pages:
+        writer.add_page(page)
 
 
 @traced("pdf.merge_receipts")
@@ -85,9 +89,7 @@ def merge_receipts(
 
     # Add all invoice pages
     try:
-        invoice_reader = PdfReader(BytesIO(invoice_pdf))
-        for page in invoice_reader.pages:
-            writer.add_page(page)
+        _append_pages(writer, invoice_pdf)
     except Exception:
         logger.exception("invoice_pdf_read_failed")
         return invoice_pdf, list(range(len(receipts)))
@@ -95,14 +97,9 @@ def merge_receipts(
     for idx, (file_bytes, content_type) in enumerate(receipts):
         try:
             if content_type == "application/pdf":
-                reader = PdfReader(BytesIO(file_bytes))
-                for page in reader.pages:
-                    writer.add_page(page)
+                _append_pages(writer, file_bytes)
             elif content_type in ("image/jpeg", "image/png"):
-                pdf_bytes = _image_to_pdf(file_bytes)
-                reader = PdfReader(BytesIO(pdf_bytes))
-                for page in reader.pages:
-                    writer.add_page(page)
+                _append_pages(writer, _image_to_pdf(file_bytes))
             else:
                 logger.warning("receipt_merge_skipped_unsupported_type", content_type=content_type)
                 failed.append(idx)

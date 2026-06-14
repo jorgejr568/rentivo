@@ -10,7 +10,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.services.audit_serializers import serialize_communication
 from web.analytics import analytics_hash, push_event
 from web.deps import render
-from web.flash import flash
+from web.flash import flash, flash_redirect
 from web.guards import BillContext, require_bill
 
 logger = structlog.get_logger(__name__)
@@ -51,9 +51,11 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
     bill, billing = ctx.bill, ctx.billing
     services = request.state.services
 
+    bill_url = f"/billings/{billing.uuid}/bills/{bill.uuid}"
+    compose_url = f"{bill_url}/communications/compose"
+
     if not bill.pdf_path:
-        flash(request, "Gere o PDF da fatura antes de enviar a comunicação.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
+        return flash_redirect(request, "Gere o PDF da fatura antes de enviar a comunicação.", bill_url)
 
     form = await request.form()
     subject = str(form.get("subject", "")).strip()
@@ -63,15 +65,12 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
     all_recipients = services.recipient.list_for_billing(billing.id)
     chosen = [r for r in all_recipients if r.uuid in selected]
     if not chosen:
-        flash(request, "Selecione ao menos um destinatário.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
+        return flash_redirect(request, "Selecione ao menos um destinatário.", compose_url)
 
     if not subject or not body:
-        flash(request, "Preencha o assunto e o corpo da mensagem.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
+        return flash_redirect(request, "Preencha o assunto e o corpo da mensagem.", compose_url)
 
     moderation = scan(f"{subject}\n{body}")
-    compose_url = f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose"
     if moderation.blocked:
         services.audit.safe_log_for(
             request.state.actor,
@@ -81,22 +80,21 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
             entity_uuid=bill.uuid,
             new_state={"severe_count": len(moderation.severe), "mild_count": len(moderation.mild)},
         )
-        flash(
+        return flash_redirect(
             request,
             "A mensagem contém conteúdo não permitido (ofensa grave ou ameaça) e não pode ser enviada. "
             "Edite o texto destacado.",
-            "danger",
+            compose_url,
         )
-        return RedirectResponse(compose_url, status_code=302)
     acknowledged = str(form.get("acknowledge_warning", "")).strip() != ""
     if moderation.flagged and not acknowledged:
-        flash(
+        return flash_redirect(
             request,
             "A mensagem contém linguagem possivelmente ofensiva. Revise e marque "
             "“Reconheço e quero enviar” para continuar.",
+            compose_url,
             "warning",
         )
-        return RedirectResponse(compose_url, status_code=302)
 
     # The owner scope writes the user/organization-wide default template, which
     # resolve_template applies to *every* billing of that owner — so it requires
@@ -104,8 +102,11 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
     # ("manager") gate this route runs under.
     save_scope = str(form.get("save_scope", "")).strip()
     if save_scope == "owner" and ctx.role not in ("owner", "admin"):
-        flash(request, "Você não tem permissão para salvar o modelo para toda a organização.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/compose", status_code=302)
+        return flash_redirect(
+            request,
+            "Você não tem permissão para salvar o modelo para toda a organização.",
+            compose_url,
+        )
 
     comms = services.communication.send(
         bill=bill,
@@ -161,4 +162,4 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
             "comm_type": "bill_ready",
         },
     )
-    return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
+    return RedirectResponse(bill_url, status_code=302)

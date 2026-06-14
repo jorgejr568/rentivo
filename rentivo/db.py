@@ -48,8 +48,7 @@ def _get_alembic_config() -> Config:
     ini_path = os.path.join(project_root, "alembic.ini")
     if not os.path.exists(ini_path):
         ini_path = os.path.join(os.getcwd(), "alembic.ini")
-    cfg = Config(ini_path)
-    return cfg
+    return Config(ini_path)
 
 
 def initialize_db() -> None:

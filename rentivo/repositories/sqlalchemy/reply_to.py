@@ -8,7 +8,7 @@ from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.recipient import Recipient
 from rentivo.observability import traced
 from rentivo.repositories.base import RecipientRepository
-from rentivo.repositories.sqlalchemy._common import _now, decrypt_columns
+from rentivo.repositories.sqlalchemy._common import _now, build_recipients
 
 
 class SQLAlchemyReplyToRecipientRepository(RecipientRepository):
@@ -23,21 +23,7 @@ class SQLAlchemyReplyToRecipientRepository(RecipientRepository):
         self.encryption = encryption
 
     def _build(self, rows: list[RowMapping]) -> list[Recipient]:
-        if not rows:
-            return []
-        plaintexts = decrypt_columns(self.encryption, rows, ("name", "email"))
-        return [
-            Recipient(
-                id=row["id"],
-                uuid=row["uuid"],
-                billing_id=row["billing_id"],
-                name=next(plaintexts),
-                email=next(plaintexts),
-                sort_order=row["sort_order"],
-                created_at=row["created_at"],
-            )
-            for row in rows
-        ]
+        return build_recipients(self.encryption, rows)
 
     @traced("reply_to_repo.list_by_billing")
     def list_by_billing(self, billing_id: int) -> list[Recipient]:

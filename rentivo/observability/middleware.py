@@ -33,7 +33,6 @@ class TracingMiddleware:
         carrier = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])}
         parent = extract_context(carrier)
         method = scope.get("method", "GET")
-        path = scope.get("path", "")
         status = {"code": 0}
 
         async def send_wrapper(message: dict) -> None:

@@ -240,11 +240,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _validate_kms_pair(self) -> "Settings":
-        if self.encryption_backend == "kms":
-            if not self.kms_key_id or not self.kms_region:
-                raise ValueError(
-                    "RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION are required when RENTIVO_ENCRYPTION_BACKEND=kms"
-                )
+        if self.encryption_backend == "kms" and (not self.kms_key_id or not self.kms_region):
+            raise ValueError(
+                "RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION are required when RENTIVO_ENCRYPTION_BACKEND=kms"
+            )
         return self
 
     @model_validator(mode="after")

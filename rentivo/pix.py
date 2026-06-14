@@ -6,6 +6,7 @@ Generates the payload string for a static PIX QR code and renders it as a PNG im
 from __future__ import annotations
 
 import re
+import unicodedata
 from io import BytesIO
 
 import qrcode
@@ -49,11 +50,11 @@ def validate_pix_key(key: str) -> str:
     digits_only = re.sub(r"[.\-/\s()]", "", raw)
     if digits_only.isdigit():
         if len(digits_only) == 11:
-            return digits_only  # CPF
+            return digits_only  # CPF (11-digit mobiles are ambiguous; treated as CPF)
         if len(digits_only) == 14:
             return digits_only  # CNPJ
-        if len(digits_only) in (10, 11):
-            return f"+55{digits_only}"  # assume Brazilian phone
+        if len(digits_only) == 10:
+            return f"+55{digits_only}"  # assume Brazilian landline
 
     if raw.startswith("+") and re.sub(r"[\s()-]", "", raw).replace("+", "", 1).isdigit():
         normalized = "+" + re.sub(r"[\s()\-]", "", raw[1:])
@@ -95,6 +96,12 @@ def _format_amount_centavos(centavos: int) -> str:
     if centavos < 0:
         raise ValueError("amount_centavos must be non-negative")
     return f"{centavos // 100}.{centavos % 100:02d}"
+
+
+def _strip_accents(text: str) -> str:
+    """Remove accents for ASCII-safe PIX payload fields."""
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
 def generate_pix_payload(
@@ -149,14 +156,6 @@ def generate_pix_payload(
     payload += crc
 
     return payload
-
-
-def _strip_accents(text: str) -> str:
-    """Remove accents for ASCII-safe PIX payload fields."""
-    import unicodedata
-
-    nfkd = unicodedata.normalize("NFKD", text)
-    return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
 def generate_pix_qrcode_png(

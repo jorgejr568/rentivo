@@ -72,8 +72,7 @@ def main() -> None:
     all_bills: list[tuple[Billing, Bill]] = []
     for billing in billings:
         assert billing.id is not None
-        bills = bill_repo.list_by_billing(billing.id)
-        for bill in bills:
+        for bill in bill_repo.list_by_billing(billing.id):
             all_bills.append((billing, bill))
 
     if not all_bills:
@@ -107,12 +106,12 @@ def main() -> None:
     console.print("\n[cyan]Enfileirando jobs pdf.render...[/cyan]\n")
 
     enqueued = 0
-    skipped: list[tuple[str, str, str]] = []
+    skipped = 0
     for billing, bill in all_bills:
         # Pre-flight PIX check — bills without PIX would just dead-letter
         # in the worker after 5 retries, so we filter them here.
         if pix_service.resolve_for_billing(billing) is None:
-            skipped.append((billing.name, bill.reference_month, "PIX não configurado"))
+            skipped += 1
             console.print(f"  [yellow]✗[/yellow] {billing.name} - {bill.reference_month}: PIX não configurado")
             continue
 
@@ -128,7 +127,7 @@ def main() -> None:
     console.print(f"\n[green bold]{enqueued} fatura(s) enfileirada(s) com sucesso![/green bold]")
     console.print(f"[dim]{pending_or_running} job(s) pdf.render aguardando o worker (pending+running).[/dim]")
     if skipped:
-        console.print(f"[yellow]{len(skipped)} fatura(s) ignorada(s) por falta de configuração de PIX.[/yellow]")
+        console.print(f"[yellow]{skipped} fatura(s) ignorada(s) por falta de configuração de PIX.[/yellow]")
 
 
 if __name__ == "__main__":  # pragma: no cover

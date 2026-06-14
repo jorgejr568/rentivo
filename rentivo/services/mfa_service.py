@@ -185,8 +185,7 @@ class MFAService:
         """Check if user has any confirmed MFA method."""
         if self.has_confirmed_totp(user_id):
             return True
-        passkeys = self.passkey_repo.list_by_user(user_id)
-        return len(passkeys) > 0
+        return bool(self.passkey_repo.list_by_user(user_id))
 
     @traced("mfa.user_requires_mfa_setup")
     def user_requires_mfa_setup(self, user_id: int) -> bool:

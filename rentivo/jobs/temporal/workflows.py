@@ -25,16 +25,18 @@ def _error_type(err: BaseException) -> str | None:
     return getattr(cause, "type", None) if isinstance(cause, ApplicationError) else None
 
 
-async def _run_job(activity_name: str, job_type: str, payload: dict, ulid: str, max_attempts: int) -> None:
+async def _run_job(job_type: str, payload: dict, ulid: str, max_attempts: int) -> None:
     """Shared orchestration mirroring the database worker's retry/backoff/
-    dead-letter semantics. Each per-job-type workflow delegates here."""
+    dead-letter semantics. Each per-job-type workflow delegates here.
+
+    ``job_type`` doubles as the activity name (they're registered 1:1)."""
     cfg = config_from_settings()
     attempt = 0
     while True:
         attempt += 1
         try:
             await workflow.execute_activity(
-                activity_name,
+                job_type,
                 payload,
                 start_to_close_timeout=timedelta(seconds=cfg.activity_timeout_seconds),
                 # The workflow owns retries/backoff; the activity runs once per loop.
@@ -91,25 +93,25 @@ async def _finalize(event: dict) -> None:
 class EmailSendWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
-        await _run_job("email.send", "email.send", payload, ulid, max_attempts)
+        await _run_job("email.send", payload, ulid, max_attempts)
 
 
 @workflow.defn(name="CommunicationSendWorkflow")
 class CommunicationSendWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
-        await _run_job("communication.send", "communication.send", payload, ulid, max_attempts)
+        await _run_job("communication.send", payload, ulid, max_attempts)
 
 
 @workflow.defn(name="PdfRenderWorkflow")
 class PdfRenderWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
-        await _run_job("pdf.render", "pdf.render", payload, ulid, max_attempts)
+        await _run_job("pdf.render", payload, ulid, max_attempts)
 
 
 @workflow.defn(name="S3DeleteWorkflow")
 class S3DeleteWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
-        await _run_job("s3.delete", "s3.delete", payload, ulid, max_attempts)
+        await _run_job("s3.delete", payload, ulid, max_attempts)

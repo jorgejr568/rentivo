@@ -11,7 +11,7 @@ from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
 from web.deps import render
-from web.flash import flash
+from web.flash import flash, flash_redirect
 from web.forms import parse_brl, parse_extras, parse_line_items, safe_redirect_path
 from web.guards import BillContext, BillingContext, require_bill, require_billing
 from web.receipts import attach_receipts
@@ -38,8 +38,7 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
 
     if not reference_month:
         logger.warning("bill_generate_rejected", reason="empty_reference_month")
-        flash(request, "Mês de referência é obrigatório.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/bills/generate", status_code=302)
+        return flash_redirect(request, "Mês de referência é obrigatório.", f"/billings/{billing.uuid}/bills/generate")
 
     # Parse variable amounts
     variable_amounts: dict[int, int] = {}
@@ -215,8 +214,7 @@ async def bill_change_status(request: Request, ctx: BillContext = Depends(requir
     try:
         bill_service.change_status(bill, new_status)
     except ValueError:
-        flash(request, "Status inválido.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
+        return flash_redirect(request, "Status inválido.", f"/billings/{billing.uuid}/bills/{bill.uuid}")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -248,8 +246,7 @@ async def bill_delete(request: Request, ctx: BillContext = Depends(require_bill(
 
     if bill.id is None:
         logger.error("bill_missing_id", bill_uuid=bill.uuid)
-        flash(request, "Fatura inválida.", "danger")
-        return RedirectResponse("/", status_code=302)
+        return flash_redirect(request, "Fatura inválida.", "/")
     previous_state = serialize_bill(bill)
 
     cleanup = request.state.services.storage_cleanup
@@ -278,8 +275,7 @@ async def bill_invoice(request: Request, ctx: BillContext = Depends(require_bill
 
     if not bill.pdf_path:
         logger.warning("bill_no_pdf", bill_uuid=bill.uuid)
-        flash(request, "Fatura sem PDF.", "danger")
-        return RedirectResponse("/", status_code=302)
+        return flash_redirect(request, "Fatura sem PDF.", "/")
 
     ref = request.state.services.bill.get_invoice_ref(bill)
     logger.debug("bill_pdf_ref", storage_key=bill.pdf_path, kind=ref.kind)
@@ -294,8 +290,7 @@ async def receipt_view(request: Request, receipt_uuid: str, ctx: BillContext = D
 
     receipt = bill_service.get_receipt_by_uuid(receipt_uuid)
     if not receipt or not receipt.storage_key or receipt.bill_id != ctx.bill.id:
-        flash(request, "Comprovante não encontrado.", "danger")
-        return RedirectResponse("/", status_code=302)
+        return flash_redirect(request, "Comprovante não encontrado.", "/")
 
     ref = bill_service.get_receipt_ref(receipt)
     if ref.kind == "local":
@@ -316,8 +311,7 @@ async def receipt_upload(request: Request, ctx: BillContext = Depends(require_bi
     uploads = [u for u in form.getlist("receipt_files") if isinstance(u, UploadFile) and u.filename]
     if not uploads:
         logger.warning("receipt_upload_no_file", bill_uuid=bill.uuid)
-        flash(request, "Nenhum arquivo selecionado.", "danger")
-        return RedirectResponse(redirect_url, status_code=302)
+        return flash_redirect(request, "Nenhum arquivo selecionado.", redirect_url)
 
     result = await attach_receipts(request, bill, billing, uploads)
 
@@ -356,8 +350,7 @@ async def receipt_delete(request: Request, receipt_uuid: str, ctx: BillContext =
     receipt = bill_service.get_receipt_by_uuid(receipt_uuid)
     if not receipt or receipt.bill_id != bill.id:
         logger.warning("receipt_not_found", receipt_uuid=receipt_uuid)
-        flash(request, "Comprovante não encontrado.", "danger")
-        return RedirectResponse(redirect_url, status_code=302)
+        return flash_redirect(request, "Comprovante não encontrado.", redirect_url)
 
     previous_state = serialize_receipt(receipt, bill_uuid=bill.uuid, billing_uuid=billing.uuid)
     bill_service.delete_receipt(receipt, bill, billing, actor=request.state.actor)

@@ -9,10 +9,34 @@ from sqlalchemy.engine import RowMapping
 
 from rentivo.constants import SP_TZ
 from rentivo.encryption.base import EncryptionBackend
+from rentivo.models.recipient import Recipient
 
 
 def _now() -> datetime:
     return datetime.now(SP_TZ)
+
+
+def build_recipients(encryption: EncryptionBackend, rows: Sequence[RowMapping]) -> list[Recipient]:
+    """Assemble ``Recipient`` models from rows, decrypting ``name``/``email`` in one batch.
+
+    Shared by the recipient and reply-to repositories, which back the same
+    model with identically-shaped (but separate) tables.
+    """
+    if not rows:
+        return []
+    plaintexts = decrypt_columns(encryption, rows, ("name", "email"))
+    return [
+        Recipient(
+            id=row["id"],
+            uuid=row["uuid"],
+            billing_id=row["billing_id"],
+            name=next(plaintexts),
+            email=next(plaintexts),
+            sort_order=row["sort_order"],
+            created_at=row["created_at"],
+        )
+        for row in rows
+    ]
 
 
 def decrypt_columns(encryption: EncryptionBackend, rows: Sequence[RowMapping], fields: Sequence[str]) -> Iterator[str]:

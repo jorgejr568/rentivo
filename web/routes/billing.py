@@ -9,13 +9,54 @@ from rentivo.models.billing import BillingItem
 from rentivo.services.audit_serializers import serialize_billing
 from web.analytics import analytics_hash, push_event
 from web.deps import render
-from web.flash import flash
+from web.flash import flash, flash_redirect
 from web.forms import parse_formset, parse_line_items
 from web.guards import BillingContext, require_billing
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/billings")
+
+
+def _sync_recipient_formset(
+    request: Request,
+    *,
+    billing_id: int,
+    billing_uuid: str,
+    form_dict: dict,
+    prefix: str,
+    service_name: str,
+    event_type: AuditEventType,
+    count_key: str,
+    track_previous: bool,
+) -> None:
+    """Replace a billing's recipient/reply-to formset and audit the change.
+
+    Shared by ``billing_create`` and ``billing_edit``. The formset is only
+    touched when the submission carries it (``{prefix}-TOTAL_FORMS`` present),
+    so a POST that omits it leaves the existing encrypted rows intact rather
+    than wiping them. ``track_previous`` adds the edit-only ``previous_state``
+    and counts pre-existing rows toward the "should we audit?" decision.
+    """
+    if f"{prefix}-TOTAL_FORMS" not in form_dict:
+        return
+    service = getattr(request.state.services, service_name)
+    previous = service.list_for_billing(billing_id) if track_previous else []
+    rows = parse_formset(form_dict, prefix)
+    saved = service.replace_for_billing(billing_id, rows)
+    if not (rows or saved or previous):
+        return
+    new_state = {count_key: len(saved)}
+    previous_state = {count_key: len(previous)} if track_previous else None
+    request.state.services.audit.safe_log_for(
+        request.state.actor,
+        event_type,
+        entity_type="billing",
+        entity_id=billing_id,
+        entity_uuid=billing_uuid,
+        previous_state=previous_state,
+        new_state=new_state,
+    )
 
 
 @router.get("/")
@@ -55,8 +96,7 @@ async def billing_create(request: Request):
 
     if not name:
         logger.warning("billing_create_rejected", reason="empty_name")
-        flash(request, "Nome é obrigatório.", "danger")
-        return RedirectResponse("/billings/create", status_code=302)
+        return flash_redirect(request, "Nome é obrigatório.", "/billings/create")
 
     items: list[BillingItem] = [
         BillingItem(description=p.description, amount=p.amount, item_type=p.item_type)
@@ -65,8 +105,7 @@ async def billing_create(request: Request):
 
     if not items:
         logger.warning("billing_create_rejected", reason="no_items")
-        flash(request, "Adicione pelo menos um item.", "danger")
-        return RedirectResponse("/billings/create", status_code=302)
+        return flash_redirect(request, "Adicione pelo menos um item.", "/billings/create")
 
     service = request.state.services.billing
     user_id = request.session.get("user_id", 0)
@@ -89,8 +128,7 @@ async def billing_create(request: Request):
             owner_id=owner_id,
         )
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse("/billings/create", status_code=302)
+        return flash_redirect(request, str(e), "/billings/create")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -102,34 +140,31 @@ async def billing_create(request: Request):
         new_state=serialize_billing(billing),
     )
 
-    # Mirror billing_edit: only touch recipients when the submission carries the
-    # formset, so the behaviour is identical across create and edit.
+    # Only touch recipients/reply-to when the submission carries the formset,
+    # so the behaviour is identical across create and edit.
     form_dict = dict(form)
-    if "recipients-TOTAL_FORMS" in form_dict:
-        recipient_rows = parse_formset(form_dict, "recipients")
-        saved_recipients = request.state.services.recipient.replace_for_billing(billing.id, recipient_rows)
-        if saved_recipients or recipient_rows:
-            audit.safe_log_for(
-                request.state.actor,
-                AuditEventType.BILLING_RECIPIENTS_UPDATED,
-                entity_type="billing",
-                entity_id=billing.id,
-                entity_uuid=billing.uuid,
-                new_state={"recipient_count": len(saved_recipients)},
-            )
-
-    if "reply_to-TOTAL_FORMS" in form_dict:
-        reply_to_rows = parse_formset(form_dict, "reply_to")
-        saved_reply_to = request.state.services.reply_to.replace_for_billing(billing.id, reply_to_rows)
-        if saved_reply_to or reply_to_rows:
-            audit.safe_log_for(
-                request.state.actor,
-                AuditEventType.BILLING_REPLY_TO_UPDATED,
-                entity_type="billing",
-                entity_id=billing.id,
-                entity_uuid=billing.uuid,
-                new_state={"reply_to_count": len(saved_reply_to)},
-            )
+    _sync_recipient_formset(
+        request,
+        billing_id=billing.id,
+        billing_uuid=billing.uuid,
+        form_dict=form_dict,
+        prefix="recipients",
+        service_name="recipient",
+        event_type=AuditEventType.BILLING_RECIPIENTS_UPDATED,
+        count_key="recipient_count",
+        track_previous=False,
+    )
+    _sync_recipient_formset(
+        request,
+        billing_id=billing.id,
+        billing_uuid=billing.uuid,
+        form_dict=form_dict,
+        prefix="reply_to",
+        service_name="reply_to",
+        event_type=AuditEventType.BILLING_REPLY_TO_UPDATED,
+        count_key="reply_to_count",
+        track_previous=False,
+    )
 
     flash(request, f"Cobrança '{billing.name}' criada com sucesso!", "success")
     push_event(
@@ -152,8 +187,7 @@ async def billing_detail(request: Request, ctx: BillingContext = Depends(require
 
     if billing.id is None:
         logger.error("billing_missing_id", billing_uuid=billing.uuid)
-        flash(request, "Cobrança inválida.", "danger")
-        return RedirectResponse("/", status_code=302)
+        return flash_redirect(request, "Cobrança inválida.", "/")
 
     bills = bill_service.list_bills(billing.id)
 
@@ -213,15 +247,13 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
 
     if not items:
         logger.warning("billing_edit_rejected", billing_uuid=billing.uuid, reason="no_items")
-        flash(request, "A cobrança precisa de pelo menos um item.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/edit", status_code=302)
+        return flash_redirect(request, "A cobrança precisa de pelo menos um item.", f"/billings/{billing.uuid}/edit")
 
     billing.items = items
     try:
         updated = service.update_billing(billing)
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}/edit", status_code=302)
+        return flash_redirect(request, str(e), f"/billings/{billing.uuid}/edit")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -234,41 +266,33 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
         new_state=serialize_billing(updated),
     )
 
-    # Only touch recipients when the submission actually carries the recipients
-    # formset. Replacing them is destructive (delete-all + re-insert), so a POST
+    # Replacing recipients is destructive (delete-all + re-insert), so a POST
     # that omits the formset entirely (a stale cached form, a non-recipient-aware
     # client) must leave the existing encrypted recipients intact rather than
     # silently wiping them as a side effect of an unrelated field edit.
     form_dict = dict(form)
-    if "recipients-TOTAL_FORMS" in form_dict:
-        previous_recipients = request.state.services.recipient.list_for_billing(updated.id)
-        recipient_rows = parse_formset(form_dict, "recipients")
-        saved_recipients = request.state.services.recipient.replace_for_billing(updated.id, recipient_rows)
-        if recipient_rows or previous_recipients:
-            request.state.services.audit.safe_log_for(
-                request.state.actor,
-                AuditEventType.BILLING_RECIPIENTS_UPDATED,
-                entity_type="billing",
-                entity_id=updated.id,
-                entity_uuid=updated.uuid,
-                previous_state={"recipient_count": len(previous_recipients)},
-                new_state={"recipient_count": len(saved_recipients)},
-            )
-
-    if "reply_to-TOTAL_FORMS" in form_dict:
-        previous_reply_to = request.state.services.reply_to.list_for_billing(updated.id)
-        reply_to_rows = parse_formset(form_dict, "reply_to")
-        saved_reply_to = request.state.services.reply_to.replace_for_billing(updated.id, reply_to_rows)
-        if reply_to_rows or previous_reply_to:
-            request.state.services.audit.safe_log_for(
-                request.state.actor,
-                AuditEventType.BILLING_REPLY_TO_UPDATED,
-                entity_type="billing",
-                entity_id=updated.id,
-                entity_uuid=updated.uuid,
-                previous_state={"reply_to_count": len(previous_reply_to)},
-                new_state={"reply_to_count": len(saved_reply_to)},
-            )
+    _sync_recipient_formset(
+        request,
+        billing_id=updated.id,
+        billing_uuid=updated.uuid,
+        form_dict=form_dict,
+        prefix="recipients",
+        service_name="recipient",
+        event_type=AuditEventType.BILLING_RECIPIENTS_UPDATED,
+        count_key="recipient_count",
+        track_previous=True,
+    )
+    _sync_recipient_formset(
+        request,
+        billing_id=updated.id,
+        billing_uuid=updated.uuid,
+        form_dict=form_dict,
+        prefix="reply_to",
+        service_name="reply_to",
+        event_type=AuditEventType.BILLING_REPLY_TO_UPDATED,
+        count_key="reply_to_count",
+        track_previous=True,
+    )
 
     flash(request, "Cobrança atualizada com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_edited", "billing_uuid_hash": analytics_hash(updated.uuid)})
@@ -283,13 +307,11 @@ async def billing_transfer(request: Request, ctx: BillingContext = Depends(requi
     form = await request.form()
     org_id_raw = str(form.get("organization_id", "")).strip()
     if not org_id_raw:
-        flash(request, "Selecione uma organização.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
+        return flash_redirect(request, "Selecione uma organização.", f"/billings/{billing.uuid}")
     try:
         org_id = int(org_id_raw)
     except ValueError:
-        flash(request, "Organização inválida.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
+        return flash_redirect(request, "Organização inválida.", f"/billings/{billing.uuid}")
 
     org_service = request.state.services.organization
     if org_service.get_member(org_id, ctx.user_id) is None:
@@ -299,15 +321,13 @@ async def billing_transfer(request: Request, ctx: BillingContext = Depends(requi
             org_id=org_id,
             reason="not_member",
         )
-        flash(request, "Você não é membro dessa organização.", "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
+        return flash_redirect(request, "Você não é membro dessa organização.", f"/billings/{billing.uuid}")
 
     previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
         billing_service.transfer_to_organization(billing.id, org_id)
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
+        return flash_redirect(request, str(e), f"/billings/{billing.uuid}")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -340,8 +360,7 @@ async def billing_delete(request: Request, ctx: BillingContext = Depends(require
 
     if billing.id is None:
         logger.error("billing_missing_id", billing_uuid=billing.uuid)
-        flash(request, "Cobrança inválida.", "danger")
-        return RedirectResponse("/", status_code=302)
+        return flash_redirect(request, "Cobrança inválida.", "/")
     previous_state = serialize_billing(billing)
 
     cleanup = request.state.services.storage_cleanup

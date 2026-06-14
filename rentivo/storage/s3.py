@@ -23,6 +23,8 @@ class S3Storage(StorageBackend):
         endpoint_url: str = "",
         presigned_expiry: int = 604800,
     ) -> None:
+        if boto3 is None:
+            raise ImportError("boto3 is required for S3 storage. Install it with: pip install rentivo[s3]")
         self.bucket = bucket
         self.presigned_expiry = presigned_expiry
 
@@ -34,9 +36,6 @@ class S3Storage(StorageBackend):
         }
         if endpoint_url:
             client_kwargs["endpoint_url"] = endpoint_url
-
-        if boto3 is None:
-            raise ImportError("boto3 is required for S3 storage. Install it with: pip install rentivo[s3]")
         self.client = boto3.client(**client_kwargs)
 
     @traced("s3.save")
