@@ -18,15 +18,17 @@ def _backend():
     return b
 
 
-def test_encrypt_decrypt_emit_spans(span_exporter):
+def test_only_batch_decrypt_is_spanned(span_exporter):
+    # Per-field encrypt/decrypt are intentionally not spanned; only the batch
+    # decrypt_many emits one span (with a count) to avoid span explosion.
     b = _backend()
     token = b.encrypt("secret")
     b.decrypt(token)
     b.decrypt_many([token, token])
-    names = [s.name for s in span_exporter.get_finished_spans()]
-    assert "kms.encrypt" in names
-    assert "kms.decrypt" in names
-    assert "kms.decrypt_many" in names
+    finished = span_exporter.get_finished_spans()
+    names = [s.name for s in finished]
+    assert names == ["kms.decrypt_many"]
+    assert finished[0].attributes["count"] == 2
 
 
 def test_kms_disabled_still_works():
