@@ -215,7 +215,15 @@ class BillService:
         notes: str = "",
         due_date: str = "",
         actor=None,
+        render: bool = True,
     ) -> Bill:
+        """Create a bill and render/enqueue its PDF.
+
+        ``render=False`` skips the PDF step so a caller that will attach
+        receipts first can render exactly once afterwards (see the web
+        ``bill_generate`` flow). Defaults to ``True`` — the CLI and any caller
+        without follow-up work get the first-render behaviour unchanged.
+        """
         line_items: list[BillLineItem] = []
         sort = 0
 
@@ -269,7 +277,8 @@ class BillService:
             total_centavos=total,
         )
 
-        self._render_or_enqueue(bill, billing, actor=actor)
+        if render:
+            self._render_or_enqueue(bill, billing, actor=actor)
 
         return bill
 
@@ -380,11 +389,17 @@ class BillService:
         file_bytes: bytes,
         content_type: str,
         actor=None,
+        render: bool = True,
     ) -> tuple[Receipt, list[str]]:
         """Upload a receipt file and attach it to a bill, then regenerate the PDF.
 
         Returns (receipt, failed_receipt_uuids) — failed_receipt_uuids lists any
         existing receipts that could not be merged into the regenerated PDF.
+
+        ``render=False`` attaches the receipt without rendering, so a caller
+        adding several receipts (or creating a bill) can render exactly once at
+        the end instead of once per receipt. Defaults to ``True`` so the
+        standalone receipt-upload endpoint re-renders on every upload.
         """
         if self.receipt_repo is None:
             raise RuntimeError("Receipt repository not configured")
@@ -434,7 +449,10 @@ class BillService:
             filename=filename,
         )
 
-        _, failed_uuids = self._render_or_enqueue(bill, billing, actor=actor)
+        if render:
+            _, failed_uuids = self._render_or_enqueue(bill, billing, actor=actor)
+        else:
+            failed_uuids = []
         return receipt, failed_uuids
 
     @traced("bill.delete_receipt")

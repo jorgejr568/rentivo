@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [3.12.1] - 2026-06-14
+### Fixed
+- Creating a bill with attached receipt(s) enqueued multiple `pdf.render` jobs (one in `generate_bill`, one per receipt) that wrote the same storage key. Under the Temporal driver these ran as concurrent workflows and could leave the stored PDF missing receipts (last-writer-wins race). The create flow now renders exactly once, after all receipts are attached. Adds a `render` toggle (default `True`) to `BillService.generate_bill` / `BillService.add_receipt` / `web.receipts.attach_receipts`, so the standalone receipt-upload endpoint and the CLI are unaffected.
+
 ## [3.12.0] - 2026-06-14
 ### Added
 - Pluggable background-job driver via `RENTIVO_JOB_BACKEND` (`database` default | `temporal`).

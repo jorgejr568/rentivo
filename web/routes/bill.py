@@ -50,6 +50,10 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
 
     extras = parse_extras(dict(form))
 
+    # Defer the PDF render (render=False here, and on attach_receipts below) so
+    # the bill and any receipts are rendered ONCE after everything is attached.
+    # Rendering inside generate_bill AND per receipt enqueued multiple pdf.render
+    # jobs that raced on the same storage key under the Temporal driver.
     bill = bill_service.generate_bill(
         billing=billing,
         reference_month=reference_month,
@@ -58,6 +62,7 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
         notes=notes,
         due_date=due_date,
         actor=request.state.actor,
+        render=False,
     )
 
     audit = request.state.services.audit
@@ -72,9 +77,12 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
 
     # Attach uploaded receipt files (BILL_CREATE is audited first so audit row
     # order — bill.create then receipt.upload — matches the pre-refactor flow).
-    result = await attach_receipts(request, bill, billing, form.getlist("receipt_files"))
+    result = await attach_receipts(request, bill, billing, form.getlist("receipt_files"), render=False)
     if result.attached:
         logger.info("receipts_attached", bill_uuid=bill.uuid, count=result.attached)
+
+    # Single render now that the bill + all receipts exist (one pdf.render job).
+    bill_service.regenerate_pdf(bill, billing, actor=request.state.actor)
 
     flash(request, "Fatura gerada com sucesso!", "success")
     push_event(
