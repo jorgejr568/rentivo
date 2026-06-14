@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import re
+
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
+from rentivo.export.serializers import rows_to_csv_bytes, rows_to_xlsx_bytes
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
@@ -98,6 +101,61 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
         },
     )
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
+
+
+_XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _export_slug(name: str) -> str:
+    """Lowercase ASCII-ish slug for the export filename (PT-BR name → safe slug)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    return slug or "cobranca"
+
+
+@router.get("/export")
+async def bill_export(request: Request, ctx: BillingContext = Depends(require_billing("view"))):
+    billing = ctx.billing
+    bills = request.state.services.bill.list_bills(billing.id) if billing.id else []
+    rows = request.state.services.export.build_rows(billing, bills)
+    headers = request.state.services.export.HEADERS
+
+    fmt = request.query_params.get("format", "csv")
+    if fmt == "xlsx":
+        body = rows_to_xlsx_bytes(headers, rows)
+        media_type = _XLSX_MEDIA_TYPE
+        ext = "xlsx"
+    else:
+        fmt = "csv"
+        body = rows_to_csv_bytes(headers, rows)
+        media_type = "text/csv; charset=utf-8"
+        ext = "csv"
+
+    filename = f"faturas_{_export_slug(billing.name)}.{ext}"
+
+    audit = request.state.services.audit
+    audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.BILLING_EXPORT,
+        entity_type="billing",
+        entity_id=billing.id,
+        entity_uuid=billing.uuid,
+        new_state={"format": fmt, "bill_count": len(bills)},
+    )
+    push_event(
+        request,
+        {
+            "event": "rentivo_data_exported",
+            "billing_uuid_hash": analytics_hash(billing.uuid),
+            "export_format": fmt,
+            "bill_count": len(bills),
+        },
+    )
+
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{bill_uuid}")
