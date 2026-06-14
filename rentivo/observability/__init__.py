@@ -10,6 +10,7 @@ from rentivo.observability.tracing import (
     set_attributes,
     shutdown_tracing,
     span,
+    suppress_tracing,
     traced,
     tracing_enabled,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "set_attributes",
     "shutdown_tracing",
     "span",
+    "suppress_tracing",
     "traced",
     "tracing_enabled",
 ]
