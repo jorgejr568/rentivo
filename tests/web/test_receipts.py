@@ -78,6 +78,7 @@ class TestAttachReceipts:
             file_bytes=b"%PDF-test",
             content_type="application/pdf",
             actor=request.state.actor,
+            render=True,
         )
         request.state.services.audit.safe_log_for.assert_called_once_with(
             request.state.actor,

@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 ### Removed
 - **BREAKING:** The interactive `questionary`/`rich` CLI (`rentivo/cli/`), the `python -m rentivo` entrypoint, the `rentivo` console script, the CLI Docker image (`Dockerfile.cli`) and compose service, and the related `make` targets (`run`, `build-cli`/`up-cli`/`down-cli`/`rentivo`/`shell-cli`, `compose-rentivo`, `compose-shell-cli`). All functionality remains available through the web UI. The `questionary` dependency and the `healthcheck.py` port-2019 server are gone; `make compose-regenerate` now runs in the web container.
 
+## [3.12.1] - 2026-06-14
+### Fixed
+- Creating a bill with attached receipt(s) enqueued multiple `pdf.render` jobs (one in `generate_bill`, one per receipt) that wrote the same storage key. Under the Temporal driver these ran as concurrent workflows and could leave the stored PDF missing receipts (last-writer-wins race). The create flow now renders exactly once, after all receipts are attached. Adds a `render` toggle (default `True`) to `BillService.generate_bill` / `BillService.add_receipt` / `web.receipts.attach_receipts`, so the standalone receipt-upload endpoint and the CLI are unaffected.
+
 ## [3.12.0] - 2026-06-14
 ### Added
 - Pluggable background-job driver via `RENTIVO_JOB_BACKEND` (`database` default | `temporal`).

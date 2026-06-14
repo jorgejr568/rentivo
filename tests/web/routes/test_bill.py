@@ -1096,6 +1096,46 @@ class TestBillGenerateWithReceipts:
         logs = get_audit_logs(test_engine, AuditEventType.RECEIPT_UPLOAD)
         assert len(logs) >= 1
 
+    def test_generate_with_receipt_enqueues_single_pdf_render(
+        self, auth_client, test_engine, tmp_path, csrf_token, monkeypatch
+    ):
+        """A bill created WITH a receipt must enqueue exactly one pdf.render.
+
+        Regression: the create flow rendered once in generate_bill and again in
+        add_receipt, so two pdf.render jobs raced on the same storage key (under
+        the Temporal driver they run concurrently). The single surviving render
+        must run after the receipt is attached so the PDF includes it.
+        """
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
+
+        billing = create_billing_in_db(test_engine)
+
+        sent: list[dict] = []
+
+        def _capture(self, job_type, payload, **kwargs):
+            sent.append({"job_type": job_type, "payload": payload, "kwargs": kwargs})
+            return Job(id=1, ulid="01HXYZ", job_type=job_type, payload=payload, attempts=0, max_attempts=5)
+
+        monkeypatch.setattr(JobService, "enqueue", _capture)
+
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-05",
+                    "due_date": "",
+                    "notes": "",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                files={"receipt_files": ("receipt.pdf", b"%PDF-test-receipt", "application/pdf")},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        pdf_jobs = [s for s in sent if s["job_type"] == "pdf.render"]
+        assert len(pdf_jobs) == 1, f"expected exactly 1 pdf.render, got {len(pdf_jobs)}"
+
     def test_generate_skips_invalid_receipt_type(self, auth_client, test_engine, tmp_path, csrf_token):
         """Cover line 109-110: receipt with disallowed content_type is skipped."""
         billing = create_billing_in_db(test_engine)

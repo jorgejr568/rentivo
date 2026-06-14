@@ -35,13 +35,19 @@ class AttachResult:
     total_bytes: int = 0
 
 
-async def attach_receipts(request: Request, bill: Bill, billing: Billing, uploads: list) -> AttachResult:
+async def attach_receipts(
+    request: Request, bill: Bill, billing: Billing, uploads: list, *, render: bool = True
+) -> AttachResult:
     """Validate uploads, attach the valid ones to ``bill``, audit each one.
 
     Entries that are not ``UploadFile`` instances or have no filename are
     ignored (browsers send empty parts for unselected file inputs). Files with
     a disallowed content type, empty body, or body over ``MAX_RECEIPT_SIZE``
     count as skipped; when any are skipped a PT-BR warning is flashed.
+
+    ``render=False`` attaches without re-rendering the PDF per file, so the
+    caller (the bill-create flow) can render once afterwards. Defaults to
+    ``True`` so the standalone receipt-upload endpoint re-renders each upload.
     """
     bill_service = request.state.services.bill
     audit = request.state.services.audit
@@ -71,6 +77,7 @@ async def attach_receipts(request: Request, bill: Bill, billing: Billing, upload
             file_bytes=file_bytes,
             content_type=content_type,
             actor=request.state.actor,
+            render=render,
         )
         attached += 1
         total_bytes += len(file_bytes)
