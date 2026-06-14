@@ -1,7 +1,7 @@
 <h1 align="center">Rentivo</h1>
 
 <p align="center">
-  Apartment billing management with PDF invoice generation — <strong>CLI + Web UI</strong>
+  Apartment billing management with PDF invoice generation — <strong>Web UI</strong>
 </p>
 
 <p align="center">
@@ -26,7 +26,7 @@ Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with 
 
 - Recurring billing templates with multiple line items; one-click monthly bill generation
 - Professional PDF invoices with PIX QR codes; receipt attachments (PDF/JPG/PNG) merged into the invoice
-- **Web UI** (FastAPI) and **interactive CLI** over the same service layer
+- **Web UI** (FastAPI) over a clean repository + service layer
 - Login with sessions, **TOTP MFA and passkeys (WebAuthn)**, password recovery by email
 - **Organizations** with role-based access (owner / admin / manager / viewer) and email invites
 - Transactional emails (AWS SES, or local `.eml` files in dev)
@@ -51,15 +51,15 @@ make web-createuser       # create a login user
 make web-run              # web UI at http://localhost:8000
 ```
 
-Also available: `make run` (interactive CLI), `make worker` (background job worker), `make seed` (demo data).
+Also available: `make worker` (background job worker), `make seed` (demo data).
 
 ## Quick start (Docker Compose only)
 
-No local Python needed — web, CLI, and worker all run in containers:
+No local Python needed — web and worker run in containers:
 
 ```bash
 cp .env.example .env      # required: compose reads it via env_file
-make compose-dev          # build + start db, web, cli, worker (web with live reload)
+make compose-dev          # build + start db, web, worker (web with live reload)
 make compose-migrate      # run database migrations
 make compose-createuser   # create a login user
 ```
@@ -90,7 +90,6 @@ Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The 
 | Command | Description |
 |---------|-------------|
 | `make install` | Sync dependencies into `.venv` with uv and install git hooks |
-| `make run` | Run the interactive CLI |
 | `make web-run` | Start the web UI (uvicorn --reload, port 8000) |
 | `make worker` | Run the background job worker |
 | `make web-createuser` | Create a web login user |
@@ -119,14 +118,13 @@ Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The 
 
 | Command | Description |
 |---------|-------------|
-| `make compose-up` / `compose-down` | Start / stop the full stack (db, web, cli, worker) |
+| `make compose-up` / `compose-down` | Start / stop the full stack (db, web, worker) |
 | `make compose-dev` / `compose-dev-down` | Same, with source bind mounts + web live reload |
 | `make compose-migrate` | Run migrations in the web container |
 | `make compose-createuser` | Create a login user |
-| `make compose-rentivo` | Run the CLI in its container |
-| `make compose-shell` / `compose-shell-cli` | Bash in the web / CLI container |
+| `make compose-shell` | Bash in the web container |
 | `make compose-logs` / `compose-logs-worker` | Tail logs |
-| `make compose-regenerate` | Re-render PDFs inside the CLI container |
+| `make compose-regenerate` | Re-render PDFs inside the web container |
 
 </details>
 
@@ -136,10 +134,8 @@ Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The 
 | Command | Description |
 |---------|-------------|
 | `make build` / `up` / `down` / `restart` | Web image / container lifecycle |
-| `make build-cli` / `up-cli` / `down-cli` | CLI image / container lifecycle |
 | `make build-worker` / `up-worker` / `down-worker` | Worker image / container lifecycle |
-| `make rentivo` | Run the CLI in the standalone container |
-| `make shell` / `shell-cli` / `shell-worker` | Bash in a container |
+| `make shell` / `shell-worker` | Bash in a container |
 | `make docker-migrate` / `docker-createuser` | Migrations / user creation in the web container |
 | `make logs` / `logs-worker` / `make health` | Logs / health check |
 
@@ -147,7 +143,7 @@ Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The 
 
 ## Architecture
 
-Three deployables built from one codebase: the **web app** (`Dockerfile`), the **CLI** (`Dockerfile.cli`), and the **job worker** (`Dockerfile.worker`).
+Two deployables built from one codebase: the **web app** (`Dockerfile`) and the **job worker** (`Dockerfile.worker`).
 
 ```
 rentivo/
@@ -162,7 +158,6 @@ rentivo/
   jobs/                # Job queue: registry, worker loop, handlers (email, pdf, s3)
   workers/             # Worker entrypoint (python -m rentivo.workers)
   pdf/                 # fpdf2 invoice generator + pypdf receipt merger
-  cli/                 # Interactive menus (questionary + rich)
   scripts/             # seed, regenerate_pdfs, backfill_encryption, redact_audit_logs
 web/
   app.py               # FastAPI app, middleware stack, templates
@@ -200,7 +195,6 @@ alembic/               # Migrations
 | Encryption | AWS KMS (field-level PII) |
 | Caching | cachetools / Redis (optional) |
 | Logging | structlog |
-| CLI | questionary + rich |
 | Containers | Docker + Docker Compose |
 | CI/CD | GitHub Actions |
 | Coverage | Codecov (100% threshold) |

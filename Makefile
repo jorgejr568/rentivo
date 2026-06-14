@@ -1,7 +1,5 @@
 IMAGE_NAME     := rentivo-web
-IMAGE_NAME_CLI := rentivo-cli
 CONTAINER      := rentivo
-CONTAINER_CLI  := rentivo-cli
 
 PYTHON  := $(shell [ -d .venv ] && echo .venv/bin/python || echo python)
 UVICORN := $(shell [ -d .venv ] && echo .venv/bin/uvicorn || echo uvicorn)
@@ -13,10 +11,6 @@ RUFF    := $(shell [ -d .venv ] && echo .venv/bin/ruff || echo ruff)
 install:
 	uv sync --all-extras
 	uv run pre-commit install
-
-.PHONY: run
-run:
-	$(PYTHON) -m rentivo
 
 .PHONY: migrate
 migrate:
@@ -168,31 +162,6 @@ docker-createuser:
 docker-regenerate:
 	docker exec $(CONTAINER) python -m rentivo.scripts.regenerate_pdfs
 
-# --- Docker: CLI (standalone) ---
-
-.PHONY: build-cli
-build-cli:
-	docker build -f Dockerfile.cli -t $(IMAGE_NAME_CLI) .
-
-.PHONY: up-cli
-up-cli:
-	docker run -d --name $(CONTAINER_CLI) \
-		--env-file .env \
-		-p 2019:2019 \
-		$(IMAGE_NAME_CLI)
-
-.PHONY: down-cli
-down-cli:
-	docker rm -f $(CONTAINER_CLI) 2>/dev/null || true
-
-.PHONY: rentivo
-rentivo:
-	docker exec -it $(CONTAINER_CLI) python -m rentivo
-
-.PHONY: shell-cli
-shell-cli:
-	docker exec -it $(CONTAINER_CLI) bash
-
 # --- Docker: Worker (standalone) ---
 
 IMAGE_NAME_WORKER := rentivo-worker
@@ -247,14 +216,6 @@ compose-dev-down:
 compose-shell:
 	docker compose exec rentivo bash
 
-.PHONY: compose-shell-cli
-compose-shell-cli:
-	docker compose exec cli bash
-
-.PHONY: compose-rentivo
-compose-rentivo:
-	docker compose exec cli python -m rentivo
-
 .PHONY: compose-worker
 compose-worker:
 	docker compose up -d --build worker
@@ -289,7 +250,7 @@ compose-createuser:
 
 .PHONY: compose-regenerate
 compose-regenerate:
-	docker compose exec cli python -m rentivo.scripts.regenerate_pdfs
+	docker compose exec rentivo python -m rentivo.scripts.regenerate_pdfs
 
 .PHONY: compose-logs
 compose-logs:

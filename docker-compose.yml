@@ -32,24 +32,6 @@ services:
       db:
         condition: service_healthy
 
-  cli:
-    build:
-      context: .
-      dockerfile: Dockerfile.cli
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      RENTIVO_DB_URL: mysql+pymysql://${MYSQL_USER:-rentivo}:${MYSQL_PASSWORD:-rentivo}@db:3306/${MYSQL_DATABASE:-rentivo}
-    ports:
-      - "2019:2019"
-    stdin_open: true
-    tty: true
-    volumes:
-      - invoices:/app/invoices
-    depends_on:
-      db:
-        condition: service_healthy
-
   worker:
     build:
       context: .
