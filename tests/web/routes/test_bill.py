@@ -830,6 +830,42 @@ class TestReceiptUploadMultiple:
         logs = get_audit_logs(test_engine, AuditEventType.RECEIPT_UPLOAD)
         assert len(logs) >= 2
 
+    def test_upload_multiple_enqueues_single_pdf_render(
+        self, auth_client, test_engine, tmp_path, csrf_token, monkeypatch
+    ):
+        """Uploading N receipts at once must enqueue exactly one pdf.render.
+
+        Regression: attach_receipts rendered per file, so N receipts raced N
+        pdf.render jobs on the same storage key. The batch must render once.
+        """
+        from rentivo.jobs.base import Job
+        from rentivo.services.job_service import JobService
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+
+            sent: list[str] = []
+
+            def _capture(self, job_type, payload, **kwargs):
+                sent.append(job_type)
+                return Job(id=1, ulid="01HXYZ", job_type=job_type, payload=payload, attempts=0, max_attempts=5)
+
+            monkeypatch.setattr(JobService, "enqueue", _capture)
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files=[
+                    ("receipt_files", ("a.pdf", b"%PDF-a", "application/pdf")),
+                    ("receipt_files", ("b.pdf", b"%PDF-b", "application/pdf")),
+                    ("receipt_files", ("c.pdf", b"%PDF-c", "application/pdf")),
+                ],
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        pdf_jobs = [j for j in sent if j == "pdf.render"]
+        assert len(pdf_jobs) == 1, f"expected exactly 1 pdf.render, got {len(pdf_jobs)}"
+
     def test_upload_all_skipped(self, auth_client, test_engine, tmp_path, csrf_token):
         """All files are invalid type — skipped > 0, attached == 0."""
         billing = create_billing_in_db(test_engine)
