@@ -31,8 +31,16 @@ logger = structlog.get_logger(__name__)
 def main() -> None:
     configure_logging()
     configure_tracing()
+    if settings.job_backend == "temporal":
+        from rentivo.jobs.temporal.runner import run_temporal_worker
+
+        logger.info("worker_boot", driver="temporal", task_queue=settings.temporal_task_queue)
+        run_temporal_worker()
+        return
+
     logger.info(
         "worker_boot",
+        driver="database",
         batch_size=settings.job_worker_batch_size,
         idle_sleep_seconds=settings.job_worker_idle_sleep_seconds,
         stuck_after_seconds=settings.job_worker_stuck_after_seconds,
