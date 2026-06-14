@@ -68,6 +68,7 @@ State-changing web flows enqueue rows into the `jobs` table; the worker (`python
 | Job type | Handler | Purpose |
 |----------|---------|---------|
 | `email.send` | `rentivo/jobs/handlers/email.py` | Transactional emails via the configured email backend |
+| `communication.send` | `rentivo/jobs/handlers/communication.py` | Send a tenant communication email with the bill PDF attached |
 | `pdf.render` | `rentivo/jobs/handlers/pdf.py` | Render a bill's invoice PDF in the background |
 | `s3.delete` | `rentivo/jobs/handlers/s3.py` | Deferred deletion of storage objects |
 
