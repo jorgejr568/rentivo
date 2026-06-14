@@ -48,6 +48,7 @@ otel = [
     "opentelemetry-instrumentation-sqlalchemy>=0.48b0",
     "opentelemetry-sdk-extension-aws>=2.0,<4",
 ]
+temporal = ["temporalio>=1.8,<2"]
 dev = [
     "ruff>=0.9,<1",
     "pre-commit>=4.0,<5",
