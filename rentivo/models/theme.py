@@ -23,17 +23,8 @@ class Theme(BaseModel):
     updated_at: datetime | None = None
 
 
-DEFAULT_THEME = Theme(
-    name="Padrão",
-    header_font="Montserrat",
-    text_font="Montserrat",
-    primary="#8A4C94",
-    primary_light="#EEE4F1",
-    secondary="#6EAFAE",
-    secondary_dark="#357B7C",
-    text_color="#282830",
-    text_contrast="#FFFFFF",
-)
+# Every other field uses the Theme defaults declared above; only the name differs.
+DEFAULT_THEME = Theme(name="Padrão")
 
 
 AVAILABLE_FONTS: dict[str, dict[str, str]] = {

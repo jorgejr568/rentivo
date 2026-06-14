@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from rentivo.models.audit_log import AuditEventType
 from web.analytics import analytics_hash, push_event
 from web.deps import render
-from web.flash import flash
+from web.flash import flash, flash_redirect
 
 logger = structlog.get_logger(__name__)
 
@@ -31,8 +31,7 @@ async def invite_accept(request: Request, invite_uuid: str):
         invite = service.accept_invite(invite_uuid, user_id)
     except ValueError as e:
         logger.warning("invite_accept_failed", invite_uuid=invite_uuid, error=str(e))
-        flash(request, str(e), "danger")
-        return RedirectResponse("/invites/", status_code=302)
+        return flash_redirect(request, str(e), "/invites/")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -76,8 +75,7 @@ async def invite_decline(request: Request, invite_uuid: str):
         invite = service.decline_invite(invite_uuid, user_id)
     except ValueError as e:
         logger.warning("invite_decline_failed", invite_uuid=invite_uuid, error=str(e))
-        flash(request, str(e), "danger")
-        return RedirectResponse("/invites/", status_code=302)
+        return flash_redirect(request, str(e), "/invites/")
 
     audit = request.state.services.audit
     audit.safe_log_for(

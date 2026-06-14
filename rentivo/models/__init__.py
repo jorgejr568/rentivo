@@ -9,8 +9,7 @@ def format_brl(centavos: int) -> str:
 def format_brl_input(centavos: int) -> str:
     """Format centavos for form inputs (no R$ prefix): 285000 -> '2.850,00'"""
     sign = "-" if centavos < 0 else ""
-    abs_c = abs(centavos)
-    integer, fraction = divmod(abs_c, 100)
+    integer, fraction = divmod(abs(centavos), 100)
     integer_str = f"{integer:,}".replace(",", ".")
     return f"{sign}{integer_str},{fraction:02d}"
 

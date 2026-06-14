@@ -23,11 +23,13 @@ class UserService:
         logger.info("user_created", email=email)
         return result
 
+    def _reject_if_registered(self, email: str) -> None:
+        if self.repo.get_by_email(email) is not None:
+            raise ValueError(f"Email '{email}' is already registered")
+
     @traced("user.register_user")
     def register_user(self, email: str, password: str) -> User:
-        existing = self.repo.get_by_email(email)
-        if existing is not None:
-            raise ValueError(f"Email '{email}' is already registered")
+        self._reject_if_registered(email)
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         user = User(email=email, password_hash=password_hash)
         result = self.repo.create(user)
@@ -36,9 +38,7 @@ class UserService:
 
     @traced("user.register_google_user")
     def register_google_user(self, email: str) -> User:
-        existing = self.repo.get_by_email(email)
-        if existing is not None:
-            raise ValueError(f"Email '{email}' is already registered")
+        self._reject_if_registered(email)
         user = User(email=email, password_hash="")
         result = self.repo.create(user)
         logger.info("google_user_registered", email=email)

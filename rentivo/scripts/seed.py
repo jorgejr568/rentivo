@@ -284,24 +284,25 @@ def _create_billings(billing_service: BillingService, main_user, org) -> list[Bi
     assert org.id is not None
 
     for i, (name, description, item_defs) in enumerate(BILLING_TEMPLATES):
-        items = []
-        for sort_order, (desc, amount, item_type) in enumerate(item_defs):
-            items.append(
-                BillingItem(
-                    description=desc,
-                    amount=amount,
-                    item_type=item_type,
-                    sort_order=sort_order,
-                )
+        items = [
+            BillingItem(
+                description=desc,
+                amount=amount,
+                item_type=item_type,
+                sort_order=sort_order,
             )
+            for sort_order, (desc, amount, item_type) in enumerate(item_defs)
+        ]
 
         # First 3 billings owned by user, rest by organization
         if i < 3:
             owner_type = "user"
             owner_id = main_user.id
+            owner_label = "user"
         else:
             owner_type = "organization"
             owner_id = org.id
+            owner_label = f"org ({org.name})"
 
         pix_key = fake.cpf() if random.random() > 0.3 else ""
 
@@ -314,7 +315,6 @@ def _create_billings(billing_service: BillingService, main_user, org) -> list[Bi
             owner_id=owner_id,
         )
         billings.append(billing)
-        owner_label = "user" if owner_type == "user" else f"org ({org.name})"
         console.print(f"  [bold]{billing.name}[/bold] — {len(items)} items, owner: {owner_label}")
 
     console.print(f"[green]{len(billings)} billings created.[/green]\n")

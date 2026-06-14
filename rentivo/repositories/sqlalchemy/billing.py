@@ -119,6 +119,13 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 ciphertexts.append(item_row["description"] or "")
         return ciphertexts
 
+    def _build_billings(self, rows: list[RowMapping], items_by_billing: dict[int, list[RowMapping]]) -> list[Billing]:
+        """Decrypt every encrypted cell across ``rows`` (and their items) in one
+        batched call, then assemble the models."""
+        ciphertexts = self._gather_billing_ciphertexts(rows, items_by_billing)
+        plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
+        return [self._build_billing(row, items_by_billing.get(row["id"], []), plaintexts) for row in rows]
+
     def _row_to_billing(self, row: RowMapping) -> Billing:
         items = list(
             self.conn.execute(
@@ -128,9 +135,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             .mappings()
             .fetchall()
         )
-        ciphertexts = self._gather_billing_ciphertexts([row], {row["id"]: items})
-        plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
-        return self._build_billing(row, items, plaintexts)
+        return self._build_billings([row], {row["id"]: items})[0]
 
     @traced("billing_repo.get_by_id")
     def get_by_id(self, billing_id: int) -> Billing | None:
@@ -196,9 +201,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
         )
         all_items = self.conn.execute(stmt, {"billing_ids": billing_ids}).mappings().fetchall()
         items_by_billing = _group_rows_by(all_items, "billing_id")
-        ciphertexts = self._gather_billing_ciphertexts(rows, items_by_billing)
-        plaintexts = iter(self.encryption.decrypt_many(ciphertexts))
-        return [self._build_billing(row, items_by_billing.get(row["id"], []), plaintexts) for row in rows]
+        return self._build_billings(rows, items_by_billing)
 
     @traced("billing_repo.update")
     def update(self, billing: Billing) -> Billing:

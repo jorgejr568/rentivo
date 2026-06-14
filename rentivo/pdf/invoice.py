@@ -25,28 +25,26 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
-def _derive_colors(theme: Theme) -> dict[str, tuple[int, int, int]]:
-    primary = _hex_to_rgb(theme.primary)
-    primary_light = _hex_to_rgb(theme.primary_light)
-    secondary = _hex_to_rgb(theme.secondary)
-    secondary_dark = _hex_to_rgb(theme.secondary_dark)
-    text_color = _hex_to_rgb(theme.text_color)
-    text_contrast = _hex_to_rgb(theme.text_contrast)
+def _shift(rgb: tuple[int, int, int], delta: int) -> tuple[int, int, int]:
+    """Brighten (delta > 0) or darken (delta < 0) an RGB tuple, clamped to 0-255."""
+    r, g, b = (max(0, min(255, c + delta)) for c in rgb)
+    return (r, g, b)
 
-    row_alt = tuple(min(255, c + 6) for c in primary_light)
-    border_color = tuple(max(0, c - 28) for c in primary_light)
-    muted_text = tuple(min(255, c + 68) for c in text_color)
+
+def _derive_colors(theme: Theme) -> dict[str, tuple[int, int, int]]:
+    primary_light = _hex_to_rgb(theme.primary_light)
+    text_color = _hex_to_rgb(theme.text_color)
 
     return {
-        "primary": primary,
+        "primary": _hex_to_rgb(theme.primary),
         "primary_light": primary_light,
-        "secondary": secondary,
-        "secondary_dark": secondary_dark,
+        "secondary": _hex_to_rgb(theme.secondary),
+        "secondary_dark": _hex_to_rgb(theme.secondary_dark),
         "text_color": text_color,
-        "text_contrast": text_contrast,
-        "muted_text": muted_text,
-        "row_alt": row_alt,  # type: ignore[dict-item]
-        "border_color": border_color,  # type: ignore[dict-item]
+        "text_contrast": _hex_to_rgb(theme.text_contrast),
+        "muted_text": _shift(text_color, 68),
+        "row_alt": _shift(primary_light, 6),
+        "border_color": _shift(primary_light, -28),
     }
 
 

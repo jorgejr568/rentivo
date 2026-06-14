@@ -23,7 +23,7 @@ from rentivo.settings import settings
 from web.analytics import push_event
 from web.context import actor_for
 from web.deps import render
-from web.flash import flash
+from web.flash import flash, flash_redirect
 from web.login_flow import complete_login
 
 logger = structlog.get_logger(__name__)
@@ -94,14 +94,12 @@ async def update_pix(request: Request):
     user_service = request.state.services.user
     previous = user_service.get_by_id(user_id)
     if previous is None:
-        flash(request, "Usuário não encontrado.", "danger")
-        return RedirectResponse("/security", status_code=302)
+        return flash_redirect(request, "Usuário não encontrado.", "/security")
 
     try:
         updated = user_service.update_pix(user_id, pix_key, pix_merchant_name, pix_merchant_city)
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse("/security", status_code=302)
+        return flash_redirect(request, str(e), "/security")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -188,8 +186,7 @@ async def totp_setup_page(request: Request):
     mfa_service = request.state.services.mfa
 
     if mfa_service.has_confirmed_totp(user_id):
-        flash(request, "TOTP já está ativado.", "info")
-        return RedirectResponse("/security", status_code=302)
+        return flash_redirect(request, "TOTP já está ativado.", "/security", "info")
 
     totp_record, provisioning_uri, qr_base64 = mfa_service.setup_totp(user_id, email)
 
@@ -214,8 +211,7 @@ async def totp_confirm(request: Request):
     try:
         recovery_codes = mfa_service.confirm_totp(user_id, code)
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse("/security/totp/setup", status_code=302)
+        return flash_redirect(request, str(e), "/security/totp/setup")
 
     # Clear MFA enforcement flag
     request.session.pop("mfa_setup_required", None)
@@ -249,14 +245,16 @@ async def totp_disable(request: Request):
     email = request.session.get("email", "")
     user = user_service.authenticate(email, password)
     if user is None:
-        flash(request, "Senha incorreta.", "danger")
-        return RedirectResponse("/security", status_code=302)
+        return flash_redirect(request, "Senha incorreta.", "/security")
 
     mfa_service = request.state.services.mfa
 
     if mfa_service.user_in_enforcing_org(user_id):
-        flash(request, "Você não pode desativar MFA enquanto pertence a uma organização que exige MFA.", "danger")
-        return RedirectResponse("/security", status_code=302)
+        return flash_redirect(
+            request,
+            "Você não pode desativar MFA enquanto pertence a uma organização que exige MFA.",
+            "/security",
+        )
 
     mfa_service.disable_totp(user_id)
 
@@ -282,8 +280,7 @@ async def regenerate_recovery_codes(request: Request):
     try:
         codes = mfa_service.regenerate_recovery_codes(user_id)
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse("/security", status_code=302)
+        return flash_redirect(request, str(e), "/security")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -401,8 +398,7 @@ async def passkey_delete(request: Request, passkey_uuid: str):
     try:
         mfa_service.delete_passkey(passkey_uuid, user_id)
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse("/security", status_code=302)
+        return flash_redirect(request, str(e), "/security")
 
     audit = request.state.services.audit
     audit.safe_log_for(

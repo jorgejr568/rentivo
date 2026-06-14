@@ -67,29 +67,28 @@ class InviteService:
         logger.info("invite_sent", org_id=org_id, email=email, role=role)
         return created
 
-    @traced("invite.accept_invite")
-    def accept_invite(self, invite_uuid: str, user_id: int) -> Invite:
+    def _load_pending_invite(self, invite_uuid: str, user_id: int, *, action: str) -> Invite:
+        """Fetch a pending invite owned by ``user_id``, raising on any mismatch.
+
+        ``action`` ("accept" / "decline") only shapes the warning log event so
+        the two call sites keep their distinct ``invite_<action>_failed`` names.
+        """
+        failed = f"invite_{action}_failed"
         invite = self.invite_repo.get_by_uuid(invite_uuid)
         if invite is None:
-            logger.warning("invite_accept_failed", invite_uuid=invite_uuid, reason="not_found")
+            logger.warning(failed, invite_uuid=invite_uuid, reason="not_found")
             raise ValueError("Invite not found")
         if invite.invited_user_id != user_id:
-            logger.warning(
-                "invite_accept_failed",
-                invite_uuid=invite_uuid,
-                user_id=user_id,
-                reason="unauthorized",
-            )
-            raise ValueError("Not authorized to accept this invite")
+            logger.warning(failed, invite_uuid=invite_uuid, user_id=user_id, reason="unauthorized")
+            raise ValueError(f"Not authorized to {action} this invite")
         if invite.status != InviteStatus.PENDING.value:
-            logger.warning(
-                "invite_accept_failed",
-                invite_uuid=invite_uuid,
-                status=invite.status,
-                reason="not_pending",
-            )
+            logger.warning(failed, invite_uuid=invite_uuid, status=invite.status, reason="not_pending")
             raise ValueError("Invite is no longer pending")
+        return invite
 
+    @traced("invite.accept_invite")
+    def accept_invite(self, invite_uuid: str, user_id: int) -> Invite:
+        invite = self._load_pending_invite(invite_uuid, user_id, action="accept")
         self.org_repo.add_member(invite.organization_id, invite.invited_user_id, invite.role)
         self.invite_repo.update_status(invite.id, InviteStatus.ACCEPTED.value)
         logger.info("invite_accepted", invite_uuid=invite_uuid, user_id=user_id)
@@ -97,27 +96,7 @@ class InviteService:
 
     @traced("invite.decline_invite")
     def decline_invite(self, invite_uuid: str, user_id: int) -> Invite:
-        invite = self.invite_repo.get_by_uuid(invite_uuid)
-        if invite is None:
-            logger.warning("invite_decline_failed", invite_uuid=invite_uuid, reason="not_found")
-            raise ValueError("Invite not found")
-        if invite.invited_user_id != user_id:
-            logger.warning(
-                "invite_decline_failed",
-                invite_uuid=invite_uuid,
-                user_id=user_id,
-                reason="unauthorized",
-            )
-            raise ValueError("Not authorized to decline this invite")
-        if invite.status != InviteStatus.PENDING.value:
-            logger.warning(
-                "invite_decline_failed",
-                invite_uuid=invite_uuid,
-                status=invite.status,
-                reason="not_pending",
-            )
-            raise ValueError("Invite is no longer pending")
-
+        invite = self._load_pending_invite(invite_uuid, user_id, action="decline")
         self.invite_repo.update_status(invite.id, InviteStatus.DECLINED.value)
         logger.info("invite_declined", invite_uuid=invite_uuid, user_id=user_id)
         return invite

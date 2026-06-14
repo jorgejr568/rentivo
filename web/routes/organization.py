@@ -10,7 +10,7 @@ from rentivo.services.audit_serializers import serialize_invite, serialize_organ
 from rentivo.settings import settings
 from web.analytics import analytics_hash, push_event
 from web.deps import render
-from web.flash import flash
+from web.flash import flash, flash_redirect
 from web.guards import OrgContext, require_org_admin, require_org_member
 
 logger = structlog.get_logger(__name__)
@@ -37,8 +37,7 @@ async def organization_create(request: Request):
     name = str(form.get("name", "")).strip()
     if not name:
         logger.warning("organization_create_rejected", reason="empty_name")
-        flash(request, "Nome é obrigatório.", "danger")
-        return RedirectResponse("/organizations/create", status_code=302)
+        return flash_redirect(request, "Nome é obrigatório.", "/organizations/create")
 
     user_id = request.session.get("user_id")
     service = request.state.services.organization
@@ -115,14 +114,12 @@ async def organization_edit(request: Request, ctx: OrgContext = Depends(require_
     org.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
     if not org.name:
         logger.warning("organization_edit_rejected", org_uuid=org.uuid, reason="empty_name")
-        flash(request, "Nome é obrigatório.", "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}/edit", status_code=302)
+        return flash_redirect(request, "Nome é obrigatório.", f"/organizations/{org.uuid}/edit")
 
     try:
         updated = service.update_organization(org)
     except ValueError as e:
-        flash(request, str(e), "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}/edit", status_code=302)
+        return flash_redirect(request, str(e), f"/organizations/{org.uuid}/edit")
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -175,8 +172,7 @@ async def member_change_role(request: Request, member_user_id: int, ctx: OrgCont
     new_role = str(form.get("role", "")).strip()
     if new_role not in [r.value for r in OrgRole]:
         logger.warning("org_member_role_invalid", org_uuid=org.uuid, member_user_id=member_user_id, role=new_role)
-        flash(request, "Papel inválido.", "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, "Papel inválido.", f"/organizations/{org.uuid}")
 
     target_member = service.get_member(org.id, member_user_id)
     old_role = target_member.role if target_member else ""
@@ -228,8 +224,7 @@ async def member_remove(request: Request, member_user_id: int, ctx: OrgContext =
 
     if member_user_id == ctx.user_id:
         logger.warning("org_member_self_removal_attempted", org_uuid=org.uuid)
-        flash(request, "Você não pode remover a si mesmo.", "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, "Você não pode remover a si mesmo.", f"/organizations/{org.uuid}")
 
     target_member = service.get_member(org.id, member_user_id)
     old_role = target_member.role if target_member else ""
@@ -259,16 +254,14 @@ async def organization_invite(request: Request, ctx: OrgContext = Depends(requir
 
     if not email:
         logger.warning("invite_rejected", org_uuid=org.uuid, reason="empty_email")
-        flash(request, "Informe o e-mail.", "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, "Informe o e-mail.", f"/organizations/{org.uuid}")
 
     invite_service = request.state.services.invite
     try:
         invite = invite_service.send_invite(org.id, email, role, ctx.user_id)
     except ValueError as e:
         logger.warning("invite_failed", org_uuid=org.uuid, email=email, error=str(e))
-        flash(request, str(e), "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, str(e), f"/organizations/{org.uuid}")
 
     audit = request.state.services.audit
     if invite:
@@ -339,32 +332,29 @@ async def organization_transfer_billing(request: Request, ctx: OrgContext = Depe
     org = ctx.org
 
     form = await request.form()
+    org_url = f"/organizations/{org.uuid}"
     billing_uuid = str(form.get("billing_uuid", "")).strip()
     if not billing_uuid:
         logger.warning("transfer_billing_rejected", org_uuid=org.uuid, reason="no_billing_selected")
-        flash(request, "Selecione uma cobrança.", "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, "Selecione uma cobrança.", org_url)
 
     billing_service = request.state.services.billing
     auth_service = request.state.services.authorization
     billing = billing_service.get_billing_by_uuid(billing_uuid)
     if not billing:
         logger.warning("billing_not_found_for_transfer", billing_uuid=billing_uuid, org_uuid=org.uuid)
-        flash(request, "Cobrança não encontrada.", "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, "Cobrança não encontrada.", org_url)
 
     if not auth_service.can_transfer_billing(ctx.user_id, billing):
         logger.warning("transfer_billing_denied", billing_uuid=billing_uuid)
-        flash(request, "Acesso negado.", "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, "Acesso negado.", org_url)
 
     previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
         billing_service.transfer_to_organization(billing.id, org.id)
     except ValueError as e:
         logger.warning("transfer_billing_failed", billing_uuid=billing_uuid, org_uuid=org.uuid, error=str(e))
-        flash(request, str(e), "danger")
-        return RedirectResponse(f"/organizations/{org.uuid}", status_code=302)
+        return flash_redirect(request, str(e), org_url)
 
     audit = request.state.services.audit
     audit.safe_log_for(

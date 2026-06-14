@@ -37,23 +37,15 @@ class CachingEncryptionBackend(EncryptionBackend):
         if not values:
             return []
         set_attributes(count=len(values))
-        # De-duplicate misses while preserving first-seen order, so the inner
-        # backend's decrypt_many is called once per unique ciphertext.
-        unique_in_order: list[str] = []
-        seen: set[str] = set()
-        for v in values:
-            if v not in seen:
-                seen.add(v)
-                unique_in_order.append(v)
+        # De-duplicate while preserving first-seen order, so the inner backend's
+        # decrypt_many is called once per unique ciphertext.
+        unique_in_order = list(dict.fromkeys(values))
 
-        cached = self.cache.get_many(unique_in_order)
-        misses = [v for v in unique_in_order if v not in cached]
+        resolved = self.cache.get_many(unique_in_order)
+        misses = [v for v in unique_in_order if v not in resolved]
         if misses:
-            miss_plaintexts = self.inner.decrypt_many(misses)
-            fresh = dict(zip(misses, miss_plaintexts))
+            fresh = dict(zip(misses, self.inner.decrypt_many(misses)))
             self.cache.set_many(fresh)
-        else:
-            fresh = {}
+            resolved.update(fresh)
 
-        resolved = {**cached, **fresh}
         return [resolved[v] for v in values]
