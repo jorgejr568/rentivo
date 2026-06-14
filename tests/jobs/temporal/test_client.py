@@ -1,6 +1,8 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from rentivo.jobs.temporal.client import AsyncBridge, build_client
 from rentivo.jobs.temporal.config import TemporalConfig
 
@@ -22,6 +24,21 @@ def test_async_bridge_close_is_idempotent():
     bridge = AsyncBridge()
     bridge.close()
     bridge.close()  # no raise
+
+
+def test_run_after_close_raises():
+    bridge = AsyncBridge()
+    bridge.close()
+
+    async def work():
+        return None
+
+    coro = work()
+    try:
+        with pytest.raises(RuntimeError):
+            bridge.run(coro)
+    finally:
+        coro.close()
 
 
 def test_build_client_connects_with_config():

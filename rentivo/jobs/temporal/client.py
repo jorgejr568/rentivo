@@ -16,7 +16,9 @@ class AsyncBridge:
     The Temporal client is async; ``JobService.enqueue`` (and the web request
     path) is sync. One daemon thread owns one event loop for the process; every
     enqueue submits its coroutine via ``run_coroutine_threadsafe`` and blocks for
-    the result. Thread-safe across the request thread pool.
+    the result. ``run()`` is safe to call concurrently from the request thread
+    pool. ``close()`` is not: the owning lifecycle (the Task 9 backend singleton)
+    is expected to call it exactly once, after all ``run()`` callers have drained.
     """
 
     def __init__(self) -> None:
@@ -26,6 +28,8 @@ class AsyncBridge:
         self._closed = False
 
     def run(self, coro: Coroutine[Any, Any, Any]) -> Any:
+        if self._closed:
+            raise RuntimeError("AsyncBridge is closed")
         return asyncio.run_coroutine_threadsafe(coro, self._loop).result()
 
     def close(self) -> None:
