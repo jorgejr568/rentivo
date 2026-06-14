@@ -29,8 +29,12 @@ Optional distributed tracing. Disabled by default; see [`docs/observability.md`]
 |----------|---------|-------------|
 | `RENTIVO_OTEL_ENABLED` | `false` | Master switch. When `false` (or the `otel` extra is not installed) no spans are produced and no network calls are made. |
 | `RENTIVO_OTEL_SERVICE_NAME` | `rentivo` | `service.name` resource attribute shown in the trace UI. |
-| `RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP/HTTP base URL; the SDK appends `/v1/traces`. Use `http://jaeger:4318` on the compose network. |
+| `RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OTLP/HTTP base URL (used when `RENTIVO_OTEL_EXPORTER=otlp`); the SDK appends `/v1/traces`. Use `http://jaeger:4318` on the compose network. |
 | `RENTIVO_OTEL_SAMPLE_RATIO` | `1.0` | Head sampling ratio (0.0–1.0), parent-based. |
+| `RENTIVO_OTEL_EXPORTER` | `otlp` | `otlp` (generic collector/Jaeger) or `cloudwatch` (AWS X-Ray / CloudWatch Transaction Search OTLP endpoint, SigV4-signed). |
+| `RENTIVO_OTEL_AWS_REGION` | *(empty)* | Required when `RENTIVO_OTEL_EXPORTER=cloudwatch`. Endpoint is `https://xray.<region>.amazonaws.com/v1/traces`. |
+| `RENTIVO_OTEL_AWS_ACCESS_KEY_ID` | *(empty)* | Optional creds for the cloudwatch exporter; empty = standard AWS credential chain. |
+| `RENTIVO_OTEL_AWS_SECRET_ACCESS_KEY` | *(empty)* | Optional secret for the cloudwatch exporter. |
 
 ## Logging
 

@@ -120,6 +120,36 @@ load. Dial it back with head sampling:
 RENTIVO_OTEL_SAMPLE_RATIO=0.1   # trace ~10% of requests (parent-based)
 ```
 
+## Sending to AWS CloudWatch (X-Ray Transaction Search)
+
+Set `RENTIVO_OTEL_EXPORTER=cloudwatch` to export straight to AWS — no collector.
+The exporter posts OTLP/protobuf to `https://xray.<region>.amazonaws.com/v1/traces`,
+**SigV4-signed** via `botocore`, with the AWS **X-Ray id generator** (X-Ray needs
+timestamp-prefixed trace ids).
+
+```bash
+RENTIVO_OTEL_ENABLED=true
+RENTIVO_OTEL_EXPORTER=cloudwatch
+RENTIVO_OTEL_AWS_REGION=us-east-1
+RENTIVO_OTEL_SAMPLE_RATIO=0.05          # collector-less defaults to 100%; AWS warns ~20x cost
+# creds: omit to use the standard chain (env / instance profile / ECS task role), or:
+# RENTIVO_OTEL_AWS_ACCESS_KEY_ID=...
+# RENTIVO_OTEL_AWS_SECRET_ACCESS_KEY=...
+```
+
+**AWS-side prerequisites (one-time):**
+
+1. **Enable Transaction Search** in CloudWatch (X-Ray → Transaction Search). Spans
+   land in the `aws/spans` log group and become searchable; without it the
+   endpoint accepts spans but they aren't queryable.
+2. **IAM:** grant the app/worker role the managed `AWSXrayWriteOnlyPolicy`.
+3. Pick a sampling rate — direct send is 100% by default; `RENTIVO_OTEL_SAMPLE_RATIO`
+   is the knob (parent-based head sampling).
+
+View traces in the CloudWatch console under **X-Ray traces / Transaction Search**.
+The `otlp` (Jaeger/collector) and `cloudwatch` modes are mutually exclusive per
+process — flip `RENTIVO_OTEL_EXPORTER`.
+
 ## Privacy
 
 Span **attributes** carry only non-PII: HTTP method/path, job type/ulid/attempts,

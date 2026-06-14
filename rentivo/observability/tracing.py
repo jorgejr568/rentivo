@@ -57,10 +57,68 @@ def _build_provider() -> Any:
         }
     )
     sampler = ParentBased(TraceIdRatioBased(settings.otel_sample_ratio))
+    if settings.otel_exporter == "cloudwatch":
+        return _build_cloudwatch_provider(resource, sampler)
     provider = TracerProvider(resource=resource, sampler=sampler)
     endpoint = settings.otel_exporter_otlp_endpoint.rstrip("/") + "/v1/traces"
     provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
     return provider
+
+
+def _build_cloudwatch_provider(resource: Any, sampler: Any) -> Any:
+    """Provider for the AWS X-Ray / CloudWatch Transaction Search OTLP endpoint.
+
+    Uses the X-Ray id generator (timestamp-prefixed trace ids X-Ray requires) and
+    a SigV4-signing HTTP session (the endpoint rejects unsigned requests).
+    """
+    from opentelemetry.sdk.extension.aws.trace import AwsXRayIdGenerator
+
+    provider = TracerProvider(resource=resource, sampler=sampler, id_generator=AwsXRayIdGenerator())
+    endpoint = f"https://xray.{settings.otel_aws_region}.amazonaws.com/v1/traces"
+    session = _sigv4_session(settings.otel_aws_region)
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, session=session)))
+    return provider
+
+
+def _aws_credentials() -> Any:
+    """Explicit settings creds if present, else the standard AWS credential chain."""
+    import botocore.session
+    from botocore.credentials import Credentials
+
+    if settings.otel_aws_access_key_id and settings.otel_aws_secret_access_key:
+        return Credentials(settings.otel_aws_access_key_id, settings.otel_aws_secret_access_key)
+    return botocore.session.Session().get_credentials()
+
+
+def _make_sigv4_auth(credentials: Any, region: str) -> Any:
+    """A requests auth callable that SigV4-signs each export POST for service `xray`."""
+    import requests
+    from botocore.auth import SigV4Auth
+    from botocore.awsrequest import AWSRequest
+
+    class _SigV4Auth(requests.auth.AuthBase):
+        def __call__(self, request: Any) -> Any:
+            signed = AWSRequest(
+                method=request.method,
+                url=request.url,
+                data=request.body,
+                headers={"Content-Type": request.headers.get("Content-Type", "application/x-protobuf")},
+            )
+            SigV4Auth(credentials, "xray", region).add_auth(signed)
+            for header in ("Authorization", "X-Amz-Date", "X-Amz-Security-Token"):
+                if header in signed.headers:
+                    request.headers[header] = signed.headers[header]
+            return request
+
+    return _SigV4Auth()
+
+
+def _sigv4_session(region: str) -> Any:
+    import requests
+
+    session = requests.Session()
+    session.auth = _make_sigv4_auth(_aws_credentials(), region)
+    return session
 
 
 def configure_tracing(*, provider: Any = None) -> None:
