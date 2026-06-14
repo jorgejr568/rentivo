@@ -1301,6 +1301,7 @@ dependencies = [
     { name = "rich" },
     { name = "structlog" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "watchtower" },
     { name = "webauthn" },
 ]
 
@@ -1379,6 +1380,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9,<1" },
     { name = "structlog", specifier = ">=24.1,<27" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
+    { name = "watchtower", specifier = ">=3.3,<4" },
     { name = "webauthn", specifier = ">=2.0,<3" },
 ]
 provides-extras = ["cache", "s3", "otel", "dev", "test"]
@@ -1657,6 +1659,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/56/fe/cb8ef3d6f929d14158fdaaad9925985b7310abc9384dcd4d82dd0016fb59/watchfiles-1.2.0-cp315-cp315-manylinux_2_31_riscv64.whl", hash = "sha256:cee9d5efd929efdac5f7e58f72b3376f676b64050a91c5b99a7094c5b2317488", size = 465096, upload-time = "2026-05-18T04:31:30.384Z" },
     { url = "https://files.pythonhosted.org/packages/25/91/80908e835e100527a9267147b08c0eee1fa6ab0ffec15edc04d1d44885f7/watchfiles-1.2.0-cp315-cp315-musllinux_1_1_aarch64.whl", hash = "sha256:b718bf356bbc15e559bd8ef41782b573b8ae0e3f177ab244b440568d7ea02cfb", size = 630638, upload-time = "2026-05-18T04:30:49.89Z" },
     { url = "https://files.pythonhosted.org/packages/46/4b/95ab2f256bb4af3cb2eb23b9317bda984ee6e0f11733a5c004a6c95b06e3/watchfiles-1.2.0-cp315-cp315-musllinux_1_1_x86_64.whl", hash = "sha256:922c0e019fe68b3ae392965a766b02a71ba1168c932cebc3733cd52c5fe5b377", size = 657684, upload-time = "2026-05-18T04:31:32.027Z" },
+]
+
+[[package]]
+name = "watchtower"
+version = "3.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "boto3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f6/e1/40e6940383b7202e7c12343ab58c4a0acd5552217d829a4f0ed19cd9cf0b/watchtower-3.4.0.tar.gz", hash = "sha256:7d3c116aff72a73ce8f6fc0addd1d0daa04d3f9d53d87cedca3a5a65a264bf7d", size = 27128, upload-time = "2025-02-25T15:07:05.374Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/ac/7caa56d4cf82e66b5cdc46d7fa6edd0d4bcd407ec33e46f28a8be83cca28/watchtower-3.4.0-py3-none-any.whl", hash = "sha256:5eac65cbf2a7350bb43c3518485230a6135ed7dec7ccb88468828d68ab9fea26", size = 18022, upload-time = "2025-02-25T15:07:02.851Z" },
 ]
 
 [[package]]

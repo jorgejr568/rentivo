@@ -1,6 +1,6 @@
 import pytest
 
-from rentivo.observability import set_attributes, span, traced, tracing
+from rentivo.observability import current_trace_ids, set_attributes, span, traced, tracing
 
 
 def test_disabled_by_default():
@@ -157,3 +157,21 @@ def test_set_attributes_on_current_span(span_exporter):
 
 def test_set_attributes_noop_when_disabled():
     set_attributes(count=5)  # must not raise
+
+
+def test_current_trace_ids_none_when_disabled():
+    assert current_trace_ids() is None
+
+
+def test_current_trace_ids_none_when_no_active_span(span_exporter):
+    # Tracing on, but not inside any span.
+    assert current_trace_ids() is None
+
+
+def test_current_trace_ids_inside_span(span_exporter):
+    with span("op"):
+        ids = current_trace_ids()
+    assert ids is not None
+    trace_id, span_id = ids
+    assert len(trace_id) == 32
+    assert len(span_id) == 16

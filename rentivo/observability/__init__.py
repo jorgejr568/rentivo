@@ -3,6 +3,7 @@ when tracing is disabled or the ``otel`` extra is not installed."""
 
 from rentivo.observability.tracing import (
     configure_tracing,
+    current_trace_ids,
     extract_context,
     get_tracer,
     inject_context,
@@ -17,6 +18,7 @@ from rentivo.observability.tracing import (
 
 __all__ = [
     "configure_tracing",
+    "current_trace_ids",
     "extract_context",
     "get_tracer",
     "inject_context",

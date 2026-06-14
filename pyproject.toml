@@ -32,6 +32,7 @@ dependencies = [
     "webauthn>=2.0,<3",
     "cachetools>=5.3,<8",
     "markdown-it-py>=3.0,<4",
+    "watchtower>=3.3,<4",
 ]
 
 [tool.setuptools.packages.find]
