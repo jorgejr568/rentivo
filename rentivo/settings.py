@@ -116,6 +116,10 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
+    # Banco Central SGS API base URL (override for tests/LocalStack). The
+    # readjustment flow appends /dados/serie/bcdata.sgs.{code}/dados/ultimos/12.
+    bcb_sgs_base_url: str = "https://api.bcb.gov.br"
+
     job_worker_batch_size: int = 10
     job_worker_idle_sleep_seconds: float = 5.0
     job_worker_stuck_after_seconds: int = 600
