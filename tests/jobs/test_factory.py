@@ -16,3 +16,10 @@ def test_factory_rejects_unknown_backend(monkeypatch):
     monkeypatch.setattr("rentivo.jobs.factory.settings.job_backend", "bogus", raising=False)
     with pytest.raises(ValueError, match="Unsupported job backend"):
         get_job_backend(MagicMock())
+
+
+def test_factory_returns_temporal_backend(monkeypatch):
+    monkeypatch.setattr("rentivo.jobs.factory.settings.job_backend", "temporal", raising=False)
+    sentinel = object()
+    monkeypatch.setattr("rentivo.jobs.temporal.backend.build_temporal_backend", lambda: sentinel)
+    assert get_job_backend(MagicMock()) is sentinel
