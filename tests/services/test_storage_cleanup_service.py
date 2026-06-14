@@ -165,3 +165,55 @@ def test_enqueue_billing_delete_cascade_with_no_bills_is_noop():
 
     bill_repo.list_by_billing.assert_called_once_with(99)
     job.enqueue_for.assert_not_called()
+
+
+def test_billing_cascade_enqueues_attachment_keys():
+    from rentivo.models.billing_attachment import BillingAttachment
+
+    job_service = MagicMock()
+    bill_repo = MagicMock()
+    receipt_repo = MagicMock()
+    attachment_repo = MagicMock()
+    bill_repo.list_by_billing.return_value = []
+    attachment_repo.list_by_billing.return_value = [
+        BillingAttachment(
+            id=1,
+            billing_id=3,
+            name="c",
+            filename="c.pdf",
+            storage_key="b-uuid/attachments/x.pdf",
+            content_type="application/pdf",
+            file_size=1,
+        ),
+    ]
+    svc = StorageCleanupService(job_service, bill_repo, receipt_repo, attachment_repo)
+
+    svc.enqueue_billing_delete_cascade(_actor(), Billing(id=3, uuid="b-uuid", name="A", items=[]))
+
+    keys = [c.args[2]["key"] for c in job_service.enqueue_for.call_args_list]
+    assert "b-uuid/attachments/x.pdf" in keys
+
+
+def test_billing_cascade_without_attachment_repo_is_safe():
+    job_service = MagicMock()
+    bill_repo = MagicMock()
+    receipt_repo = MagicMock()
+    bill_repo.list_by_billing.return_value = []
+    svc = StorageCleanupService(job_service, bill_repo, receipt_repo)  # no attachment_repo
+
+    svc.enqueue_billing_delete_cascade(_actor(), Billing(id=3, uuid="b", name="A", items=[]))
+    assert job_service.enqueue_for.call_count == 0
+
+
+def test_enqueue_attachment_delete():
+    from rentivo.models.billing_attachment import BillingAttachment
+
+    job_service = MagicMock()
+    svc = StorageCleanupService(job_service, MagicMock(), MagicMock(), MagicMock())
+    svc.enqueue_attachment_delete(
+        _actor(),
+        BillingAttachment(id=1, billing_id=1, name="n", filename="f.pdf", storage_key="k.pdf"),
+    )
+    job_service.enqueue_for.assert_called_once_with(
+        _actor().__class__(source="web", user_id=7, email="a@x"), "s3.delete", {"key": "k.pdf"}
+    )
