@@ -43,7 +43,7 @@ class TemporalJobBackend(JobBackend):
     ) -> None:
         self._cfg = cfg
         self._bridge = bridge or AsyncBridge()
-        self._connect = connect or (lambda c: build_client(c))
+        self._connect = connect or build_client
         self._client = None
 
     def _ensure_client(self):
