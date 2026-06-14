@@ -3,7 +3,9 @@ FROM python:3.14-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /bin/uv
 
-ARG WORKER_EXTRAS="cache otel"
+# `temporal` is included by default so the worker can run either driver without
+# a rebuild. Override to slim, e.g. --build-arg WORKER_EXTRAS="cache otel".
+ARG WORKER_EXTRAS="cache otel temporal"
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 

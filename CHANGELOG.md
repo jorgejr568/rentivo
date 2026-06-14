@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 - Pluggable background-job driver via `RENTIVO_JOB_BACKEND` (`database` default | `temporal`).
 - Optional Temporal driver (`temporal` extra): per-job-type workflows/activities wrapping the existing handlers, with retry/backoff/dead-letter parity to the database worker. Not required for production.
 - `RENTIVO_TEMPORAL_HOST` / `_NAMESPACE` / `_TASK_QUEUE` / `_TLS` / `_ACTIVITY_START_TO_CLOSE_TIMEOUT_SECONDS` settings.
-- Opt-in `temporal` docker-compose profile (`make temporal-up` / `make temporal-down`) and configurable `WORKER_EXTRAS` build arg on `Dockerfile.worker`.
+- Opt-in `temporal` docker-compose profile (`make temporal-up` / `make temporal-down`).
+- All project images (web, worker, CLI) bundle the `temporal` extra by default so the driver can be switched at runtime without a rebuild; override via the `APP_EXTRAS` / `WORKER_EXTRAS` / `CLI_EXTRAS` build args (e.g. drop `temporal` for a slim database-only image).
 - `docs/jobs.md` documenting both drivers.
 
 ### Changed

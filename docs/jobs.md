@@ -106,13 +106,23 @@ make temporal-down
 
 ## Docker
 
-The `Dockerfile.worker` image installs a configurable set of extras via the `WORKER_EXTRAS` build arg. To build a Temporal-capable worker image:
+All three project images — web (`Dockerfile`), worker (`Dockerfile.worker`), and CLI (`Dockerfile.cli`) — **bundle the `temporal` extra by default**, so you can switch `RENTIVO_JOB_BACKEND` between `database` and `temporal` at runtime without rebuilding. This is just a packaging convenience: the database driver is still the default and Temporal is still optional — the bundled `temporalio` is dormant until you point the app at a Temporal cluster.
+
+Each image exposes a build arg to override the extras (e.g. to slim a database-only deployment by dropping `temporal`):
+
+| Image | Build arg | Default |
+|---|---|---|
+| `Dockerfile` (web) | `APP_EXTRAS` | `cache otel temporal` |
+| `Dockerfile.worker` | `WORKER_EXTRAS` | `cache otel temporal` |
+| `Dockerfile.cli` | `CLI_EXTRAS` | `cache temporal` |
 
 ```bash
-docker build -f Dockerfile.worker --build-arg WORKER_EXTRAS="cache otel temporal" -t rentivo-worker .
-```
+# Default build — Temporal-capable out of the box:
+docker build -f Dockerfile -t rentivo-web .
 
-The default build arg omits `temporal`, keeping the database-only image lean. Temporal is opt-in here too.
+# Slim, database-only build (drop temporal):
+docker build -f Dockerfile --build-arg APP_EXTRAS="cache otel" -t rentivo-web .
+```
 
 ## Known limitations
 

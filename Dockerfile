@@ -3,6 +3,12 @@ FROM python:3.14-slim AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.10 /uv /bin/uv
 
+# Extras baked into the image. `temporal` is included by default so the web app
+# (a job *producer*) can run on either driver without a rebuild — flip
+# RENTIVO_JOB_BACKEND at runtime. Override to slim the image, e.g.
+# --build-arg APP_EXTRAS="cache otel" for a database-only build.
+ARG APP_EXTRAS="cache otel temporal"
+
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
@@ -11,11 +17,11 @@ WORKDIR /app
 # Install dependencies first (no project) so this layer caches across source edits.
 COPY pyproject.toml uv.lock ./
 RUN mkdir -p rentivo web && touch rentivo/__init__.py web/__init__.py
-RUN uv sync --frozen --no-install-project --extra cache --extra otel
+RUN uv sync --frozen --no-install-project $(for e in $APP_EXTRAS; do echo --extra $e; done)
 
 # Install the project itself.
 COPY . .
-RUN uv sync --frozen --extra cache --extra otel
+RUN uv sync --frozen $(for e in $APP_EXTRAS; do echo --extra $e; done)
 
 # --- Runtime stage: slim image with only the venv + source ---
 FROM python:3.14-slim
