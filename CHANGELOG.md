@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 > Note: this changelog was seeded from 187 commits of pre-SemVer history. Some pre-v3.0.0 dates are not strictly monotonic top-to-bottom (rebase artifacts) — entries are ordered by SemVer, not by date.
 
 ## [Unreleased]
+
+## [4.0.0] - 2026-06-14
 ### Removed
 - **BREAKING:** The interactive `questionary`/`rich` CLI (`rentivo/cli/`), the `python -m rentivo` entrypoint, the `rentivo` console script, the CLI Docker image (`Dockerfile.cli`) and compose service, and the related `make` targets (`run`, `build-cli`/`up-cli`/`down-cli`/`rentivo`/`shell-cli`, `compose-rentivo`, `compose-shell-cli`). All functionality remains available through the web UI. The `questionary` dependency and the `healthcheck.py` port-2019 server are gone; `make compose-regenerate` now runs in the web container.
 
