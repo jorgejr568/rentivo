@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import csv
+import io
 from datetime import datetime
 
+import openpyxl
+
+from rentivo.export.serializers import rows_to_csv_bytes, rows_to_xlsx_bytes
 from rentivo.models.bill import Bill, BillStatus
 from rentivo.models.billing import Billing
 from rentivo.services.export_service import ExportService
@@ -69,3 +74,39 @@ class TestBuildRows:
 
     def test_empty_bill_list_yields_no_rows(self):
         assert ExportService().build_rows(_billing(), []) == []
+
+
+HEADERS = ["A", "B"]
+ROWS = [["x", 1.5], ["y", 2.0]]
+
+
+class TestCsvSerializer:
+    def test_csv_round_trips_header_and_rows(self):
+        data = rows_to_csv_bytes(HEADERS, ROWS)
+        assert isinstance(data, bytes)
+        text = data.decode("utf-8-sig")
+        parsed = list(csv.reader(io.StringIO(text)))
+        assert parsed[0] == ["A", "B"]
+        assert parsed[1] == ["x", "1.5"]
+        assert parsed[2] == ["y", "2.0"]
+
+    def test_csv_starts_with_utf8_bom(self):
+        data = rows_to_csv_bytes(HEADERS, ROWS)
+        assert data.startswith(b"\xef\xbb\xbf")
+
+
+class TestXlsxSerializer:
+    def test_xlsx_is_a_valid_workbook_with_header_and_rows(self):
+        data = rows_to_xlsx_bytes(HEADERS, ROWS)
+        assert isinstance(data, bytes)
+        wb = openpyxl.load_workbook(io.BytesIO(data))
+        ws = wb.active
+        assert [c.value for c in ws[1]] == ["A", "B"]
+        assert [c.value for c in ws[2]] == ["x", 1.5]
+        assert ws[2][1].value == 2.0 or ws[3][1].value == 2.0
+
+    def test_xlsx_preserves_numeric_cells(self):
+        data = rows_to_xlsx_bytes(HEADERS, ROWS)
+        wb = openpyxl.load_workbook(io.BytesIO(data))
+        ws = wb.active
+        assert isinstance(ws["B2"].value, float)
