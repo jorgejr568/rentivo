@@ -22,7 +22,8 @@ import sys
 from rich.console import Console
 from rich.table import Table
 
-from rentivo.db import initialize_db
+from rentivo.db import get_connection, initialize_db
+from rentivo.jobs.factory import get_job_backend
 from rentivo.logging import configure_logging
 from rentivo.models import format_brl
 from rentivo.models.bill import Bill
@@ -60,7 +61,7 @@ def main() -> None:
 
     pix_service = PixService(user_repo, org_repo)
     audit_service = AuditService(audit_repo)
-    job_service = JobService(job_repo, audit_service)
+    job_service = JobService(get_job_backend(get_connection()), audit_service)
 
     billings = billing_repo.list_all()
 
