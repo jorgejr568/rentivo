@@ -23,6 +23,10 @@ def get_engine() -> Engine:
             pool_recycle=1800,
         )
         logger.info("db_engine_created")
+        # Emit a span per SQL statement when tracing is on (no-op otherwise).
+        from rentivo.observability import instrument_sqlalchemy
+
+        instrument_sqlalchemy(_engine)
     return _engine
 
 

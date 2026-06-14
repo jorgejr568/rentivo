@@ -11,11 +11,11 @@ WORKDIR /app
 # Install dependencies first (no project) so this layer caches across source edits.
 COPY pyproject.toml uv.lock ./
 RUN mkdir -p rentivo web && touch rentivo/__init__.py web/__init__.py
-RUN uv sync --frozen --no-install-project --extra cache
+RUN uv sync --frozen --no-install-project --extra cache --extra otel
 
 # Install the project itself.
 COPY . .
-RUN uv sync --frozen --extra cache
+RUN uv sync --frozen --extra cache --extra otel
 
 # --- Runtime stage: slim image with only the venv + source ---
 FROM python:3.14-slim

@@ -189,6 +189,22 @@ def set_attributes(**attributes: Any) -> None:
         current.set_attribute(key, value)
 
 
+def instrument_sqlalchemy(engine: Any) -> None:
+    """Emit a span per SQL statement run on ``engine``. No-op when disabled.
+
+    The provider is passed explicitly because ``configure_tracing`` never
+    installs a *global* tracer provider — the auto-instrumentor would otherwise
+    resolve the no-op global provider and produce nothing.
+    """
+    if _tracer is None:
+        return
+    try:
+        from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
+    except ImportError:  # pragma: no cover - sqlalchemy instrumentation extra absent
+        return
+    SQLAlchemyInstrumentor().instrument(engine=engine, tracer_provider=_provider)
+
+
 def inject_context(carrier: dict) -> dict:
     """Write the current trace context into ``carrier`` (W3C ``traceparent``).
     Returns the same dict. No-op when disabled, so the carrier stays empty."""
