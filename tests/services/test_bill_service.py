@@ -4,11 +4,20 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from rentivo.constants import SP_TZ
+from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.receipt import Receipt
+from rentivo.repositories.sqlalchemy import (
+    SQLAlchemyBillingRepository,
+    SQLAlchemyBillRepository,
+    SQLAlchemyOrganizationRepository,
+    SQLAlchemyUserRepository,
+)
 from rentivo.services.bill_service import BillService, _receipt_storage_key, _storage_key
-from rentivo.services.pix_service import PixConfig
+from rentivo.services.pix_service import PixConfig, PixService
+from rentivo.storage.local import LocalStorage
+from tests.web.conftest import test_engine, web_test_db  # noqa: F401
 
 
 class TestStorageKey:
@@ -957,3 +966,41 @@ class TestRenderOrEnqueue:
 
         # The row is marked "pending" (not "succeeded") on the enqueue path.
         self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "pending")
+
+
+class TestRenderRecibo:
+    def _service(self, conn, tmp_path):
+        return BillService(
+            SQLAlchemyBillRepository(conn, Base64Backend()),
+            LocalStorage(str(tmp_path)),
+            pix_service=PixService(
+                SQLAlchemyUserRepository(conn, Base64Backend()),
+                SQLAlchemyOrganizationRepository(conn, Base64Backend()),
+            ),
+        )
+
+    def test_render_recibo_returns_pdf_bytes(self, test_engine, tmp_path):  # noqa: F811
+        with test_engine.connect() as conn:
+            billing_repo = SQLAlchemyBillingRepository(conn, Base64Backend())
+            billing = billing_repo.create(
+                Billing(
+                    name="Apt 101",
+                    pix_key="maria@pix.com",
+                    pix_merchant_name="Maria Recebedora",
+                    pix_merchant_city="Sao Paulo",
+                    owner_type="user",
+                    owner_id=1,
+                    items=[BillingItem(description="Aluguel", amount=285000, item_type=ItemType.FIXED)],
+                )
+            )
+            service = self._service(conn, tmp_path)
+            bill = service.generate_bill(
+                billing=billing,
+                reference_month="2025-03",
+                variable_amounts={},
+                extras=[],
+                notes="",
+                due_date="10/04/2025",
+            )
+            pdf_bytes = service.render_recibo(bill, billing)
+        assert pdf_bytes[:5] == b"%PDF-"

@@ -11,6 +11,7 @@ from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Rece
 from rentivo.observability import traced
 from rentivo.pdf.invoice import InvoicePDF
 from rentivo.pdf.merger import merge_receipts
+from rentivo.pdf.recibo import ReciboPDF
 from rentivo.pix import generate_pix_payload, generate_pix_qrcode_png
 from rentivo.repositories.base import BillRepository, ReceiptRepository
 from rentivo.services.job_service import JobService
@@ -62,6 +63,7 @@ class BillService:
         self.pix_service = pix_service
         self.job_service = job_service
         self.pdf_generator = InvoicePDF()
+        self.recibo_generator = ReciboPDF()
 
     def _resolve_pix(self, billing: Billing) -> PixConfig:
         if self.pix_service is None:
@@ -315,6 +317,36 @@ class BillService:
         logger.info("bill_pdf_regenerate", bill_uuid=bill.uuid)
         self._render_or_enqueue(bill, billing, actor=actor)
         return bill
+
+    @traced("bill.render_recibo")
+    def render_recibo(self, bill: Bill, billing: Billing) -> bytes:
+        """Render a payment-receipt ("Recibo de Pagamento") PDF on the fly.
+
+        Unlike the invoice, the recibo is NOT persisted to storage — the bytes
+        are returned for the caller to stream. The payer is the billing name;
+        the issuer is the billing's PIX merchant name (falling back to the
+        billing name). The payment date is the bill's status-change timestamp
+        (when the bill moved to PAID), formatted DD/MM/YYYY.
+        """
+        theme = None
+        if self.theme_service is not None:
+            theme = self.theme_service.resolve_theme_for_billing(billing)
+
+        issuer_name = billing.pix_merchant_name or billing.name
+        payment_date = ""
+        if bill.status_updated_at is not None:
+            payment_date = bill.status_updated_at.strftime("%d/%m/%Y")
+
+        pdf_bytes = self.recibo_generator.generate(
+            bill,
+            billing_name=billing.name,
+            payer_name=billing.name,
+            issuer_name=issuer_name,
+            payment_date=payment_date,
+            theme=theme,
+        )
+        logger.info("recibo_rendered", bill_uuid=bill.uuid, bytes=len(pdf_bytes))
+        return pdf_bytes
 
     @traced("bill.get_invoice_url")
     def get_invoice_url(self, pdf_path: str | None) -> str:
