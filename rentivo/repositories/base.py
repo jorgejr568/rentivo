@@ -4,6 +4,7 @@ from datetime import datetime
 from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
+from rentivo.models.billing_attachment import BillingAttachment
 from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.invite import Invite
 from rentivo.models.known_device import KnownDevice
@@ -191,6 +192,23 @@ class ReceiptRepository(ABC):
 
     @abstractmethod
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None: ...
+
+
+class BillingAttachmentRepository(ABC):
+    @abstractmethod
+    def create(self, attachment: BillingAttachment) -> BillingAttachment: ...
+
+    @abstractmethod
+    def get_by_id(self, attachment_id: int) -> BillingAttachment | None: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> BillingAttachment | None: ...
+
+    @abstractmethod
+    def list_by_billing(self, billing_id: int) -> list[BillingAttachment]: ...
+
+    @abstractmethod
+    def delete(self, attachment_id: int) -> None: ...
 
 
 class RecipientRepository(ABC):

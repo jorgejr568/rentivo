@@ -12,14 +12,16 @@ def _actor():
     return SimpleNamespace(source="web", user_id=7, email="a@x")
 
 
-def _make_service(*, bills=None, receipts_by_bill=None):
+def _make_service(*, bills=None, receipts_by_bill=None, attachments=None):
     job_service = MagicMock()
     bill_repo = MagicMock()
     receipt_repo = MagicMock()
+    attachment_repo = MagicMock()
     bill_repo.list_by_billing.return_value = bills or []
     receipt_repo.list_by_bill.side_effect = lambda bill_id: (receipts_by_bill or {}).get(bill_id, [])
+    attachment_repo.list_by_billing.return_value = attachments or []
     return (
-        StorageCleanupService(job_service, bill_repo, receipt_repo),
+        StorageCleanupService(job_service, bill_repo, receipt_repo, attachment_repo),
         job_service,
         bill_repo,
         receipt_repo,
@@ -165,3 +167,35 @@ def test_enqueue_billing_delete_cascade_with_no_bills_is_noop():
 
     bill_repo.list_by_billing.assert_called_once_with(99)
     job.enqueue_for.assert_not_called()
+
+
+def test_billing_cascade_enqueues_attachment_keys():
+    from rentivo.models.billing_attachment import BillingAttachment
+
+    attachment = BillingAttachment(
+        id=1,
+        billing_id=3,
+        name="c",
+        filename="c.pdf",
+        storage_key="b-uuid/attachments/x.pdf",
+        content_type="application/pdf",
+        file_size=1,
+    )
+    svc, job, bill_repo, _ = _make_service(bills=[], attachments=[attachment])
+
+    svc.enqueue_billing_delete_cascade(_actor(), Billing(id=3, uuid="b-uuid", name="A", items=[]))
+
+    keys = [c.args[2]["key"] for c in job.enqueue_for.call_args_list]
+    assert keys == ["b-uuid/attachments/x.pdf"]
+
+
+def test_enqueue_attachment_delete():
+    from rentivo.models.billing_attachment import BillingAttachment
+
+    svc, job, _, _ = _make_service()
+    actor = _actor()
+    svc.enqueue_attachment_delete(
+        actor,
+        BillingAttachment(id=1, billing_id=1, name="n", filename="f.pdf", storage_key="k.pdf"),
+    )
+    job.enqueue_for.assert_called_once_with(actor, "s3.delete", {"key": "k.pdf"})

@@ -37,6 +37,10 @@ class AuditEventType:
     RECEIPT_DELETE = "receipt.delete"
     RECEIPT_REORDER = "receipt.reorder"
 
+    # Billing attachment events
+    ATTACHMENT_UPLOAD = "attachment.upload"
+    ATTACHMENT_DELETE = "attachment.delete"
+
     # Organization events
     ORGANIZATION_CREATE = "organization.create"
     ORGANIZATION_UPDATE = "organization.update"

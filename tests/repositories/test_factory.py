@@ -4,6 +4,7 @@ from rentivo.jobs.sqlalchemy import SQLAlchemyJobRepository
 from rentivo.repositories.factory import (
     get_audit_log_repository,
     get_bill_repository,
+    get_billing_attachment_repository,
     get_billing_repository,
     get_communication_repository,
     get_communication_template_repository,
@@ -22,6 +23,7 @@ from rentivo.repositories.factory import (
 )
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
+    SQLAlchemyBillingAttachmentRepository,
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyCommunicationRepository,
@@ -76,6 +78,12 @@ class TestRepoFactory:
         mock_conn.return_value = MagicMock()
         repo = get_receipt_repository()
         assert isinstance(repo, SQLAlchemyReceiptRepository)
+
+    @patch("rentivo.db.get_connection")
+    def test_get_billing_attachment_repository(self, mock_conn):
+        mock_conn.return_value = MagicMock()
+        repo = get_billing_attachment_repository()
+        assert isinstance(repo, SQLAlchemyBillingAttachmentRepository)
 
     @patch("rentivo.db.get_connection")
     def test_get_recipient_repository(self, mock_conn):

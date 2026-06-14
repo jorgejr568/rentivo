@@ -121,6 +121,9 @@ make web-run             # start uvicorn at http://localhost:8000
 | `/billings/<id>/bills/<bill_id>/invoice` | Download/view PDF |
 | `POST /billings/<id>/bills/<bill_id>/receipts/upload` | Upload receipt attachment |
 | `POST /billings/<id>/bills/<bill_id>/receipts/<receipt_id>/delete` | Delete receipt attachment |
+| `POST /billings/<id>/attachments/upload` | Upload a billing document (name + file) |
+| `GET /billings/<id>/attachments/<att_id>` | Download a billing document |
+| `POST /billings/<id>/attachments/<att_id>/delete` | Delete a billing document |
 | `/login` | Login page |
 | `/logout` | Logout |
 | `/change-password` | Change password |
@@ -132,6 +135,16 @@ make web-run             # start uvicorn at http://localhost:8000
 - Receipts are merged into the generated PDF invoice using pypdf (appended after invoice pages, in order of addition)
 - Model: `rentivo/models/receipt.py`, Repository: `ReceiptRepository`, Service: integrated into `BillService`
 - Upload/delete via separate forms on the bill edit page
+
+## Billing Attachments
+
+- Billings can carry named documents (e.g. a lease contract) — separate from bill-level receipts and **never merged into a bill PDF**.
+- Model: `rentivo/models/billing_attachment.py` (`BillingAttachment`, with a user-given `name` plus the original `filename`; both KMS-encrypted). Allowed types PDF/JPEG/PNG, max 10 MB. A blank `name` defaults to the filename.
+- Storage key pattern: `{billing_uuid}/attachments/{attachment_uuid}{ext}`.
+- Repository: `BillingAttachmentRepository` / `SQLAlchemyBillingAttachmentRepository`. Service: `BillingAttachmentService` (repo + storage). Wired in `web/services_container.py` as `billing_attachment`.
+- Routes on the billing router (`web/routes/billing.py`): `POST /billings/<id>/attachments/upload` (single file + name), `GET /billings/<id>/attachments/<att_id>` (download), `POST /billings/<id>/attachments/<att_id>/delete`. Upload/delete need `edit`; download needs `view`.
+- UI: upload + list + delete panel on the billing edit page; read-only download list on the billing detail page.
+- Audit events: `attachment.upload`, `attachment.delete` (serializer omits `storage_key`). GTM: `rentivo_billing_attachment_uploaded/deleted`. Deleting a billing cascades attachment-file cleanup via `StorageCleanupService.enqueue_billing_delete_cascade` (which requires an `attachment_repo`).
 
 ## Audit Logging
 
@@ -168,7 +181,7 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 - **Suffering** — `form_submit_error`, `form_field_error`, `form_abandon`, `rage_click`, `js_error`, `promise_rejection`.
 - **Issues** — `network_error`, `file_upload_error`.
 - **Waiting** — `web_vital` (LCP/INP/CLS/TTFB/FCP), `slow_page`, `interaction_slow`, `layout_shift_bad`, `long_task`, `slow_form_submit`.
-- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
+- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_billing_attachment_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
 
 ### Privacy
 

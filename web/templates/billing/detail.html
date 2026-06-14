@@ -157,6 +157,37 @@
     {% endif %}
 </div>
 
+<!-- Documents -->
+<div class="panel">
+    <div class="panel__head"><h3>Documentos</h3><span class="panel__title-eyebrow">{{ attachments | length }} anexo{{ "" if attachments | length == 1 else "s" }}</span></div>
+    {% if attachments %}
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr><th>Nome</th><th>Arquivo</th><th class="num">Tamanho</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for attachment in attachments %}
+                <tr>
+                    <td class="table__primary">{{ attachment.name }}</td>
+                    <td class="muted">{{ attachment.filename }}</td>
+                    <td class="num">{{ "%.1f" | format(attachment.file_size / 1024) }} KB</td>
+                    <td class="num"><a href="/billings/{{ billing.uuid }}/attachments/{{ attachment.uuid }}" target="_blank" class="btn btn--sm">Baixar</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state" style="padding: 2rem;">
+        <p>Nenhum documento anexado.</p>
+        {% if role in ("owner", "admin") %}
+        <a href="/billings/{{ billing.uuid }}/edit" class="btn btn--sm">Anexar documento</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
 {% if user_orgs %}
 <div class="panel">
     <div class="panel__head"><h3>Transferir para organização</h3></div>
