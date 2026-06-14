@@ -24,7 +24,6 @@ make web-run              # http://localhost:8000 with auto-reload
 Other entry points:
 
 ```bash
-make run                  # interactive CLI
 make worker               # background job worker (emails, PDF rendering)
 ```
 
@@ -33,7 +32,7 @@ make worker               # background job worker (emails, PDF rendering)
 Everything runs in containers. `docker-compose.yml` pins the containers' DB host to the internal `db` service, so the `RENTIVO_DB_URL` in your `.env` (which points at `localhost` for Path A) does not need to change.
 
 ```bash
-make compose-dev          # build + start db, web, cli, worker — web has live reload
+make compose-dev          # build + start db, web, worker — web has live reload
 make compose-migrate      # run migrations inside the web container
 make compose-createuser   # create a login user
 open http://localhost:8000
@@ -42,7 +41,6 @@ open http://localhost:8000
 `make compose-dev` layers `docker-compose.dev.yml` on top of the base file: it bind-mounts `./rentivo` and `./web` into the containers and runs uvicorn with `--reload`, so web/code changes apply without rebuilding. Two caveats:
 
 - The **worker** has no auto-reload — after editing job handlers run `docker compose restart worker`.
-- The **CLI** runs interactively: `make compose-rentivo`.
 
 Plain `make compose-up` starts the same stack without bind mounts (code baked into images — for *running*, not developing).
 

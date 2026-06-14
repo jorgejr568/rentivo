@@ -12,7 +12,7 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 
 ## Code conventions
 
-- Code, comments, and identifiers in **English**; all customer-facing text (CLI prompts, web templates, PDFs, emails) in **PT-BR**.
+- Code, comments, and identifiers in **English**; all customer-facing text (web templates, PDFs, emails) in **PT-BR**.
 - Money is stored as **centavos (int)** — never floats. Format with `rentivo.models.format_brl()`.
 - Currency is **BRL (R$)**.
 - Keep the repository / storage / encryption / cache abstractions intact — backends must stay swappable.

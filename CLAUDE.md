@@ -1,15 +1,12 @@
 # Rentivo
 
-Apartment billing management with PDF invoice generation — CLI + FastAPI web UI.
+Apartment billing management with PDF invoice generation — FastAPI web UI.
 
 ## Running
 
 ```bash
 # Start MariaDB (required)
 docker compose up -d db
-
-# CLI (local)
-make run
 
 # Web (local)
 make migrate             # first time only
@@ -30,9 +27,8 @@ make docker-regenerate
 
 ## Docker
 
-Three Dockerfiles:
+Two Dockerfiles:
 - **`Dockerfile`** — Web app (FastAPI + uvicorn on port 8000)
-- **`Dockerfile.cli`** — CLI container (health check on port 2019)
 - **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `s3.delete`)
 
 ```bash
@@ -44,17 +40,9 @@ make restart     # down + up
 make logs        # tail logs
 make health      # curl http://localhost:8000
 
-# CLI container
-make build-cli   # build CLI image
-make up-cli      # start CLI container (port 2019)
-make down-cli    # stop and remove
-make rentivo    # run CLI interactively
-make shell-cli   # bash session
-
-# Docker Compose (full stack: db, web, cli, worker)
+# Docker Compose (full stack: db, web, worker)
 make compose-up            # start the full stack
 make compose-down          # stop all
-make compose-rentivo      # run CLI in cli container
 make compose-createuser    # create web user
 make compose-dev           # dev stack with bind mounts + web live reload
 make worker                # run the job worker locally
@@ -71,8 +59,6 @@ make build-worker / up-worker / down-worker / logs-worker / shell-worker
 - **Storage**: `rentivo/storage/` — Same pattern. `LocalStorage` writes to `./invoices/`, `S3Storage` uploads to a private bucket with presigned URLs. Configurable via `RENTIVO_STORAGE_BACKEND`
 - **PDF**: `rentivo/pdf/invoice.py` — fpdf2-based invoice with navy/green color palette; `rentivo/pdf/merger.py` — merges receipt attachments into invoices using pypdf
 - **Services**: `rentivo/services/` — Business logic layer wiring repos + storage + PDF
-- **CLI**: `rentivo/cli/` — Interactive menus using `questionary` + `rich`
-- **Health check**: `healthcheck.py` — HTTP server on port 2019, returns 200 for all requests
 
 ## Documentation Map
 
@@ -91,14 +77,14 @@ make build-worker / up-worker / down-worker / logs-worker / shell-worker
 
 ## Conventions
 
-- All customer-facing text (CLI prompts, PDF content) in **PT-BR**
+- All customer-facing text (web templates, PDF content) in **PT-BR**
 - Currency in **BRL** (R$), formatted via `rentivo.models.format_brl()`
 - Money stored as **centavos (int)** in the database — never use floats for money
 - Code (variable names, comments) in English
 
 ## FastAPI Web App
 
-The `web/` directory contains a FastAPI web application that provides a browser-based UI for the same functionality as the CLI.
+The `web/` directory contains a FastAPI web application that provides a browser-based UI for managing billings, bills, and invoices.
 
 ### Running
 
@@ -149,13 +135,13 @@ make web-run             # start uvicorn at http://localhost:8000
 
 ## Audit Logging
 
-- **AuditService** logs all state-changing operations across web and CLI
+- **AuditService** logs all state-changing operations across the web app and maintenance scripts
 - Event types defined in `rentivo/models/audit_log.py` (`AuditEventType`)
 - Serializers in `rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`) and partial-mask redact PII via `rentivo/pii_redaction.py:redact()`. PIX fields (`pix_key`, `pix_merchant_name`, `pix_merchant_city`) and `to_email` in `email.send` job payloads are stored under their original field names with masked values: PIX fields show first 3 chars + `...` + last 2 (e.g. `123...01`); emails show first 2 chars of local + `...@` + full domain (e.g. `jo...@gmail.com`). Short values collapse to `***`. The mask is one-way, key-less, and deterministic — no `secret_key` dependency, no per-environment correlation key. Reviewers can recognize "same value across rows" via equal masked strings without seeing the plaintext.
 - Backfill: `make redact-audit-logs-dry` previews; `make redact-audit-logs` rewrites legacy `audit_logs` rows whose JSON still contains plaintext PII. Idempotent (the redaction function is its own fixed point on typical inputs). Run once after deploying the redacted serializers.
 - `safe_log()` swallows exceptions — audit failures never block business operations
 - Web routes: actor context comes from session (`user_id`, `username`)
-- CLI: uses `source="cli"`, `actor_id=None`, `actor_username=""`
+- Maintenance scripts (e.g. `regenerate_pdfs`): use `source="cli"`, `actor_id=None`, `actor_username=""`
 - States stored as JSON TEXT in `previous_state` / `new_state` columns
 
 ## Analytics (Google Tag Manager)
