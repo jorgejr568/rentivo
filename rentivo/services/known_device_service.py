@@ -6,6 +6,7 @@ from datetime import datetime
 import structlog
 
 from rentivo.models.known_device import KnownDevice
+from rentivo.observability import traced
 from rentivo.repositories.base import KnownDeviceRepository
 from rentivo.settings import settings
 
@@ -33,6 +34,7 @@ class KnownDeviceService:
         joined = f"{user_agent.strip()}|{subnet}"
         return hashlib.sha256(joined.encode()).hexdigest()
 
+    @traced("known_device.register_login")
     def register_login(self, user_id: int, user_agent: str, remote_ip: str) -> bool:
         """Record this login. Returns True if the device was already known, False otherwise.
 
@@ -50,6 +52,7 @@ class KnownDeviceService:
         )
         return existing is not None
 
+    @traced("known_device.notify_if_new")
     def notify_if_new(
         self,
         *,

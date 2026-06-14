@@ -9,6 +9,7 @@ from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.recipient import Recipient
+from rentivo.observability import traced
 from rentivo.repositories.base import CommunicationRepository, CommunicationTemplateRepository
 from rentivo.services.job_service import JobService
 
@@ -28,6 +29,7 @@ class CommunicationService:
 
     # ---- templates ----
 
+    @traced("communication.resolve_template")
     def resolve_template(self, billing: Billing, comm_type: str) -> CommunicationTemplate:
         """Most-specific-wins: billing -> billing owner (user/org) -> system default."""
         billing_tmpl = self.template_repo.get("billing", billing.id, comm_type)
@@ -38,6 +40,7 @@ class CommunicationService:
             return owner_tmpl
         return system_default_template(comm_type)
 
+    @traced("communication.save_template")
     def save_template(
         self, owner_type: str, owner_id: int, comm_type: str, subject: str, body_markdown: str
     ) -> CommunicationTemplate:
@@ -63,6 +66,7 @@ class CommunicationService:
             "total": format_brl(bill.total_amount),
         }
 
+    @traced("communication.send")
     def send(
         self,
         bill: Bill,
@@ -104,5 +108,6 @@ class CommunicationService:
         logger.info("communications_enqueued", bill_id=bill.id, count=len(results))
         return results
 
+    @traced("communication.list_for_bill")
     def list_for_bill(self, bill_id: int) -> list[Communication]:
         return self.communication_repo.list_by_bill(bill_id)

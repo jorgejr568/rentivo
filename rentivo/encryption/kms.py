@@ -11,6 +11,7 @@ except ImportError:  # pragma: no cover
     boto3 = None  # type: ignore[assignment]
 
 from rentivo.encryption.base import EncryptionBackend
+from rentivo.observability import traced
 
 logger = structlog.get_logger(__name__)
 
@@ -56,6 +57,7 @@ class KMSBackend(EncryptionBackend):
             client_kwargs["endpoint_url"] = endpoint_url
         self.client = boto3.client(**client_kwargs)
 
+    @traced("kms.encrypt")
     def encrypt(self, plaintext: str) -> str:
         if plaintext == "":
             return ""
@@ -70,6 +72,7 @@ class KMSBackend(EncryptionBackend):
         logger.debug("encryption_encrypted", backend="kms", bytes=len(blob))
         return _PREFIX + encoded
 
+    @traced("kms.decrypt")
     def decrypt(self, value: str) -> str:
         if value == "":
             return ""
@@ -90,6 +93,7 @@ class KMSBackend(EncryptionBackend):
     def is_encrypted(self, value: str) -> bool:
         return value.startswith(_PREFIX)
 
+    @traced("kms.decrypt_many")
     def decrypt_many(self, values: list[str]) -> list[str]:
         if not values:
             return []

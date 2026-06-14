@@ -10,6 +10,7 @@ import qrcode
 import structlog
 
 from rentivo.models.mfa import UserPasskey, UserTOTP
+from rentivo.observability import traced
 from rentivo.repositories.base import (
     MFATOTPRepository,
     OrganizationRepository,
@@ -38,13 +39,16 @@ class MFAService:
 
     # --- TOTP ---
 
+    @traced("mfa.get_totp")
     def get_totp(self, user_id: int) -> UserTOTP | None:
         return self.totp_repo.get_by_user_id(user_id)
 
+    @traced("mfa.has_confirmed_totp")
     def has_confirmed_totp(self, user_id: int) -> bool:
         totp = self.totp_repo.get_by_user_id(user_id)
         return totp is not None and totp.confirmed
 
+    @traced("mfa.setup_totp")
     def setup_totp(self, user_id: int, username: str) -> tuple[UserTOTP, str, str]:
         """Begin TOTP setup. Returns (totp_record, provisioning_uri, qr_code_base64).
 
@@ -72,6 +76,7 @@ class MFAService:
         logger.info("totp_setup_initiated", user_id=user_id)
         return created, provisioning_uri, qr_base64
 
+    @traced("mfa.confirm_totp")
     def confirm_totp(self, user_id: int, code: str) -> list[str]:
         """Confirm TOTP with a valid code. Returns list of plaintext recovery codes."""
         totp_record = self.totp_repo.get_by_user_id(user_id)
@@ -90,6 +95,7 @@ class MFAService:
         logger.info("totp_confirmed", user_id=user_id)
         return recovery_codes
 
+    @traced("mfa.verify_totp")
     def verify_totp(self, user_id: int, code: str) -> bool:
         """Verify a TOTP code during login."""
         totp_record = self.totp_repo.get_by_user_id(user_id)
@@ -98,6 +104,7 @@ class MFAService:
         totp = pyotp.TOTP(totp_record.secret)
         return totp.verify(code, valid_window=1)
 
+    @traced("mfa.disable_totp")
     def disable_totp(self, user_id: int) -> None:
         """Disable TOTP and delete all recovery codes."""
         self.totp_repo.delete_by_user_id(user_id)
@@ -119,6 +126,7 @@ class MFAService:
         logger.info("recovery_codes_generated", user_id=user_id, count=len(codes))
         return codes
 
+    @traced("mfa.regenerate_recovery_codes")
     def regenerate_recovery_codes(self, user_id: int) -> list[str]:
         """Regenerate recovery codes. Requires confirmed TOTP."""
         totp = self.totp_repo.get_by_user_id(user_id)
@@ -126,6 +134,7 @@ class MFAService:
             raise ValueError("TOTP não está ativado")
         return self._generate_recovery_codes(user_id)
 
+    @traced("mfa.verify_recovery_code")
     def verify_recovery_code(self, user_id: int, code: str) -> bool:
         """Verify and consume a recovery code."""
         unused = self.recovery_repo.list_unused_by_user(user_id)
@@ -136,26 +145,32 @@ class MFAService:
                 return True
         return False
 
+    @traced("mfa.count_unused_recovery_codes")
     def count_unused_recovery_codes(self, user_id: int) -> int:
         return len(self.recovery_repo.list_unused_by_user(user_id))
 
     # --- Passkeys ---
 
+    @traced("mfa.list_passkeys")
     def list_passkeys(self, user_id: int) -> list[UserPasskey]:
         return self.passkey_repo.list_by_user(user_id)
 
+    @traced("mfa.register_passkey")
     def register_passkey(self, passkey: UserPasskey) -> UserPasskey:
         created = self.passkey_repo.create(passkey)
         logger.info("passkey_registered", user_id=passkey.user_id, name=passkey.name)
         return created
 
+    @traced("mfa.get_passkey_by_credential_id")
     def get_passkey_by_credential_id(self, credential_id: str) -> UserPasskey | None:
         return self.passkey_repo.get_by_credential_id(credential_id)
 
+    @traced("mfa.update_passkey_sign_count")
     def update_passkey_sign_count(self, passkey_id: int, sign_count: int) -> None:
         self.passkey_repo.update_sign_count(passkey_id, sign_count)
         self.passkey_repo.update_last_used(passkey_id)
 
+    @traced("mfa.delete_passkey")
     def delete_passkey(self, passkey_uuid: str, user_id: int) -> None:
         passkey = self.passkey_repo.get_by_uuid(passkey_uuid)
         if passkey is None or passkey.user_id != user_id:
@@ -165,6 +180,7 @@ class MFAService:
 
     # --- MFA Status ---
 
+    @traced("mfa.has_any_mfa")
     def has_any_mfa(self, user_id: int) -> bool:
         """Check if user has any confirmed MFA method."""
         if self.has_confirmed_totp(user_id):
@@ -172,12 +188,14 @@ class MFAService:
         passkeys = self.passkey_repo.list_by_user(user_id)
         return len(passkeys) > 0
 
+    @traced("mfa.user_requires_mfa_setup")
     def user_requires_mfa_setup(self, user_id: int) -> bool:
         """Check if user belongs to an enforcing org but has no MFA."""
         if self.has_any_mfa(user_id):
             return False
         return self.org_repo.user_has_enforcing_org(user_id)
 
+    @traced("mfa.user_in_enforcing_org")
     def user_in_enforcing_org(self, user_id: int) -> bool:
         """Check if user belongs to any MFA-enforcing org (regardless of MFA status)."""
         return self.org_repo.user_has_enforcing_org(user_id)

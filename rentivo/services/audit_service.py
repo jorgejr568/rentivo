@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.audit_log import AuditLog
+from rentivo.observability import traced
 from rentivo.pii_redaction import PIIKind, redact
 from rentivo.repositories.base import AuditLogRepository
 
@@ -13,6 +14,7 @@ class AuditService:
     def __init__(self, repo: AuditLogRepository) -> None:
         self.repo = repo
 
+    @traced("audit.log")
     def log(
         self,
         event_type: str,
@@ -57,6 +59,7 @@ class AuditService:
         )
         return result
 
+    @traced("audit.safe_log")
     def safe_log(self, *args, **kwargs) -> AuditLog | None:
         """Create an audit log entry, swallowing any exceptions."""
         try:
@@ -65,6 +68,7 @@ class AuditService:
             logger.exception("audit_log_failed")
             return None
 
+    @traced("audit.safe_log_for")
     def safe_log_for(self, actor, event_type, **kwargs) -> AuditLog | None:
         """Convenience wrapper that unpacks an actor object (typically a
         ``web.context.WebActor``) into ``safe_log`` kwargs. Duck-typed: any

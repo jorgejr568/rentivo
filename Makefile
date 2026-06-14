@@ -294,3 +294,13 @@ compose-regenerate:
 .PHONY: compose-logs
 compose-logs:
 	docker compose logs -f
+
+.PHONY: jaeger-up
+jaeger-up:
+	docker compose --profile observability up -d jaeger
+	@echo "Jaeger UI: http://localhost:16686"
+	@echo "Set RENTIVO_OTEL_ENABLED=true and RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 (compose) to send traces."
+
+.PHONY: jaeger-down
+jaeger-down:
+	docker compose --profile observability stop jaeger

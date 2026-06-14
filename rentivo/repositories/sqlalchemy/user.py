@@ -5,6 +5,7 @@ from sqlalchemy.engine import RowMapping
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.user import User
+from rentivo.observability import traced
 from rentivo.repositories.base import UserRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
@@ -25,6 +26,7 @@ class SQLAlchemyUserRepository(UserRepository):
             created_at=row["created_at"],
         )
 
+    @traced("user_repo.create")
     def create(self, user: User) -> User:
         from rentivo.blind_index import compute_email_hash
 
@@ -46,10 +48,12 @@ class SQLAlchemyUserRepository(UserRepository):
             raise RuntimeError("Failed to retrieve user after create")
         return result
 
+    @traced("user_repo.get_by_id")
     def get_by_id(self, user_id: int) -> User | None:
         row = self.conn.execute(text("SELECT * FROM users WHERE id = :id"), {"id": user_id}).mappings().fetchone()
         return None if row is None else self._row_to_user(row)
 
+    @traced("user_repo.get_by_email")
     def get_by_email(self, email: str) -> User | None:
         """Look up by deterministic blind index. Falls back to plaintext for legacy rows."""
         from rentivo.blind_index import compute_email_hash
@@ -82,10 +86,12 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         return None if row is None else self._row_to_user(row)
 
+    @traced("user_repo.list_all")
     def list_all(self) -> list[User]:
         rows = self.conn.execute(text("SELECT * FROM users ORDER BY created_at DESC")).mappings().fetchall()
         return [self._row_to_user(row) for row in rows]
 
+    @traced("user_repo.update_password_hash")
     def update_password_hash(self, user_id: int, password_hash: str) -> None:
         self.conn.execute(
             text("UPDATE users SET password_hash = :password_hash WHERE id = :id"),
@@ -93,6 +99,7 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         self.conn.commit()
 
+    @traced("user_repo.update_pix")
     def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None:
         self.conn.execute(
             text(

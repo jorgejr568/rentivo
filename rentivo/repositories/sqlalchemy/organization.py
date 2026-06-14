@@ -6,6 +6,7 @@ from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.organization import Organization, OrganizationMember
+from rentivo.observability import traced
 from rentivo.repositories.base import OrganizationRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
@@ -40,6 +41,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             created_at=row["created_at"],
         )
 
+    @traced("organization_repo.create")
     def create(self, org: Organization) -> Organization:
         org_uuid = str(ULID())
         now = _now()
@@ -57,6 +59,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             raise RuntimeError(f"Failed to retrieve org after create (id={org_id})")
         return created
 
+    @traced("organization_repo.get_by_id")
     def get_by_id(self, org_id: int) -> Organization | None:
         row = (
             self.conn.execute(
@@ -70,6 +73,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             return None
         return self._row_to_org(row)
 
+    @traced("organization_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Organization | None:
         row = (
             self.conn.execute(
@@ -83,6 +87,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             return None
         return self._row_to_org(row)
 
+    @traced("organization_repo.list_by_user")
     def list_by_user(self, user_id: int) -> list[Organization]:
         rows = (
             self.conn.execute(
@@ -99,6 +104,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         )
         return [self._row_to_org(row) for row in rows]
 
+    @traced("organization_repo.update")
     def update(self, org: Organization) -> Organization:
         self.conn.execute(
             text(
@@ -124,6 +130,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             raise RuntimeError(f"Failed to retrieve org after update (id={org.id})")
         return result
 
+    @traced("organization_repo.delete")
     def delete(self, org_id: int) -> None:
         self.conn.execute(
             text("UPDATE organizations SET deleted_at = :deleted_at WHERE id = :id"),
@@ -131,6 +138,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         )
         self.conn.commit()
 
+    @traced("organization_repo.add_member")
     def add_member(self, org_id: int, user_id: int, role: str) -> OrganizationMember:
         now = _now()
         self.conn.execute(
@@ -146,6 +154,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             raise RuntimeError("Failed to retrieve member after create")
         return member
 
+    @traced("organization_repo.remove_member")
     def remove_member(self, org_id: int, user_id: int) -> None:
         self.conn.execute(
             text("DELETE FROM organization_members WHERE organization_id = :org_id AND user_id = :user_id"),
@@ -153,6 +162,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         )
         self.conn.commit()
 
+    @traced("organization_repo.get_member")
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
         row = (
             self.conn.execute(
@@ -166,6 +176,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             return None
         return self._row_to_member(row)
 
+    @traced("organization_repo.list_members")
     def list_members(self, org_id: int) -> list[OrganizationMember]:
         rows = (
             self.conn.execute(
@@ -191,6 +202,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
             for row in rows
         ]
 
+    @traced("organization_repo.update_member_role")
     def update_member_role(self, org_id: int, user_id: int, role: str) -> None:
         self.conn.execute(
             text("UPDATE organization_members SET role = :role WHERE organization_id = :org_id AND user_id = :user_id"),
@@ -198,6 +210,7 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         )
         self.conn.commit()
 
+    @traced("organization_repo.user_has_enforcing_org")
     def user_has_enforcing_org(self, user_id: int) -> bool:
         result = (
             self.conn.execute(

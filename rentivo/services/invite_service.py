@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.invite import Invite, InviteStatus
+from rentivo.observability import traced
 from rentivo.repositories.base import (
     InviteRepository,
     OrganizationRepository,
@@ -23,6 +24,7 @@ class InviteService:
         self.org_repo = org_repo
         self.user_repo = user_repo
 
+    @traced("invite.send_invite")
     def send_invite(
         self,
         org_id: int,
@@ -65,6 +67,7 @@ class InviteService:
         logger.info("invite_sent", org_id=org_id, email=email, role=role)
         return created
 
+    @traced("invite.accept_invite")
     def accept_invite(self, invite_uuid: str, user_id: int) -> Invite:
         invite = self.invite_repo.get_by_uuid(invite_uuid)
         if invite is None:
@@ -92,6 +95,7 @@ class InviteService:
         logger.info("invite_accepted", invite_uuid=invite_uuid, user_id=user_id)
         return invite
 
+    @traced("invite.decline_invite")
     def decline_invite(self, invite_uuid: str, user_id: int) -> Invite:
         invite = self.invite_repo.get_by_uuid(invite_uuid)
         if invite is None:
@@ -118,16 +122,19 @@ class InviteService:
         logger.info("invite_declined", invite_uuid=invite_uuid, user_id=user_id)
         return invite
 
+    @traced("invite.list_pending")
     def list_pending(self, user_id: int) -> list[Invite]:
         result = self.invite_repo.list_pending_for_user(user_id)
         logger.debug("invites_pending_listed", user_id=user_id, count=len(result))
         return result
 
+    @traced("invite.list_org_invites")
     def list_org_invites(self, org_id: int) -> list[Invite]:
         result = self.invite_repo.list_by_organization(org_id)
         logger.debug("invites_org_listed", org_id=org_id, count=len(result))
         return result
 
+    @traced("invite.count_pending")
     def count_pending(self, user_id: int) -> int:
         count = self.invite_repo.count_pending_for_user(user_id)
         logger.debug("invites_pending_counted", user_id=user_id, count=count)

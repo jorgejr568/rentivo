@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.observability.conftest import reset_tracing, span_exporter  # noqa: F401
+
 
 def _reset_and_close() -> None:
     """Close any cache resources held by the cached backend, then drop it."""

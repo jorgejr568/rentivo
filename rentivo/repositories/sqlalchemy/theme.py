@@ -5,6 +5,7 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from rentivo.models.theme import Theme
+from rentivo.observability import traced
 from rentivo.repositories.base import ThemeRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
@@ -33,6 +34,7 @@ class SQLAlchemyThemeRepository(ThemeRepository):
             updated_at=row["updated_at"],
         )
 
+    @traced("theme_repo.create")
     def create(self, theme: Theme) -> Theme:
         theme_uuid = str(ULID())
         now = _now()
@@ -65,18 +67,21 @@ class SQLAlchemyThemeRepository(ThemeRepository):
         self.conn.commit()
         return self.get_by_owner(theme.owner_type, theme.owner_id)  # type: ignore
 
+    @traced("theme_repo.get_by_id")
     def get_by_id(self, theme_id: int) -> Theme | None:
         row = self.conn.execute(text("SELECT * FROM themes WHERE id = :id"), {"id": theme_id}).mappings().fetchone()
         if row is None:
             return None
         return self._row_to_theme(row)
 
+    @traced("theme_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Theme | None:
         row = self.conn.execute(text("SELECT * FROM themes WHERE uuid = :uuid"), {"uuid": uuid}).mappings().fetchone()
         if row is None:
             return None
         return self._row_to_theme(row)
 
+    @traced("theme_repo.get_by_owner")
     def get_by_owner(self, owner_type: str, owner_id: int) -> Theme | None:
         row = (
             self.conn.execute(
@@ -90,6 +95,7 @@ class SQLAlchemyThemeRepository(ThemeRepository):
             return None
         return self._row_to_theme(row)
 
+    @traced("theme_repo.update")
     def update(self, theme: Theme) -> Theme:
         self.conn.execute(
             text(
@@ -120,6 +126,7 @@ class SQLAlchemyThemeRepository(ThemeRepository):
             raise RuntimeError(f"Failed to retrieve theme after update (id={theme.id})")
         return result
 
+    @traced("theme_repo.delete")
     def delete(self, theme_id: int) -> None:
         self.conn.execute(text("DELETE FROM themes WHERE id = :id"), {"id": theme_id})
         self.conn.commit()

@@ -7,6 +7,7 @@ try:
 except ImportError:  # pragma: no cover
     boto3 = None  # type: ignore[assignment]
 
+from rentivo.observability import traced
 from rentivo.storage.base import FileRef, StorageBackend
 
 logger = structlog.get_logger(__name__)
@@ -38,6 +39,7 @@ class S3Storage(StorageBackend):
             raise ImportError("boto3 is required for S3 storage. Install it with: pip install rentivo[s3]")
         self.client = boto3.client(**client_kwargs)
 
+    @traced("s3.save")
     def save(self, key: str, data: bytes, content_type: str = "application/pdf") -> str:
         self.client.put_object(
             Bucket=self.bucket,
@@ -48,12 +50,14 @@ class S3Storage(StorageBackend):
         logger.info("storage_saved", backend="s3", bucket=self.bucket, key=key, bytes=len(data))
         return key
 
+    @traced("s3.get")
     def get(self, key: str) -> bytes:
         response = self.client.get_object(Bucket=self.bucket, Key=key)
         data = response["Body"].read()
         logger.debug("storage_read", backend="s3", bucket=self.bucket, key=key, bytes=len(data))
         return data
 
+    @traced("s3.get_url")
     def get_url(self, key: str) -> str:
         url = self.client.generate_presigned_url(
             "get_object",
@@ -66,6 +70,7 @@ class S3Storage(StorageBackend):
     def get_ref(self, key: str) -> FileRef:
         return FileRef(kind="url", location=self.get_url(key))
 
+    @traced("s3.delete")
     def delete(self, key: str) -> None:
         try:
             self.client.delete_object(Bucket=self.bucket, Key=key)

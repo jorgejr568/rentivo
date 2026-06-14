@@ -6,6 +6,7 @@ import structlog
 
 from rentivo.jobs.base import Job, JobRepository
 from rentivo.models.audit_log import AuditEventType
+from rentivo.observability import inject_context, traced
 from rentivo.services.audit_serializers import serialize_job_payload
 from rentivo.services.audit_service import AuditService
 
@@ -17,6 +18,7 @@ class JobService:
         self.repo = repo
         self.audit = audit
 
+    @traced("job.enqueue")
     def enqueue(
         self,
         job_type: str,
@@ -28,7 +30,11 @@ class JobService:
         actor_id: int | None = None,
         actor_username: str = "",
     ) -> Job:
-        job = self.repo.enqueue(job_type, payload, run_after, max_attempts)
+        carrier: dict = {}
+        inject_context(carrier)
+        enqueue_payload = {**payload, "_otel": carrier} if carrier else payload
+        job = self.repo.enqueue(job_type, enqueue_payload, run_after, max_attempts)
+        # Audit records the business payload only — the _otel carrier is transport.
         new_state = serialize_job_payload({"job_type": job_type, **payload})
         new_state["job_type"] = job_type
         new_state["ulid"] = job.ulid
@@ -46,6 +52,7 @@ class JobService:
         logger.info("job_enqueued", job_type=job_type, ulid=job.ulid)
         return job
 
+    @traced("job.enqueue_for")
     def enqueue_for(
         self,
         actor,

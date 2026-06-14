@@ -2,6 +2,7 @@ from pathlib import Path
 
 import structlog
 
+from rentivo.observability import traced
 from rentivo.storage.base import FileRef, StorageBackend
 
 logger = structlog.get_logger(__name__)
@@ -20,6 +21,7 @@ class LocalStorage(StorageBackend):
             raise ValueError(f"Unsafe storage key: {key!r}") from e
         return candidate
 
+    @traced("local.save")
     def save(self, key: str, data: bytes, content_type: str = "application/pdf") -> str:
         path = self._safe_path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -28,11 +30,13 @@ class LocalStorage(StorageBackend):
         logger.debug("storage_saved", backend="local", key=key, bytes=len(data), path=resolved)
         return resolved
 
+    @traced("local.get")
     def get(self, key: str) -> bytes:
         path = self._safe_path(key)
         logger.debug("storage_read", backend="local", key=key, path=str(path))
         return path.read_bytes()
 
+    @traced("local.get_url")
     def get_url(self, key: str) -> str:
         resolved = str(self._safe_path(key))
         logger.debug("storage_url", backend="local", key=key, path=resolved)
@@ -43,6 +47,7 @@ class LocalStorage(StorageBackend):
         logger.debug("storage_ref", backend="local", key=key, path=resolved)
         return FileRef(kind="local", location=resolved)
 
+    @traced("local.delete")
     def delete(self, key: str) -> None:
         try:
             path = self._safe_path(key)

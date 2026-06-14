@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.encryption.cache.base import DecryptCache
+from rentivo.observability import traced
 
 
 class CachingEncryptionBackend(EncryptionBackend):
@@ -23,6 +24,7 @@ class CachingEncryptionBackend(EncryptionBackend):
     def is_encrypted(self, value: str) -> bool:
         return self.inner.is_encrypted(value)
 
+    @traced("cache.decrypt")
     def decrypt(self, value: str) -> str:
         hit = self.cache.get_many([value])
         if value in hit:
@@ -31,6 +33,7 @@ class CachingEncryptionBackend(EncryptionBackend):
         self.cache.set_many({value: plaintext})
         return plaintext
 
+    @traced("cache.decrypt_many")
     def decrypt_many(self, values: list[str]) -> list[str]:
         if not values:
             return []

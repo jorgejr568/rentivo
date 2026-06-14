@@ -24,6 +24,7 @@ from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.user import User
+from rentivo.observability import traced
 from web.analytics import push_event
 from web.context import actor_for
 
@@ -33,6 +34,7 @@ POST_LOGIN_URL = "/billings/"
 MFA_VERIFY_URL = "/mfa-verify"
 
 
+@traced("login.begin_mfa_challenge")
 def begin_mfa_challenge(
     request: Request,
     user: User,
@@ -61,6 +63,7 @@ def begin_mfa_challenge(
     return RedirectResponse(MFA_VERIFY_URL, status_code=302)
 
 
+@traced("login.complete_login")
 def complete_login(
     request: Request,
     user: User,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import structlog
 
 from rentivo.models.recipient import Recipient
+from rentivo.observability import traced
 from rentivo.repositories.base import RecipientRepository
 
 logger = structlog.get_logger(__name__)
@@ -12,9 +13,11 @@ class RecipientService:
     def __init__(self, recipient_repo: RecipientRepository) -> None:
         self.recipient_repo = recipient_repo
 
+    @traced("recipient.list_for_billing")
     def list_for_billing(self, billing_id: int) -> list[Recipient]:
         return self.recipient_repo.list_by_billing(billing_id)
 
+    @traced("recipient.replace_for_billing")
     def replace_for_billing(self, billing_id: int, rows: list[dict[str, str]]) -> list[Recipient]:
         """Replace the billing's recipients from raw form rows.
 

@@ -6,6 +6,7 @@ from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.invite import Invite
+from rentivo.observability import traced
 from rentivo.repositories.base import InviteRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
@@ -43,6 +44,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             responded_at=row.get("responded_at"),
         )
 
+    @traced("invite_repo.create")
     def create(self, invite: Invite) -> Invite:
         invite_uuid = str(ULID())
         now = _now()
@@ -69,6 +71,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             raise RuntimeError("Failed to retrieve invite after create")
         return created
 
+    @traced("invite_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Invite | None:
         row = (
             self.conn.execute(
@@ -82,6 +85,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
             return None
         return self._row_to_invite(row)
 
+    @traced("invite_repo.list_pending_for_user")
     def list_pending_for_user(self, user_id: int) -> list[Invite]:
         rows = (
             self.conn.execute(
@@ -96,6 +100,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
         )
         return [self._row_to_invite(row) for row in rows]
 
+    @traced("invite_repo.list_by_organization")
     def list_by_organization(self, org_id: int) -> list[Invite]:
         rows = (
             self.conn.execute(
@@ -107,6 +112,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
         )
         return [self._row_to_invite(row) for row in rows]
 
+    @traced("invite_repo.update_status")
     def update_status(self, invite_id: int, status: str) -> None:
         self.conn.execute(
             text("UPDATE invites SET status = :status, responded_at = :responded_at WHERE id = :id"),
@@ -114,6 +120,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
         )
         self.conn.commit()
 
+    @traced("invite_repo.count_pending_for_user")
     def count_pending_for_user(self, user_id: int) -> int:
         result = (
             self.conn.execute(
@@ -125,6 +132,7 @@ class SQLAlchemyInviteRepository(InviteRepository):
         )
         return result["cnt"] if result else 0
 
+    @traced("invite_repo.has_pending_invite")
     def has_pending_invite(self, org_id: int, user_id: int) -> bool:
         result = (
             self.conn.execute(

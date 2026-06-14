@@ -9,6 +9,8 @@ from fpdf import FPDF
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
+from rentivo.observability import traced
+
 logger = structlog.get_logger(__name__)
 
 
@@ -60,6 +62,7 @@ def _image_to_pdf(image_bytes: bytes) -> bytes:
     return bytes(pdf.output())
 
 
+@traced("pdf.merge_receipts")
 def merge_receipts(
     invoice_pdf: bytes,
     receipts: list[tuple[bytes, str]],

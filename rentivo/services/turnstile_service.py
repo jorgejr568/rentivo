@@ -5,6 +5,8 @@ from typing import Awaitable, Callable, Protocol
 import httpx
 import structlog
 
+from rentivo.observability import traced
+
 logger = structlog.get_logger(__name__)
 
 
@@ -48,6 +50,7 @@ class TurnstileService:
     def is_enabled(self) -> bool:
         return bool(self.site_key and self.secret_key)
 
+    @traced("turnstile.verify")
     async def verify(self, token: str, remote_ip: str) -> bool:
         if not self.is_enabled:
             return True

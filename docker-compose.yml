@@ -66,6 +66,18 @@ services:
       db:
         condition: service_healthy
 
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      # all-in-one exposes an OTLP receiver; the app sends OTLP/HTTP on 4318.
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"  # web UI
+      - "4318:4318"     # OTLP/HTTP
+      - "4317:4317"     # OTLP/gRPC
+
 volumes:
   mysql-data:
   invoices:

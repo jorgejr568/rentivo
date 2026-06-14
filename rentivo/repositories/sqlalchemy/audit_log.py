@@ -7,6 +7,7 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from rentivo.models.audit_log import AuditLog
+from rentivo.observability import traced
 from rentivo.repositories.base import AuditLogRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
@@ -37,6 +38,7 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
             created_at=row["created_at"],
         )
 
+    @traced("audit_log_repo.create")
     def create(self, audit_log: AuditLog) -> AuditLog:
         audit_uuid = str(ULID())
         now = _now()
@@ -80,6 +82,7 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
             raise RuntimeError(f"Failed to retrieve audit log after create (uuid={audit_uuid})")
         return self._row_to_audit_log(row)
 
+    @traced("audit_log_repo.list_by_entity")
     def list_by_entity(self, entity_type: str, entity_id: int) -> list[AuditLog]:
         rows = (
             self.conn.execute(
@@ -95,6 +98,7 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
         )
         return [self._row_to_audit_log(row) for row in rows]
 
+    @traced("audit_log_repo.list_by_actor")
     def list_by_actor(self, actor_id: int, limit: int = 50) -> list[AuditLog]:
         rows = (
             self.conn.execute(
@@ -106,6 +110,7 @@ class SQLAlchemyAuditLogRepository(AuditLogRepository):
         )
         return [self._row_to_audit_log(row) for row in rows]
 
+    @traced("audit_log_repo.list_recent")
     def list_recent(self, limit: int = 50) -> list[AuditLog]:
         rows = (
             self.conn.execute(

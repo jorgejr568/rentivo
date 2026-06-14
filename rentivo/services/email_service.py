@@ -6,6 +6,7 @@ import structlog
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from rentivo.email.base import EmailAttachment, EmailBackend, EmailMessage
+from rentivo.observability import traced
 
 logger = structlog.get_logger(__name__)
 
@@ -68,6 +69,7 @@ class EmailService:
             from_address=self.from_address,
         )
 
+    @traced("email.send")
     def send(self, to_email: str, event: str, ctx: dict) -> str:
         """Render and dispatch a transactional email, raising on failure.
 
@@ -82,6 +84,7 @@ class EmailService:
         logger.info("email_sent", to=to_email, email_event=event)
         return result
 
+    @traced("email.send_communication")
     def send_communication(
         self,
         to_email: str,

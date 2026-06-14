@@ -8,6 +8,7 @@ from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.communication import Communication, CommunicationTemplate
+from rentivo.observability import traced
 from rentivo.repositories.base import CommunicationRepository, CommunicationTemplateRepository
 from rentivo.repositories.sqlalchemy._common import _now, decrypt_columns
 
@@ -31,6 +32,7 @@ class SQLAlchemyCommunicationTemplateRepository(CommunicationTemplateRepository)
             updated_at=row["updated_at"],
         )
 
+    @traced("comm_template_repo.get")
     def get(self, owner_type: str, owner_id: int, comm_type: str) -> CommunicationTemplate | None:
         row = (
             self.conn.execute(
@@ -47,6 +49,7 @@ class SQLAlchemyCommunicationTemplateRepository(CommunicationTemplateRepository)
             return None
         return self._build(row)
 
+    @traced("comm_template_repo.upsert")
     def upsert(self, template: CommunicationTemplate) -> CommunicationTemplate:
         now = _now()
         existing = self.get(template.owner_type, template.owner_id, template.comm_type)
@@ -124,6 +127,7 @@ class SQLAlchemyCommunicationRepository(CommunicationRepository):
             for row in rows
         ]
 
+    @traced("communication_repo.create")
     def create(self, communication: Communication) -> Communication:
         comm_uuid = str(ULID())
         self.conn.execute(
@@ -153,6 +157,7 @@ class SQLAlchemyCommunicationRepository(CommunicationRepository):
             raise RuntimeError("Failed to retrieve communication after create")
         return created
 
+    @traced("communication_repo.get_by_id")
     def get_by_id(self, communication_id: int) -> Communication | None:
         row = (
             self.conn.execute(text("SELECT * FROM communications WHERE id = :id"), {"id": communication_id})
@@ -161,10 +166,12 @@ class SQLAlchemyCommunicationRepository(CommunicationRepository):
         )
         return None if row is None else self._build([row])[0]
 
+    @traced("communication_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Communication | None:
         row = self.conn.execute(text("SELECT * FROM communications WHERE uuid = :u"), {"u": uuid}).mappings().fetchone()
         return None if row is None else self._build([row])[0]
 
+    @traced("communication_repo.list_by_bill")
     def list_by_bill(self, bill_id: int) -> list[Communication]:
         rows = (
             self.conn.execute(
@@ -176,6 +183,7 @@ class SQLAlchemyCommunicationRepository(CommunicationRepository):
         )
         return self._build(list(rows))
 
+    @traced("communication_repo.set_job_ulid")
     def set_job_ulid(self, communication_id: int, job_ulid: str) -> None:
         self.conn.execute(
             text("UPDATE communications SET job_ulid = :j WHERE id = :id"),
@@ -183,6 +191,7 @@ class SQLAlchemyCommunicationRepository(CommunicationRepository):
         )
         self.conn.commit()
 
+    @traced("communication_repo.mark_sent")
     def mark_sent(self, communication_id: int, sent_at: datetime) -> None:
         self.conn.execute(
             text("UPDATE communications SET status = 'sent', sent_at = :ts, error = '' WHERE id = :id"),
@@ -190,6 +199,7 @@ class SQLAlchemyCommunicationRepository(CommunicationRepository):
         )
         self.conn.commit()
 
+    @traced("communication_repo.mark_failed")
     def mark_failed(self, communication_id: int, error: str) -> None:
         self.conn.execute(
             text("UPDATE communications SET status = 'failed', error = :err WHERE id = :id"),

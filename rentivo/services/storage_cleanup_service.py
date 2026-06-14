@@ -5,6 +5,7 @@ import structlog
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.receipt import Receipt
+from rentivo.observability import traced
 from rentivo.repositories.base import BillRepository, ReceiptRepository
 from rentivo.services.job_service import JobService
 
@@ -39,20 +40,24 @@ class StorageCleanupService:
         self.bill_repo = bill_repo
         self.receipt_repo = receipt_repo
 
+    @traced("storage_cleanup.enqueue_key")
     def enqueue_key(self, actor, key: str | None) -> None:
         if not key:
             return
         self.job_service.enqueue_for(actor, "s3.delete", {"key": key})
 
+    @traced("storage_cleanup.enqueue_receipt_delete")
     def enqueue_receipt_delete(self, actor, receipt: Receipt) -> None:
         self.enqueue_key(actor, receipt.storage_key)
 
+    @traced("storage_cleanup.enqueue_bill_delete_cascade")
     def enqueue_bill_delete_cascade(self, actor, bill: Bill) -> None:
         if bill.id is not None:
             for receipt in self.receipt_repo.list_by_bill(bill.id):
                 self.enqueue_key(actor, receipt.storage_key)
         self.enqueue_key(actor, bill.pdf_path or "")
 
+    @traced("storage_cleanup.enqueue_billing_delete_cascade")
     def enqueue_billing_delete_cascade(self, actor, billing: Billing) -> None:
         if billing.id is None:
             return

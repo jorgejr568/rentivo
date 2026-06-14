@@ -6,6 +6,7 @@ from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.receipt import Receipt
+from rentivo.observability import traced
 from rentivo.repositories.base import ReceiptRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
@@ -37,6 +38,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             for row, plaintext in zip(rows, plaintexts, strict=True)
         ]
 
+    @traced("receipt_repo.create")
     def create(self, receipt: Receipt) -> Receipt:
         receipt_uuid = str(ULID())
         now = _now()
@@ -64,6 +66,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             raise RuntimeError(f"Failed to retrieve receipt after create (uuid={receipt_uuid})")
         return created
 
+    @traced("receipt_repo.get_by_id")
     def get_by_id(self, receipt_id: int) -> Receipt | None:
         row = (
             self.conn.execute(
@@ -77,6 +80,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             return None
         return self._row_to_receipt(row)
 
+    @traced("receipt_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Receipt | None:
         row = (
             self.conn.execute(
@@ -90,6 +94,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             return None
         return self._row_to_receipt(row)
 
+    @traced("receipt_repo.list_by_bill")
     def list_by_bill(self, bill_id: int) -> list[Receipt]:
         rows = (
             self.conn.execute(
@@ -101,6 +106,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
         )
         return self._build_receipts(list(rows))
 
+    @traced("receipt_repo.delete")
     def delete(self, receipt_id: int) -> None:
         self.conn.execute(
             text("DELETE FROM receipts WHERE id = :id"),
@@ -108,6 +114,7 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
         )
         self.conn.commit()
 
+    @traced("receipt_repo.update_sort_orders")
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None:
         for receipt_id, sort_order in updates:
             self.conn.execute(

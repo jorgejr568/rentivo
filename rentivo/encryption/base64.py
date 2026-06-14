@@ -5,6 +5,7 @@ import base64 as _b64
 import structlog
 
 from rentivo.encryption.base import EncryptionBackend
+from rentivo.observability import traced
 
 logger = structlog.get_logger(__name__)
 
@@ -22,6 +23,7 @@ class Base64Backend(EncryptionBackend):
     Ciphertext format: ``b64:v1:<base64(plaintext)>``.
     """
 
+    @traced("base64.encrypt")
     def encrypt(self, plaintext: str) -> str:
         if plaintext == "":
             return ""
@@ -31,6 +33,7 @@ class Base64Backend(EncryptionBackend):
         logger.debug("encryption_encoded", backend="base64", bytes=len(plaintext))
         return _PREFIX + encoded
 
+    @traced("base64.decrypt")
     def decrypt(self, value: str) -> str:
         if value == "":
             return ""

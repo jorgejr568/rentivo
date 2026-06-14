@@ -17,6 +17,8 @@ from rentivo.constants import format_month
 from rentivo.db import initialize_db
 from rentivo.logging import configure_logging, reconfigure
 from rentivo.models import format_brl, format_brl_input
+from rentivo.observability import configure_tracing
+from rentivo.observability.middleware import TracingMiddleware
 from rentivo.settings import settings
 from web.auth import router as auth_router
 from web.csrf import CSRFMiddleware
@@ -60,6 +62,7 @@ ASSET_VERSION = _build_asset_version()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    configure_tracing()
     initialize_db()
     # Re-apply logging config — Alembic's fileConfig may have overridden it
     reconfigure()
@@ -77,8 +80,10 @@ app.add_middleware(CSRFMiddleware)
 app.add_middleware(MFAEnforcementMiddleware)
 app.add_middleware(AuthMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=settings.get_secret_key())
-# Outermost — wraps every other middleware so logs carry request_id.
 app.add_middleware(RequestContextMiddleware)
+# Outermost — the server span must enclose every other middleware so the whole
+# request→response is one trace. Added last = runs first.
+app.add_middleware(TracingMiddleware)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 

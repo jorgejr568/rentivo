@@ -93,6 +93,21 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 60
     cache_max_entries: int = 2_048
 
+    # OpenTelemetry tracing. Fully optional: off unless RENTIVO_OTEL_ENABLED=true
+    # AND the `otel` extra is installed. No collector dependency is forced.
+    otel_enabled: bool = False
+    otel_service_name: str = "rentivo"
+    otel_exporter_otlp_endpoint: str = "http://localhost:4318"
+    otel_sample_ratio: float = 1.0
+    # Exporter: `otlp` (generic OTLP/HTTP, e.g. Jaeger) or `cloudwatch`
+    # (AWS X-Ray / CloudWatch Transaction Search OTLP endpoint, SigV4-signed).
+    otel_exporter: str = "otlp"
+    otel_aws_region: str = ""
+    # Optional explicit creds for the cloudwatch exporter; empty falls back to
+    # the standard AWS credential chain (env / instance-profile / task role).
+    otel_aws_access_key_id: str = ""
+    otel_aws_secret_access_key: str = ""
+
     turnstile_site_key: str = ""
     turnstile_secret_key: str = ""
     turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
@@ -161,6 +176,20 @@ class Settings(BaseSettings):
             raise ValueError("RENTIVO_CACHE_MAX_ENTRIES must be >= 1")
         return v
 
+    @field_validator("otel_sample_ratio")
+    @classmethod
+    def _validate_otel_sample_ratio(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("RENTIVO_OTEL_SAMPLE_RATIO must be between 0.0 and 1.0")
+        return v
+
+    @field_validator("otel_exporter")
+    @classmethod
+    def _validate_otel_exporter(cls, v: str) -> str:
+        if v not in ("otlp", "cloudwatch"):
+            raise ValueError("RENTIVO_OTEL_EXPORTER must be one of: otlp, cloudwatch")
+        return v
+
     @model_validator(mode="after")
     def _validate_turnstile_pair(self) -> "Settings":
         site = bool(self.turnstile_site_key)
@@ -195,6 +224,12 @@ class Settings(BaseSettings):
             raise ValueError("RENTIVO_REDIS_URL is required when RENTIVO_ENCRYPTION_CACHE_BACKEND=redis")
         if self.cache_backend == "redis" and not self.redis_url:
             raise ValueError("RENTIVO_REDIS_URL is required when RENTIVO_CACHE_BACKEND=redis")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_otel_cloudwatch(self) -> "Settings":
+        if self.otel_enabled and self.otel_exporter == "cloudwatch" and not self.otel_aws_region:
+            raise ValueError("RENTIVO_OTEL_AWS_REGION is required when RENTIVO_OTEL_EXPORTER=cloudwatch")
         return self
 
     def get_secret_key(self) -> str:

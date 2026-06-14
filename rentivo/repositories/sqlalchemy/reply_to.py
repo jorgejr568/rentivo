@@ -6,6 +6,7 @@ from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.recipient import Recipient
+from rentivo.observability import traced
 from rentivo.repositories.base import RecipientRepository
 from rentivo.repositories.sqlalchemy._common import _now, decrypt_columns
 
@@ -38,6 +39,7 @@ class SQLAlchemyReplyToRecipientRepository(RecipientRepository):
             for row in rows
         ]
 
+    @traced("reply_to_repo.list_by_billing")
     def list_by_billing(self, billing_id: int) -> list[Recipient]:
         rows = (
             self.conn.execute(
@@ -49,6 +51,7 @@ class SQLAlchemyReplyToRecipientRepository(RecipientRepository):
         )
         return self._build(list(rows))
 
+    @traced("reply_to_repo.get_by_uuid")
     def get_by_uuid(self, uuid: str) -> Recipient | None:
         row = (
             self.conn.execute(text("SELECT * FROM billing_reply_to WHERE uuid = :u"), {"u": uuid}).mappings().fetchone()
@@ -57,6 +60,7 @@ class SQLAlchemyReplyToRecipientRepository(RecipientRepository):
             return None
         return self._build([row])[0]
 
+    @traced("reply_to_repo.replace_for_billing")
     def replace_for_billing(self, billing_id: int, recipients: list[Recipient]) -> None:
         self.conn.execute(text("DELETE FROM billing_reply_to WHERE billing_id = :bid"), {"bid": billing_id})
         now = _now()
