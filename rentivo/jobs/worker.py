@@ -11,7 +11,7 @@ import structlog
 from rentivo.jobs import registry
 from rentivo.jobs.base import Job, JobRepository, PermanentJobError
 from rentivo.models.audit_log import AuditEventType
-from rentivo.observability import extract_context, span
+from rentivo.observability import extract_context, span, suppress_tracing
 from rentivo.services.audit_service import AuditService
 
 logger = structlog.get_logger(__name__)
@@ -66,7 +66,9 @@ class Worker:
         logger.info("worker_stopped", worker_id=self.worker_id)
 
     def tick(self) -> int:
-        jobs = self.repo.claim_batch(self.batch_size, self.worker_id)
+        # The poll fires every few seconds even when idle; don't trace its query.
+        with suppress_tracing():
+            jobs = self.repo.claim_batch(self.batch_size, self.worker_id)
         for job in jobs:
             self._run_one(job)
         return len(jobs)

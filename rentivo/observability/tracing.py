@@ -263,6 +263,26 @@ def instrument_sqlalchemy(engine: Any) -> None:
     SQLAlchemyInstrumentor().instrument(engine=engine, tracer_provider=_provider)
 
 
+@contextmanager
+def suppress_tracing() -> Iterator[None]:
+    """Within this block, auto-instrumented spans (e.g. SQLAlchemy queries) are
+    not created. Used to silence high-frequency plumbing — notably the worker's
+    job-poll ``claim_batch`` SELECT, which fires every few seconds even when
+    idle. ``@traced`` spans are unaffected. No-op when tracing is disabled.
+    """
+    if _tracer is None:
+        yield
+        return
+    from opentelemetry import context as _otel_ctx
+    from opentelemetry.instrumentation.utils import _SUPPRESS_INSTRUMENTATION_KEY
+
+    token = _otel_ctx.attach(_otel_ctx.set_value(_SUPPRESS_INSTRUMENTATION_KEY, True))
+    try:
+        yield
+    finally:
+        _otel_ctx.detach(token)
+
+
 def inject_context(carrier: dict) -> dict:
     """Write the current trace context into ``carrier`` (W3C ``traceparent``).
     Returns the same dict. No-op when disabled, so the carrier stays empty."""
