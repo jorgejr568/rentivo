@@ -1,5 +1,6 @@
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import ItemType
+from rentivo.models.theme import Theme
 from rentivo.pdf.recibo import ReciboPDF
 
 
@@ -39,5 +40,17 @@ class TestReciboPDF:
             payer_name="Apt 101",
             issuer_name="",
             payment_date="",
+        )
+        assert result[:5] == b"%PDF-"
+
+    def test_generate_with_distinct_header_and_text_fonts(self):
+        theme = Theme(header_font="Roboto", text_font="Open Sans")
+        result = ReciboPDF().generate(
+            self._make_bill(),
+            billing_name="Apt 101",
+            payer_name="Apt 101",
+            issuer_name="Maria Recebedora",
+            payment_date="14/06/2026",
+            theme=theme,
         )
         assert result[:5] == b"%PDF-"
