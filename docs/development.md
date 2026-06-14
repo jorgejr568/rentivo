@@ -73,6 +73,8 @@ State-changing web flows enqueue rows into the `jobs` table; the worker (`python
 
 Tuning knobs: `RENTIVO_JOB_WORKER_*` (see [configuration.md](configuration.md)). New handlers register themselves via `@register("job.type")` in `rentivo/jobs/handlers/` — the worker entrypoint needs no changes.
 
+Job drivers (database vs Temporal) are documented in [`jobs.md`](jobs.md).
+
 With `RENTIVO_EMAIL_BACKEND=local`, sent emails are `.eml` files in `./outbox` (host) or `/app/outbox` inside the worker container (`docker compose exec worker ls outbox`).
 
 ## Tracing (optional)

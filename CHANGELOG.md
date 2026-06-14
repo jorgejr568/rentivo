@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [3.12.0] - 2026-06-14
+### Added
+- Pluggable background-job driver via `RENTIVO_JOB_BACKEND` (`database` default | `temporal`).
+- Optional Temporal driver (`temporal` extra): per-job-type workflows/activities wrapping the existing handlers, with retry/backoff/dead-letter parity to the database worker. Not required for production.
+- `RENTIVO_TEMPORAL_HOST` / `_NAMESPACE` / `_TASK_QUEUE` / `_TLS` / `_ACTIVITY_START_TO_CLOSE_TIMEOUT_SECONDS` settings.
+- Opt-in `temporal` docker-compose profile (`make temporal-up` / `make temporal-down`) and configurable `WORKER_EXTRAS` build arg on `Dockerfile.worker`.
+- `docs/jobs.md` documenting both drivers.
+
+### Changed
+- `JobService` now depends on the new `JobBackend` (enqueue) seam; the database path is unchanged.
+- Shared retry backoff extracted to `rentivo/jobs/backoff.py`.
+
 ## [3.11.0] - 2026-06-12
 ### Added
 - Google sign-in (OAuth 2.0 authorization-code flow) behind `RENTIVO_GOOGLE_AUTH_ENABLED` (default `false` — routes 404 and no button renders when off). New `RENTIVO_GOOGLE_CLIENT_ID` / `RENTIVO_GOOGLE_CLIENT_SECRET` (required when enabled). Account linking is by verified Google email through the existing `users.email_hash` blind index; first login auto-creates a passwordless user. The callback runs the same MFA gate as `POST /login`, so TOTP/passkey users and org MFA enforcement are preserved. New `GoogleAuthService` + `web/routes/google_auth.py` (`/auth/google/login`, `/auth/google/callback`) (#72).
