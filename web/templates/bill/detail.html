@@ -29,6 +29,9 @@
         {% if bill.pdf_path %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
         {% endif %}
+        {% if bill.status == "paid" %}
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/recibo" target="_blank" class="btn">Baixar recibo</a>
+        {% endif %}
         {% if role in ("owner", "admin", "manager") %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
         {% endif %}

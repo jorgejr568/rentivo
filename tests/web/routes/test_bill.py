@@ -2020,3 +2020,21 @@ class TestBillRecibo:
                 )
         assert response.status_code == 200
         assert any(e["event"] == "rentivo_recibo_downloaded" for e in captured)
+
+    def test_detail_shows_recibo_button_when_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        assert f"/bills/{bill.uuid}/recibo" in response.text
+        assert "Baixar recibo" in response.text
+
+    def test_detail_hides_recibo_button_when_not_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # draft
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        assert f"/bills/{bill.uuid}/recibo" not in response.text
