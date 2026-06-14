@@ -37,7 +37,7 @@ The Temporal driver offloads job execution to a Temporal cluster instead of the 
 uv sync --extra temporal
 ```
 
-- Enqueue starts one workflow per job (`TemporalJobBackend.start_workflow`, `rentivo/jobs/temporal/backend.py`).
+- Enqueue starts one workflow per job — `TemporalJobBackend.enqueue()` (`rentivo/jobs/temporal/backend.py`) calls the Temporal client's `start_workflow(...)`.
 - A per-job-type workflow (`rentivo/jobs/temporal/workflows.py`) wraps the **unchanged** registry handler in an activity (`rentivo/jobs/temporal/activities.py`).
 - The workflow owns the retry loop, mirroring the database backoff exactly.
 
