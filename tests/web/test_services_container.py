@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.services.communication_service import CommunicationService
+from rentivo.services.export_service import ExportService
 from rentivo.services.recipient_service import RecipientService
 from tests.conftest import SCHEMA_DDL
 from web.services_container import RequestServices
@@ -31,6 +32,11 @@ def test_recipient_and_communication_services_resolve():
 def test_reply_to_service_resolves():
     services = _services()
     assert isinstance(services.reply_to, RecipientService)
+
+
+def test_export_service_resolves():
+    services = _services()
+    assert isinstance(services.export, ExportService)
 
 
 class TestLazyProperties:
