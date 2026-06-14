@@ -1973,3 +1973,10 @@ class TestReceiptOpsWithoutPix:
         )
         assert response.status_code == 200
         assert response.json() == {"ok": True}
+
+
+class TestReciboAuditConstant:
+    def test_recibo_download_event_type_exists(self):
+        from rentivo.models.audit_log import AuditEventType
+
+        assert AuditEventType.BILL_RECIBO_DOWNLOAD == "bill.recibo_download"
