@@ -376,7 +376,7 @@ async def bill_recibo(request: Request, ctx: BillContext = Depends(require_bill(
     push_event(request, {"event": "rentivo_recibo_downloaded", "bill_uuid_hash": analytics_hash(bill.uuid)})
 
     return Response(
-        content=pdf_bytes,
+        content=bytes(pdf_bytes),
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="recibo-{bill.uuid}.pdf"'},
     )

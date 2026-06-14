@@ -1980,3 +1980,79 @@ class TestReciboAuditConstant:
         from rentivo.models.audit_log import AuditEventType
 
         assert AuditEventType.BILL_RECIBO_DOWNLOAD == "bill.recibo_download"
+
+
+class TestBillRecibo:
+    def _mark_paid(self, test_engine, bill):
+        """Set the bill's status to PAID with a status_updated_at timestamp."""
+        from datetime import datetime
+
+        from rentivo.constants import SP_TZ
+
+        with test_engine.connect() as conn:
+            from sqlalchemy import text
+
+            conn.execute(
+                text("UPDATE bills SET status = :s, status_updated_at = :t WHERE id = :id"),
+                {"s": "paid", "t": datetime(2026, 6, 14, 10, 0, tzinfo=SP_TZ), "id": bill.id},
+            )
+            conn.commit()
+
+    def test_recibo_paid_returns_pdf(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 200
+        assert response.headers.get("content-type", "").startswith("application/pdf")
+        assert response.content[:5] == b"%PDF-"
+        logs = get_audit_logs(test_engine, AuditEventType.BILL_RECIBO_DOWNLOAD)
+        assert len(logs) >= 1
+
+    def test_recibo_not_paid_redirects(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # default status: draft
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert f"/bills/{bill.uuid}" in response.headers["location"]
+
+    def test_recibo_not_found(self, auth_client):
+        response = auth_client.get(
+            "/billings/x/bills/nonexistent/recibo",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
+    def test_recibo_rejects_unauthorized_user(self, auth_client, test_engine, tmp_path):
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+    def test_recibo_fires_gtm_event(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            captured: list[dict] = []
+            with patch("web.routes.bill.push_event", side_effect=lambda req, ev: captured.append(ev)):
+                response = auth_client.get(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                    follow_redirects=False,
+                )
+        assert response.status_code == 200
+        assert any(e["event"] == "rentivo_recibo_downloaded" for e in captured)
