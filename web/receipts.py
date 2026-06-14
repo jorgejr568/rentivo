@@ -45,9 +45,11 @@ async def attach_receipts(
     a disallowed content type, empty body, or body over ``MAX_RECEIPT_SIZE``
     count as skipped; when any are skipped a PT-BR warning is flashed.
 
-    ``render=False`` attaches without re-rendering the PDF per file, so the
-    caller (the bill-create flow) can render once afterwards. Defaults to
-    ``True`` so the standalone receipt-upload endpoint re-renders each upload.
+    Files are always attached without rendering per file; with ``render=True``
+    (the default, used by the standalone upload endpoint) the PDF is rendered
+    exactly ONCE after every file is attached — uploading N receipts enqueues a
+    single ``pdf.render`` job, not N racing ones. ``render=False`` skips the
+    final render too, so the bill-create flow can render once itself afterwards.
     """
     bill_service = request.state.services.bill
     audit = request.state.services.audit
@@ -70,6 +72,7 @@ async def attach_receipts(
             skipped += 1
             continue
 
+        # Never render per file — render once after the loop (see below).
         receipt, _ = bill_service.add_receipt(
             bill=bill,
             billing=billing,
@@ -77,7 +80,7 @@ async def attach_receipts(
             file_bytes=file_bytes,
             content_type=content_type,
             actor=request.state.actor,
-            render=render,
+            render=False,
         )
         attached += 1
         total_bytes += len(file_bytes)
@@ -90,6 +93,10 @@ async def attach_receipts(
             entity_uuid=receipt.uuid,
             new_state=serialize_receipt(receipt, bill_uuid=bill.uuid, billing_uuid=billing.uuid),
         )
+
+    # One render for the whole batch, only when the caller asked for it.
+    if render and attached:
+        bill_service.regenerate_pdf(bill, billing, actor=request.state.actor)
 
     if skipped:
         flash(request, SKIPPED_RECEIPTS_WARNING.format(count=skipped), "warning")
