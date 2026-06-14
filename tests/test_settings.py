@@ -397,3 +397,13 @@ def test_temporal_defaults():
 def test_temporal_backend_requires_host():
     with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_HOST"):
         Settings(_env_file=None, job_backend="temporal", temporal_host="")
+
+
+def test_temporal_backend_requires_namespace():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_NAMESPACE"):
+        Settings(_env_file=None, job_backend="temporal", temporal_namespace="")
+
+
+def test_temporal_backend_requires_task_queue():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_TASK_QUEUE"):
+        Settings(_env_file=None, job_backend="temporal", temporal_task_queue="")
