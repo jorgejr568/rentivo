@@ -90,3 +90,20 @@ class TestBillExport:
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
         response = auth_client.get(f"/billings/{billing.uuid}/bills/export", follow_redirects=False)
         assert response.status_code == 302
+
+
+class TestExportSlug:
+    def test_preserves_accents_sao_joao(self):
+        from web.routes.bill import _export_slug
+
+        assert _export_slug("São João") == "sao-joao"
+
+    def test_preserves_accents_atica(self):
+        from web.routes.bill import _export_slug
+
+        assert _export_slug("Ática") == "atica"
+
+    def test_empty_falls_back_to_cobranca(self):
+        from web.routes.bill import _export_slug
+
+        assert _export_slug("!!!") == "cobranca"

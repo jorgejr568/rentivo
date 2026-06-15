@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response
@@ -107,8 +108,15 @@ _XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.
 
 
 def _export_slug(name: str) -> str:
-    """Lowercase ASCII-ish slug for the export filename (PT-BR name → safe slug)."""
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    """Lowercase ASCII slug for the export filename (PT-BR name → safe slug).
+
+    Unicode-normalizes (NFKD) and drops combining marks so accented characters
+    transliterate (``ã``→``a``, ``ç``→``c``, ``í``→``i``) instead of being
+    stripped. Stays injection-safe: the result only ever contains ``[a-z0-9-]``.
+    """
+    decomposed = unicodedata.normalize("NFKD", name)
+    ascii_name = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")
     return slug or "cobranca"
 
 
