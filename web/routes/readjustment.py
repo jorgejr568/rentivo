@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date
 
 import structlog
@@ -29,14 +30,25 @@ _INDEX_LABELS = {
 
 
 def _parse_pct(raw: str) -> float | None:
-    """Parse a percentage string ('10,00' or '10.00') into a float, or None."""
+    """Parse a percentage string ('10,00' or '10.00') into a float, or None.
+
+    Returns ``None`` for empty, unparseable, non-finite (``inf`` / ``nan``), or
+    out-of-range values. Bounds: ``pct <= -100`` would zero or invert the rent;
+    ``pct > 1000`` is implausibly large. Both reject to the flash-redirect path
+    rather than blowing up later inside ``readjust_amount``.
+    """
     text = (raw or "").strip().replace(",", ".")
     if not text:
         return None
     try:
-        return float(text)
+        pct = float(text)
     except ValueError:
         return None
+    if not math.isfinite(pct):
+        return None
+    if pct <= -100 or pct > 1000:
+        return None
+    return pct
 
 
 @router.get("/{billing_uuid}/readjust")

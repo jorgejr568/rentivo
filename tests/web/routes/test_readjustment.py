@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.billing import BillingItem, ItemType, ReadjustmentIndex
 from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
@@ -114,6 +116,32 @@ class TestReadjustPost:
             follow_redirects=False,
         )
         assert resp.status_code == 302
+
+    @pytest.mark.parametrize("raw", ["inf", "nan", "-100", "5000"])
+    def test_apply_non_finite_or_out_of_range_pct_redirects(self, auth_client, test_engine, csrf_token, raw):
+        billing = _billing_with_index(test_engine)
+        resp = auth_client.post(
+            f"/billings/{billing.uuid}/readjust",
+            data={"csrf_token": csrf_token, "pct": raw},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302  # flash + back to preview, no mutation
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_uuid(billing.uuid)
+        assert reloaded.items[0].amount == 285000  # untouched
+
+    @pytest.mark.parametrize("raw", ["10,5", "10.5"])
+    def test_apply_valid_decimal_pct_applies(self, auth_client, test_engine, csrf_token, raw):
+        billing = _billing_with_index(test_engine)
+        resp = auth_client.post(
+            f"/billings/{billing.uuid}/readjust",
+            data={"csrf_token": csrf_token, "pct": raw},
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_uuid(billing.uuid)
+        assert reloaded.items[0].amount == 314925  # 285000 * 1.105
 
     def test_apply_requires_csrf(self, auth_client, test_engine):
         billing = _billing_with_index(test_engine)
