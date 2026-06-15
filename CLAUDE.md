@@ -168,7 +168,7 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 - **Suffering** — `form_submit_error`, `form_field_error`, `form_abandon`, `rage_click`, `js_error`, `promise_rejection`.
 - **Issues** — `network_error`, `file_upload_error`.
 - **Waiting** — `web_vital` (LCP/INP/CLS/TTFB/FCP), `slow_page`, `interaction_slow`, `layout_shift_bad`, `long_task`, `slow_form_submit`.
-- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
+- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_expense_created`, `rentivo_expense_deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
 
 ### Privacy
 
@@ -273,6 +273,7 @@ Selected PII columns are encrypted at rest behind a pluggable backend abstractio
 | `billing_items` | `description` |
 | `bills` | `notes` |
 | `bill_line_items` | `description` |
+| `expenses` | `description` |
 | `receipts` | `filename` |
 | `billing_recipients` | `name`, `email` |
 | `billing_reply_to` | `name`, `email` |
