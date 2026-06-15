@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.billing import BillingItem
+from rentivo.models.billing import BillingItem, ReadjustmentIndex
 from rentivo.services.audit_serializers import serialize_billing
 from web.analytics import analytics_hash, push_event
 from web.deps import render
@@ -16,6 +16,28 @@ from web.guards import BillingContext, require_billing
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/billings")
+
+
+def _parse_readjustment_index(raw: str) -> ReadjustmentIndex:
+    """Map a form value to a ReadjustmentIndex, defaulting to NONE when invalid/empty."""
+    try:
+        return ReadjustmentIndex(raw.strip())
+    except ValueError:
+        return ReadjustmentIndex.NONE
+
+
+def _parse_readjustment_month(raw: str) -> int | None:
+    """Parse an anniversary month (1-12) from a form value; None when empty/invalid/out-of-range."""
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        month = int(text)
+    except ValueError:
+        return None
+    if 1 <= month <= 12:
+        return month
+    return None
 
 
 def _sync_recipient_formset(
@@ -93,6 +115,8 @@ async def billing_create(request: Request):
     pix_key = str(form.get("pix_key", "")).strip()
     pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
+    readjustment_index = _parse_readjustment_index(str(form.get("readjustment_index", "")))
+    readjustment_month = _parse_readjustment_month(str(form.get("readjustment_month", "")))
 
     if not name:
         logger.warning("billing_create_rejected", reason="empty_name")
@@ -126,6 +150,8 @@ async def billing_create(request: Request):
             pix_merchant_city=pix_merchant_city,
             owner_type=owner_type,
             owner_id=owner_id,
+            readjustment_index=readjustment_index,
+            readjustment_month=readjustment_month,
         )
     except ValueError as e:
         return flash_redirect(request, str(e), "/billings/create")
@@ -239,6 +265,8 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
     billing.pix_key = str(form.get("pix_key", "")).strip()
     billing.pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     billing.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
+    billing.readjustment_index = _parse_readjustment_index(str(form.get("readjustment_index", "")))
+    billing.readjustment_month = _parse_readjustment_month(str(form.get("readjustment_month", "")))
 
     items: list[BillingItem] = [
         BillingItem(description=p.description, amount=p.amount, item_type=p.item_type)

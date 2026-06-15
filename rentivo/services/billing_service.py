@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import structlog
 
-from rentivo.models.billing import Billing, BillingItem
+from rentivo.models.billing import Billing, BillingItem, ReadjustmentIndex
 from rentivo.observability import traced
 from rentivo.pix import validate_pix_key
 from rentivo.repositories.base import BillingRepository
@@ -32,6 +32,8 @@ class BillingService:
         pix_merchant_city: str = "",
         owner_type: str = "user",
         owner_id: int = 0,
+        readjustment_index: ReadjustmentIndex = ReadjustmentIndex.NONE,
+        readjustment_month: int | None = None,
     ) -> Billing:
         billing = Billing(
             name=name,
@@ -42,6 +44,8 @@ class BillingService:
             pix_merchant_city=pix_merchant_city.strip(),
             owner_type=owner_type,
             owner_id=owner_id,
+            readjustment_index=readjustment_index,
+            readjustment_month=readjustment_month,
         )
         result = self.repo.create(billing)
         logger.info("billing_created", billing_id=result.id, name=result.name)
