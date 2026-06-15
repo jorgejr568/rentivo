@@ -7,6 +7,7 @@ from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
 from rentivo.storage.local import LocalStorage
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs, get_test_user_id
+from web.analytics import analytics_hash
 from web.services_container import RequestServices
 
 
@@ -2019,7 +2020,9 @@ class TestBillRecibo:
                     follow_redirects=False,
                 )
         assert response.status_code == 200
-        assert any(e["event"] == "rentivo_recibo_downloaded" for e in captured)
+        captured_event = next(e for e in captured if e["event"] == "rentivo_recibo_downloaded")
+        assert captured_event["bill_uuid_hash"] == analytics_hash(bill.uuid)
+        assert captured_event["bill_uuid_hash"] != bill.uuid
 
     def test_detail_shows_recibo_button_when_paid(self, auth_client, test_engine, tmp_path):
         billing = create_billing_in_db(test_engine)
