@@ -85,6 +85,13 @@ class TestRollup:
         assert stats.billed_count == 4  # excludes cancelled
         assert set(stats.current) == {1, 2, 3, 4, 5}  # latest bill still shown per billing
 
+    def test_net_income_is_negative_when_expenses_exceed_income(self, cache):
+        repo = FakeBillRepo([_summary(1, 100000, "paid")])  # R$1.000 received
+        stats = BillingStatsService(repo, FakeExpenseRepo(total=150000), cache=cache).stats_for_ids([1], today=TODAY)
+
+        assert stats.received == 100000
+        assert stats.net_income == -50000  # received - expenses, no clamping at zero
+
 
 class TestYearToDate:
     def test_sums_every_bill_in_the_current_year(self, cache):
