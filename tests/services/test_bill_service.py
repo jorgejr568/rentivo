@@ -8,6 +8,7 @@ from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.receipt import Receipt
+from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
@@ -1001,6 +1002,42 @@ class TestRenderRecibo:
                 extras=[],
                 notes="",
                 due_date="10/04/2025",
+            )
+            pdf_bytes = service.render_recibo(bill, billing)
+        assert pdf_bytes[:5] == b"%PDF-"
+
+    def test_render_recibo_falls_back_to_billing_name_when_pix_merchant_name_empty(
+        self,
+        test_engine,  # noqa: F811
+        tmp_path,
+    ):
+        with test_engine.connect() as conn:
+            # Owner provides full PIX config so generate_bill succeeds; the billing
+            # leaves pix_merchant_name empty (but sets pix_key/pix_merchant_city) to
+            # exercise render_recibo's issuer_name = billing.pix_merchant_name or billing.name fallback.
+            user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
+            owner = user_repo.create(User(email="owner202@example.com", password_hash="h"))
+            user_repo.update_pix(owner.id, "owner202@pix.com", "Owner Recebedor", "Campinas")
+            billing_repo = SQLAlchemyBillingRepository(conn, Base64Backend())
+            billing = billing_repo.create(
+                Billing(
+                    name="Apt 202",
+                    pix_key="apt202@pix.com",
+                    pix_merchant_name="",
+                    pix_merchant_city="Campinas",
+                    owner_type="user",
+                    owner_id=owner.id,
+                    items=[BillingItem(description="Aluguel", amount=120000, item_type=ItemType.FIXED)],
+                )
+            )
+            service = self._service(conn, tmp_path)
+            bill = service.generate_bill(
+                billing=billing,
+                reference_month="2025-04",
+                variable_amounts={},
+                extras=[],
+                notes="",
+                due_date="10/05/2025",
             )
             pdf_bytes = service.render_recibo(bill, billing)
         assert pdf_bytes[:5] == b"%PDF-"
