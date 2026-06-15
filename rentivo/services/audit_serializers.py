@@ -57,6 +57,9 @@ def serialize_billing(billing: Billing) -> dict:
         "owner_type": billing.owner_type,
         "owner_id": billing.owner_id,
         "items": [_serialize_line_item(item) for item in billing.items],
+        "readjustment_index": billing.readjustment_index.value,
+        "readjustment_month": billing.readjustment_month,
+        "last_readjustment_date": billing.last_readjustment_date,
         "created_at": _dt(billing.created_at),
         "updated_at": _dt(billing.updated_at),
     }
