@@ -37,6 +37,10 @@ class AuditEventType:
     RECEIPT_DELETE = "receipt.delete"
     RECEIPT_REORDER = "receipt.reorder"
 
+    # Expense events
+    EXPENSE_CREATE = "expense.create"
+    EXPENSE_DELETE = "expense.delete"
+
     # Organization events
     ORGANIZATION_CREATE = "organization.create"
     ORGANIZATION_UPDATE = "organization.update"
