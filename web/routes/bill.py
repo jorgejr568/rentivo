@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from urllib.parse import quote
 
 import structlog
 from fastapi import APIRouter, Depends, Request, Response
@@ -120,6 +121,8 @@ def _export_slug(name: str) -> str:
     return slug or "cobranca"
 
 
+# NOTE: this route MUST stay registered before the "/{bill_uuid}" catch-all
+# below, otherwise "export" would be captured as a bill_uuid and shadowed.
 @router.get("/export")
 async def bill_export(request: Request, ctx: BillingContext = Depends(require_billing("view"))):
     billing = ctx.billing
@@ -127,7 +130,7 @@ async def bill_export(request: Request, ctx: BillingContext = Depends(require_bi
     rows = request.state.services.export.build_rows(billing, bills)
     headers = request.state.services.export.HEADERS
 
-    fmt = request.query_params.get("format", "csv")
+    fmt = request.query_params.get("format", "csv").strip().lower()
     if fmt == "xlsx":
         body = rows_to_xlsx_bytes(headers, rows)
         media_type = _XLSX_MEDIA_TYPE
@@ -139,6 +142,10 @@ async def bill_export(request: Request, ctx: BillingContext = Depends(require_bi
         ext = "csv"
 
     filename = f"faturas_{_export_slug(billing.name)}.{ext}"
+    # RFC 5987: provide a UTF-8 filename* so browsers can render the accented
+    # original name, while keeping the ASCII filename= as a safe fallback.
+    utf8_filename = quote(f"faturas_{billing.name}.{ext}")
+    content_disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{utf8_filename}"
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -162,7 +169,7 @@ async def bill_export(request: Request, ctx: BillingContext = Depends(require_bi
     return Response(
         content=body,
         media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": content_disposition},
     )
 
 

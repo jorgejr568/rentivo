@@ -49,6 +49,23 @@ class TestBillExport:
         assert ws[1][0].value == "Mês de referência"
         assert ws[2][1].value == "Apt 101"
 
+    def test_export_uppercase_format_returns_xlsx(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/export?format=XLSX")
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    def test_export_content_disposition_has_utf8_filename(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine, name="São João")
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            generate_bill_in_db(test_engine, billing, tmp_path)
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/export")
+        disposition = response.headers["content-disposition"]
+        assert 'filename="' in disposition
+        assert "filename*=UTF-8''" in disposition
+
     def test_export_unknown_format_falls_back_to_csv(self, auth_client, test_engine, tmp_path):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
