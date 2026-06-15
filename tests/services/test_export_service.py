@@ -110,3 +110,45 @@ class TestXlsxSerializer:
         wb = openpyxl.load_workbook(io.BytesIO(data))
         ws = wb.active
         assert isinstance(ws["B2"].value, float)
+
+
+class TestFormulaInjectionNeutralization:
+    def test_csv_neutralizes_equals_formula(self):
+        data = rows_to_csv_bytes(["A"], [["=cmd|calc!A1"]])
+        parsed = list(csv.reader(io.StringIO(data.decode("utf-8-sig"))))
+        assert parsed[1][0] == "'=cmd|calc!A1"
+
+    def test_csv_neutralizes_plus_minus_at(self):
+        data = rows_to_csv_bytes(["A"], [["+1"], ["-1"], ["@x"]])
+        parsed = list(csv.reader(io.StringIO(data.decode("utf-8-sig"))))
+        assert parsed[1][0] == "'+1"
+        assert parsed[2][0] == "'-1"
+        assert parsed[3][0] == "'@x"
+
+    def test_csv_leaves_normal_string_unchanged(self):
+        data = rows_to_csv_bytes(["A"], [["Apartamento 101"]])
+        parsed = list(csv.reader(io.StringIO(data.decode("utf-8-sig"))))
+        assert parsed[1][0] == "Apartamento 101"
+
+    def test_xlsx_neutralizes_equals_formula(self):
+        data = rows_to_xlsx_bytes(["A"], [["=cmd|calc!A1"]])
+        ws = openpyxl.load_workbook(io.BytesIO(data)).active
+        assert ws["A2"].value == "'=cmd|calc!A1"
+
+    def test_xlsx_neutralizes_plus_minus_at(self):
+        data = rows_to_xlsx_bytes(["A"], [["+1"], ["-1"], ["@x"]])
+        ws = openpyxl.load_workbook(io.BytesIO(data)).active
+        assert ws["A2"].value == "'+1"
+        assert ws["A3"].value == "'-1"
+        assert ws["A4"].value == "'@x"
+
+    def test_xlsx_leaves_normal_string_unchanged(self):
+        data = rows_to_xlsx_bytes(["A"], [["Apartamento 101"]])
+        ws = openpyxl.load_workbook(io.BytesIO(data)).active
+        assert ws["A2"].value == "Apartamento 101"
+
+    def test_xlsx_leaves_numeric_cell_as_number(self):
+        data = rows_to_xlsx_bytes(["A", "B"], [["=x", 2850.50]])
+        ws = openpyxl.load_workbook(io.BytesIO(data)).active
+        assert isinstance(ws["B2"].value, float)
+        assert ws["A2"].value == "'=x"
