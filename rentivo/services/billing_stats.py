@@ -31,6 +31,8 @@ class BillingStats:
     paid_count: int = 0
     pending_count: int = 0
     overdue_count: int = 0
+    total_expenses: int = 0
+    net_income: int = 0
     current: dict[int, BillSummary] = field(default_factory=dict)
 
     @property
@@ -52,6 +54,8 @@ class BillingStats:
             "paid_count": self.paid_count,
             "pending_count": self.pending_count,
             "overdue_count": self.overdue_count,
+            "total_expenses": self.total_expenses,
+            "net_income": self.net_income,
             "current": {str(bid): s.model_dump() for bid, s in self.current.items()},
         }
 
@@ -66,5 +70,7 @@ class BillingStats:
             paid_count=data["paid_count"],
             pending_count=data["pending_count"],
             overdue_count=data["overdue_count"],
+            total_expenses=data["total_expenses"],
+            net_income=data["net_income"],
             current={int(bid): BillSummary(**s) for bid, s in data["current"].items()},
         )
