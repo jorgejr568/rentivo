@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
@@ -34,8 +36,12 @@ async def expense_add(request: Request, ctx: BillingContext = Depends(require_bi
         return flash_redirect(request, "Descrição é obrigatória.", detail_url)
     if category not in _VALID_CATEGORIES:
         return flash_redirect(request, "Categoria inválida.", detail_url)
-    if amount is None:
+    if amount is None or amount <= 0:
         return flash_redirect(request, "Valor inválido.", detail_url)
+    try:
+        datetime.strptime(incurred_on, "%Y-%m-%d")
+    except ValueError:
+        return flash_redirect(request, "Data inválida.", detail_url)
 
     expense = request.state.services.expense.create_expense(
         billing_id=billing.id,

@@ -80,6 +80,54 @@ def test_add_expense_invalid_amount_rejected(auth_client, csrf_token, billing):
     assert resp.status_code == 302
 
 
+def test_add_expense_empty_incurred_on_rejected(auth_client, csrf_token, billing):
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/expenses/add",
+        data={
+            "csrf_token": csrf_token,
+            "description": "NoDate",
+            "amount": "10,00",
+            "category": "iptu",
+            "incurred_on": "",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert "NoDate" not in auth_client.get(f"/billings/{billing.uuid}").text
+
+
+def test_add_expense_non_date_incurred_on_rejected(auth_client, csrf_token, billing):
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/expenses/add",
+        data={
+            "csrf_token": csrf_token,
+            "description": "BananaDate",
+            "amount": "10,00",
+            "category": "iptu",
+            "incurred_on": "banana",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert "BananaDate" not in auth_client.get(f"/billings/{billing.uuid}").text
+
+
+def test_add_expense_zero_amount_rejected(auth_client, csrf_token, billing):
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/expenses/add",
+        data={
+            "csrf_token": csrf_token,
+            "description": "ZeroAmount",
+            "amount": "0,00",
+            "category": "iptu",
+            "incurred_on": "2026-01-10",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert "ZeroAmount" not in auth_client.get(f"/billings/{billing.uuid}").text
+
+
 def test_delete_expense_success(auth_client, csrf_token, test_engine, billing):
     auth_client.post(
         f"/billings/{billing.uuid}/expenses/add",
