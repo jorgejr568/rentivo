@@ -24,3 +24,9 @@ def test_readjustment_fields_round_trip():
     assert b.readjustment_index == ReadjustmentIndex.IGPM
     assert b.readjustment_month == 6
     assert b.last_readjustment_date == "2026-06-01"
+
+
+def test_billing_readjusted_event_type():
+    from rentivo.models.audit_log import AuditEventType
+
+    assert AuditEventType.BILLING_READJUSTED == "billing.readjusted"

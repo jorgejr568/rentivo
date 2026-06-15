@@ -24,6 +24,7 @@ class AuditEventType:
     BILLING_UPDATE = "billing.update"
     BILLING_DELETE = "billing.delete"
     BILLING_TRANSFER = "billing.transfer"
+    BILLING_READJUSTED = "billing.readjusted"
 
     # Bill events
     BILL_CREATE = "bill.create"
