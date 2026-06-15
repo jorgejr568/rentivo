@@ -36,7 +36,13 @@ def test_add_expense_success(auth_client, csrf_token, test_engine, billing):
 def test_add_expense_invalid_category_rejected(auth_client, csrf_token, billing):
     resp = auth_client.post(
         f"/billings/{billing.uuid}/expenses/add",
-        data={"csrf_token": csrf_token, "description": "x", "amount": "10,00", "category": "bogus", "incurred_on": "2026-01-10"},
+        data={
+            "csrf_token": csrf_token,
+            "description": "x",
+            "amount": "10,00",
+            "category": "bogus",
+            "incurred_on": "2026-01-10",
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 302  # flash + redirect, no row created
@@ -47,7 +53,13 @@ def test_add_expense_invalid_category_rejected(auth_client, csrf_token, billing)
 def test_add_expense_empty_description_rejected(auth_client, csrf_token, billing):
     resp = auth_client.post(
         f"/billings/{billing.uuid}/expenses/add",
-        data={"csrf_token": csrf_token, "description": "", "amount": "10,00", "category": "iptu", "incurred_on": "2026-01-10"},
+        data={
+            "csrf_token": csrf_token,
+            "description": "",
+            "amount": "10,00",
+            "category": "iptu",
+            "incurred_on": "2026-01-10",
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 302
@@ -56,7 +68,13 @@ def test_add_expense_empty_description_rejected(auth_client, csrf_token, billing
 def test_add_expense_invalid_amount_rejected(auth_client, csrf_token, billing):
     resp = auth_client.post(
         f"/billings/{billing.uuid}/expenses/add",
-        data={"csrf_token": csrf_token, "description": "X", "amount": "abc", "category": "iptu", "incurred_on": "2026-01-10"},
+        data={
+            "csrf_token": csrf_token,
+            "description": "X",
+            "amount": "abc",
+            "category": "iptu",
+            "incurred_on": "2026-01-10",
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 302
@@ -65,7 +83,13 @@ def test_add_expense_invalid_amount_rejected(auth_client, csrf_token, billing):
 def test_delete_expense_success(auth_client, csrf_token, test_engine, billing):
     auth_client.post(
         f"/billings/{billing.uuid}/expenses/add",
-        data={"csrf_token": csrf_token, "description": "ToDelete", "amount": "10,00", "category": "outros", "incurred_on": "2026-01-10"},
+        data={
+            "csrf_token": csrf_token,
+            "description": "ToDelete",
+            "amount": "10,00",
+            "category": "outros",
+            "incurred_on": "2026-01-10",
+        },
     )
     # discover the expense uuid from the detail page delete form
     detail = auth_client.get(f"/billings/{billing.uuid}").text
@@ -95,7 +119,13 @@ def test_delete_expense_of_other_billing_rejected(auth_client, csrf_token, test_
     other = create_billing_in_db(test_engine, name="Other")
     auth_client.post(
         f"/billings/{other.uuid}/expenses/add",
-        data={"csrf_token": csrf_token, "description": "Foreign", "amount": "10,00", "category": "iptu", "incurred_on": "2026-01-10"},
+        data={
+            "csrf_token": csrf_token,
+            "description": "Foreign",
+            "amount": "10,00",
+            "category": "iptu",
+            "incurred_on": "2026-01-10",
+        },
     )
     other_detail = auth_client.get(f"/billings/{other.uuid}").text
     foreign_uuid = re.search(r"/expenses/([0-9A-Z]{26})/delete", other_detail).group(1)
@@ -122,7 +152,13 @@ def test_add_expense_requires_csrf(auth_client, billing):
 def test_add_expense_unknown_billing_404(auth_client, csrf_token):
     resp = auth_client.post(
         "/billings/01BX5ZZKBKACTAV9WEVGEMMVRZ/expenses/add",
-        data={"csrf_token": csrf_token, "description": "x", "amount": "10,00", "category": "iptu", "incurred_on": "2026-01-10"},
+        data={
+            "csrf_token": csrf_token,
+            "description": "x",
+            "amount": "10,00",
+            "category": "iptu",
+            "incurred_on": "2026-01-10",
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 302  # require_billing FlashRedirect to "/"

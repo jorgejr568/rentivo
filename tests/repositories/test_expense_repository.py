@@ -74,7 +74,9 @@ def test_create_encrypts_description_and_roundtrips(conn, billing):
 def test_list_by_billing_orders_and_batch_decrypts(conn, billing):
     repo = SQLAlchemyExpenseRepository(conn, Base64Backend())
     repo.create(Expense(billing_id=billing.id, description="A", amount=100, category="iptu", incurred_on="2026-01-01"))
-    repo.create(Expense(billing_id=billing.id, description="B", amount=200, category="outros", incurred_on="2026-02-01"))
+    repo.create(
+        Expense(billing_id=billing.id, description="B", amount=200, category="outros", incurred_on="2026-02-01")
+    )
     rows = repo.list_by_billing(billing.id)
     assert [e.description for e in rows] == ["B", "A"]  # newest incurred_on first
 

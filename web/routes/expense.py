@@ -68,9 +68,7 @@ async def expense_add(request: Request, ctx: BillingContext = Depends(require_bi
 
 
 @router.post("/{expense_uuid}/delete")
-async def expense_delete(
-    request: Request, expense_uuid: str, ctx: BillingContext = Depends(require_billing("manage"))
-):
+async def expense_delete(request: Request, expense_uuid: str, ctx: BillingContext = Depends(require_billing("manage"))):
     billing = ctx.billing
     detail_url = f"/billings/{billing.uuid}"
     expense_service = request.state.services.expense
