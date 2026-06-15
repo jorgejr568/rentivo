@@ -1974,6 +1974,8 @@ class TestBillRecibo:
             )
         assert response.status_code == 200
         assert response.headers.get("content-type", "").startswith("application/pdf")
+        disposition = response.headers.get("content-disposition", "")
+        assert disposition == f'attachment; filename="recibo-{bill.uuid}.pdf"'
         assert response.content[:5] == b"%PDF-"
         logs = get_audit_logs(test_engine, AuditEventType.BILL_RECIBO_DOWNLOAD)
         assert len(logs) >= 1

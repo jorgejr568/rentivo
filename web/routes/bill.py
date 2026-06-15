@@ -320,7 +320,7 @@ async def bill_recibo(request: Request, ctx: BillContext = Depends(require_bill(
     return Response(
         content=bytes(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="recibo-{bill.uuid}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="recibo-{bill.uuid}.pdf"'},
     )
 
 
