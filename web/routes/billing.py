@@ -191,6 +191,9 @@ async def billing_detail(request: Request, ctx: BillingContext = Depends(require
 
     bills = bill_service.list_bills(billing.id)
 
+    expenses = request.state.services.expense.list_for_billing(billing.id)
+    stats = request.state.services.billing_stats.stats_for_ids([billing.id])
+
     # Load user's orgs for transfer dropdown
     org_service = request.state.services.organization
     user_orgs = (
@@ -208,6 +211,8 @@ async def billing_detail(request: Request, ctx: BillingContext = Depends(require
         {
             "billing": billing,
             "bills": bills,
+            "expenses": expenses,
+            "stats": stats,
             "role": ctx.role,
             "user_orgs": user_orgs,
             "pix_needs_setup": pix_needs_setup,
