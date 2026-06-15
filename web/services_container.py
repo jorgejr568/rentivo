@@ -40,6 +40,7 @@ from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.password_reset_service import PasswordResetService
 from rentivo.services.pix_service import PixService
+from rentivo.services.readjustment_service import ReadjustmentService
 from rentivo.services.recipient_service import RecipientService
 from rentivo.services.storage_cleanup_service import StorageCleanupService
 from rentivo.services.theme_service import ThemeService
@@ -69,6 +70,10 @@ class RequestServices:
     @cached_property
     def billing(self) -> BillingService:
         return BillingService(SQLAlchemyBillingRepository(self._conn, self._encryption))
+
+    @cached_property
+    def readjustment(self) -> ReadjustmentService:
+        return ReadjustmentService(billing_service=self.billing)
 
     @cached_property
     def billing_stats(self) -> BillingStatsService:
