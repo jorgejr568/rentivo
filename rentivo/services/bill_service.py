@@ -339,6 +339,7 @@ class BillService:
 
         pdf_bytes = self.recibo_generator.generate(
             bill,
+            # payer_name and billing_name are both billing.name today but are distinct PDF slots.
             billing_name=billing.name,
             payer_name=billing.name,
             issuer_name=issuer_name,
