@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
 
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.billing import ReadjustmentIndex
+from rentivo.models.billing import ItemType, ReadjustmentIndex
 from rentivo.services.audit_serializers import serialize_billing
 from rentivo.services.bcb_sgs_client import BcbSgsClient
 from rentivo.services.readjustment_service import series_for_index
@@ -55,6 +55,13 @@ def _parse_pct(raw: str) -> float | None:
 async def readjust_preview(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
     billing = ctx.billing
     service = request.state.services.readjustment
+
+    if not any(item.item_type == ItemType.FIXED for item in billing.items):
+        return flash_redirect(
+            request,
+            "Esta cobrança não tem itens fixos para reajustar.",
+            f"/billings/{billing.uuid}",
+        )
 
     suggested_pct = None
     bcb_failed = False

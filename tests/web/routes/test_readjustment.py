@@ -50,6 +50,16 @@ class TestReadjustGet:
         resp = auth_client.get(f"/billings/{billing.uuid}/readjust", follow_redirects=False)
         assert resp.status_code in (302, 403)
 
+    def test_preview_no_fixed_items_redirects(self, auth_client, test_engine):
+        billing = create_billing_in_db(
+            test_engine,
+            items=[BillingItem(description="Água", amount=0, item_type=ItemType.VARIABLE)],
+            readjustment_index=ReadjustmentIndex.IGPM,
+        )
+        resp = auth_client.get(f"/billings/{billing.uuid}/readjust", follow_redirects=False)
+        assert resp.status_code == 302
+        assert resp.headers["location"] == f"/billings/{billing.uuid}"
+
     def test_preview_none_index_skips_bcb(self, auth_client, test_engine):
         billing = create_billing_in_db(
             test_engine,
