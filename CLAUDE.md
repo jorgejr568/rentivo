@@ -29,7 +29,7 @@ make docker-regenerate
 
 Two Dockerfiles:
 - **`Dockerfile`** — Web app (FastAPI + uvicorn on port 8000)
-- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `s3.delete`, `communication.send`, `export.generate`)
+- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `s3.delete`, `communication.send`, `export.generate`, `export.send`)
 
 ```bash
 # Web container (default)
@@ -148,12 +148,16 @@ make web-run             # start uvicorn at http://localhost:8000
 
 ## Bill Export
 
-- A billing's bills can be exported as **CSV or XLSX** for accounting. Export runs in the background and is emailed — it is NOT a synchronous download.
-- Trigger: `POST /billings/<id>/bills/export` (form `format=csv|xlsx`, default/fallback csv; needs `view`). Buttons live on the billing detail page. The route guards that the billing has at least one recipient (else redirects to the edit page), then enqueues one `export.generate` job and flashes "exportação iniciada".
-- Worker handler `rentivo/jobs/handlers/export.py:handle_export_generate` (payload `{billing_id, format}`): loads the billing + bills + recipients, builds rows via `ExportService`, serializes via `rentivo/export/serializers.py:serialize_rows` (returns `(body, content_type, ext)`; csv fallback), and sends **one email per recipient — never CC** with the file attached (event `export_ready`). Recipient name/email resolve fresh from the encrypted `billing_recipients` rows, so no PII rides in the job payload. At-least-once: a mid-batch crash retries the whole send (a duplicate accounting export is benign).
-- `ExportService` (`rentivo/services/export_service.py`) is FastAPI-free row building: PT-BR headers, a numeric `Valor (R$)` column (centavos/100) plus a formatted `R$` column. Serializers neutralize spreadsheet **formula injection** (cells starting with `= + - @ \t \r` get a leading `'`). `export_filename`/`export_slug` build an accent-folded slug filename (`São João` → `faturas_sao-joao.csv`).
+- A billing's bills can be exported as **CSV or Excel (XLSX)** for accounting. Export runs in the background and is **emailed to the account that requested it** — NOT a synchronous download, and **NOT** sent to the billing's tenant recipients. Recipients (`billing_recipients`) are tenants; they are never the export audience.
+- Trigger: `POST /billings/<id>/bills/export` (form `format=csv|xlsx`, default/fallback csv; needs `view`). Buttons live on the billing detail page (labelled "Exportar CSV" / "Exportar Excel"). The route enqueues one `export.generate` job carrying `{billing_id, format, requested_by_user_id}` and flashes "exportação iniciada … para o seu e-mail". No recipient is required.
+- **Job chain (storage-backed):**
+  1. `export.generate` (`rentivo/jobs/handlers/export.py:handle_export_generate`): loads the billing + bills, builds rows via `ExportService`, serializes via `rentivo/export/serializers.py:serialize_rows` (returns `(body, content_type, ext)`; csv fallback), uploads the file to storage under `{billing_uuid}/exports/{token}.{ext}`, and enqueues `export.send`. No PII (billing name, recipient data) rides in the payload — only ids/keys.
+  2. `export.send` (`handle_export_send`): resolves the requesting user's e-mail fresh from the encrypted `users` row (by `requested_by_user_id`), downloads the file from storage, sends **one** email to that account (event `export_ready`, attachment named via `export_filename`), then enqueues `s3.delete` for the temp object.
+  3. `s3.delete`: removes the temp export object.
+  - Chained enqueues use `source="worker"`. At-least-once: a retried `export.send` re-downloads and re-sends (a duplicate accounting export is benign) and re-enqueues the delete. A crash between upload and the `export.generate` enqueue commit can orphan a temp object (harmless; a fresh run uses a new token).
+- `ExportService` (`rentivo/services/export_service.py`) is FastAPI-free row building: PT-BR headers, a numeric `Valor (R$)` column (centavos/100) plus a formatted `R$` column. Serializers neutralize spreadsheet **formula injection** (cells starting with `= + - @ \t \r` get a leading `'`). `export_filename`/`export_slug` build an accent-folded slug filename (`São João` → `faturas_sao-joao.csv`). `format_label(ext)` maps the internal token to the human label (`xlsx` → "Excel", else uppercased) for the flash and the email body.
 - `EmailService.send(..., attachments=...)` carries the generated file; templates `web/templates/emails/export_ready.{html,txt}` (PT-BR). The `From` uses the SES default (transactional), not the communications override.
-- Audit event: `billing.export` (`new_state={format, recipient_count}`). GTM: `rentivo_data_exported`. Temporal: `ExportGenerateWorkflow` + `export.generate` activity wrap the same registry handler.
+- Audit event: `billing.export` (`new_state={format}`). GTM: `rentivo_data_exported` (`export_format`, `billing_uuid_hash`). Temporal: `ExportGenerateWorkflow` + `ExportSendWorkflow` (and the existing `S3DeleteWorkflow`) wrap the same registry handlers.
 - Dependency: **openpyxl** (XLSX).
 
 ## Audit Logging
