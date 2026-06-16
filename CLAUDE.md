@@ -484,5 +484,5 @@ Currently the Docker images aren't published to a registry — deploy is a webho
 - **NEVER delete `invoices/`** without explicit user confirmation
 - Do not use floats for monetary values — always centavos (int)
 - Keep repository and storage abstractions — they exist so backends can be swapped (S3, etc.)
-- Dependencies are managed with **uv**. Install with `make install` (= `uv sync --all-extras`). Run tools via `uv run` (e.g. `uv run python`, `uv run pytest`) or the equivalent `.venv/bin/` executables that `uv sync` creates — never bare `python`/`pip`/`pytest`. Add or change dependencies in `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
+- Dependencies are managed with **uv**. Install with `make install` (= `uv sync --all-extras`). Run tools via `uv run` (e.g. `uv run python`, `uv run pytest`, `uv run ruff`) — never bare `python`/`pip`/`pytest`. Add or change dependencies in `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
 - Always run tests in parallel: `uv run pytest -n auto` (or `make test`)
