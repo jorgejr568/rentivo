@@ -29,7 +29,7 @@ make docker-regenerate
 
 Two Dockerfiles:
 - **`Dockerfile`** — Web app (FastAPI + uvicorn on port 8000)
-- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `s3.delete`)
+- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `s3.delete`, `communication.send`, `export.generate`)
 
 ```bash
 # Web container (default)
@@ -133,6 +133,16 @@ make web-run             # start uvicorn at http://localhost:8000
 - Model: `rentivo/models/receipt.py`, Repository: `ReceiptRepository`, Service: integrated into `BillService`
 - Upload/delete via separate forms on the bill edit page
 
+## Bill Export
+
+- A billing's bills can be exported as **CSV or XLSX** for accounting. Export runs in the background and is emailed — it is NOT a synchronous download.
+- Trigger: `POST /billings/<id>/bills/export` (form `format=csv|xlsx`, default/fallback csv; needs `view`). Buttons live on the billing detail page. The route guards that the billing has at least one recipient (else redirects to the edit page), then enqueues one `export.generate` job and flashes "exportação iniciada".
+- Worker handler `rentivo/jobs/handlers/export.py:handle_export_generate` (payload `{billing_id, format}`): loads the billing + bills + recipients, builds rows via `ExportService`, serializes via `rentivo/export/serializers.py:serialize_rows` (returns `(body, content_type, ext)`; csv fallback), and sends **one email per recipient — never CC** with the file attached (event `export_ready`). Recipient name/email resolve fresh from the encrypted `billing_recipients` rows, so no PII rides in the job payload. At-least-once: a mid-batch crash retries the whole send (a duplicate accounting export is benign).
+- `ExportService` (`rentivo/services/export_service.py`) is FastAPI-free row building: PT-BR headers, a numeric `Valor (R$)` column (centavos/100) plus a formatted `R$` column. Serializers neutralize spreadsheet **formula injection** (cells starting with `= + - @ \t \r` get a leading `'`). `export_filename`/`export_slug` build an accent-folded slug filename (`São João` → `faturas_sao-joao.csv`).
+- `EmailService.send(..., attachments=...)` carries the generated file; templates `web/templates/emails/export_ready.{html,txt}` (PT-BR). The `From` uses the SES default (transactional), not the communications override.
+- Audit event: `billing.export` (`new_state={format, recipient_count}`). GTM: `rentivo_data_exported`. Temporal: `ExportGenerateWorkflow` + `export.generate` activity wrap the same registry handler.
+- Dependency: **openpyxl** (XLSX).
+
 ## Audit Logging
 
 - **AuditService** logs all state-changing operations across the web app and maintenance scripts
@@ -168,7 +178,7 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 - **Suffering** — `form_submit_error`, `form_field_error`, `form_abandon`, `rage_click`, `js_error`, `promise_rejection`.
 - **Issues** — `network_error`, `file_upload_error`.
 - **Waiting** — `web_vital` (LCP/INP/CLS/TTFB/FCP), `slow_page`, `interaction_slow`, `layout_shift_bad`, `long_task`, `slow_form_submit`.
-- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
+- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`, `rentivo_data_exported`.
 
 ### Privacy
 

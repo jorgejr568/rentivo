@@ -13,6 +13,7 @@ from rentivo.jobs.temporal.config import TemporalConfig, config_from_settings
 from rentivo.jobs.temporal.workflows import (
     CommunicationSendWorkflow,
     EmailSendWorkflow,
+    ExportGenerateWorkflow,
     PdfRenderWorkflow,
     S3DeleteWorkflow,
 )
@@ -24,6 +25,7 @@ _WORKFLOW_BY_TYPE = {
     "communication.send": CommunicationSendWorkflow,
     "pdf.render": PdfRenderWorkflow,
     "s3.delete": S3DeleteWorkflow,
+    "export.generate": ExportGenerateWorkflow,
 }
 
 

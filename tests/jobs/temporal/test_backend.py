@@ -43,6 +43,7 @@ def test_workflow_map_covers_all_handlers():
         "communication.send",
         "pdf.render",
         "s3.delete",
+        "export.generate",
     }
     assert backend_mod._WORKFLOW_BY_TYPE["email.send"] is EmailSendWorkflow
 
