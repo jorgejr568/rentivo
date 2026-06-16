@@ -1,21 +1,27 @@
 from __future__ import annotations
 
+from email.utils import formataddr
 from uuid import uuid4
 
 import structlog
 
 from rentivo.db import get_engine
+from rentivo.email.base import EmailAttachment
+from rentivo.email.factory import get_email_backend
 from rentivo.encryption.factory import get_encryption
-from rentivo.export.serializers import serialize_rows
+from rentivo.export.serializers import export_filename, format_label, serialize_rows
 from rentivo.jobs.base import PermanentJobError
 from rentivo.jobs.factory import get_job_backend
 from rentivo.jobs.registry import register
 from rentivo.repositories.sqlalchemy.audit_log import SQLAlchemyAuditLogRepository
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
+from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 from rentivo.services.audit_service import AuditService
+from rentivo.services.email_service import EmailService
 from rentivo.services.export_service import ExportService
 from rentivo.services.job_service import JobService
+from rentivo.settings import settings
 from rentivo.storage.factory import get_storage
 
 logger = structlog.get_logger(__name__)
@@ -89,5 +95,74 @@ def handle_export_generate(payload: dict) -> None:
         billing_id=billing_id,
         storage_key=storage_key,
         bill_count=len(bills),
+        export_format=ext,
+    )
+
+
+@register("export.send")
+def handle_export_send(payload: dict) -> None:
+    """E-mail a previously-built export to the requesting account, then clean up.
+
+    Payload: ``{"storage_key", "content_type", "format", "bill_count",
+    "billing_id", "requested_by_user_id"}``.
+
+    The requester's e-mail is resolved fresh from the encrypted ``users`` row
+    (so no plaintext PII rides in the job payload). The file is pulled from
+    storage, mailed as a single attachment to that account — never to the
+    billing's tenant recipients — and an ``s3.delete`` job is enqueued to remove
+    the temp object. At-least-once: a retry re-downloads and re-sends (a
+    duplicate accounting export is benign) and re-enqueues the delete.
+    """
+    billing_id = _require_int(payload, "billing_id")
+    user_id = _require_int(payload, "requested_by_user_id")
+    storage_key = payload["storage_key"]
+    content_type = payload["content_type"]
+    ext = payload.get("format", "csv")
+    bill_count = payload.get("bill_count", 0)
+
+    engine = get_engine()
+    encryption = get_encryption()
+    with engine.connect() as conn:
+        user = SQLAlchemyUserRepository(conn, encryption).get_by_id(user_id)
+        if user is None:
+            raise PermanentJobError(f"requesting user {user_id} not found")
+        billing = SQLAlchemyBillingRepository(conn, encryption).get_by_id(billing_id)
+        if billing is None:
+            raise PermanentJobError(f"billing {billing_id} not found")
+
+    data = get_storage().get(storage_key)
+    attachment = EmailAttachment(
+        filename=export_filename(billing.name, ext),
+        content=data,
+        content_type=content_type,
+    )
+
+    from_address = formataddr((settings.ses_from_name or None, settings.ses_from_email or "noreply@localhost"))
+    service = EmailService(get_email_backend(), from_address=from_address)
+    service.send(
+        user.email,
+        "export_ready",
+        {
+            "recipient_name": "",
+            "billing_name": billing.name,
+            "bill_count": bill_count,
+            "format_label": format_label(ext),
+        },
+        attachments=[attachment],
+    )
+
+    with engine.connect() as conn:
+        job_service = JobService(
+            get_job_backend(conn),
+            AuditService(SQLAlchemyAuditLogRepository(conn)),
+        )
+        job_service.enqueue("s3.delete", {"key": storage_key}, source="worker")
+
+    logger.info(
+        "export_sent",
+        billing_id=billing_id,
+        user_id=user_id,
+        storage_key=storage_key,
+        bill_count=bill_count,
         export_format=ext,
     )
