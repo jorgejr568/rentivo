@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import re
-import unicodedata
-from urllib.parse import quote
-
 import structlog
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
-from rentivo.export.serializers import rows_to_csv_bytes, rows_to_xlsx_bytes
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
@@ -105,47 +100,36 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
-_XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-def _export_slug(name: str) -> str:
-    """Lowercase ASCII slug for the export filename (PT-BR name → safe slug).
-
-    Unicode-normalizes (NFKD) and drops combining marks so accented characters
-    transliterate (``ã``→``a``, ``ç``→``c``, ``í``→``i``) instead of being
-    stripped. Stays injection-safe: the result only ever contains ``[a-z0-9-]``.
-    """
-    decomposed = unicodedata.normalize("NFKD", name)
-    ascii_name = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    slug = re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")
-    return slug or "cobranca"
-
-
 # NOTE: this route MUST stay registered before the "/{bill_uuid}" catch-all
 # below, otherwise "export" would be captured as a bill_uuid and shadowed.
-@router.get("/export")
+@router.post("/export")
 async def bill_export(request: Request, ctx: BillingContext = Depends(require_billing("view"))):
+    """Kick off a background export of the billing's bills, emailed to recipients.
+
+    The file is built off the request path by the ``export.generate`` worker
+    job and attached to an email sent to each of the billing's recipients, so
+    the response is just a flash + redirect rather than a download.
+    """
     billing = ctx.billing
-    bills = request.state.services.bill.list_bills(billing.id) if billing.id else []
-    rows = request.state.services.export.build_rows(billing, bills)
-    headers = request.state.services.export.HEADERS
 
-    fmt = request.query_params.get("format", "csv").strip().lower()
-    if fmt == "xlsx":
-        body = rows_to_xlsx_bytes(headers, rows)
-        media_type = _XLSX_MEDIA_TYPE
-        ext = "xlsx"
-    else:
+    form = await request.form()
+    fmt = str(form.get("format", "csv")).strip().lower()
+    if fmt != "xlsx":
         fmt = "csv"
-        body = rows_to_csv_bytes(headers, rows)
-        media_type = "text/csv; charset=utf-8"
-        ext = "csv"
 
-    filename = f"faturas_{_export_slug(billing.name)}.{ext}"
-    # RFC 5987: provide a UTF-8 filename* so browsers can render the accented
-    # original name, while keeping the ASCII filename= as a safe fallback.
-    utf8_filename = quote(f"faturas_{billing.name}.{ext}")
-    content_disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{utf8_filename}"
+    recipients = request.state.services.recipient.list_for_billing(billing.id) if billing.id else []
+    if not recipients:
+        return flash_redirect(
+            request,
+            "Adicione ao menos um destinatário à cobrança antes de exportar.",
+            f"/billings/{billing.uuid}/edit",
+        )
+
+    request.state.services.job.enqueue_for(
+        request.state.actor,
+        "export.generate",
+        {"billing_id": billing.id, "format": fmt},
+    )
 
     audit = request.state.services.audit
     audit.safe_log_for(
@@ -154,7 +138,7 @@ async def bill_export(request: Request, ctx: BillingContext = Depends(require_bi
         entity_type="billing",
         entity_id=billing.id,
         entity_uuid=billing.uuid,
-        new_state={"format": fmt, "bill_count": len(bills)},
+        new_state={"format": fmt, "recipient_count": len(recipients)},
     )
     push_event(
         request,
@@ -162,14 +146,15 @@ async def bill_export(request: Request, ctx: BillingContext = Depends(require_bi
             "event": "rentivo_data_exported",
             "billing_uuid_hash": analytics_hash(billing.uuid),
             "export_format": fmt,
-            "bill_count": len(bills),
+            "recipient_count": len(recipients),
         },
     )
 
-    return Response(
-        content=body,
-        media_type=media_type,
-        headers={"Content-Disposition": content_disposition},
+    return flash_redirect(
+        request,
+        f"Exportação iniciada. As faturas em {fmt.upper()} serão enviadas por e-mail aos destinatários.",
+        f"/billings/{billing.uuid}",
+        category="success",
     )
 
 

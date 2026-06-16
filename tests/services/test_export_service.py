@@ -8,7 +8,15 @@ from datetime import datetime
 
 import openpyxl
 
-from rentivo.export.serializers import rows_to_csv_bytes, rows_to_xlsx_bytes
+from rentivo.export.serializers import (
+    CSV_CONTENT_TYPE,
+    XLSX_CONTENT_TYPE,
+    export_filename,
+    export_slug,
+    rows_to_csv_bytes,
+    rows_to_xlsx_bytes,
+    serialize_rows,
+)
 from rentivo.models.bill import Bill, BillStatus
 from rentivo.models.billing import Billing
 from rentivo.services.export_service import ExportService
@@ -152,3 +160,40 @@ class TestFormulaInjectionNeutralization:
         ws = openpyxl.load_workbook(io.BytesIO(data)).active
         assert isinstance(ws["B2"].value, float)
         assert ws["A2"].value == "'=x"
+
+
+class TestSerializeRows:
+    def test_csv_is_the_default(self):
+        body, content_type, ext = serialize_rows("csv", HEADERS, ROWS)
+        assert ext == "csv"
+        assert content_type == CSV_CONTENT_TYPE
+        assert body.startswith(b"\xef\xbb\xbf")
+
+    def test_xlsx_selected_case_insensitively(self):
+        body, content_type, ext = serialize_rows("XLSX", HEADERS, ROWS)
+        assert ext == "xlsx"
+        assert content_type == XLSX_CONTENT_TYPE
+        assert openpyxl.load_workbook(io.BytesIO(body)).active["A1"].value == "A"
+
+    def test_unknown_format_falls_back_to_csv(self):
+        _, _, ext = serialize_rows("pdf", HEADERS, ROWS)
+        assert ext == "csv"
+
+    def test_none_format_falls_back_to_csv(self):
+        _, _, ext = serialize_rows(None, HEADERS, ROWS)
+        assert ext == "csv"
+
+
+class TestExportNaming:
+    def test_slug_preserves_accents_sao_joao(self):
+        assert export_slug("São João") == "sao-joao"
+
+    def test_slug_preserves_accents_atica(self):
+        assert export_slug("Ática") == "atica"
+
+    def test_slug_empty_falls_back_to_cobranca(self):
+        assert export_slug("!!!") == "cobranca"
+
+    def test_filename_combines_slug_and_ext(self):
+        assert export_filename("São João", "csv") == "faturas_sao-joao.csv"
+        assert export_filename("Apt 101", "xlsx") == "faturas_apt-101.xlsx"
