@@ -55,14 +55,20 @@ def test_other_activities_run_through_env(clean_registry):
     registry.register("communication.send")(lambda p: calls.setdefault("communication.send", p))
     registry.register("pdf.render")(lambda p: calls.setdefault("pdf.render", p))
     registry.register("s3.delete")(lambda p: calls.setdefault("s3.delete", p))
+    registry.register("export.generate")(lambda p: calls.setdefault("export.generate", p))
+    registry.register("export.send")(lambda p: calls.setdefault("export.send", p))
     env = ActivityEnvironment()
     env.run(activities.communication_send_activity, {"a": 1})
     env.run(activities.pdf_render_activity, {"b": 2})
     env.run(activities.s3_delete_activity, {"c": 3})
+    env.run(activities.export_generate_activity, {"d": 4})
+    env.run(activities.export_send_activity, {"e": 5})
     assert calls == {
         "communication.send": {"a": 1},
         "pdf.render": {"b": 2},
         "s3.delete": {"c": 3},
+        "export.generate": {"d": 4},
+        "export.send": {"e": 5},
     }
 
 

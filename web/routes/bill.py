@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
+from rentivo.export.serializers import format_label
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
@@ -104,41 +105,35 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
 # below, otherwise "export" would be captured as a bill_uuid and shadowed.
 @router.post("/export")
 async def bill_export(request: Request, ctx: BillingContext = Depends(require_billing("view"))):
-    """Kick off a background export of the billing's bills, emailed to recipients.
+    """Kick off a background export of the billing's bills, e-mailed to the
+    requesting account.
 
-    The file is built off the request path by the ``export.generate`` worker
-    job and attached to an email sent to each of the billing's recipients, so
-    the response is just a flash + redirect rather than a download.
+    The file is built + uploaded by ``export.generate``, then ``export.send``
+    mails it to the account that clicked (NOT the billing's tenant recipients)
+    and cleans up the temp object. The response is just a flash + redirect.
     """
     billing = ctx.billing
+    actor = request.state.actor
 
     form = await request.form()
     fmt = str(form.get("format", "csv")).strip().lower()
     if fmt != "xlsx":
         fmt = "csv"
 
-    recipients = request.state.services.recipient.list_for_billing(billing.id) if billing.id else []
-    if not recipients:
-        return flash_redirect(
-            request,
-            "Adicione ao menos um destinatário à cobrança antes de exportar.",
-            f"/billings/{billing.uuid}/edit",
-        )
-
     request.state.services.job.enqueue_for(
-        request.state.actor,
+        actor,
         "export.generate",
-        {"billing_id": billing.id, "format": fmt},
+        {"billing_id": billing.id, "format": fmt, "requested_by_user_id": actor.user_id},
     )
 
     audit = request.state.services.audit
     audit.safe_log_for(
-        request.state.actor,
+        actor,
         AuditEventType.BILLING_EXPORT,
         entity_type="billing",
         entity_id=billing.id,
         entity_uuid=billing.uuid,
-        new_state={"format": fmt, "recipient_count": len(recipients)},
+        new_state={"format": fmt},
     )
     push_event(
         request,
@@ -146,13 +141,12 @@ async def bill_export(request: Request, ctx: BillingContext = Depends(require_bi
             "event": "rentivo_data_exported",
             "billing_uuid_hash": analytics_hash(billing.uuid),
             "export_format": fmt,
-            "recipient_count": len(recipients),
         },
     )
 
     return flash_redirect(
         request,
-        f"Exportação iniciada. As faturas em {fmt.upper()} serão enviadas por e-mail aos destinatários.",
+        f"Exportação iniciada. As faturas em {format_label(fmt)} serão enviadas para o seu e-mail.",
         f"/billings/{billing.uuid}",
         category="success",
     )
