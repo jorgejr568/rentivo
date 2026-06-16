@@ -322,30 +322,44 @@ class BillService:
         self._render_or_enqueue(bill, billing, actor=actor)
         return bill
 
+    def _resolve_recibo_issuer(self, billing: Billing) -> str:
+        """Issuer ("EMITENTE") shown on the recibo: the organization name for
+        org-owned billings, the account email for user-owned billings. Falls
+        back to the billing name when the owner can't be resolved (no
+        pix_service, missing owner row, or empty name)."""
+        if self.pix_service is not None and billing.owner_id is not None:
+            if billing.owner_type == "organization":
+                org = self.pix_service.org_repo.get_by_id(billing.owner_id)
+                if org is not None and org.name:
+                    return org.name
+            else:
+                user = self.pix_service.user_repo.get_by_id(billing.owner_id)
+                if user is not None and user.email:
+                    return user.email
+        return billing.name
+
     @traced("bill.render_recibo")
     def render_recibo(self, bill: Bill, billing: Billing) -> bytes:
         """Render a payment-receipt ("Recibo de Pagamento") PDF on the fly.
 
         Unlike the invoice, the recibo is NOT persisted to storage — the bytes
         are returned for the caller to stream. The payer is the billing name;
-        the issuer is the billing's PIX merchant name (falling back to the
-        billing name). The payment date is the bill's status-change timestamp
-        (when the bill moved to PAID), formatted DD/MM/YYYY.
+        the issuer is the billing owner (organization name or account email,
+        falling back to the billing name). The payment date is the bill's
+        status-change timestamp (when the bill moved to PAID), DD/MM/YYYY.
         """
         theme = None
         if self.theme_service is not None:
             theme = self.theme_service.resolve_theme_for_billing(billing)
 
-        issuer_name = billing.pix_merchant_name or billing.name
+        issuer_name = self._resolve_recibo_issuer(billing)
         payment_date = ""
         if bill.status_updated_at is not None:
             payment_date = bill.status_updated_at.strftime("%d/%m/%Y")
 
         pdf_bytes = self.recibo_generator.generate(
             bill,
-            # payer_name and billing_name are both billing.name today but are distinct PDF slots.
             billing_name=billing.name,
-            payer_name=billing.name,
             issuer_name=issuer_name,
             payment_date=payment_date,
             theme=theme,

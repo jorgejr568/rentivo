@@ -26,7 +26,6 @@ class TestReciboPDF:
         result = ReciboPDF().generate(
             self._make_bill(),
             billing_name="Apt 101",
-            payer_name="Apt 101",
             issuer_name="Maria Recebedora",
             payment_date="14/06/2026",
         )
@@ -37,7 +36,6 @@ class TestReciboPDF:
         result = ReciboPDF().generate(
             self._make_bill(),
             billing_name="Apt 101",
-            payer_name="Apt 101",
             issuer_name="",
             payment_date="",
         )
@@ -48,7 +46,6 @@ class TestReciboPDF:
         result = ReciboPDF().generate(
             self._make_bill(),
             billing_name="Apt 101",
-            payer_name="Apt 101",
             issuer_name="Maria Recebedora",
             payment_date="14/06/2026",
             theme=theme,

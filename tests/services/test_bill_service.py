@@ -1006,15 +1006,14 @@ class TestRenderRecibo:
             pdf_bytes = service.render_recibo(bill, billing)
         assert pdf_bytes[:5] == b"%PDF-"
 
-    def test_render_recibo_falls_back_to_billing_name_when_pix_merchant_name_empty(
+    def test_render_recibo_user_owned_smoke(
         self,
         test_engine,  # noqa: F811
         tmp_path,
     ):
         with test_engine.connect() as conn:
-            # Owner provides full PIX config so generate_bill succeeds; the billing
-            # leaves pix_merchant_name empty (but sets pix_key/pix_merchant_city) to
-            # exercise render_recibo's issuer_name = billing.pix_merchant_name or billing.name fallback.
+            # User-owned billing: render_recibo resolves the issuer to the owner's
+            # account email and still produces a valid PDF.
             user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
             owner = user_repo.create(User(email="owner202@example.com", password_hash="h"))
             user_repo.update_pix(owner.id, "owner202@pix.com", "Owner Recebedor", "Campinas")
@@ -1041,6 +1040,45 @@ class TestRenderRecibo:
             )
             pdf_bytes = service.render_recibo(bill, billing)
         assert pdf_bytes[:5] == b"%PDF-"
+
+
+class TestResolveReciboIssuer:
+    class _Repo:
+        def __init__(self, obj):
+            self._obj = obj
+
+        def get_by_id(self, _id):
+            return self._obj
+
+    class _Pix:
+        def __init__(self, user=None, org=None):
+            self.user_repo = TestResolveReciboIssuer._Repo(user)
+            self.org_repo = TestResolveReciboIssuer._Repo(org)
+
+    def _service(self, pix):
+        return BillService(MagicMock(), MagicMock(), pix_service=pix)
+
+    def test_org_owned_uses_org_name(self):
+        from rentivo.models.organization import Organization
+
+        svc = self._service(self._Pix(org=Organization(id=5, name="Imobiliária Central")))
+        billing = Billing(id=1, name="Apt 101", owner_type="organization", owner_id=5)
+        assert svc._resolve_recibo_issuer(billing) == "Imobiliária Central"
+
+    def test_user_owned_uses_account_email(self):
+        svc = self._service(self._Pix(user=User(id=7, email="dono@example.com", password_hash="h")))
+        billing = Billing(id=1, name="Apt 101", owner_type="user", owner_id=7)
+        assert svc._resolve_recibo_issuer(billing) == "dono@example.com"
+
+    def test_falls_back_to_billing_name_when_owner_missing(self):
+        svc = self._service(self._Pix(user=None))
+        billing = Billing(id=1, name="Apt 101", owner_type="user", owner_id=7)
+        assert svc._resolve_recibo_issuer(billing) == "Apt 101"
+
+    def test_falls_back_to_billing_name_without_pix_service(self):
+        svc = BillService(MagicMock(), MagicMock())  # pix_service=None
+        billing = Billing(id=1, name="Apt 101", owner_type="organization", owner_id=5)
+        assert svc._resolve_recibo_issuer(billing) == "Apt 101"
 
 
 class TestReciboLifecycle:
