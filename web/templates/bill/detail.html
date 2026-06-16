@@ -27,10 +27,22 @@
         <span class="tag tag--cancelled" title="Falha ao gerar o PDF. Tente regenerar manualmente.">Falha no PDF</span>
         {% endif %}
         {% if bill.pdf_path %}
-        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
-        {% endif %}
-        {% if bill.status == "paid" %}
-        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/recibo" target="_blank" class="btn">Baixar recibo</a>
+        <div class="btn-dropdown">
+            <button type="button" class="btn btn-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                Baixar <span class="btn-dropdown-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="btn-dropdown-menu" role="menu">
+                <a class="btn-dropdown-item" role="menuitem" target="_blank"
+                   href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice">Baixar fatura</a>
+                {% if bill.status == "paid" %}
+                <a class="btn-dropdown-item" role="menuitem" target="_blank"
+                   href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/recibo">Baixar recibo</a>
+                {% else %}
+                <span class="btn-dropdown-item btn-dropdown-item--disabled" aria-disabled="true"
+                      title="O recibo fica disponível quando a fatura está paga.">Baixar recibo</span>
+                {% endif %}
+            </div>
+        </div>
         {% endif %}
         {% if role in ("owner", "admin", "manager") %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>

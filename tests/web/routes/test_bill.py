@@ -2231,3 +2231,32 @@ class TestBillRecibo:
         assert "communications/compose?type=payment_receipt" not in html
         assert "btn-dropdown-item--disabled" in html
         assert "Enviar recibo" in html
+
+    def test_detail_baixar_dropdown_enables_recibo_when_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        assert "Baixar <span" in html  # the dropdown trigger (text + caret)
+        assert f"/bills/{bill.uuid}/invoice" in html
+        assert "Baixar fatura" in html
+        # Download works on-the-fly for any paid bill — no recibo_pdf_path required.
+        assert f"/bills/{bill.uuid}/recibo" in html
+        assert "Baixar recibo" in html
+
+    def test_detail_baixar_dropdown_disables_recibo_when_not_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # draft, unpaid
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        assert "Baixar <span" in html  # the dropdown trigger
+        assert f"/bills/{bill.uuid}/invoice" in html
+        assert "Baixar fatura" in html
+        # Recibo download disabled (no working /recibo link) until the bill is paid.
+        assert f"/bills/{bill.uuid}/recibo" not in html
+        assert "btn-dropdown-item--disabled" in html
