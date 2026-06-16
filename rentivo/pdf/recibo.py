@@ -30,7 +30,6 @@ class ReciboPDF:
         self,
         bill: Bill,
         billing_name: str,
-        payer_name: str,
         issuer_name: str,
         payment_date: str,
         theme: Theme | None = None,
@@ -61,7 +60,6 @@ class ReciboPDF:
         rows: list[tuple[str, str]] = []
         if issuer_name:
             rows.append(("Emitente", issuer_name))
-        rows.append(("Pagador", payer_name))
         rows.append(("Referência", f"{billing_name} — {format_month(bill.reference_month)}"))
         if payment_date:
             rows.append(("Data do pagamento", payment_date))
