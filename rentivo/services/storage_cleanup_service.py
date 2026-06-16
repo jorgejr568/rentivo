@@ -20,7 +20,7 @@ class StorageCleanupService:
     docs/superpowers/specs/2026-05-02-s3-delete-job-design.md. In short:
 
     - delete_receipt -> 1 job (the receipt's storage_key)
-    - delete_bill    -> N+1 jobs (each receipt + the bill PDF)
+    - delete_bill    -> N+2 jobs (each receipt + the bill PDF + the recibo PDF)
     - delete_billing -> walks bills (then receipts under each) + billing attachments
 
     Empty keys are silently skipped -- bills can have ``pdf_path=""`` if a
@@ -59,6 +59,7 @@ class StorageCleanupService:
             for receipt in self.receipt_repo.list_by_bill(bill.id):
                 self.enqueue_key(actor, receipt.storage_key)
         self.enqueue_key(actor, bill.pdf_path or "")
+        self.enqueue_key(actor, bill.recibo_pdf_path or "")
 
     @traced("storage_cleanup.enqueue_attachment_delete")
     def enqueue_attachment_delete(self, actor, attachment: BillingAttachment) -> None:

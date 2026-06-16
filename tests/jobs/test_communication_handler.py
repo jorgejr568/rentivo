@@ -145,6 +145,66 @@ def test_handler_no_reply_to_and_no_from_override(engine, monkeypatch):
     assert sent["msg"].from_address == "noreply@localhost"
 
 
+def _seed_recibo_comm(engine):
+    with engine.connect() as c:
+        repo = SQLAlchemyCommunicationRepository(c, Base64Backend())
+        return repo.create(
+            Communication(
+                bill_id=5,
+                comm_type="payment_receipt",
+                recipient_name="João",
+                recipient_email="joao@example.com",
+                subject="Recibo",
+                body_markdown="Segue o **recibo**",
+            )
+        )
+
+
+def test_handler_attaches_recibo_for_payment_receipt(engine, monkeypatch):
+    """A payment_receipt communication attaches the stored recibo PDF, not the invoice."""
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.jobs.handlers.communication import handle_communication_send
+
+    with engine.connect() as c:
+        c.execute(text("UPDATE bills SET recibo_pdf_path = 'k/recibo.pdf' WHERE id = 5"))
+        c.commit()
+    comm = _seed_recibo_comm(engine)
+    sent = {}
+
+    class FakeStorage:
+        def get(self, key):
+            sent["key"] = key
+            return b"%PDF-1.4 recibo"
+
+    class FakeBackend:
+        def send(self, message):
+            sent["msg"] = message
+            return "msg-1"
+
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    monkeypatch.setattr(mod, "get_storage", lambda: FakeStorage())
+    monkeypatch.setattr(mod, "get_email_backend", lambda: FakeBackend())
+
+    handle_communication_send({"communication_id": comm.id})
+
+    assert sent["key"] == "k/recibo.pdf"
+    assert sent["msg"].attachments[0].content == b"%PDF-1.4 recibo"
+    assert sent["msg"].attachments[0].filename == "recibo-2026-05.pdf"
+
+
+def test_handler_permanent_error_when_recibo_missing(engine, monkeypatch):
+    """payment_receipt with no stored recibo fails permanently — never sends the invoice instead."""
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.jobs.handlers.communication import handle_communication_send
+
+    comm = _seed_recibo_comm(engine)  # bill.recibo_pdf_path stays NULL
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    with pytest.raises(PermanentJobError, match="recibo"):
+        handle_communication_send({"communication_id": comm.id})
+
+
 def test_handler_rejects_non_int_id():
     from rentivo.jobs.handlers.communication import handle_communication_send
 
@@ -160,6 +220,20 @@ def test_handler_permanent_error_when_communication_missing(engine, monkeypatch)
     monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
     with pytest.raises(PermanentJobError):
         handle_communication_send({"communication_id": 99999})
+
+
+def test_handler_permanent_error_when_bill_missing(engine, monkeypatch):
+    import rentivo.jobs.handlers.communication as mod
+    from rentivo.jobs.handlers.communication import handle_communication_send
+
+    comm = _seed_comm(engine)
+    with engine.connect() as c:
+        c.execute(text("DELETE FROM bills WHERE id = 5"))
+        c.commit()
+    monkeypatch.setattr(mod, "get_engine", lambda: engine)
+    monkeypatch.setattr(mod, "get_encryption", lambda: Base64Backend())
+    with pytest.raises(PermanentJobError, match="missing"):
+        handle_communication_send({"communication_id": comm.id})
 
 
 def test_handler_permanent_error_when_pdf_missing(engine, monkeypatch):

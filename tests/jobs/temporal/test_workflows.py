@@ -12,6 +12,7 @@ from rentivo.jobs.temporal.workflows import (
     ExportGenerateWorkflow,
     ExportSendWorkflow,
     PdfRenderWorkflow,
+    ReciboRenderWorkflow,
     S3DeleteWorkflow,
 )
 
@@ -123,6 +124,7 @@ def _make_named_activity(name):
     [
         (CommunicationSendWorkflow, "communication.send"),
         (PdfRenderWorkflow, "pdf.render"),
+        (ReciboRenderWorkflow, "recibo.render"),
         (S3DeleteWorkflow, "s3.delete"),
         (ExportGenerateWorkflow, "export.generate"),
         (ExportSendWorkflow, "export.send"),

@@ -91,6 +91,23 @@ def test_enqueue_bill_delete_cascade_emits_receipts_then_pdf():
         assert call.args[1] == "s3.delete"
 
 
+def test_enqueue_bill_delete_cascade_includes_recibo_pdf():
+    bill = Bill(
+        id=10,
+        uuid="bill-u",
+        billing_id=1,
+        reference_month="2025-03",
+        pdf_path="b/bill.pdf",
+        recibo_pdf_path="b/bill.recibo.pdf",
+    )
+    svc, job, _, _ = _make_service(receipts_by_bill={10: []})
+
+    svc.enqueue_bill_delete_cascade(_actor(), bill)
+
+    keys = [call.args[2]["key"] for call in job.enqueue_for.call_args_list]
+    assert keys == ["b/bill.pdf", "b/bill.recibo.pdf"]
+
+
 def test_enqueue_bill_delete_cascade_skips_empty_pdf_path():
     bill = Bill(id=10, uuid="u", billing_id=1, reference_month="2025-03", pdf_path="")
     svc, job, _, _ = _make_service(

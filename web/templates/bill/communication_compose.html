@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Enviar comunicação - Rentivo{% endblock %}
+{% set is_recibo = comm_type == "payment_receipt" %}
+{% set comm_label = "recibo de pagamento" if is_recibo else "fatura" %}
+
+{% block title %}Enviar {{ comm_label }} - Rentivo{% endblock %}
 
 {% block content %}
 <a class="crumb" href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}">
@@ -10,8 +13,8 @@
 
 <div class="pagehead">
     <div>
-        <h1 class="pagehead__title">Enviar comunicação</h1>
-        <p class="pagehead__sub">{{ billing.name }} · {{ format_month(bill.reference_month) }}. Cada destinatário recebe um e-mail separado com o PDF anexado.</p>
+        <h1 class="pagehead__title">Enviar {{ comm_label }}</h1>
+        <p class="pagehead__sub">{{ billing.name }} · {{ format_month(bill.reference_month) }}. Cada destinatário recebe um e-mail separado com o {{ "recibo" if is_recibo else "PDF da fatura" }} anexado.</p>
     </div>
 </div>
 
@@ -22,6 +25,7 @@
 {% else %}
 <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/send" id="comm-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="comm_type" value="{{ comm_type }}">
 
     <div class="panel">
         <div class="panel__head"><h3>Destinatários</h3></div>
@@ -85,7 +89,7 @@
 
     <div class="btn-row">
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}" class="btn btn--ghost">Cancelar</a>
-        <button type="submit" class="btn btn--primary" id="comm-send-btn">Enviar comunicação</button>
+        <button type="submit" class="btn btn--primary" id="comm-send-btn">Enviar {{ comm_label }}</button>
     </div>
 </form>
 {% endif %}

@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.datastructures import UploadFile
 
 from rentivo.export.serializers import format_label
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.bill import BillLineItem
+from rentivo.models.bill import BillLineItem, BillStatus
 from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
@@ -272,7 +272,7 @@ async def bill_change_status(request: Request, ctx: BillContext = Depends(requir
     previous_status = bill.status
 
     try:
-        bill_service.change_status(bill, new_status)
+        bill_service.change_status(bill, new_status, billing=billing, actor=request.state.actor)
     except ValueError:
         return flash_redirect(request, "Status inválido.", f"/billings/{billing.uuid}/bills/{bill.uuid}")
 
@@ -342,6 +342,52 @@ async def bill_invoice(request: Request, ctx: BillContext = Depends(require_bill
     if ref.kind == "local":
         return FileResponse(ref.location, media_type="application/pdf")
     return RedirectResponse(ref.location, status_code=302)
+
+
+@router.get("/{bill_uuid}/recibo")
+async def bill_recibo(request: Request, ctx: BillContext = Depends(require_bill("view"))):
+    bill, billing = ctx.bill, ctx.billing
+
+    if bill.status != BillStatus.PAID.value:
+        logger.warning("recibo_not_paid", bill_uuid=bill.uuid, status=bill.status)
+        return flash_redirect(
+            request,
+            "O recibo só fica disponível quando a fatura está paga.",
+            f"/billings/{billing.uuid}/bills/{bill.uuid}",
+        )
+
+    bill_service = request.state.services.bill
+    audit = request.state.services.audit
+    audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.BILL_RECIBO_DOWNLOAD,
+        entity_type="bill",
+        entity_id=bill.id,
+        entity_uuid=bill.uuid,
+    )
+    push_event(request, {"event": "rentivo_recibo_downloaded", "bill_uuid_hash": analytics_hash(bill.uuid)})
+
+    # The recibo is rendered in the background when the bill becomes PAID. Serve
+    # the stored object when it exists; during the brief render window (or if the
+    # worker is behind) fall back to rendering on the fly so the download never
+    # breaks.
+    if bill.recibo_pdf_path:
+        ref = bill_service.get_recibo_ref(bill)
+        logger.debug("recibo_ref", storage_key=bill.recibo_pdf_path, kind=ref.kind)
+        if ref.kind == "local":
+            return FileResponse(
+                ref.location,
+                media_type="application/pdf",
+                filename=f"recibo-{bill.uuid}.pdf",
+            )
+        return RedirectResponse(ref.location, status_code=302)
+
+    pdf_bytes = bill_service.render_recibo(bill, billing)
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="recibo-{bill.uuid}.pdf"'},
+    )
 
 
 @router.get("/{bill_uuid}/receipts/{receipt_uuid}")

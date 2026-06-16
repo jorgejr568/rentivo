@@ -33,7 +33,13 @@ def _ruuid(test_engine):
 
 
 def _send(auth_client, billing, bill, csrf, body, ruuid, ack=False):
-    data = {"csrf_token": csrf, "subject": "Cobrança", "body": body, "recipient_uuids": ruuid}
+    data = {
+        "csrf_token": csrf,
+        "comm_type": "bill_ready",
+        "subject": "Cobrança",
+        "body": body,
+        "recipient_uuids": ruuid,
+    }
     if ack:
         data["acknowledge_warning"] = "1"
     return auth_client.post(
@@ -47,7 +53,7 @@ def test_severe_content_is_blocked(auth_client, test_engine, csrf_token, tmp_pat
     _seed_recipient(auth_client, billing, csrf_token)
     resp = _send(auth_client, billing, bill, csrf_token, "Se não pagar vou te matar.", _ruuid(test_engine))
     assert resp.status_code == 302
-    assert resp.headers["location"].endswith("/communications/compose")
+    assert resp.headers["location"].endswith("/communications/compose?type=bill_ready")
     with test_engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
         assert c.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type='communication.send'")).scalar() == 0
@@ -60,7 +66,7 @@ def test_mild_content_requires_acknowledgment(auth_client, test_engine, csrf_tok
     _seed_recipient(auth_client, billing, csrf_token)
     resp = _send(auth_client, billing, bill, csrf_token, "Que merda, paga logo.", _ruuid(test_engine), ack=False)
     assert resp.status_code == 302
-    assert resp.headers["location"].endswith("/communications/compose")
+    assert resp.headers["location"].endswith("/communications/compose?type=bill_ready")
     with test_engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
         assert c.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type='communication.send'")).scalar() == 0

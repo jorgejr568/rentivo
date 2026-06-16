@@ -29,11 +29,17 @@
         {% if bill.pdf_path %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
         {% endif %}
+        {% if bill.status == "paid" %}
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/recibo" target="_blank" class="btn">Baixar recibo</a>
+        {% endif %}
         {% if role in ("owner", "admin", "manager") %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
         {% endif %}
         {% if role in ("owner", "admin", "manager") and bill.pdf_path %}
-        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/compose" class="btn btn--primary">Enviar comunicação</a>
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/compose?type=bill_ready" class="btn btn--primary">Enviar comunicação</a>
+        {% endif %}
+        {% if role in ("owner", "admin", "manager") and bill.status == "paid" and bill.recibo_pdf_path %}
+        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/compose?type=payment_receipt" class="btn">Enviar recibo</a>
         {% endif %}
     </div>
 </div>

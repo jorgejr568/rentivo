@@ -32,6 +32,7 @@ class AuditEventType:
     BILL_DELETE = "bill.delete"
     BILL_STATUS_CHANGE = "bill.status_change"
     BILL_REGENERATE_PDF = "bill.regenerate_pdf"
+    BILL_RECIBO_DOWNLOAD = "bill.recibo_download"
 
     # Receipt events
     RECEIPT_UPLOAD = "receipt.upload"
