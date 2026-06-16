@@ -10,6 +10,7 @@ from rentivo.jobs.temporal.workflows import (
     CommunicationSendWorkflow,
     EmailSendWorkflow,
     ExportGenerateWorkflow,
+    ExportSendWorkflow,
     PdfRenderWorkflow,
     ReciboRenderWorkflow,
     S3DeleteWorkflow,
@@ -126,6 +127,7 @@ def _make_named_activity(name):
         (ReciboRenderWorkflow, "recibo.render"),
         (S3DeleteWorkflow, "s3.delete"),
         (ExportGenerateWorkflow, "export.generate"),
+        (ExportSendWorkflow, "export.send"),
     ],
 )
 async def test_each_workflow_class_delegates_to_run_job(wf, activity_name):

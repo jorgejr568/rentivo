@@ -1,4 +1,4 @@
-"""Integration tests for the bill export route (async, emailed to recipients)."""
+"""Integration tests for the bill export route (async, emailed to the requesting account)."""
 
 from __future__ import annotations
 
@@ -6,16 +6,7 @@ from sqlalchemy import text
 
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.recipient import Recipient
-from rentivo.repositories.sqlalchemy.recipient import SQLAlchemyRecipientRepository
-from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs
-
-
-def _add_recipient(engine, billing, email="dest@example.com", name="Destinatário"):
-    with engine.connect() as conn:
-        SQLAlchemyRecipientRepository(conn, Base64Backend()).replace_for_billing(
-            billing.id, [Recipient(billing_id=billing.id, name=name, email=email)]
-        )
+from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs, get_test_user_id
 
 
 def _enqueued_export_jobs(engine):
@@ -28,7 +19,6 @@ class TestBillExport:
     def test_export_enqueues_job_and_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -46,7 +36,6 @@ class TestBillExport:
     def test_export_xlsx_format_recorded(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -60,7 +49,6 @@ class TestBillExport:
     def test_export_unknown_format_falls_back_to_csv(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -70,23 +58,9 @@ class TestBillExport:
         jobs = _enqueued_export_jobs(test_engine)
         assert '"format": "csv"' in jobs[0]
 
-    def test_export_without_recipients_is_rejected(self, auth_client, test_engine, tmp_path, csrf_token):
-        billing = create_billing_in_db(test_engine)
-        generate_bill_in_db(test_engine, billing, tmp_path)
-
-        response = auth_client.post(
-            f"/billings/{billing.uuid}/bills/export",
-            data={"csrf_token": csrf_token, "format": "csv"},
-            follow_redirects=False,
-        )
-        assert response.status_code == 302
-        assert response.headers["location"] == f"/billings/{billing.uuid}/edit"
-        assert _enqueued_export_jobs(test_engine) == []
-
     def test_export_records_audit_event(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -95,7 +69,20 @@ class TestBillExport:
         )
         logs = get_audit_logs(test_engine, event_type=AuditEventType.BILLING_EXPORT)
         assert len(logs) == 1
-        assert logs[0].new_state == {"format": "xlsx", "recipient_count": 1}
+        assert logs[0].new_state == {"format": "xlsx"}
+
+    def test_export_carries_requesting_user_id(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        generate_bill_in_db(test_engine, billing, tmp_path)
+
+        auth_client.post(
+            f"/billings/{billing.uuid}/bills/export",
+            data={"csrf_token": csrf_token, "format": "csv"},
+            follow_redirects=False,
+        )
+        jobs = _enqueued_export_jobs(test_engine)
+        assert len(jobs) == 1
+        assert f'"requested_by_user_id": {get_test_user_id(test_engine)}' in jobs[0]
 
     def test_export_billing_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
@@ -114,7 +101,6 @@ class TestBillExport:
                 User(email="exp_other@example.com", password_hash="h")
             )
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
-        _add_recipient(test_engine, billing)
 
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -123,3 +109,13 @@ class TestBillExport:
         )
         assert response.status_code == 302
         assert _enqueued_export_jobs(test_engine) == []
+
+    def test_detail_page_uses_excel_label_not_xlsx(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine, name="Apt 7")
+        generate_bill_in_db(test_engine, billing, tmp_path)
+
+        resp = auth_client.get(f"/billings/{billing.uuid}")
+        assert resp.status_code == 200
+        assert "Exportar Excel" in resp.text
+        assert "Exportar XLSX" not in resp.text
+        assert "XLSX" not in resp.text

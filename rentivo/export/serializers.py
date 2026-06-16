@@ -67,6 +67,15 @@ def serialize_rows(fmt: str, headers: list[str], rows: list[list]) -> tuple[byte
     return rows_to_csv_bytes(headers, rows), CSV_CONTENT_TYPE, "csv"
 
 
+def format_label(ext: str) -> str:
+    """Human-facing name for an export format token.
+
+    ``xlsx`` is shown as "Excel" everywhere the user sees it; everything else
+    falls back to its uppercased token (``csv`` -> ``CSV``).
+    """
+    return "Excel" if ext == "xlsx" else ext.upper()
+
+
 def export_slug(name: str) -> str:
     """Lowercase ASCII slug for an export filename (PT-BR name → safe slug).
 

@@ -10,6 +10,7 @@ def test_worker_components_lists_all_workflows_and_activities():
         workflows.ReciboRenderWorkflow,
         workflows.S3DeleteWorkflow,
         workflows.ExportGenerateWorkflow,
+        workflows.ExportSendWorkflow,
     }
     assert set(acts) == {
         activities.email_send_activity,
@@ -18,5 +19,6 @@ def test_worker_components_lists_all_workflows_and_activities():
         activities.recibo_render_activity,
         activities.s3_delete_activity,
         activities.export_generate_activity,
+        activities.export_send_activity,
         activities.finalize_job_activity,
     }

@@ -14,6 +14,7 @@ from rentivo.jobs.temporal.workflows import (
     CommunicationSendWorkflow,
     EmailSendWorkflow,
     ExportGenerateWorkflow,
+    ExportSendWorkflow,
     PdfRenderWorkflow,
     ReciboRenderWorkflow,
     S3DeleteWorkflow,
@@ -28,6 +29,7 @@ _WORKFLOW_BY_TYPE = {
     "recibo.render": ReciboRenderWorkflow,
     "s3.delete": S3DeleteWorkflow,
     "export.generate": ExportGenerateWorkflow,
+    "export.send": ExportSendWorkflow,
 }
 
 

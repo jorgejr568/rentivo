@@ -129,3 +129,10 @@ class ExportGenerateWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
         await _run_job("export.generate", payload, ulid, max_attempts)
+
+
+@workflow.defn(name="ExportSendWorkflow")
+class ExportSendWorkflow:
+    @workflow.run
+    async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
+        await _run_job("export.send", payload, ulid, max_attempts)
