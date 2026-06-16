@@ -22,6 +22,7 @@ def worker_components() -> tuple[list, list]:
         workflows.EmailSendWorkflow,
         workflows.CommunicationSendWorkflow,
         workflows.PdfRenderWorkflow,
+        workflows.ReciboRenderWorkflow,
         workflows.S3DeleteWorkflow,
         workflows.ExportGenerateWorkflow,
     ]
@@ -29,6 +30,7 @@ def worker_components() -> tuple[list, list]:
         activities.email_send_activity,
         activities.communication_send_activity,
         activities.pdf_render_activity,
+        activities.recibo_render_activity,
         activities.s3_delete_activity,
         activities.export_generate_activity,
         activities.finalize_job_activity,

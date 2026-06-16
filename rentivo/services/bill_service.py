@@ -41,6 +41,10 @@ def _storage_key(billing_uuid: str, bill_uuid: str) -> str:
     return _prefixed(f"{billing_uuid}/{bill_uuid}.pdf")
 
 
+def _recibo_storage_key(billing_uuid: str, bill_uuid: str) -> str:
+    return _prefixed(f"{billing_uuid}/{bill_uuid}.recibo.pdf")
+
+
 def _receipt_storage_key(billing_uuid: str, bill_uuid: str, receipt_uuid: str, content_type: str) -> str:
     ext = CONTENT_TYPE_EXTENSIONS.get(content_type, "")
     return _prefixed(f"{billing_uuid}/{bill_uuid}/receipts/{receipt_uuid}{ext}")
@@ -349,6 +353,73 @@ class BillService:
         logger.info("recibo_rendered", bill_uuid=bill.uuid, bytes=len(pdf_bytes))
         return pdf_bytes
 
+    @traced("bill.store_recibo")
+    def store_recibo(self, bill: Bill, billing: Billing) -> str:
+        """Render the recibo and persist it to storage, recording its key.
+
+        Used by the ``recibo.render`` background job (web) and the synchronous
+        fallback when no JobService is configured (CLI). Returns the storage key
+        and stamps it onto ``bill.recibo_pdf_path``.
+        """
+        if bill.id is None:
+            raise ValueError("Cannot store recibo for bill without an id")
+        pdf_bytes = self.render_recibo(bill, billing)
+        key = _recibo_storage_key(billing.uuid, bill.uuid)
+        path = self.storage.save(key, bytes(pdf_bytes), content_type="application/pdf")
+        self.bill_repo.update_recibo_pdf_path(bill.id, path)
+        bill.recibo_pdf_path = path
+        logger.info("recibo_stored", bill_uuid=bill.uuid, storage_key=key)
+        return path
+
+    def _enqueue_or_render_recibo(self, bill: Bill, billing: Billing | None, actor=None) -> None:
+        """Render the recibo synchronously (CLI) or enqueue a ``recibo.render``
+        job (web). Called from ``change_status``, which has already validated
+        ``bill.id`` is set."""
+        if self.job_service is None:
+            if billing is not None:
+                self.store_recibo(bill, billing)
+            return
+        if actor is not None:
+            self.job_service.enqueue_for(actor, "recibo.render", {"bill_id": bill.id}, max_attempts=3)
+        else:
+            self.job_service.enqueue(
+                "recibo.render",
+                {"bill_id": bill.id},
+                source="",
+                actor_id=None,
+                actor_username="",
+                max_attempts=3,
+            )
+
+    def _remove_recibo(self, bill: Bill, actor=None) -> None:
+        """Delete a stored recibo and clear its key. Called when a bill leaves
+        the PAID status (the quittance no longer reflects reality). Called from
+        ``change_status``, which has already validated ``bill.id`` is set."""
+        key = bill.recibo_pdf_path
+        if not key:
+            return
+        if self.job_service is None:
+            try:
+                self.storage.delete(key)
+            except Exception:
+                logger.exception("recibo_delete_failed", bill_uuid=bill.uuid, storage_key=key)
+        elif actor is not None:
+            self.job_service.enqueue_for(actor, "s3.delete", {"key": key})
+        else:
+            self.job_service.enqueue("s3.delete", {"key": key}, source="", actor_id=None, actor_username="")
+        self.bill_repo.update_recibo_pdf_path(bill.id, None)
+        bill.recibo_pdf_path = None
+        logger.info("recibo_removed", bill_uuid=bill.uuid, storage_key=key)
+
+    @traced("bill.get_recibo_ref")
+    def get_recibo_ref(self, bill: Bill) -> FileRef:
+        """Resolve the bill's stored recibo to a FileRef (local path or URL).
+
+        Callers must ensure ``bill.recibo_pdf_path`` is non-empty first.
+        """
+        logger.debug("recibo_ref_resolve", storage_key=bill.recibo_pdf_path)
+        return self.storage.get_ref(bill.recibo_pdf_path or "")
+
     @traced("bill.get_invoice_url")
     def get_invoice_url(self, pdf_path: str | None) -> str:
         if not pdf_path:
@@ -381,17 +452,28 @@ class BillService:
         return result
 
     @traced("bill.change_status")
-    def change_status(self, bill: Bill, new_status: str) -> Bill:
+    def change_status(self, bill: Bill, new_status: str, billing: Billing | None = None, actor=None) -> Bill:
         from rentivo.models.bill import BillStatus
 
         BillStatus(new_status)  # raises ValueError if invalid
         if bill.id is None:
             raise ValueError("Cannot change status for bill without an id")
+        previous_status = bill.status
         now = datetime.now(SP_TZ)
         self.bill_repo.update_status(bill.id, new_status, now)
         bill.status = new_status
         bill.status_updated_at = now
         logger.info("bill_status_changed", bill_id=bill.id, new_status=new_status)
+
+        # Payment-receipt lifecycle: generate the recibo in the background when a
+        # bill becomes PAID, and tear it down when it leaves PAID (the quittance
+        # would otherwise outlive the payment it certifies). Transitions between
+        # two non-PAID statuses — and re-saving PAID — touch nothing extra.
+        paid = BillStatus.PAID.value
+        if new_status == paid and previous_status != paid:
+            self._enqueue_or_render_recibo(bill, billing, actor=actor)
+        elif previous_status == paid and new_status != paid:
+            self._remove_recibo(bill, actor=actor)
         return bill
 
     @traced("bill.get_bill")

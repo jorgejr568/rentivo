@@ -93,6 +93,7 @@ class SQLAlchemyBillRepository(BillRepository):
             total_amount=row["total_amount"],
             line_items=line_items,
             pdf_path=row["pdf_path"],
+            recibo_pdf_path=row.get("recibo_pdf_path"),
             notes=notes,
             due_date=row["due_date"],
             status=row.get("status", "draft"),
@@ -250,6 +251,14 @@ class SQLAlchemyBillRepository(BillRepository):
         self.conn.execute(
             text("UPDATE bills SET pdf_path = :pdf_path WHERE id = :id"),
             {"pdf_path": pdf_path, "id": bill_id},
+        )
+        self.conn.commit()
+
+    @traced("bill_repo.update_recibo_pdf_path")
+    def update_recibo_pdf_path(self, bill_id: int, recibo_pdf_path: str | None) -> None:
+        self.conn.execute(
+            text("UPDATE bills SET recibo_pdf_path = :recibo_pdf_path WHERE id = :id"),
+            {"recibo_pdf_path": recibo_pdf_path, "id": bill_id},
         )
         self.conn.commit()
 

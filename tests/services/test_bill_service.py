@@ -1041,3 +1041,171 @@ class TestRenderRecibo:
             )
             pdf_bytes = service.render_recibo(bill, billing)
         assert pdf_bytes[:5] == b"%PDF-"
+
+
+class TestReciboLifecycle:
+    """change_status drives the recibo: generate on entering PAID, remove on leaving."""
+
+    def _bill(self, status="sent", recibo_pdf_path=None):
+        return Bill(
+            id=42,
+            uuid="b-uuid",
+            billing_id=1,
+            reference_month="2026-05",
+            total_amount=10000,
+            status=status,
+            recibo_pdf_path=recibo_pdf_path,
+        )
+
+    def _billing(self):
+        return Billing(id=1, uuid="bg-uuid", name="Apt 101", pix_merchant_name="Maria")
+
+    def test_store_recibo_persists_and_records_key(self, tmp_path):
+        repo = MagicMock()
+        service = BillService(repo, LocalStorage(str(tmp_path)))
+        bill = self._bill(status="paid")
+        bill.status_updated_at = datetime.now(SP_TZ)
+
+        path = service.store_recibo(bill, self._billing())
+
+        assert path.endswith("bg-uuid/b-uuid.recibo.pdf")
+        assert service.storage.get(path)[:5] == b"%PDF-"
+        repo.update_recibo_pdf_path.assert_called_once_with(42, path)
+        assert bill.recibo_pdf_path == path
+
+    def test_store_recibo_requires_bill_id(self, tmp_path):
+        service = BillService(MagicMock(), LocalStorage(str(tmp_path)))
+        bill = self._bill(status="paid")
+        bill.id = None
+        with pytest.raises(ValueError, match="without an id"):
+            service.store_recibo(bill, self._billing())
+
+    def test_change_status_to_paid_renders_recibo_sync_without_job_service(self, tmp_path):
+        repo = MagicMock()
+        service = BillService(repo, LocalStorage(str(tmp_path)))
+        bill = self._bill(status="sent")
+
+        service.change_status(bill, "paid", billing=self._billing())
+
+        assert bill.recibo_pdf_path is not None
+        repo.update_recibo_pdf_path.assert_called_once()
+        assert service.storage.get(bill.recibo_pdf_path)[:5] == b"%PDF-"
+
+    def test_change_status_to_paid_without_billing_skips_render(self, tmp_path):
+        """No billing available (e.g. a non-web caller) → nothing rendered."""
+        repo = MagicMock()
+        service = BillService(repo, LocalStorage(str(tmp_path)))
+        bill = self._bill(status="sent")
+
+        service.change_status(bill, "paid")
+
+        assert bill.recibo_pdf_path is None
+        repo.update_recibo_pdf_path.assert_not_called()
+
+    def test_change_status_to_paid_enqueues_job_with_actor(self):
+        from web.context import WebActor
+
+        repo = MagicMock()
+        job_service = MagicMock()
+        service = BillService(repo, MagicMock(), job_service=job_service)
+        actor = WebActor(user_id=7, email="alice@example.com")
+
+        service.change_status(self._bill(status="sent"), "paid", billing=self._billing(), actor=actor)
+
+        job_service.enqueue_for.assert_called_once_with(actor, "recibo.render", {"bill_id": 42}, max_attempts=3)
+        job_service.enqueue.assert_not_called()
+
+    def test_change_status_to_paid_enqueues_job_without_actor(self):
+        repo = MagicMock()
+        job_service = MagicMock()
+        service = BillService(repo, MagicMock(), job_service=job_service)
+
+        service.change_status(self._bill(status="sent"), "paid", billing=self._billing())
+
+        job_service.enqueue_for.assert_not_called()
+        job_service.enqueue.assert_called_once_with(
+            "recibo.render", {"bill_id": 42}, source="", actor_id=None, actor_username="", max_attempts=3
+        )
+
+    def test_re_marking_paid_does_not_regenerate(self):
+        repo = MagicMock()
+        job_service = MagicMock()
+        service = BillService(repo, MagicMock(), job_service=job_service)
+
+        service.change_status(self._bill(status="paid"), "paid", billing=self._billing())
+
+        job_service.enqueue_for.assert_not_called()
+        job_service.enqueue.assert_not_called()
+
+    def test_change_status_leaving_paid_enqueues_s3_delete_with_actor(self):
+        from web.context import WebActor
+
+        repo = MagicMock()
+        job_service = MagicMock()
+        service = BillService(repo, MagicMock(), job_service=job_service)
+        actor = WebActor(user_id=7, email="alice@example.com")
+        bill = self._bill(status="paid", recibo_pdf_path="bg-uuid/b-uuid.recibo.pdf")
+
+        service.change_status(bill, "cancelled", billing=self._billing(), actor=actor)
+
+        job_service.enqueue_for.assert_called_once_with(actor, "s3.delete", {"key": "bg-uuid/b-uuid.recibo.pdf"})
+        repo.update_recibo_pdf_path.assert_called_once_with(42, None)
+        assert bill.recibo_pdf_path is None
+
+    def test_change_status_leaving_paid_enqueues_s3_delete_without_actor(self):
+        repo = MagicMock()
+        job_service = MagicMock()
+        service = BillService(repo, MagicMock(), job_service=job_service)
+        bill = self._bill(status="paid", recibo_pdf_path="k/recibo.pdf")
+
+        service.change_status(bill, "sent", billing=self._billing())
+
+        job_service.enqueue.assert_called_once_with(
+            "s3.delete", {"key": "k/recibo.pdf"}, source="", actor_id=None, actor_username=""
+        )
+        assert bill.recibo_pdf_path is None
+
+    def test_change_status_leaving_paid_deletes_sync_without_job_service(self):
+        repo = MagicMock()
+        storage = MagicMock()
+        service = BillService(repo, storage)
+        bill = self._bill(status="paid", recibo_pdf_path="k/recibo.pdf")
+
+        service.change_status(bill, "draft", billing=self._billing())
+
+        storage.delete.assert_called_once_with("k/recibo.pdf")
+        repo.update_recibo_pdf_path.assert_called_once_with(42, None)
+        assert bill.recibo_pdf_path is None
+
+    def test_change_status_leaving_paid_swallows_delete_error(self):
+        repo = MagicMock()
+        storage = MagicMock()
+        storage.delete.side_effect = RuntimeError("boom")
+        service = BillService(repo, storage)
+        bill = self._bill(status="paid", recibo_pdf_path="k/recibo.pdf")
+
+        service.change_status(bill, "draft", billing=self._billing())
+
+        # The column is still cleared even though the file delete failed.
+        repo.update_recibo_pdf_path.assert_called_once_with(42, None)
+        assert bill.recibo_pdf_path is None
+
+    def test_change_status_leaving_paid_without_recibo_is_noop(self):
+        repo = MagicMock()
+        job_service = MagicMock()
+        service = BillService(repo, MagicMock(), job_service=job_service)
+        bill = self._bill(status="paid", recibo_pdf_path=None)
+
+        service.change_status(bill, "draft", billing=self._billing())
+
+        job_service.enqueue.assert_not_called()
+        job_service.enqueue_for.assert_not_called()
+        repo.update_recibo_pdf_path.assert_not_called()
+
+    def test_get_recibo_ref(self):
+        storage = MagicMock()
+        storage.get_ref.return_value = "REF"
+        service = BillService(MagicMock(), storage)
+        bill = self._bill(recibo_pdf_path="k/recibo.pdf")
+        assert service.get_recibo_ref(bill) == "REF"
+        storage.get_ref.assert_called_once_with("k/recibo.pdf")

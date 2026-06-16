@@ -42,6 +42,7 @@ def test_workflow_map_covers_all_handlers():
         "email.send",
         "communication.send",
         "pdf.render",
+        "recibo.render",
         "s3.delete",
         "export.generate",
     }
