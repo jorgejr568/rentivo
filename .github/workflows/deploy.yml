@@ -40,14 +40,27 @@ jobs:
         env:
           DEPLOY_TRIGGER_URL: ${{ secrets.DEPLOY_TRIGGER_URL }}
         run: |
-          for i in 1 2 3 4 5; do
-            status=$(curl -s -o /dev/null -w "%{http_code}" "$DEPLOY_TRIGGER_URL")
-            echo "Attempt $i: HTTP $status"
-            if [ "$status" = "200" ]; then
-              echo "Deploy triggered successfully"
-              exit 0
+          overall=0
+          # DEPLOY_TRIGGER_URL may hold multiple comma-separated endpoints.
+          IFS=',' read -ra urls <<< "$DEPLOY_TRIGGER_URL"
+          for raw in "${urls[@]}"; do
+            # Trim surrounding whitespace and skip empty entries.
+            url="$(echo "$raw" | xargs)"
+            [ -z "$url" ] && continue
+            success=0
+            for i in 1 2 3 4 5; do
+              status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
+              echo "$url attempt $i: HTTP $status"
+              if [ "$status" = "200" ]; then
+                echo "Deploy triggered successfully: $url"
+                success=1
+                break
+              fi
+              [ "$i" -lt 5 ] && sleep 5
+            done
+            if [ "$success" -ne 1 ]; then
+              echo "Deploy failed after 5 attempts: $url"
+              overall=1
             fi
-            [ "$i" -lt 5 ] && sleep 5
           done
-          echo "Deploy failed after 5 attempts"
-          exit 1
+          exit "$overall"
