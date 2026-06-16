@@ -52,6 +52,7 @@ CREATE TABLE bills (
     reference_month TEXT NOT NULL,
     total_amount INTEGER NOT NULL DEFAULT 0,
     pdf_path TEXT,
+    recibo_pdf_path TEXT,
     notes TEXT NOT NULL DEFAULT '',
     uuid VARCHAR(26) NOT NULL UNIQUE,
     due_date TEXT,

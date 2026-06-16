@@ -220,7 +220,7 @@ async def bill_change_status(request: Request, ctx: BillContext = Depends(requir
     previous_status = bill.status
 
     try:
-        bill_service.change_status(bill, new_status)
+        bill_service.change_status(bill, new_status, billing=billing, actor=request.state.actor)
     except ValueError:
         return flash_redirect(request, "Status inválido.", f"/billings/{billing.uuid}/bills/{bill.uuid}")
 
@@ -304,8 +304,7 @@ async def bill_recibo(request: Request, ctx: BillContext = Depends(require_bill(
             f"/billings/{billing.uuid}/bills/{bill.uuid}",
         )
 
-    pdf_bytes = request.state.services.bill.render_recibo(bill, billing)
-
+    bill_service = request.state.services.bill
     audit = request.state.services.audit
     audit.safe_log_for(
         request.state.actor,
@@ -314,9 +313,24 @@ async def bill_recibo(request: Request, ctx: BillContext = Depends(require_bill(
         entity_id=bill.id,
         entity_uuid=bill.uuid,
     )
-
     push_event(request, {"event": "rentivo_recibo_downloaded", "bill_uuid_hash": analytics_hash(bill.uuid)})
 
+    # The recibo is rendered in the background when the bill becomes PAID. Serve
+    # the stored object when it exists; during the brief render window (or if the
+    # worker is behind) fall back to rendering on the fly so the download never
+    # breaks.
+    if bill.recibo_pdf_path:
+        ref = bill_service.get_recibo_ref(bill)
+        logger.debug("recibo_ref", storage_key=bill.recibo_pdf_path, kind=ref.kind)
+        if ref.kind == "local":
+            return FileResponse(
+                ref.location,
+                media_type="application/pdf",
+                filename=f"recibo-{bill.uuid}.pdf",
+            )
+        return RedirectResponse(ref.location, status_code=302)
+
+    pdf_bytes = bill_service.render_recibo(bill, billing)
     return Response(
         content=bytes(pdf_bytes),
         media_type="application/pdf",

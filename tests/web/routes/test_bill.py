@@ -223,6 +223,46 @@ class TestBillChangeStatus:
         )
         assert response.status_code == 302
 
+    def test_change_status_to_paid_enqueues_recibo_render(self, auth_client, test_engine, tmp_path, csrf_token):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "paid"},
+                follow_redirects=False,
+            )
+        with test_engine.connect() as conn:
+            n = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'recibo.render'")).scalar()
+        assert n == 1
+
+    def test_change_status_leaving_paid_enqueues_s3_delete_and_clears(
+        self, auth_client, test_engine, tmp_path, csrf_token
+    ):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET status = 'paid', recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "sent"},
+                follow_redirects=False,
+            )
+        with test_engine.connect() as conn:
+            jobs = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 's3.delete'")).scalar()
+            recibo = conn.execute(text("SELECT recibo_pdf_path FROM bills WHERE id = :id"), {"id": bill.id}).scalar()
+        assert jobs == 1
+        assert recibo is None
+
 
 class TestBillChangeStatusEdgeCases:
     def test_change_status_billing_not_found(self, auth_client, test_engine, tmp_path, csrf_token):
@@ -2016,6 +2056,58 @@ class TestBillRecibo:
         logs = get_audit_logs(test_engine, AuditEventType.BILL_RECIBO_DOWNLOAD)
         assert len(logs) >= 1
 
+    def test_recibo_serves_stored_file(self, auth_client, test_engine, tmp_path):
+        """When the background-generated recibo exists, the route serves it from storage."""
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with (
+            patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))),
+            patch("web.services_container.get_storage", return_value=LocalStorage(str(tmp_path))),
+        ):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            stored_path = LocalStorage(str(tmp_path)).save("bg/stored.recibo.pdf", b"%PDF-STORED")
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = :p WHERE id = :id"),
+                    {"p": stored_path, "id": bill.id},
+                )
+                conn.commit()
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 200
+        assert response.content == b"%PDF-STORED"
+
+    def test_recibo_redirects_for_remote_storage(self, auth_client, test_engine, tmp_path):
+        """A non-local storage ref (e.g. S3 presigned URL) is served via redirect."""
+        from sqlalchemy import text
+
+        from rentivo.storage.base import FileRef
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            with patch(
+                "rentivo.services.bill_service.BillService.get_recibo_ref",
+                return_value=FileRef(kind="url", location="https://s3.example/recibo.pdf"),
+            ):
+                response = auth_client.get(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                    follow_redirects=False,
+                )
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://s3.example/recibo.pdf"
+
     def test_recibo_not_paid_redirects(self, auth_client, test_engine, tmp_path):
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
@@ -2079,3 +2171,21 @@ class TestBillRecibo:
             response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
         assert response.status_code == 200
         assert f"/bills/{bill.uuid}/recibo" not in response.text
+
+    def test_detail_shows_send_recibo_button_when_recibo_available(self, auth_client, test_engine, tmp_path):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        assert "communications/compose?type=payment_receipt" in response.text
+        assert "Enviar recibo" in response.text

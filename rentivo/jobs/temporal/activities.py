@@ -55,6 +55,11 @@ def pdf_render_activity(payload: dict) -> None:
     run_registered_handler("pdf.render", payload)
 
 
+@activity.defn(name="recibo.render")
+def recibo_render_activity(payload: dict) -> None:
+    run_registered_handler("recibo.render", payload)
+
+
 @activity.defn(name="s3.delete")
 def s3_delete_activity(payload: dict) -> None:
     run_registered_handler("s3.delete", payload)
