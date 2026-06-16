@@ -130,6 +130,11 @@ def handle_export_send(payload: dict) -> None:
         if billing is None:
             raise PermanentJobError(f"billing {billing_id} not found")
 
+    # If the object is missing we let the error propagate as a transient retry.
+    # The common cause is a not-yet-consistent read right after export.generate's
+    # upload; a genuinely-gone object (e.g. a duplicate run after s3.delete
+    # already fired) simply exhausts retries and dead-letters — the email for
+    # that export was already sent on the first, successful run.
     data = get_storage().get(storage_key)
     attachment = EmailAttachment(
         filename=export_filename(billing.name, ext),
@@ -137,7 +142,7 @@ def handle_export_send(payload: dict) -> None:
         content_type=content_type,
     )
 
-    from_address = formataddr((settings.ses_from_name or None, settings.ses_from_email or "noreply@localhost"))
+    from_address = formataddr((settings.ses_from_name, settings.ses_from_email or "noreply@localhost"))
     service = EmailService(get_email_backend(), from_address=from_address)
     service.send(
         user.email,
