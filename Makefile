@@ -40,6 +40,14 @@ regenerate-pdfs:
 regenerate-pdfs-dry:
 	$(PYTHON) -m rentivo.scripts.regenerate_pdfs --dry-run
 
+.PHONY: regenerate-recibos
+regenerate-recibos:
+	$(PYTHON) -m rentivo.scripts.regenerate_recibos
+
+.PHONY: regenerate-recibos-dry
+regenerate-recibos-dry:
+	$(PYTHON) -m rentivo.scripts.regenerate_recibos --dry-run
+
 .PHONY: backfill-encryption
 backfill-encryption:
 	$(PYTHON) -m rentivo.scripts.backfill_encryption
@@ -162,6 +170,10 @@ docker-createuser:
 docker-regenerate:
 	docker exec $(CONTAINER) python -m rentivo.scripts.regenerate_pdfs
 
+.PHONY: docker-regenerate-recibos
+docker-regenerate-recibos:
+	docker exec $(CONTAINER) python -m rentivo.scripts.regenerate_recibos
+
 # --- Docker: Worker (standalone) ---
 
 IMAGE_NAME_WORKER := rentivo-worker
@@ -251,6 +263,10 @@ compose-createuser:
 .PHONY: compose-regenerate
 compose-regenerate:
 	docker compose exec rentivo python -m rentivo.scripts.regenerate_pdfs
+
+.PHONY: compose-regenerate-recibos
+compose-regenerate-recibos:
+	docker compose exec rentivo python -m rentivo.scripts.regenerate_recibos
 
 .PHONY: compose-logs
 compose-logs:

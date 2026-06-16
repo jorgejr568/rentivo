@@ -20,9 +20,12 @@ make web-run             # http://localhost:8000
 # Local
 make regenerate-pdfs
 make regenerate-pdfs-dry
+make regenerate-recibos       # enqueue recibo.render for every PAID bill (backfill)
+make regenerate-recibos-dry
 
 # Docker
 make docker-regenerate
+make docker-regenerate-recibos
 ```
 
 ## Docker
@@ -145,6 +148,7 @@ make web-run             # start uvicorn at http://localhost:8000
 - `recibo.render` handler (`rentivo/jobs/handlers/recibo.py`) re-checks `status == PAID` before rendering (status may revert before the job runs) → no orphan recibo for an unpaid bill.
 - Storage key pattern: `{billing_uuid}/{bill_uuid}.recibo.pdf`; the key is stored in the `bills.recibo_pdf_path` column (Alembic `08c21e96caa6`). `BillService.store_recibo` renders + persists + records the key; `_remove_recibo` tears it down. `StorageCleanupService.enqueue_bill_delete_cascade` also deletes the recibo key.
 - Download: `GET …/recibo` (PAID-only). Serves the stored object when present; falls back to on-the-fly rendering during the brief render window or if the worker is behind, so the download never breaks. Audit `bill.recibo_download`; GTM `rentivo_recibo_downloaded` (hashed uuid).
+- Backfill: bills already PAID before stored recibos existed have `recibo_pdf_path = NULL` (the migration is schema-only). `make regenerate-recibos` (`rentivo/scripts/regenerate_recibos.py`, `--dry-run` supported, mirrors `regenerate_pdfs`) enqueues one `recibo.render` per PAID bill so they get a stored recibo — required before they can be e-mailed as a `payment_receipt` communication (download already works via the on-the-fly fallback). No PIX pre-flight: the issuer falls back to the billing name, so a paid bill always renders. Idempotent (the handler re-checks PAID; re-runs overwrite the same key).
 - Send: the recibo can be e-mailed to billing recipients as a communication of type `payment_receipt` (see Tenant Communications).
 
 ## Billing Attachments
