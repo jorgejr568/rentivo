@@ -167,6 +167,11 @@ class ReciboPDF:
 
     def _draw_footer(self, pdf: FPDF, page_w: float) -> None:
         c = self._colors
+        # The footer sits below the bottom margin (set_y(-18)), so writing its
+        # text would otherwise trip auto page-break and spill onto a second page.
+        # The recibo is a fixed single-page layout and the amount box above is
+        # already positioned, so turning the break off here keeps it on page one.
+        pdf.set_auto_page_break(False)
         pdf.set_y(-18)
         pdf.set_draw_color(*c["border_color"])
         pdf.set_line_width(0.3)

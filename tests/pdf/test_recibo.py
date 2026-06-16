@@ -51,3 +51,17 @@ class TestReciboPDF:
             theme=theme,
         )
         assert result[:5] == b"%PDF-"
+
+    def test_recibo_is_a_single_page(self):
+        """Regression: the footer sits below the bottom margin and used to spill
+        the recibo onto a blank second page (only the footer line on page 2)."""
+        import io
+
+        import pypdf
+
+        for kwargs in (
+            dict(issuer_name="Maria Recebedora", payment_date="14/06/2026"),
+            dict(issuer_name="", payment_date=""),
+        ):
+            result = ReciboPDF().generate(self._make_bill(), billing_name="Apt 101", **kwargs)
+            assert len(pypdf.PdfReader(io.BytesIO(result)).pages) == 1
