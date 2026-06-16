@@ -6,16 +6,7 @@ from sqlalchemy import text
 
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.recipient import Recipient
-from rentivo.repositories.sqlalchemy.recipient import SQLAlchemyRecipientRepository
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs, get_test_user_id
-
-
-def _add_recipient(engine, billing, email="dest@example.com", name="Destinatário"):
-    with engine.connect() as conn:
-        SQLAlchemyRecipientRepository(conn, Base64Backend()).replace_for_billing(
-            billing.id, [Recipient(billing_id=billing.id, name=name, email=email)]
-        )
 
 
 def _enqueued_export_jobs(engine):
@@ -28,7 +19,6 @@ class TestBillExport:
     def test_export_enqueues_job_and_redirects(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -46,7 +36,6 @@ class TestBillExport:
     def test_export_xlsx_format_recorded(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -60,7 +49,6 @@ class TestBillExport:
     def test_export_unknown_format_falls_back_to_csv(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -73,7 +61,6 @@ class TestBillExport:
     def test_export_records_audit_event(self, auth_client, test_engine, tmp_path, csrf_token):
         billing = create_billing_in_db(test_engine)
         generate_bill_in_db(test_engine, billing, tmp_path)
-        _add_recipient(test_engine, billing)
 
         auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
@@ -114,7 +101,6 @@ class TestBillExport:
                 User(email="exp_other@example.com", password_hash="h")
             )
         billing = create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
-        _add_recipient(test_engine, billing)
 
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/export",
