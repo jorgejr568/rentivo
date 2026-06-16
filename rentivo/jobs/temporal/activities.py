@@ -65,6 +65,11 @@ def export_generate_activity(payload: dict) -> None:
     run_registered_handler("export.generate", payload)
 
 
+@activity.defn(name="export.send")
+def export_send_activity(payload: dict) -> None:
+    run_registered_handler("export.send", payload)
+
+
 # ---- Terminal/audit activity (mirrors Worker._audit_job + _fail) -----------
 
 _EVENT_BY_KIND = {
