@@ -19,6 +19,10 @@ logger = structlog.get_logger(__name__)
 
 FONTS_DIR = Path(__file__).parent / "fonts"
 
+# Success green is fixed (not theme-derived): the badge must read as "paid"
+# regardless of the billing's theme palette.
+_SUCCESS_GREEN = (22, 150, 95)
+
 
 class ReciboPDF:
     @traced("pdf.generate_recibo")
@@ -54,9 +58,18 @@ class ReciboPDF:
 
         page_w = pdf.w - pdf.l_margin - pdf.r_margin
 
+        rows: list[tuple[str, str]] = []
+        if issuer_name:
+            rows.append(("Emitente", issuer_name))
+        rows.append(("Pagador", payer_name))
+        rows.append(("Referência", f"{billing_name} — {format_month(bill.reference_month)}"))
+        if payment_date:
+            rows.append(("Data do pagamento", payment_date))
+
         self._draw_header(pdf, page_w)
-        self._draw_body(pdf, page_w, bill, billing_name, payer_name, payment_date)
-        self._draw_issuer(pdf, page_w, issuer_name)
+        self._draw_success_badge(pdf, page_w)
+        self._draw_details_table(pdf, page_w, rows)
+        self._draw_amount_box(pdf, page_w, bill.total_amount)
         self._draw_footer(pdf, page_w)
 
         output = pdf.output()
@@ -85,71 +98,83 @@ class ReciboPDF:
         pdf.set_text_color(210, 195, 215)
         pdf.cell(0, 8, "Comprovante de quitação", align="C", new_x="LMARGIN", new_y="NEXT")
 
-        pdf.set_y(y + 40 + 16)
+        pdf.set_y(y + 40 + 14)
 
-    def _draw_body(
-        self,
-        pdf: FPDF,
-        page_w: float,
-        bill: Bill,
-        billing_name: str,
-        payer_name: str,
-        payment_date: str,
-    ) -> None:
+    def _draw_success_badge(self, pdf: FPDF, page_w: float) -> None:
+        """A green circle with a white check + 'PAGAMENTO CONFIRMADO' label."""
+        cx = pdf.l_margin + page_w / 2
+        y = pdf.get_y() + 2
+        r = 9.0
+
+        pdf.set_fill_color(*_SUCCESS_GREEN)
+        pdf.ellipse(cx - r, y, r * 2, r * 2, style="F")
+
+        cy = y + r
+        pdf.set_draw_color(255, 255, 255)
+        pdf.set_line_width(1.6)
+        pdf.line(cx - 4.2, cy + 0.4, cx - 1.4, cy + 3.6)
+        pdf.line(cx - 1.4, cy + 3.6, cx + 4.6, cy - 3.4)
+        pdf.set_line_width(0.2)
+
+        pdf.set_xy(pdf.l_margin, y + r * 2 + 4)
+        pdf.set_font(self._hf, "B", 11)
+        pdf.set_text_color(*_SUCCESS_GREEN)
+        pdf.cell(page_w, 7, "PAGAMENTO CONFIRMADO", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(9)
+
+    def _draw_details_table(self, pdf: FPDF, page_w: float, rows: list[tuple[str, str]]) -> None:
         c = self._colors
         x = pdf.l_margin
+        row_h = 12.0
+        label_w = 58.0
+        start_y = pdf.get_y()
 
-        # Amount card
-        card_h = 26
-        card_y = pdf.get_y()
-        pdf.set_fill_color(*c["secondary_dark"])
-        pdf.rect(x, card_y, page_w, card_h, "F")
-        pdf.set_xy(x + 10, card_y + 4)
-        pdf.set_font(self._tf, "", 8)
-        pdf.set_text_color(180, 220, 220)
-        pdf.cell(0, 5, "VALOR RECEBIDO")
-        pdf.set_xy(x + 10, card_y + 11)
-        pdf.set_font(self._hf, "B", 20)
-        pdf.set_text_color(*c["text_contrast"])
-        pdf.cell(0, 12, format_brl(bill.total_amount))
-        pdf.set_y(card_y + card_h + 14)
-
-        # Acknowledgement paragraph
-        pdf.set_font(self._tf, "", 11)
-        pdf.set_text_color(*c["text_color"])
-        body = (
-            f"Recebemos de {payer_name} a importância de {format_brl(bill.total_amount)} "
-            f"referente a {billing_name} — {format_month(bill.reference_month)}."
-        )
-        pdf.multi_cell(page_w, 7, body)
-        pdf.ln(8)
-
-        if payment_date:
-            pdf.set_font(self._tf, "B", 10)
+        for i, (label, value) in enumerate(rows):
+            y = pdf.get_y()
+            if i % 2 == 1:
+                pdf.set_fill_color(*c["row_alt"])
+                pdf.rect(x, y, page_w, row_h, "F")
+            pdf.set_xy(x + 5, y)
+            pdf.set_font(self._tf, "", 9)
             pdf.set_text_color(*c["muted_text"])
-            pdf.cell(0, 6, f"Data do pagamento: {payment_date}", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(label_w, row_h, label.upper())
+            pdf.set_xy(x + label_w, y)
+            pdf.set_font(self._tf, "B", 11)
+            pdf.set_text_color(*c["text_color"])
+            pdf.cell(page_w - label_w - 5, row_h, value)
+            pdf.set_y(y + row_h)
 
-    def _draw_issuer(self, pdf: FPDF, page_w: float, issuer_name: str) -> None:
-        if not issuer_name:
-            return
+        pdf.set_draw_color(*c["border_color"])
+        pdf.set_line_width(0.3)
+        pdf.rect(x, start_y, page_w, row_h * len(rows))
+        pdf.set_line_width(0.2)
+
+    def _draw_amount_box(self, pdf: FPDF, page_w: float, total_centavos: int) -> None:
+        """The amount received, anchored near the bottom of the page."""
         c = self._colors
-        pdf.ln(18)
+        x = pdf.l_margin
+        box_h = 28.0
+        y = pdf.h - pdf.b_margin - box_h - 14
+
+        pdf.set_fill_color(*c["secondary_dark"])
+        pdf.rect(x, y, page_w, box_h, "F")
+        pdf.set_xy(x + 12, y + 6)
         pdf.set_font(self._tf, "", 9)
-        pdf.set_text_color(*c["muted_text"])
-        pdf.cell(0, 6, "EMITENTE", new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(1)
-        pdf.set_font(self._tf, "B", 12)
-        pdf.set_text_color(*c["text_color"])
-        pdf.cell(0, 8, issuer_name, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(190, 222, 222)
+        pdf.cell(0, 5, "VALOR RECEBIDO")
+        pdf.set_xy(x + 12, y + 13)
+        pdf.set_font(self._hf, "B", 24)
+        pdf.set_text_color(*c["text_contrast"])
+        pdf.cell(0, 13, format_brl(total_centavos))
 
     def _draw_footer(self, pdf: FPDF, page_w: float) -> None:
         c = self._colors
-        pdf.set_y(-30)
+        pdf.set_y(-18)
         pdf.set_draw_color(*c["border_color"])
         pdf.set_line_width(0.3)
         y = pdf.get_y()
         pdf.line(pdf.l_margin, y, pdf.l_margin + page_w, y)
-        pdf.ln(5)
+        pdf.ln(4)
         pdf.set_font(self._tf, "", 7)
         pdf.set_text_color(*c["muted_text"])
         pdf.cell(0, 5, "Documento gerado automaticamente", align="C")
