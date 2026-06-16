@@ -1,9 +1,9 @@
 IMAGE_NAME     := rentivo-web
 CONTAINER      := rentivo
 
-PYTHON  := $(shell [ -d .venv ] && echo .venv/bin/python || echo python)
-UVICORN := $(shell [ -d .venv ] && echo .venv/bin/uvicorn || echo uvicorn)
-RUFF    := $(shell [ -d .venv ] && echo .venv/bin/ruff || echo ruff)
+PYTHON  := uv run python
+UVICORN := uv run uvicorn
+RUFF    := uv run ruff
 
 # --- Local development ---
 
