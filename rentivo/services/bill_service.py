@@ -5,7 +5,7 @@ from datetime import datetime
 import structlog
 
 from rentivo.constants import SP_TZ
-from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.bill import Bill, BillLineItem, BillStatus
 from rentivo.models.billing import Billing, ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
 from rentivo.observability import traced
@@ -317,9 +317,18 @@ class BillService:
         With a JobService configured (web), enqueues a pdf.render job
         and returns immediately; bill.pdf_render_status is set to
         'pending'. Without one (CLI), renders synchronously.
+
+        When the bill is already PAID, the payment receipt (recibo) is
+        regenerated alongside the invoice — the recibo embeds the same billing
+        info (issuer, PIX), so re-rendering only the invoice would leave a stale
+        quittance behind. The recibo render goes through the same enqueue/sync
+        path and the ``recibo.render`` handler re-checks PAID, so a status that
+        reverts before the job runs produces no orphan recibo.
         """
         logger.info("bill_pdf_regenerate", bill_uuid=bill.uuid)
         self._render_or_enqueue(bill, billing, actor=actor)
+        if bill.status == BillStatus.PAID.value:
+            self._enqueue_or_render_recibo(bill, billing, actor=actor)
         return bill
 
     def _resolve_recibo_issuer(self, billing: Billing) -> str:
@@ -467,8 +476,6 @@ class BillService:
 
     @traced("bill.change_status")
     def change_status(self, bill: Bill, new_status: str, billing: Billing | None = None, actor=None) -> Bill:
-        from rentivo.models.bill import BillStatus
-
         BillStatus(new_status)  # raises ValueError if invalid
         if bill.id is None:
             raise ValueError("Cannot change status for bill without an id")

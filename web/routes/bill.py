@@ -253,11 +253,13 @@ async def bill_regenerate_pdf(request: Request, ctx: BillContext = Depends(requi
         new_state={"pdf_render_status": bill.pdf_render_status},
     )
 
-    flash(
-        request,
-        "Regeneração do PDF iniciada. O download estará disponível em alguns segundos.",
-        "success",
-    )
+    # A PAID bill also regenerates its recibo (see BillService.regenerate_pdf),
+    # so tell the user both documents are being rebuilt.
+    if bill.status == "paid":
+        message = "Regeneração da fatura e do recibo iniciada. Os downloads estarão disponíveis em alguns segundos."
+    else:
+        message = "Regeneração do PDF iniciada. O download estará disponível em alguns segundos."
+    flash(request, message, "success")
     push_event(request, {"event": "rentivo_bill_regenerated", "bill_uuid_hash": analytics_hash(bill.uuid)})
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 

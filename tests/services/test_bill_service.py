@@ -844,6 +844,48 @@ class TestRenderOrEnqueue:
         self.job_service.enqueue_for.assert_called_once()
         assert self.job_service.enqueue_for.call_args.args[0] is actor
 
+    def test_regenerate_pdf_paid_also_enqueues_recibo(self):
+        """A PAID bill regenerates both the invoice and the recibo, in that order."""
+        from web.context import WebActor
+
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+        )
+        actor = WebActor(user_id=7, email="a@x")
+        paid_bill = Bill(
+            id=42, uuid="b-uuid", billing_id=1, reference_month="2026-05", total_amount=10000, status="paid"
+        )
+        with patch.object(service, "pdf_generator"):
+            service.regenerate_pdf(paid_bill, self._billing(), actor=actor)
+
+        calls = self.job_service.enqueue_for.call_args_list
+        assert [c.args[1] for c in calls] == ["pdf.render", "recibo.render"]
+        assert all(c.args[0] is actor for c in calls)
+        assert all(c.args[2] == {"bill_id": 42} for c in calls)
+
+    def test_regenerate_pdf_not_paid_skips_recibo(self):
+        """A non-PAID bill regenerates only the invoice — no recibo job."""
+        service = BillService(
+            self.bill_repo,
+            self.storage,
+            self.receipt_repo,
+            pix_service=self.pix,
+            job_service=self.job_service,
+        )
+        draft_bill = Bill(
+            id=42, uuid="b-uuid", billing_id=1, reference_month="2026-05", total_amount=10000, status="draft"
+        )
+        with patch.object(service, "pdf_generator"):
+            service.regenerate_pdf(draft_bill, self._billing())
+
+        # Only the invoice is enqueued (anonymous, since no actor); no recibo.render.
+        job_types = [c.args[0] for c in self.job_service.enqueue.call_args_list]
+        assert job_types == ["pdf.render"]
+
     def test_add_receipt_uses_render_or_enqueue_in_async_mode(self):
         from web.context import WebActor
 
