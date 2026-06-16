@@ -175,6 +175,27 @@ class TestBillRegeneratePdf:
             )
         assert response.status_code == 302
 
+    def test_regenerate_paid_bill_also_enqueues_recibo(self, auth_client, test_engine, tmp_path, csrf_token):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            with test_engine.connect() as conn:
+                conn.execute(text("UPDATE bills SET status = 'paid' WHERE id = :id"), {"id": bill.id})
+                conn.commit()
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/regenerate-pdf",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            recibo = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'recibo.render'")).scalar()
+            invoice = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'pdf.render'")).scalar()
+        assert recibo == 1
+        assert invoice >= 1
+
     def test_regenerate_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
             "/billings/x/bills/nonexistent/regenerate-pdf",
