@@ -22,11 +22,25 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
-    /* Close dropdown on outside click */
+    /* Button dropdowns (e.g. bill action bar "Enviar comunicação") */
+    document.querySelectorAll(".btn-dropdown-toggle").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var dropdown = btn.closest(".btn-dropdown");
+            var isOpen = dropdown.classList.contains("open");
+            document.querySelectorAll(".btn-dropdown.open").forEach(function (d) {
+                d.classList.remove("open");
+            });
+            if (!isOpen) dropdown.classList.add("open");
+            btn.setAttribute("aria-expanded", !isOpen);
+        });
+    });
+
+    /* Close dropdowns on outside click */
     document.addEventListener("click", function () {
-        document.querySelectorAll(".topbar-dropdown.open").forEach(function (d) {
+        document.querySelectorAll(".topbar-dropdown.open, .btn-dropdown.open").forEach(function (d) {
             d.classList.remove("open");
-            var btn = d.querySelector(".topbar-dropdown-toggle");
+            var btn = d.querySelector(".topbar-dropdown-toggle, .btn-dropdown-toggle");
             if (btn) btn.setAttribute("aria-expanded", "false");
         });
     });

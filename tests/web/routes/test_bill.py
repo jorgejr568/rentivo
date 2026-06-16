@@ -2189,3 +2189,45 @@ class TestBillRecibo:
         assert response.status_code == 200
         assert "communications/compose?type=payment_receipt" in response.text
         assert "Enviar recibo" in response.text
+
+    def test_detail_send_dropdown_lists_fatura_and_recibo(self, auth_client, test_engine, tmp_path):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        # The two separate send buttons are now one dropdown trigger.
+        assert "Enviar comunicação" in html
+        assert "btn-dropdown-toggle" in html
+        # Both documents are enabled options.
+        assert "communications/compose?type=bill_ready" in html
+        assert "Enviar fatura" in html
+        assert "communications/compose?type=payment_receipt" in html
+        assert "Enviar recibo" in html
+        assert "btn-dropdown-item--disabled" not in html
+
+    def test_detail_send_dropdown_disables_recibo_when_unavailable(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # draft, unpaid, no recibo
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        # Fatura is still sendable from the dropdown...
+        assert "Enviar comunicação" in html
+        assert "communications/compose?type=bill_ready" in html
+        assert "Enviar fatura" in html
+        # ...but the recibo option is shown disabled with a hint, not a working link.
+        assert "communications/compose?type=payment_receipt" not in html
+        assert "btn-dropdown-item--disabled" in html
+        assert "Enviar recibo" in html
