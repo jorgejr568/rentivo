@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.datastructures import UploadFile
 
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.bill import BillLineItem
+from rentivo.models.bill import BillLineItem, BillStatus
 from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
@@ -290,6 +290,38 @@ async def bill_invoice(request: Request, ctx: BillContext = Depends(require_bill
     if ref.kind == "local":
         return FileResponse(ref.location, media_type="application/pdf")
     return RedirectResponse(ref.location, status_code=302)
+
+
+@router.get("/{bill_uuid}/recibo")
+async def bill_recibo(request: Request, ctx: BillContext = Depends(require_bill("view"))):
+    bill, billing = ctx.bill, ctx.billing
+
+    if bill.status != BillStatus.PAID.value:
+        logger.warning("recibo_not_paid", bill_uuid=bill.uuid, status=bill.status)
+        return flash_redirect(
+            request,
+            "O recibo só fica disponível quando a fatura está paga.",
+            f"/billings/{billing.uuid}/bills/{bill.uuid}",
+        )
+
+    pdf_bytes = request.state.services.bill.render_recibo(bill, billing)
+
+    audit = request.state.services.audit
+    audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.BILL_RECIBO_DOWNLOAD,
+        entity_type="bill",
+        entity_id=bill.id,
+        entity_uuid=bill.uuid,
+    )
+
+    push_event(request, {"event": "rentivo_recibo_downloaded", "bill_uuid_hash": analytics_hash(bill.uuid)})
+
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="recibo-{bill.uuid}.pdf"'},
+    )
 
 
 @router.get("/{bill_uuid}/receipts/{receipt_uuid}")
