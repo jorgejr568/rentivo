@@ -81,7 +81,7 @@ def handle_export_generate(payload: dict) -> None:
                 "billing_id": billing_id,
                 "requested_by_user_id": requested_by_user_id,
             },
-            source="cli",
+            source="worker",
         )
 
     logger.info(

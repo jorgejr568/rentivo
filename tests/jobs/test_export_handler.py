@@ -151,3 +151,10 @@ def test_non_int_billing_id_raises_permanent():
 
     with pytest.raises(PermanentJobError):
         handle_export_generate({"billing_id": "x", "format": "csv", "requested_by_user_id": 1})
+
+
+def test_non_int_requested_by_user_id_raises_permanent():
+    from rentivo.jobs.handlers.export import handle_export_generate
+
+    with pytest.raises(PermanentJobError):
+        handle_export_generate({"billing_id": 1, "format": "csv", "requested_by_user_id": "bad"})
