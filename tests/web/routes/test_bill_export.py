@@ -123,3 +123,13 @@ class TestBillExport:
         )
         assert response.status_code == 302
         assert _enqueued_export_jobs(test_engine) == []
+
+    def test_detail_page_uses_excel_label_not_xlsx(self, auth_client, test_engine, tmp_path, csrf_token):
+        billing = create_billing_in_db(test_engine, name="Apt 7")
+        generate_bill_in_db(test_engine, billing, tmp_path)
+
+        resp = auth_client.get(f"/billings/{billing.uuid}")
+        assert resp.status_code == 200
+        assert "Exportar Excel" in resp.text
+        assert "Exportar XLSX" not in resp.text
+        assert "XLSX" not in resp.text
