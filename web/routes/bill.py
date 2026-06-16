@@ -100,6 +100,64 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
+# NOTE: this route MUST stay registered before the "/{bill_uuid}" catch-all
+# below, otherwise "export" would be captured as a bill_uuid and shadowed.
+@router.post("/export")
+async def bill_export(request: Request, ctx: BillingContext = Depends(require_billing("view"))):
+    """Kick off a background export of the billing's bills, emailed to recipients.
+
+    The file is built off the request path by the ``export.generate`` worker
+    job and attached to an email sent to each of the billing's recipients, so
+    the response is just a flash + redirect rather than a download.
+    """
+    billing = ctx.billing
+
+    form = await request.form()
+    fmt = str(form.get("format", "csv")).strip().lower()
+    if fmt != "xlsx":
+        fmt = "csv"
+
+    recipients = request.state.services.recipient.list_for_billing(billing.id) if billing.id else []
+    if not recipients:
+        return flash_redirect(
+            request,
+            "Adicione ao menos um destinatário à cobrança antes de exportar.",
+            f"/billings/{billing.uuid}/edit",
+        )
+
+    request.state.services.job.enqueue_for(
+        request.state.actor,
+        "export.generate",
+        {"billing_id": billing.id, "format": fmt},
+    )
+
+    audit = request.state.services.audit
+    audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.BILLING_EXPORT,
+        entity_type="billing",
+        entity_id=billing.id,
+        entity_uuid=billing.uuid,
+        new_state={"format": fmt, "recipient_count": len(recipients)},
+    )
+    push_event(
+        request,
+        {
+            "event": "rentivo_data_exported",
+            "billing_uuid_hash": analytics_hash(billing.uuid),
+            "export_format": fmt,
+            "recipient_count": len(recipients),
+        },
+    )
+
+    return flash_redirect(
+        request,
+        f"Exportação iniciada. As faturas em {fmt.upper()} serão enviadas por e-mail aos destinatários.",
+        f"/billings/{billing.uuid}",
+        category="success",
+    )
+
+
 @router.get("/{bill_uuid}")
 async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill("view"))):
     bill_service = request.state.services.bill

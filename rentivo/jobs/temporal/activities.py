@@ -60,6 +60,11 @@ def s3_delete_activity(payload: dict) -> None:
     run_registered_handler("s3.delete", payload)
 
 
+@activity.defn(name="export.generate")
+def export_generate_activity(payload: dict) -> None:
+    run_registered_handler("export.generate", payload)
+
+
 # ---- Terminal/audit activity (mirrors Worker._audit_job + _fail) -----------
 
 _EVENT_BY_KIND = {

@@ -115,3 +115,10 @@ class S3DeleteWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
         await _run_job("s3.delete", payload, ulid, max_attempts)
+
+
+@workflow.defn(name="ExportGenerateWorkflow")
+class ExportGenerateWorkflow:
+    @workflow.run
+    async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
+        await _run_job("export.generate", payload, ulid, max_attempts)

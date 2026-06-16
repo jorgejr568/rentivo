@@ -45,6 +45,7 @@ EMAIL_SUBJECTS: dict[str, str | Callable[[dict], str]] = {
     "invite_responded": "Resposta ao convite — Rentivo",
     "member_changed": lambda ctx: f'Alteração em "{ctx["org_name"]}" — Rentivo',
     "billing_transferred": "Transferência de cobrança — Rentivo",
+    "export_ready": lambda ctx: f"Exportação de faturas — {ctx['billing_name']} — Rentivo",
 }
 
 
@@ -59,7 +60,14 @@ class EmailService:
         text = env.get_template(f"{template_stem}.txt").render(**ctx)
         return html, text
 
-    def _build_message(self, to_email: str, subject: str, template_stem: str, ctx: dict) -> EmailMessage:
+    def _build_message(
+        self,
+        to_email: str,
+        subject: str,
+        template_stem: str,
+        ctx: dict,
+        attachments: list[EmailAttachment] | tuple[EmailAttachment, ...] = (),
+    ) -> EmailMessage:
         html_body, text_body = self._render(template_stem, ctx)
         return EmailMessage(
             to=to_email,
@@ -67,19 +75,27 @@ class EmailService:
             text_body=text_body,
             html_body=html_body,
             from_address=self.from_address,
+            attachments=tuple(attachments),
         )
 
     @traced("email.send")
-    def send(self, to_email: str, event: str, ctx: dict) -> str:
+    def send(
+        self,
+        to_email: str,
+        event: str,
+        ctx: dict,
+        attachments: list[EmailAttachment] | tuple[EmailAttachment, ...] = (),
+    ) -> str:
         """Render and dispatch a transactional email, raising on failure.
 
         Used inside the background worker so transient errors propagate and
         trigger retry. Web routes should not call this directly — they enqueue
-        a job and let the worker run it.
+        a job and let the worker run it. ``attachments`` lets events like
+        ``export_ready`` carry a generated file (CSV/XLSX).
         """
         subject_spec = EMAIL_SUBJECTS[event]
         subject = subject_spec(ctx) if callable(subject_spec) else subject_spec
-        message = self._build_message(to_email, subject, event, ctx)
+        message = self._build_message(to_email, subject, event, ctx, attachments)
         result = self.backend.send(message)
         logger.info("email_sent", to=to_email, email_event=event)
         return result

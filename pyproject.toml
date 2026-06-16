@@ -32,6 +32,7 @@ dependencies = [
     "cachetools>=5.3,<8",
     "markdown-it-py>=3.0,<5",
     "watchtower>=3.3,<4",
+    "openpyxl>=3.1.5",
 ]
 
 [tool.setuptools.packages.find]
