@@ -87,7 +87,7 @@ Schema is managed by Alembic (`alembic/versions/`).
 ```bash
 make migrate              # upgrade to head
 make migrate-fresh        # DROP ALL TABLES and re-migrate — destructive, dev only
-.venv/bin/alembic revision -m "add foo column"   # new migration
+uv run alembic revision -m "add foo column"   # new migration
 ```
 
 Never invent revision IDs by hand — always let `alembic revision` generate them.
