@@ -226,15 +226,22 @@ class TestBillRegeneratePdf:
 
 class TestBillChangeStatus:
     def test_change_status(self, auth_client, test_engine, tmp_path, csrf_token):
+        # A fresh bill is draft; draft → published is an allowed transition.
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
-                data={"csrf_token": csrf_token, "status": "paid"},
+                data={"csrf_token": csrf_token, "status": "published"},
                 follow_redirects=False,
             )
         assert response.status_code == 302
+
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
+        assert reloaded.status == "published"
 
     def test_change_status_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
@@ -250,6 +257,14 @@ class TestBillChangeStatus:
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            # Advance to a lifecycle-valid pre-paid state; draft -> paid is
+            # rejected by the server-side status guard (REN-21).
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET status = 'sent' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
             auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
                 data={"csrf_token": csrf_token, "status": "paid"},
@@ -328,6 +343,27 @@ class TestBillChangeStatusEdgeCases:
             )
         assert response.status_code == 302
         assert f"/bills/{bill.uuid}" in response.headers["location"]
+
+    def test_change_status_disallowed_transition_rejected(self, auth_client, test_engine, tmp_path, csrf_token):
+        """Defense-in-depth (REN-21): a crafted any-to-any transition is rejected
+        server-side even though the value is a valid BillStatus member."""
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            # draft → paid is not an allowed transition (must go via published/sent).
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "paid"},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert f"/bills/{bill.uuid}" in response.headers["location"]
+        # The status must remain unchanged.
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
+        assert reloaded.status == "draft"
 
 
 class TestBillDelete:
@@ -520,22 +556,25 @@ class TestBillGenerateExtras:
 
 class TestBillChangeStatusMultiple:
     def test_change_status_multiple_transitions(self, auth_client, test_engine, tmp_path, csrf_token):
+        # Walk the canonical lifecycle: draft → published → sent → paid. Each hop
+        # is an allowed transition, so the bill ends up paid.
+        # (The legacy draft → paid → draft path is now rejected server-side; see
+        # test_change_status_disallowed_transition_rejected.)
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillRepository
+
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
-            # First change: draft → paid
-            auth_client.post(
-                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
-                data={"csrf_token": csrf_token, "status": "paid"},
-                follow_redirects=False,
-            )
-            # Second change: paid → draft
-            response = auth_client.post(
-                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
-                data={"csrf_token": csrf_token, "status": "draft"},
-                follow_redirects=False,
-            )
-        assert response.status_code == 302
+            for status in ("published", "sent", "paid"):
+                response = auth_client.post(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                    data={"csrf_token": csrf_token, "status": status},
+                    follow_redirects=False,
+                )
+                assert response.status_code == 302
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid)
+        assert reloaded.status == "paid"
 
 
 class TestBillAccessDenied:

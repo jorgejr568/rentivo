@@ -377,23 +377,30 @@ def _create_bills(bill_service: BillService, billings: list[Billing]) -> int:
                 due_date=due_date,
             )
 
-            # Set bill status based on age
+            # Set bill status based on age. A fresh bill is draft; statuses beyond
+            # "published" must be reached by walking the lifecycle
+            # (draft → published → sent → paid/delayed) so the seed data respects
+            # the same server-enforced transitions as the app (REN-21).
+            def _advance(bill, *statuses):
+                for s in statuses:
+                    bill_service.change_status(bill, s)
+
             if month_offset > 2 and random.random() > 0.2:
-                bill_service.change_status(bill, "paid")
+                _advance(bill, "published", "sent", "paid")
                 status = "[green]paid[/green]"
             elif month_offset <= 1:
-                bill_service.change_status(bill, "published")
+                _advance(bill, "published")
                 status = "[yellow]published[/yellow]"
             else:
                 r = random.random()
                 if r > 0.6:
-                    bill_service.change_status(bill, "delayed_payment")
+                    _advance(bill, "published", "sent", "delayed_payment")
                     status = "[red]delayed[/red]"
                 elif r > 0.3:
-                    bill_service.change_status(bill, "sent")
+                    _advance(bill, "published", "sent")
                     status = "[blue]sent[/blue]"
                 else:
-                    bill_service.change_status(bill, "paid")
+                    _advance(bill, "published", "sent", "paid")
                     status = "[green]paid[/green]"
 
             table.add_row(

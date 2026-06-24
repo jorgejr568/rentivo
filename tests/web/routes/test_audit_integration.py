@@ -188,9 +188,10 @@ class TestBillAuditLogs:
             mock_storage.return_value = LocalStorage(str(tmp_path))
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
 
+            # draft → published is an allowed transition (draft → paid is not).
             auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
-                data={"csrf_token": csrf_token, "status": "paid"},
+                data={"csrf_token": csrf_token, "status": "published"},
                 follow_redirects=False,
             )
 
