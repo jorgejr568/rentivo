@@ -30,7 +30,8 @@ class RecipientService:
             email = (row.get("email") or "").strip()
             if not name or not email:
                 continue
-            recipients.append(Recipient(billing_id=billing_id, name=name, email=email))
+            phone = (row.get("phone") or "").strip() or None
+            recipients.append(Recipient(billing_id=billing_id, name=name, email=email, phone=phone))
         self.recipient_repo.replace_for_billing(billing_id, recipients)
         logger.info("recipients_replaced", billing_id=billing_id, count=len(recipients))
         return recipients
