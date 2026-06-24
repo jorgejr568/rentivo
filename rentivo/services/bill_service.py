@@ -8,6 +8,7 @@ from rentivo.constants import SP_TZ
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
+from rentivo.models.recipient import Recipient
 from rentivo.observability import traced
 from rentivo.pdf.invoice import InvoicePDF
 from rentivo.pdf.merger import merge_receipts
@@ -17,6 +18,7 @@ from rentivo.services.job_service import JobService
 from rentivo.services.pix_service import PixConfig, PixService
 from rentivo.settings import settings
 from rentivo.storage.base import FileRef, StorageBackend
+from rentivo.whatsapp import build_invoice_message, build_whatsapp_link
 
 PIX_NOT_CONFIGURED_MESSAGE = "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas."
 
@@ -93,6 +95,26 @@ class BillService:
             payload=payload,
         )
         return png, config.pix_key, payload
+
+    @traced("bill.whatsapp_link")
+    def build_whatsapp_link(self, bill: Bill, billing: Billing, recipient: Recipient) -> str | None:
+        """Build a ``wa.me`` deep link to send this bill to ``recipient`` over WhatsApp.
+
+        The prefilled message carries the invoice essentials (unit, month,
+        amount, due date) plus the PIX copia-e-cola string so the tenant can pay
+        from the chat. Returns ``None`` when the recipient has no usable phone
+        number. Raises ``ValueError`` (via ``_get_pix_data``) when PIX is not
+        configured, since the message is worthless without the copia-e-cola.
+        """
+        _, _, payload = self._get_pix_data(billing, bill.total_amount)
+        message = build_invoice_message(
+            billing_name=billing.name,
+            reference_month=bill.reference_month,
+            amount_centavos=bill.total_amount,
+            due_date=bill.due_date,
+            pix_payload=payload,
+        )
+        return build_whatsapp_link(recipient.phone, message)
 
     def _fetch_receipt_data(self, bill: Bill) -> tuple[list[tuple[bytes, str]], list[Receipt]]:
         """Fetch receipt file data for a bill, for merging into the PDF.

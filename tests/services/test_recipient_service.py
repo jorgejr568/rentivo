@@ -40,3 +40,20 @@ def test_replace_skips_blank_rows_and_trims(service):
 def test_replace_requires_email_for_named_row(service):
     service.replace_for_billing(1, [{"name": "NoEmail", "email": ""}])
     assert service.list_for_billing(1) == []
+
+
+def test_phone_is_optional_and_trimmed(service):
+    service.replace_for_billing(
+        1,
+        [
+            {"name": "João", "email": "joao@example.com", "phone": " +5511999998888 "},
+            {"name": "Ana", "email": "ana@example.com"},  # no phone key
+            {"name": "Bia", "email": "bia@example.com", "phone": "  "},  # blank -> None
+        ],
+    )
+    rows = service.list_for_billing(1)
+    assert [(r.name, r.phone) for r in rows] == [
+        ("João", "+5511999998888"),
+        ("Ana", None),
+        ("Bia", None),
+    ]
