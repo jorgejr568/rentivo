@@ -361,6 +361,33 @@ class BillService:
         logger.info("bill_status_changed", bill_id=bill.id, new_status=new_status)
         return bill
 
+    @traced("bill.set_pix_charge")
+    def set_pix_charge(
+        self,
+        bill: Bill,
+        *,
+        provider: str,
+        charge_id: str,
+        txid: str | None = None,
+        e2eid: str | None = None,
+    ) -> Bill:
+        """Persist dynamic-PIX (PSP) charge linkage on a bill (REN-26).
+
+        Written when a ``cob`` is created so the inbound webhook can reconcile
+        the payment back to this bill. Mirrors the local model so callers do not
+        need to re-read."""
+        if bill.id is None:
+            raise ValueError("Cannot set PIX charge on bill without an id")
+        self.bill_repo.update_pix_linkage(bill.id, provider=provider, charge_id=charge_id, txid=txid, e2eid=e2eid)
+        bill.pix_provider = provider
+        bill.pix_charge_id = charge_id
+        if txid is not None:
+            bill.pix_txid = txid
+        if e2eid is not None:
+            bill.pix_e2eid = e2eid
+        logger.info("bill_pix_charge_set", bill_id=bill.id, provider=provider, charge_id=charge_id)
+        return bill
+
     @traced("bill.get_bill")
     def get_bill(self, bill_id: int) -> Bill | None:
         result = self.bill_repo.get_by_id(bill_id)

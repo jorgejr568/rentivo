@@ -33,6 +33,9 @@ EXEMPT_PATHS = {
     "/security/passkeys/register",
     "/security/passkeys/auth",
     "/mfa-verify",
+    # PSP payment webhook: JSON POST authenticated by shared-secret header, with
+    # no session/CSRF token (the caller is Asaas, not a browser form).
+    "/webhooks",
 }
 
 

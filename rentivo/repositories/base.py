@@ -76,6 +76,23 @@ class BillRepository(ABC):
     def update_pdf_render_status(self, bill_id: int, status: str | None) -> None: ...
 
     @abstractmethod
+    def update_pix_linkage(
+        self,
+        bill_id: int,
+        *,
+        provider: str | None = None,
+        charge_id: str | None = None,
+        txid: str | None = None,
+        e2eid: str | None = None,
+    ) -> None:
+        """Persist dynamic-PIX (PSP) linkage columns on a bill.
+
+        Only non-``None`` arguments are written, so a webhook can fill in the
+        ``e2eid`` it learns at settlement without clobbering the
+        ``provider``/``charge_id`` set at charge-creation time."""
+        ...
+
+    @abstractmethod
     def delete(self, bill_id: int) -> None: ...
 
 
@@ -344,3 +361,32 @@ class CommunicationRepository(ABC):
 
     @abstractmethod
     def mark_failed(self, communication_id: int, error: str) -> None: ...
+
+
+class PixWebhookEventRepository(ABC):
+    """Idempotency / replay ledger for inbound PSP payment webhooks (REN-25)."""
+
+    @abstractmethod
+    def record_if_new(
+        self,
+        *,
+        provider: str,
+        event_id: str,
+        event_type: str,
+        status: str,
+        charge_id: str | None = None,
+        external_reference: str | None = None,
+        e2eid: str | None = None,
+        bill_id: int | None = None,
+    ) -> bool:
+        """Record a webhook delivery, returning ``True`` only on first sight.
+
+        Inserts ``(provider, event_id)`` with ``ON CONFLICT DO NOTHING``
+        semantics. A duplicate delivery (replay) returns ``False`` so the
+        caller can ack ``200`` and stop without re-running the side effect."""
+        ...
+
+    @abstractmethod
+    def set_bill_id(self, *, provider: str, event_id: str, bill_id: int) -> None:
+        """Backfill the resolved ``bill_id`` on an already-recorded event."""
+        ...

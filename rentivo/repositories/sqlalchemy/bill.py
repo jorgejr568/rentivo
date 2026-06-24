@@ -273,6 +273,35 @@ class SQLAlchemyBillRepository(BillRepository):
         )
         self.conn.commit()
 
+    @traced("bill_repo.update_pix_linkage")
+    def update_pix_linkage(
+        self,
+        bill_id: int,
+        *,
+        provider: str | None = None,
+        charge_id: str | None = None,
+        txid: str | None = None,
+        e2eid: str | None = None,
+    ) -> None:
+        # Static SQL (no dynamic interpolation — see the repository SQL guard):
+        # COALESCE keeps the existing column value when an argument is None, so a
+        # later webhook can add the e2eid without overwriting provider/charge_id
+        # set when the charge was created.
+        if provider is None and charge_id is None and txid is None and e2eid is None:
+            return
+        self.conn.execute(
+            text(
+                "UPDATE bills SET "
+                "pix_provider = COALESCE(:provider, pix_provider), "
+                "pix_charge_id = COALESCE(:charge_id, pix_charge_id), "
+                "pix_txid = COALESCE(:txid, pix_txid), "
+                "pix_e2eid = COALESCE(:e2eid, pix_e2eid) "
+                "WHERE id = :id"
+            ),
+            {"provider": provider, "charge_id": charge_id, "txid": txid, "e2eid": e2eid, "id": bill_id},
+        )
+        self.conn.commit()
+
     @traced("bill_repo.delete")
     def delete(self, bill_id: int) -> None:
         self.conn.execute(

@@ -65,14 +65,10 @@ def upgrade() -> None:
         ),
         # Replayed delivery -> no-op insert (handler uses INSERT ... ON CONFLICT
         # DO NOTHING on this pair).
-        sa.UniqueConstraint(
-            "provider", "event_id", name="uq_pix_webhook_events_provider_event"
-        ),
+        sa.UniqueConstraint("provider", "event_id", name="uq_pix_webhook_events_provider_event"),
     )
     # Reconciliation / lookup access paths.
-    op.create_index(
-        "ix_pix_webhook_events_charge_id", "pix_webhook_events", ["charge_id"]
-    )
+    op.create_index("ix_pix_webhook_events_charge_id", "pix_webhook_events", ["charge_id"])
     op.create_index("ix_pix_webhook_events_bill_id", "pix_webhook_events", ["bill_id"])
 
 

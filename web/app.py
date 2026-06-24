@@ -38,6 +38,7 @@ from web.routes.health import router as health_router
 from web.routes.invite import router as invite_router
 from web.routes.organization import router as organization_router
 from web.routes.password_reset import router as password_reset_router
+from web.routes.pix_webhook import router as pix_webhook_router
 from web.routes.security import router as security_router
 from web.routes.seo import router as seo_router
 from web.routes.theme import router as theme_router
@@ -104,6 +105,7 @@ app.include_router(communication_router)
 app.include_router(organization_router)
 app.include_router(invite_router)
 app.include_router(password_reset_router)
+app.include_router(pix_webhook_router)
 app.include_router(security_router)
 app.include_router(theme_router)
 app.include_router(seo_router)

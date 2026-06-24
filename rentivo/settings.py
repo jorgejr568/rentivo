@@ -116,6 +116,14 @@ class Settings(BaseSettings):
     google_client_id: str = ""
     google_client_secret: str = ""
 
+    # Asaas dynamic-PIX provider (REN-15/REN-26 sandbox pilot, landlord-as-merchant).
+    # Fully optional: the integration is a no-op unless RENTIVO_ASAAS_API_KEY is
+    # set, so the service can be wired unconditionally and gated on `is_enabled`.
+    # SANDBOX credentials only until SecurityAnalyst signs off (REN-27).
+    asaas_api_key: str = ""
+    asaas_webhook_token: str = ""
+    asaas_base_url: str = "https://api-sandbox.asaas.com/v3"
+
     job_worker_batch_size: int = 10
     job_worker_idle_sleep_seconds: float = 5.0
     job_worker_stuck_after_seconds: int = 600
