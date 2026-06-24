@@ -30,6 +30,12 @@
     --accent-pale: oklch(0.95 0.035 162);
     --accent-ink:  #ffffff;
 
+    /* WhatsApp — official brand green, used only for the WhatsApp channel */
+    --wa:       #25d366;
+    --wa-dark:  #1da851;
+    --wa-pale:  #e7faef;
+    --wa-ink:   #075e54;
+
     /* Status hues — share lightness/chroma for harmony */
     --paid:    oklch(0.605 0.125 162);
     --paid-pale: oklch(0.955 0.03 162);
@@ -304,7 +310,31 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 .btn--lg:hover { box-shadow: var(--sh-lg); }
 .btn--sm { padding: 0.32rem 0.7rem; font-size: 0.8rem; border-width: 2px; box-shadow: var(--sh-sm); }
 .btn--block { width: 100%; }
+.btn--whatsapp { background: var(--wa); color: #fff; border-color: var(--ink); }
+.btn--whatsapp:hover { background: var(--wa-dark); color: #fff; }
+.btn--whatsapp svg { flex-shrink: 0; }
 .btn-row, .btn-group { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
+
+/* WhatsApp deep-link delivery box (bill detail) */
+.wa-deliver {
+    display: flex; gap: 1rem; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    background: var(--wa-pale);
+    border: var(--bw-bold) solid var(--wa);
+    border-radius: var(--r);
+    padding: 1.1rem 1.25rem;
+}
+.wa-deliver__intro { display: flex; gap: 0.85rem; align-items: center; min-width: 0; }
+.wa-deliver__mark {
+    flex-shrink: 0; width: 40px; height: 40px; display: grid; place-items: center;
+    background: var(--wa); color: #fff; border: 2px solid var(--ink);
+    border-radius: var(--r-sm); box-shadow: var(--sh-sm);
+}
+.wa-deliver__eyebrow {
+    font-family: var(--font); font-weight: 700; font-size: 0.7rem;
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--wa-ink);
+}
+/* WhatsApp glyph echo on the phone field label */
+.wa-hint-mark { color: var(--wa); vertical-align: -2px; }
 
 .icon-btn {
     width: 36px; height: 38px; display: inline-grid; place-items: center;

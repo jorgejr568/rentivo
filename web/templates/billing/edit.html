@@ -90,7 +90,7 @@
                         </div>
                         <div class="field mb-0">
                             <label class="field__label">WhatsApp <span class="muted">(opcional)</span></label>
-                            <input type="tel" class="input" name="recipients-{{ loop.index0 }}-phone" value="{{ r.phone or '' }}" placeholder="+55 11 99999-8888">
+                            <input type="tel" class="input" name="recipients-{{ loop.index0 }}-phone" value="{{ r.phone or '' }}" inputmode="tel" autocomplete="tel" pattern="[+()0-9\s-]{8,}" placeholder="(11) 99999-8888" data-phone-mask>
                         </div>
                         <div class="field mb-0">
                             <label class="field__label sr-only">Remover</label>
@@ -102,6 +102,7 @@
                 </div>
                 {% endfor %}
             </div>
+            <p class="field__hint" style="margin-top: 0.85rem;">WhatsApp com DDD — ex.: <span class="mono">(11) 99999-8888</span>. O código <span class="mono">+55</span> é adicionado automaticamente; para outro país informe com <span class="mono">+</span> e o código (ex.: <span class="mono">+1</span>).</p>
             <template id="recipients-empty-row">
                 <div class="item-grid">
                     <div class="field mb-0">
@@ -114,7 +115,7 @@
                     </div>
                     <div class="field mb-0">
                         <label class="field__label">WhatsApp <span class="muted">(opcional)</span></label>
-                        <input type="tel" class="input" name="recipients-__prefix__-phone" placeholder="+55 11 99999-8888">
+                        <input type="tel" class="input" name="recipients-__prefix__-phone" inputmode="tel" autocomplete="tel" pattern="[+()0-9\s-]{8,}" placeholder="(11) 99999-8888" data-phone-mask>
                     </div>
                     <div class="field mb-0">
                         <label class="field__label sr-only">Remover</label>
@@ -351,8 +352,23 @@ function recomputeSubtotal() {
     if (out) out.textContent = 'R$ ' + (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Progressive-enhancement mask for BR WhatsApp numbers. The server strips all
+// non-digits, so formatting here is purely a display affordance.
+function maskBRPhone(el) {
+    var v = el.value;
+    if (v.charAt(0) === '+') return; // international — don't second-guess grouping
+    var d = v.replace(/\D/g, '').slice(0, 11);
+    if (!d) { el.value = ''; return; }
+    if (d.length <= 2) { el.value = '(' + d; return; }
+    var ddd = d.slice(0, 2), line = d.slice(2), split = d.length > 10 ? 5 : 4;
+    el.value = line.length <= split
+        ? '(' + ddd + ') ' + line
+        : '(' + ddd + ') ' + line.slice(0, split) + '-' + line.slice(split);
+}
+
 document.addEventListener('input', function (e) {
     if (e.target.matches('#items-container input[name$="-amount"]')) recomputeSubtotal();
+    if (e.target.matches('[data-phone-mask]')) maskBRPhone(e.target);
 });
 document.addEventListener('click', function (e) {
     if (e.target.closest('[onclick^="addFormsetRow"], [onclick^="removeFormsetRow"]')) {
