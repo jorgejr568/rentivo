@@ -81,24 +81,6 @@ class TestBillingRepoCRUD:
         assert len(updated.items) == 1
         assert updated.items[0].description == "New item"
 
-    def test_reminders_enabled_defaults_on(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
-        created = billing_repo.create(sample_billing())
-        assert created.reminders_enabled is True
-        assert billing_repo.get_by_id(created.id).reminders_enabled is True
-
-    def test_reminders_enabled_round_trips_through_update(
-        self, billing_repo: SQLAlchemyBillingRepository, sample_billing
-    ):
-        created = billing_repo.create(sample_billing())
-        created.reminders_enabled = False
-        billing_repo.update(created)
-
-        assert billing_repo.get_by_id(created.id).reminders_enabled is False
-
-    def test_reminders_enabled_can_be_created_off(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
-        created = billing_repo.create(sample_billing(reminders_enabled=False))
-        assert billing_repo.get_by_id(created.id).reminders_enabled is False
-
     def test_soft_delete(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
         created = billing_repo.create(sample_billing())
         billing_repo.delete(created.id)

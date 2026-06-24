@@ -10,11 +10,6 @@ class CommType(str, Enum):
     """Communication types. Each maps to a default template
     (rentivo/communications/defaults.py) and the document its send job attaches:
     BILL_READY -> invoice PDF, PAYMENT_RECEIPT -> recibo (payment-receipt) PDF.
-
-    Payment reminders/dunning are a free-form template type (base
-    ``payment_reminder`` plus offset suffixes like ``payment_reminder:d-3``),
-    not an enum member — see rentivo/communications/reminders.py. Their send job
-    falls through to the invoice-PDF attachment branch.
     """
 
     BILL_READY = "bill_ready"
