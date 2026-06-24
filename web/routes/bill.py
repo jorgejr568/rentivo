@@ -11,6 +11,7 @@ from rentivo.models.bill import BillLineItem, BillStatus
 from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
+from web.bill_transitions import transitions_for
 from web.deps import render
 from web.flash import flash, flash_redirect
 from web.forms import parse_brl, parse_extras, parse_line_items, safe_redirect_path
@@ -162,6 +163,7 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
     # /whatsapp redirect endpoint, so here we only need to know who to offer.
     recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
     whatsapp_recipients = [r for r in recipients if r.phone]
+    primary_transition, other_transitions = transitions_for(ctx.bill.status)
     return render(
         request,
         "bill/detail.html",
@@ -172,6 +174,8 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
             "receipts": receipts,
             "communications": communications,
             "whatsapp_recipients": whatsapp_recipients,
+            "primary_transition": primary_transition,
+            "other_transitions": other_transitions,
         },
     )
 

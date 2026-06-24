@@ -678,6 +678,31 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 .modal__body { padding: 0.85rem 1.25rem 1.25rem; color: var(--ink-2); font-size: 0.92rem; line-height: 1.55; }
 .modal__body strong { color: var(--ink); }
 .modal__foot { display: flex; justify-content: flex-end; gap: 0.6rem; padding: 0.9rem 1.25rem; background: var(--paper-2); border-top: var(--bw) solid var(--ink); }
+/* Positive/expected confirmations (mark paid, reopen) recolour the danger-default icon. */
+.modal__icon--primary { background: var(--accent-pale); color: var(--accent-dark); border-color: var(--accent); }
+
+/* ============================================================
+   Status change menu (bill detail action bar)
+   ============================================================ */
+.status-menu { position: relative; display: inline-block; }
+.status-menu > summary { list-style: none; cursor: pointer; }
+.status-menu > summary::-webkit-details-marker { display: none; }
+.status-menu > summary::after { content: "▾"; margin-left: 0.4rem; font-size: 0.8em; }
+.status-menu[open] > summary::after { content: "▴"; }
+.status-menu__panel {
+    position: absolute; z-index: 50; top: calc(100% + 0.4rem); left: 0; min-width: 230px;
+    background: var(--surface); border: var(--bw-bold) solid var(--ink); border-radius: var(--r-sm);
+    box-shadow: var(--sh-lg); padding: 0.35rem; display: flex; flex-direction: column; gap: 0.1rem;
+    animation: modal-fade 0.12s ease;
+}
+.status-menu__item {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    padding: 0.5rem 0.7rem; border: none; border-radius: var(--r-sm);
+    background: none; color: var(--ink); font-family: inherit; font-size: 0.9rem; font-weight: 600;
+}
+.status-menu__item:hover, .status-menu__item:focus-visible { background: var(--paper-2); outline: none; }
+.status-menu__item--danger { color: var(--overdue); }
+.status-menu__item--danger:hover, .status-menu__item--danger:focus-visible { background: var(--overdue-pale); }
 
 /* ============================================================
    MFA / security

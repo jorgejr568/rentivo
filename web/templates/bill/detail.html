@@ -150,22 +150,36 @@
 </div>
 
 <!-- Status / management -->
+{% macro status_form(t, css) %}
+<form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/change-status" class="inline-form"
+      {% if t.confirm %}data-confirm
+      data-confirm-title="{{ t.confirm_title }}"
+      data-confirm-body="{{ t.confirm_body }}"
+      data-confirm-accept="{{ t.confirm_accept }}"
+      data-confirm-variant="{{ t.variant }}"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="status" value="{{ t.to }}">
+    <button type="submit" class="{{ css }}">{{ t.label }}</button>
+</form>
+{% endmacro %}
 {% if role in ("owner", "admin", "manager") %}
 <div class="panel">
     <div class="panel__head"><h3>Gerenciar fatura</h3></div>
     <div class="panel__body">
         <div class="btn-row">
-            <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/change-status" class="inline-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <select name="status" class="select" style="width: auto; display: inline-block;" onchange="this.form.submit()">
-                    <option value="draft" {% if bill.status == "draft" %}selected{% endif %}>Rascunho</option>
-                    <option value="published" {% if bill.status == "published" %}selected{% endif %}>Publicado</option>
-                    <option value="sent" {% if bill.status == "sent" %}selected{% endif %}>Enviado</option>
-                    <option value="paid" {% if bill.status == "paid" %}selected{% endif %}>Pago</option>
-                    <option value="cancelled" {% if bill.status == "cancelled" %}selected{% endif %}>Cancelado</option>
-                    <option value="delayed_payment" {% if bill.status == "delayed_payment" %}selected{% endif %}>Pag. Atrasado</option>
-                </select>
-            </form>
+            {% if primary_transition %}
+            {{ status_form(primary_transition, "btn btn--primary") }}
+            {% endif %}
+            {% if other_transitions %}
+            <details class="status-menu">
+                <summary class="btn">Alterar status</summary>
+                <div class="status-menu__panel" role="menu">
+                    {% for t in other_transitions %}
+                    {{ status_form(t, "status-menu__item" + (" status-menu__item--danger" if t.variant == "danger" else "")) }}
+                    {% endfor %}
+                </div>
+            </details>
+            {% endif %}
             <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/regenerate-pdf" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn">Regenerar PDF</button>
