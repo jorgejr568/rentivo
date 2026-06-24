@@ -158,15 +158,7 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
     bill_service = request.state.services.bill
     receipts = bill_service.list_receipts(ctx.bill.id) if ctx.bill.id else []
     communications = request.state.services.communication.list_for_bill(ctx.bill.id) if ctx.bill.id else []
-<<<<<<< HEAD
-    # Recipients with a phone number can receive the invoice via a WhatsApp
-    # deep link. The link itself is built (and the click instrumented) by the
-    # /whatsapp redirect endpoint, so here we only need to know who to offer.
-    recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
-    whatsapp_recipients = [r for r in recipients if r.phone]
     primary_transition, other_transitions = transitions_for(ctx.bill.status)
-=======
->>>>>>> origin/main
     return render(
         request,
         "bill/detail.html",
@@ -176,12 +168,8 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
             "role": ctx.role,
             "receipts": receipts,
             "communications": communications,
-<<<<<<< HEAD
-            "whatsapp_recipients": whatsapp_recipients,
             "primary_transition": primary_transition,
             "other_transitions": other_transitions,
-=======
->>>>>>> origin/main
         },
     )
 
