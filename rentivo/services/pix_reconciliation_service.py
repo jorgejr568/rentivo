@@ -122,9 +122,14 @@ class PixReconciliationService:
 
         self._events.set_bill_id(provider=self._provider, event_id=event.event_id, bill_id=bill.id)
 
-        # 4. Defensive amount cross-check. A mismatch is a reconciliation
-        #    anomaly, not a transition — leave the bill for a human.
-        if event.amount_centavos and event.amount_centavos != bill.total_amount:
+        # 4. Defensive amount cross-check. The paid amount must be *present and
+        #    equal* before we transition; a mismatch is a reconciliation anomaly,
+        #    not a transition — leave the bill for a human. A missing/zero amount
+        #    (`_brl_to_centavos` returns 0 for an absent/invalid `value`) is held
+        #    as a mismatch too, never bypassed via a falsy guard (REN-56). If a
+        #    legitimately amount-less paid event class ever exists, gate it here
+        #    explicitly rather than re-introducing a falsy skip.
+        if event.amount_centavos != bill.total_amount:
             logger.warning(
                 "pix_webhook_amount_mismatch",
                 bill_uuid=bill.uuid,

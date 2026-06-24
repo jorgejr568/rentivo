@@ -172,6 +172,33 @@ def test_webhook_amount_mismatch_does_not_confirm(client, asaas_enabled, test_en
     assert _bill_status(test_engine, bill.uuid) != BillStatus.PAID.value
 
 
+@pytest.mark.parametrize(
+    "mutate, label",
+    [
+        (lambda body: body["payment"].update(value=0), "zero"),
+        (lambda body: body["payment"].update(value=None), "null"),
+        (lambda body: body["payment"].pop("value", None), "omitted"),
+    ],
+    ids=["zero", "null", "omitted"],
+)
+def test_webhook_missing_or_zero_amount_does_not_confirm(client, asaas_enabled, test_engine, tmp_path, mutate, label):
+    """A paid event whose amount is 0/null/omitted must NOT auto-confirm a
+    non-zero bill (REN-56). `_brl_to_centavos` maps all three to 0 centavos;
+    the old `event.amount_centavos and …` guard let a falsy amount skip the
+    cross-check entirely and transition the bill to PAID. Treat it as a hold."""
+    bill = _seed_bill(test_engine, tmp_path)
+    assert bill.status != BillStatus.PAID.value
+
+    body = _paid_body(bill.uuid)
+    mutate(body)
+
+    resp = client.post(WEBHOOK_URL, json=body, headers=HEADERS)
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "amount_mismatch", label
+    assert _bill_status(test_engine, bill.uuid) != BillStatus.PAID.value
+
+
 def test_webhook_non_paid_event_ignored(client, asaas_enabled, test_engine, tmp_path):
     bill = _seed_bill(test_engine, tmp_path)
     body = _paid_body(bill.uuid, event="PAYMENT_OVERDUE")
