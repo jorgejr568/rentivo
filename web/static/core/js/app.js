@@ -104,6 +104,24 @@ document.addEventListener("DOMContentLoaded", function () {
     };
     var activeDialog = null;
 
+    function restoreFocus(trigger) {
+        if (!trigger || typeof trigger.focus !== "function") return;
+        // The trigger may live inside a <details.status-menu> we collapsed before
+        // opening the dialog (see the form handler below). A collapsed menu hides
+        // its items, so trigger.focus() would be a no-op and focus would strand on
+        // <body>. Re-open the menu first so focus returns to the exact trigger —
+        // returning the keyboard user to where they were.
+        var menu = trigger.closest ? trigger.closest("details.status-menu") : null;
+        if (menu && !menu.open) menu.setAttribute("open", "");
+        trigger.focus();
+        // Last-resort guard: if focus still didn't land (trigger no longer
+        // focusable), put it on the menu's <summary> rather than <body>.
+        if (menu && document.activeElement !== trigger) {
+            var summary = menu.querySelector("summary");
+            if (summary && typeof summary.focus === "function") summary.focus();
+        }
+    }
+
     function closeConfirm() {
         if (!activeDialog) return;
         var overlay = activeDialog.overlay;
@@ -112,7 +130,7 @@ document.addEventListener("DOMContentLoaded", function () {
         overlay.remove();
         document.body.style.overflow = "";
         activeDialog = null;
-        if (trigger && typeof trigger.focus === "function") trigger.focus();
+        restoreFocus(trigger);
     }
 
     function openConfirm(opts) {
@@ -176,6 +194,9 @@ document.addEventListener("DOMContentLoaded", function () {
         function onKeydown(e) {
             if (e.key === "Escape") {
                 e.preventDefault();
+                // Stop the document-level status-menu Escape handler from firing;
+                // otherwise it would re-collapse the menu restoreFocus re-opens.
+                e.stopPropagation();
                 closeConfirm();
                 return;
             }
