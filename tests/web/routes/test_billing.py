@@ -1,9 +1,9 @@
 from unittest.mock import MagicMock, PropertyMock, patch
 
 from rentivo.encryption.base64 import Base64Backend
-from rentivo.models.billing import Billing
+from rentivo.models.billing import Billing, ReadjustmentIndex
 from rentivo.models.user import User
-from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
 from web.services_container import RequestServices
 
@@ -112,6 +112,123 @@ class TestBillingCreate:
         )
         assert response.status_code == 302
         assert response.headers["location"] == "/billings/create"
+
+
+class TestBillingCreateReadjustment:
+    def _reload(self, test_engine, name):
+        with test_engine.connect() as conn:
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
+            for b in repo.list_all():
+                if b.name == name:
+                    return b
+        return None
+
+    def test_create_persists_readjustment_config(self, auth_client, test_engine, csrf_token):
+        resp = auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Apt Reaj",
+                "readjustment_index": "igpm",
+                "readjustment_month": "6",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        billing = self._reload(test_engine, "Apt Reaj")
+        assert billing.readjustment_index == ReadjustmentIndex.IGPM
+        assert billing.readjustment_month == 6
+
+    def test_create_defaults_to_none(self, auth_client, test_engine, csrf_token):
+        resp = auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Apt NoReaj",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        billing = self._reload(test_engine, "Apt NoReaj")
+        assert billing.readjustment_index == ReadjustmentIndex.NONE
+        assert billing.readjustment_month is None
+
+    def test_create_invalid_index_defaults_to_none(self, auth_client, test_engine, csrf_token):
+        resp = auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Apt BadIdx",
+                "readjustment_index": "bogus",
+                "readjustment_month": "99",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        billing = self._reload(test_engine, "Apt BadIdx")
+        assert billing.readjustment_index == ReadjustmentIndex.NONE
+        assert billing.readjustment_month is None  # out-of-range month rejected
+
+    def test_edit_persists_readjustment_config(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine, name="Apt Edit Reaj")
+        resp = auth_client.post(
+            f"/billings/{billing.uuid}/edit",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Apt Edit Reaj",
+                "readjustment_index": "ipca",
+                "readjustment_month": "3",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_uuid(billing.uuid)
+        assert reloaded.readjustment_index == ReadjustmentIndex.IPCA
+        assert reloaded.readjustment_month == 3
+
+    def test_edit_clears_month_when_empty(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(
+            test_engine,
+            name="Apt Clear",
+            readjustment_index=ReadjustmentIndex.IGPM,
+            readjustment_month=6,
+        )
+        resp = auth_client.post(
+            f"/billings/{billing.uuid}/edit",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Apt Clear",
+                "readjustment_index": "none",
+                "readjustment_month": "",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        with test_engine.connect() as conn:
+            reloaded = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_uuid(billing.uuid)
+        assert reloaded.readjustment_index == ReadjustmentIndex.NONE
+        assert reloaded.readjustment_month is None
 
 
 class TestBillingDetail:

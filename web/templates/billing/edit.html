@@ -65,6 +65,34 @@
         </div>
     </div>
 
+    <!-- Reajuste -->
+    <div class="panel">
+        <div class="panel__head">
+            <div>
+                <h3>Reajuste anual</h3>
+                <p class="panel__desc">Opcional — índice e mês de aniversário usados para sugerir o reajuste dos itens fixos.</p>
+            </div>
+        </div>
+        <div class="panel__body">
+            <div class="form-grid">
+                <div class="field">
+                    <label for="readjustment_index" class="field__label">Índice de reajuste</label>
+                    <select class="select" id="readjustment_index" name="readjustment_index">
+                        <option value="none" {% if billing.readjustment_index.value == "none" %}selected{% endif %}>Nenhum</option>
+                        <option value="igpm" {% if billing.readjustment_index.value == "igpm" %}selected{% endif %}>IGP-M</option>
+                        <option value="ipca" {% if billing.readjustment_index.value == "ipca" %}selected{% endif %}>IPCA</option>
+                    </select>
+                </div>
+                <div class="field">
+                    <label for="readjustment_month" class="field__label">Mês de aniversário</label>
+                    <input type="number" class="input" id="readjustment_month" name="readjustment_month" min="1" max="12"
+                           value="{% if billing.readjustment_month %}{{ billing.readjustment_month }}{% endif %}" placeholder="1 a 12">
+                    <span class="field__hint">Opcional — mês (1 a 12) em que o contrato é reajustado.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Recipients -->
     <div class="panel">
         <div class="panel__head">

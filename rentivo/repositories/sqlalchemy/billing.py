@@ -7,7 +7,7 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
-from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.billing import Billing, BillingItem, ItemType, ReadjustmentIndex
 from rentivo.observability import traced
 from rentivo.repositories.base import BillingRepository
 from rentivo.repositories.sqlalchemy._common import _group_rows_by, _now
@@ -25,9 +25,11 @@ class SQLAlchemyBillingRepository(BillingRepository):
         result = self.conn.execute(
             text(
                 "INSERT INTO billings (name, description, pix_key, pix_merchant_name, pix_merchant_city, "
-                "uuid, owner_type, owner_id, reminders_enabled, created_at, updated_at) "
+                "uuid, owner_type, owner_id, readjustment_index, readjustment_month, last_readjustment_date, "
+                "reminders_enabled, created_at, updated_at) "
                 "VALUES (:name, :description, :pix_key, :pix_merchant_name, :pix_merchant_city, "
-                ":uuid, :owner_type, :owner_id, :reminders_enabled, :created_at, :updated_at)"
+                ":uuid, :owner_type, :owner_id, :readjustment_index, :readjustment_month, :last_readjustment_date, "
+                ":reminders_enabled, :created_at, :updated_at)"
             ),
             {
                 "name": self.encryption.encrypt(billing.name),
@@ -38,6 +40,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "uuid": billing_uuid,
                 "owner_type": billing.owner_type,
                 "owner_id": billing.owner_id,
+                "readjustment_index": billing.readjustment_index.value,
+                "readjustment_month": billing.readjustment_month,
+                "last_readjustment_date": billing.last_readjustment_date,
                 "reminders_enabled": 1 if billing.reminders_enabled else 0,
                 "created_at": now,
                 "updated_at": now,
@@ -103,6 +108,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
             # are opt-out, not opt-in. SQLite stores the bool as 0/1.
             reminders_enabled=(_reminders is None or bool(_reminders)),
             items=items,
+            readjustment_index=ReadjustmentIndex(row.get("readjustment_index") or "none"),
+            readjustment_month=row.get("readjustment_month"),
+            last_readjustment_date=row.get("last_readjustment_date"),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             deleted_at=row["deleted_at"],
@@ -215,7 +223,8 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "UPDATE billings SET name = :name, description = :description, "
                 "pix_key = :pix_key, pix_merchant_name = :pix_merchant_name, "
                 "pix_merchant_city = :pix_merchant_city, reminders_enabled = :reminders_enabled, "
-                "updated_at = :updated_at WHERE id = :id"
+                "readjustment_index = :readjustment_index, readjustment_month = :readjustment_month, "
+                "last_readjustment_date = :last_readjustment_date, updated_at = :updated_at WHERE id = :id"
             ),
             {
                 "name": self.encryption.encrypt(billing.name),
@@ -223,6 +232,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
                 "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
+                "readjustment_index": billing.readjustment_index.value,
+                "readjustment_month": billing.readjustment_month,
+                "last_readjustment_date": billing.last_readjustment_date,
                 "reminders_enabled": 1 if billing.reminders_enabled else 0,
                 "updated_at": _now(),
                 "id": billing.id,

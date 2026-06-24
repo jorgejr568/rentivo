@@ -12,6 +12,12 @@ class ItemType(str, Enum):
     EXTRA = "extra"
 
 
+class ReadjustmentIndex(str, Enum):
+    NONE = "none"
+    IGPM = "igpm"
+    IPCA = "ipca"
+
+
 class BillingItem(BaseModel):
     id: int | None = None
     billing_id: int | None = None
@@ -36,6 +42,9 @@ class Billing(BaseModel):
     # opt a template out without deleting its reminder copy.
     reminders_enabled: bool = True
     items: list[BillingItem] = []
+    readjustment_index: ReadjustmentIndex = ReadjustmentIndex.NONE
+    readjustment_month: int | None = None  # 1-12 anniversary month, None when not configured
+    last_readjustment_date: str | None = None  # ISO YYYY-MM-DD or None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     deleted_at: datetime | None = None

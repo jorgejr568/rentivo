@@ -138,6 +138,12 @@ Used for KPI rollups on the billing list, and future consumers.
 |----------|---------|-------------|
 | `RENTIVO_GTM_CONTAINER_ID` | *(empty)* | `GTM-XXXXXXX` enables analytics; empty fully disables it (no scripts, no cookies). Must match `GTM-[A-Z0-9]+`. |
 
+## Banco Central SGS API (rent readjustment)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RENTIVO_BCB_SGS_BASE_URL` | `https://api.bcb.gov.br` | Base URL for the Banco Central SGS API used by the rent-readjustment flow; override for tests/LocalStack. |
+
 ## Background job worker
 
 | Variable | Default | Description |

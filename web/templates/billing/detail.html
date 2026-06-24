@@ -27,6 +27,9 @@
         {% if role in ("owner", "admin") %}
         <a href="/themes/billing/{{ billing.uuid }}" class="btn">Tema</a>
         <a href="/billings/{{ billing.uuid }}/edit" class="btn">Editar</a>
+        {% if billing.items | selectattr("item_type.value", "equalto", "fixed") | list %}
+        <a href="/billings/{{ billing.uuid }}/readjust" class="btn">Reajustar</a>
+        {% endif %}
         {% endif %}
     </div>
 </div>

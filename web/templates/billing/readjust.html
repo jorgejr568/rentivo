@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}Reajustar {{ billing.name }} - Rentivo{% endblock %}
+
+{% block content %}
+<a class="crumb" href="/billings/{{ billing.uuid }}">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    {{ billing.name }}
+</a>
+
+<div class="pagehead">
+    <div>
+        <h1 class="pagehead__title">Reajuste de aluguel</h1>
+        <p class="pagehead__sub">Atualize o valor dos itens fixos pelo índice de inflação configurado.</p>
+    </div>
+</div>
+
+{% if bcb_failed %}
+<div class="toast toast--warning" role="alert">
+    Não foi possível obter o índice automaticamente do Banco Central.
+    Informe a porcentagem manualmente abaixo.
+</div>
+{% endif %}
+
+<form method="post" action="/billings/{{ billing.uuid }}/readjust">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <p>Índice configurado: <strong>{{ index_label }}</strong></p>
+
+    {% if suggested_pct is not none %}
+    <p>Índice acumulado (12 meses) sugerido:
+        <strong>{{ "%.2f"|format(suggested_pct) }}%</strong></p>
+    {% endif %}
+
+    <div class="field">
+        <label for="pct">Porcentagem a aplicar (%)</label>
+        <input type="text" id="pct" name="pct"
+               value="{% if suggested_pct is not none %}{{ '%.2f'|format(suggested_pct) }}{% endif %}"
+               inputmode="decimal" required>
+    </div>
+
+    <table class="table">
+        <thead>
+            <tr><th>Item</th><th class="num">Atual</th><th class="num">Novo (estimado)</th></tr>
+        </thead>
+        <tbody>
+            {% for row in preview %}
+            <tr>
+                <td>{{ row.description }}</td>
+                <td class="num">{{ format_brl(row.old_amount) }}</td>
+                <td class="num">{{ format_brl(row.new_amount) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="page-actions">
+        <button type="submit" class="btn btn--primary">Aplicar reajuste</button>
+        <a href="/billings/{{ billing.uuid }}" class="btn">Cancelar</a>
+    </div>
+</form>
+{% endblock %}

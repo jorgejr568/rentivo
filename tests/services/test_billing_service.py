@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.billing import Billing, BillingItem, ItemType, ReadjustmentIndex
 from rentivo.services.billing_service import BillingService
 
 
@@ -61,6 +61,26 @@ class TestBillingService:
         )
         assert result.owner_type == "organization"
         assert result.owner_id == 5
+
+    def test_create_billing_with_readjustment_config(self):
+        items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
+        self.mock_repo.create.side_effect = lambda b: b
+        result = self.service.create_billing(
+            "Apt 101",
+            "desc",
+            items,
+            readjustment_index=ReadjustmentIndex.IGPM,
+            readjustment_month=6,
+        )
+        assert result.readjustment_index == ReadjustmentIndex.IGPM
+        assert result.readjustment_month == 6
+
+    def test_create_billing_readjustment_defaults(self):
+        items = [BillingItem(description="Rent", amount=100000, item_type=ItemType.FIXED)]
+        self.mock_repo.create.side_effect = lambda b: b
+        result = self.service.create_billing("Apt 101", "desc", items)
+        assert result.readjustment_index == ReadjustmentIndex.NONE
+        assert result.readjustment_month is None
 
     def test_list_billings_for_user(self):
         self.mock_repo.list_for_user.return_value = [Billing(name="A")]

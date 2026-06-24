@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from rentivo.models.bill import Bill, BillLineItem
-from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.billing import Billing, BillingItem, ItemType, ReadjustmentIndex
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
 from rentivo.models.receipt import Receipt
@@ -70,6 +70,26 @@ class TestSerializeBilling:
         assert result["items"][1]["item_type"] == "variable"
         assert result["created_at"] == now.isoformat()
         assert result["updated_at"] == now.isoformat()
+
+    def test_readjustment_fields(self):
+        billing = Billing(
+            id=1,
+            name="Apt 101",
+            readjustment_index=ReadjustmentIndex.IGPM,
+            readjustment_month=6,
+            last_readjustment_date="2026-06-01",
+        )
+        result = serialize_billing(billing)
+        assert result["readjustment_index"] == "igpm"
+        assert result["readjustment_month"] == 6
+        assert result["last_readjustment_date"] == "2026-06-01"
+
+    def test_readjustment_fields_default(self):
+        billing = Billing(id=1, name="Apt 101")
+        result = serialize_billing(billing)
+        assert result["readjustment_index"] == "none"
+        assert result["readjustment_month"] is None
+        assert result["last_readjustment_date"] is None
 
     def test_billing_empty_items(self):
         billing = Billing(id=1, name="Empty", items=[])
