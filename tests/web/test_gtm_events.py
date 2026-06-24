@@ -166,3 +166,57 @@ class TestPIIAbsenceInBusinessEvents:
         serialized = json.dumps(events)
         assert "Secret-Name-123" not in serialized
         assert "RENT-MARKER-XYZ" not in serialized
+
+
+class TestExpenseEvents:
+    def test_expense_created_emits_event_with_clean_payload(self, enable_gtm, auth_client, csrf_token, test_engine):
+        billing = create_billing_in_db(test_engine, name="Test Apt")
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/expenses/add",
+            data={
+                "csrf_token": csrf_token,
+                "description": "SECRET-DESC-XYZ",
+                "amount": "1.200,00",
+                "category": "iptu",
+                "incurred_on": "2026-01-10",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        destination = auth_client.get(response.headers["location"])
+        events = _find_events(destination.text, "rentivo_expense_created")
+        assert len(events) == 1
+        event = events[0]
+        assert event["category"] == "iptu"
+        assert event["amount_brl"] == 1200
+        assert "billing_uuid_hash" in event
+        assert event["billing_uuid_hash"] != billing.uuid  # hashed, not raw
+        assert "SECRET-DESC-XYZ" not in json.dumps(events)  # no plaintext description
+
+    def test_expense_deleted_emits_event_with_clean_payload(self, enable_gtm, auth_client, csrf_token, test_engine):
+        billing = create_billing_in_db(test_engine, name="Test Apt")
+        auth_client.post(
+            f"/billings/{billing.uuid}/expenses/add",
+            data={
+                "csrf_token": csrf_token,
+                "description": "ToDelete",
+                "amount": "10,00",
+                "category": "iptu",
+                "incurred_on": "2026-01-10",
+            },
+            follow_redirects=False,
+        )
+        # discover the expense uuid from the detail page delete form (also drains the created event)
+        detail = auth_client.get(f"/billings/{billing.uuid}").text
+        expense_uuid = re.search(r"/expenses/([0-9A-Z]{26})/delete", detail).group(1)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/expenses/{expense_uuid}/delete",
+            data={"csrf_token": csrf_token},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        destination = auth_client.get(response.headers["location"])
+        events = _find_events(destination.text, "rentivo_expense_deleted")
+        assert len(events) == 1
+        assert "billing_uuid_hash" in events[0]
+        assert events[0]["billing_uuid_hash"] != billing.uuid  # hashed, not raw

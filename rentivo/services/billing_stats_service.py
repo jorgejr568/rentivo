@@ -16,6 +16,12 @@ prefixed ``billing_stats:`` and includes the year-to-date window plus the exact
 set of billing ids, so entries are shared across users without leaking data (bill
 ids are globally unique and the underlying rows are identical regardless of who
 reads them).
+
+Expenses are folded into the same cached value: ``total_expenses`` is the full
+non-deleted expense sum for the billing set (a lifetime-of-property rollup, not
+date-windowed — there is no per-expense status), and ``net_income = received -
+total_expenses``. The TTL on the cache key means an expense add/delete becomes
+visible within the TTL; no explicit invalidation is performed.
 """
 
 from __future__ import annotations
@@ -27,7 +33,7 @@ from rentivo.cache.factory import get_cache
 from rentivo.constants import SP_TZ
 from rentivo.models.bill import BillStatus, BillSummary
 from rentivo.observability import traced
-from rentivo.repositories.base import BillRepository
+from rentivo.repositories.base import BillRepository, ExpenseRepository
 from rentivo.services.billing_stats import BillingStats
 
 __all__ = ["BillingStats", "BillingStatsService"]
@@ -78,8 +84,9 @@ def _ytd_rollup(summaries: list[BillSummary], year: int, month: int) -> dict[str
 
 
 class BillingStatsService:
-    def __init__(self, bill_repo: BillRepository, cache: Cache | None = None) -> None:
+    def __init__(self, bill_repo: BillRepository, expense_repo: ExpenseRepository, cache: Cache | None = None) -> None:
         self._bill_repo = bill_repo
+        self._expense_repo = expense_repo
         self._cache = cache or get_cache()
 
     @traced("billing_stats.stats_for_ids")
@@ -97,7 +104,15 @@ class BillingStatsService:
 
         summaries = self._bill_repo.list_summaries(list(ids))
         rollup = _ytd_rollup(summaries, today.year, today.month)
-        stats = BillingStats(year=today.year, current=_latest_per_billing(summaries), **rollup)
+        total_expenses = self._expense_repo.total_for_billings(list(ids))
+        net_income = rollup["received"] - total_expenses
+        stats = BillingStats(
+            year=today.year,
+            current=_latest_per_billing(summaries),
+            total_expenses=total_expenses,
+            net_income=net_income,
+            **rollup,
+        )
 
         self._cache.set(cache_key, stats.to_dict())
         return stats

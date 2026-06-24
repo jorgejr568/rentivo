@@ -8,6 +8,7 @@ from rentivo.repositories.base import (
     BillRepository,
     CommunicationRepository,
     CommunicationTemplateRepository,
+    ExpenseRepository,
     InviteRepository,
     KnownDeviceRepository,
     MFATOTPRepository,
@@ -76,6 +77,12 @@ def get_receipt_repository() -> ReceiptRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
 
     return SQLAlchemyReceiptRepository(_connection(), _encryption())
+
+
+def get_expense_repository() -> ExpenseRepository:
+    from rentivo.repositories.sqlalchemy import SQLAlchemyExpenseRepository
+
+    return SQLAlchemyExpenseRepository(_connection(), _encryption())
 
 
 def get_recipient_repository() -> RecipientRepository:

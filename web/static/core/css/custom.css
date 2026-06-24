@@ -26,7 +26,8 @@
 
     /* Accent — refined emerald */
     --accent:      oklch(0.605 0.125 162);
-    --accent-dark: oklch(0.52 0.12 162);
+    --accent-dark: oklch(0.52 0.12 162);   /* white text passes WCAG AA — 5.14:1 */
+    --accent-darker: oklch(0.46 0.115 162); /* darker hover for filled CTAs — 6.6:1 */
     --accent-pale: oklch(0.95 0.035 162);
     --accent-ink:  #ffffff;
 
@@ -193,7 +194,7 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 .nav__avatar {
     width: 26px; height: 26px; border-radius: 50%;
     display: grid; place-items: center;
-    background: var(--accent); color: #fff;
+    background: var(--accent-dark); color: #fff;
     font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
 }
 .topbar-icon { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
@@ -292,8 +293,9 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 }
 .btn:hover { transform: translate(-1px,-1px); box-shadow: var(--sh); text-decoration: none; color: var(--ink); }
 .btn:active { transform: translate(1px,1px); box-shadow: 1px 1px 0 var(--ink); }
-.btn--primary { background: var(--accent); color: var(--accent-ink); }
-.btn--primary:hover { background: var(--accent-dark); color: var(--accent-ink); }
+/* White text on --accent is only 3.64:1 (WCAG AA fail); pair white CTAs with --accent-dark (5.14:1). REN-30 */
+.btn--primary { background: var(--accent-dark); color: var(--accent-ink); }
+.btn--primary:hover { background: var(--accent-darker); color: var(--accent-ink); }
 .btn--ink { background: var(--ink); color: #fff; }
 .btn--ink:hover { background: var(--ink-2); color: #fff; }
 .btn--ghost { background: transparent; box-shadow: none; }
@@ -401,7 +403,7 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 .tag--fixed     { background: var(--ink); color: #fff; border-color: var(--ink); }
 .tag--variable  { background: var(--surface); color: var(--ink); border-color: var(--ink); }
 .tag--extra     { background: var(--ink-2); color: #fff; border-color: var(--ink); }
-.tag--solid     { background: var(--accent); color: #fff; border-color: var(--ink); }
+.tag--solid     { background: var(--accent-dark); color: #fff; border-color: var(--ink); }
 .tag--mfa       { background: var(--ink-2); color: #fff; border-color: var(--ink); }
 
 /* ============================================================
@@ -455,7 +457,7 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
     transition: background var(--t), color var(--t); white-space: nowrap;
 }
 .seg button.is-on { background: var(--ink); color: #fff; }
-.seg--accent button.is-on { background: var(--accent); color: var(--accent-ink); }
+.seg--accent button.is-on { background: var(--accent-dark); color: var(--accent-ink); }
 
 /* Formset rows */
 .formset { display: flex; flex-direction: column; gap: 0.7rem; }
@@ -631,7 +633,7 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
     display: grid; place-items: center; font-family: var(--font-mono); font-size: 0.8rem; font-weight: 700;
     color: #fff; background: var(--ink); border: 2px solid var(--ink);
 }
-.avatar--accent { background: var(--accent); }
+.avatar--accent { background: var(--accent-dark); }
 .member { display: flex; align-items: center; gap: 0.7rem; }
 .member__name { font-weight: 700; line-height: 1.2; }
 .member__email { font-family: var(--font-mono); font-size: 0.78rem; color: var(--muted); }

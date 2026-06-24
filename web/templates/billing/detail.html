@@ -51,6 +51,8 @@
 {% if item.item_type.value == "fixed" %}{% set ns.fixed = ns.fixed + item.amount %}{% endif %}
 {% endfor %}
 
+{% set category_labels = {"iptu": "IPTU", "condominio": "Condomínio", "manutencao": "Manutenção", "seguro": "Seguro", "outros": "Outros"} %}
+
 <div class="grid-2" style="grid-template-columns: 1.4fr 1fr; align-items: start;">
     <!-- Items -->
     <div class="panel">
@@ -167,6 +169,76 @@
         {% endif %}
     </div>
     {% endif %}
+</div>
+
+<!-- Expenses + net income -->
+<div class="panel">
+    <div class="panel__head"><h3>Despesas</h3><span class="panel__title-eyebrow">Resultado líquido (ano)</span></div>
+    <div class="panel__body">
+        <div class="grid-2" style="gap: 0.9rem; margin-bottom: 1rem;">
+            <div><div class="field__label">Recebido (ano)</div><div style="font-weight: 600;">{{ format_brl(stats.received) }}</div></div>
+            <div><div class="field__label">Despesas</div><div style="font-weight: 600;">{{ format_brl(stats.total_expenses) }}</div></div>
+            <div><div class="field__label">Resultado líquido</div><div style="font-weight: 700;">{{ format_brl(stats.net_income) }}</div></div>
+        </div>
+
+        {% if expenses %}
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr><th>Descrição</th><th class="center">Categoria</th><th class="center">Data</th><th class="num">Valor</th>{% if role in ("owner", "admin", "manager") %}<th></th>{% endif %}</tr>
+                </thead>
+                <tbody>
+                    {% for expense in expenses %}
+                    <tr>
+                        <td class="table__primary">{{ expense.description }}</td>
+                        <td class="center">{{ category_labels.get(expense.category, expense.category) }}</td>
+                        <td class="center mono" style="font-size: 0.85rem;">{{ expense.incurred_on or "—" }}</td>
+                        <td class="num">{{ format_brl(expense.amount) }}</td>
+                        {% if role in ("owner", "admin", "manager") %}
+                        <td class="num">
+                            <form method="post" action="/billings/{{ billing.uuid }}/expenses/{{ expense.uuid }}/delete"
+                                  onsubmit="return confirm('Remover esta despesa?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn--danger btn--sm">Remover</button>
+                            </form>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="muted mb-2" style="font-size: 0.88rem;">Nenhuma despesa registrada.</p>
+        {% endif %}
+
+        {% if role in ("owner", "admin", "manager") %}
+        <form method="post" action="/billings/{{ billing.uuid }}/expenses/add" style="margin-top: 1rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="item-grid">
+                <div class="field mb-0">
+                    <input class="input" type="text" name="description" placeholder="Descrição" required>
+                </div>
+                <div class="field mb-0">
+                    <select class="select" name="category" required>
+                        {% for value, label in category_labels.items() %}
+                        <option value="{{ value }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field mb-0">
+                    <input class="input" type="date" name="incurred_on">
+                </div>
+                <div class="field mb-0">
+                    <input class="input" type="text" name="amount" placeholder="0,00" required>
+                </div>
+                <div>
+                    <button type="submit" class="btn btn--primary">Adicionar despesa</button>
+                </div>
+            </div>
+        </form>
+        {% endif %}
+    </div>
 </div>
 
 <!-- Documents -->

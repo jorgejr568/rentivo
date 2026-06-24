@@ -29,6 +29,16 @@ class FakeBillRepo:
         ]
 
 
+class FakeExpenseRepo:
+    """Stand-in returning a fixed expense total for the billing set."""
+
+    def __init__(self, total: int = 0):
+        self._total = total
+
+    def total_for_billings(self, billing_ids):
+        return self._total
+
+
 def _summary(billing_id, total, status, month="2026-05"):
     return BillSummary(billing_id=billing_id, total_amount=total, status=status, reference_month=month)
 
@@ -46,7 +56,7 @@ def cache():
 class TestRollup:
     def test_empty_ids_returns_zeroed_stats_without_querying(self, cache):
         repo = FakeBillRepo([])
-        stats = BillingStatsService(repo, cache).stats_for_ids([], today=TODAY)
+        stats = BillingStatsService(repo, FakeExpenseRepo(), cache=cache).stats_for_ids([], today=TODAY)
         assert (stats.expected, stats.received, stats.pending, stats.overdue) == (0, 0, 0, 0)
         assert stats.year == 2026
         assert stats.current == {}
@@ -62,7 +72,7 @@ class TestRollup:
                 _summary(5, 999999, "cancelled"),  # excluded entirely
             ]
         )
-        stats = BillingStatsService(repo, cache).stats_for_ids([1, 2, 3, 4, 5], today=TODAY)
+        stats = BillingStatsService(repo, FakeExpenseRepo(), cache=cache).stats_for_ids([1, 2, 3, 4, 5], today=TODAY)
 
         assert stats.received == 100000
         assert stats.pending == 250000  # sent + draft
@@ -75,6 +85,13 @@ class TestRollup:
         assert stats.billed_count == 4  # excludes cancelled
         assert set(stats.current) == {1, 2, 3, 4, 5}  # latest bill still shown per billing
 
+    def test_net_income_is_negative_when_expenses_exceed_income(self, cache):
+        repo = FakeBillRepo([_summary(1, 100000, "paid")])  # R$1.000 received
+        stats = BillingStatsService(repo, FakeExpenseRepo(total=150000), cache=cache).stats_for_ids([1], today=TODAY)
+
+        assert stats.received == 100000
+        assert stats.net_income == -50000  # received - expenses, no clamping at zero
+
 
 class TestYearToDate:
     def test_sums_every_bill_in_the_current_year(self, cache):
@@ -85,7 +102,7 @@ class TestYearToDate:
                 _summary(1, 360400, "sent", "2026-05"),
             ]
         )
-        stats = BillingStatsService(repo, cache).stats_for_ids([1], today=TODAY)
+        stats = BillingStatsService(repo, FakeExpenseRepo(), cache=cache).stats_for_ids([1], today=TODAY)
 
         assert stats.received == 658800  # the two paid bills
         assert stats.pending == 360400  # the sent one
@@ -101,7 +118,7 @@ class TestYearToDate:
                 _summary(1, 100000, "paid", "2026-03"),
             ]
         )
-        stats = BillingStatsService(repo, cache).stats_for_ids([1], today=TODAY)
+        stats = BillingStatsService(repo, FakeExpenseRepo(), cache=cache).stats_for_ids([1], today=TODAY)
         assert stats.received == 100000
         assert stats.expected == 100000
         assert stats.current[1].reference_month == "2026-03"
@@ -113,7 +130,7 @@ class TestYearToDate:
                 _summary(1, 700000, "draft", "2026-09"),  # after today's month — excluded
             ]
         )
-        stats = BillingStatsService(repo, cache).stats_for_ids([1], today=TODAY)
+        stats = BillingStatsService(repo, FakeExpenseRepo(), cache=cache).stats_for_ids([1], today=TODAY)
         assert stats.expected == 100000
         assert stats.pending == 0
 
@@ -121,7 +138,7 @@ class TestYearToDate:
 class TestCacheInteraction:
     def test_second_call_is_served_from_cache(self, cache):
         repo = FakeBillRepo([_summary(1, 100000, "paid")])
-        svc = BillingStatsService(repo, cache)
+        svc = BillingStatsService(repo, FakeExpenseRepo(), cache=cache)
 
         first = svc.stats_for_ids([1], today=TODAY)
         second = svc.stats_for_ids([1], today=TODAY)
@@ -131,7 +148,7 @@ class TestCacheInteraction:
 
     def test_clearing_cache_forces_recompute(self, cache):
         repo = FakeBillRepo([_summary(1, 100000, "paid")])
-        svc = BillingStatsService(repo, cache)
+        svc = BillingStatsService(repo, FakeExpenseRepo(), cache=cache)
 
         svc.stats_for_ids([1], today=TODAY)
         cache.clear()
@@ -141,7 +158,7 @@ class TestCacheInteraction:
 
     def test_cache_key_includes_the_ytd_window(self, cache):
         repo = FakeBillRepo([_summary(1, 100000, "paid")])
-        svc = BillingStatsService(repo, cache)
+        svc = BillingStatsService(repo, FakeExpenseRepo(), cache=cache)
 
         svc.stats_for_ids([1], today=date(2026, 5, 15))
         svc.stats_for_ids([1], today=date(2026, 6, 1))  # different month → recompute
@@ -150,7 +167,7 @@ class TestCacheInteraction:
 
     def test_cache_key_is_order_independent_and_deduped(self, cache):
         repo = FakeBillRepo([_summary(1, 100000, "paid"), _summary(2, 200000, "sent")])
-        svc = BillingStatsService(repo, cache)
+        svc = BillingStatsService(repo, FakeExpenseRepo(), cache=cache)
 
         svc.stats_for_ids([1, 2], today=TODAY)
         svc.stats_for_ids([2, 1, 1], today=TODAY)  # same set, different order + duplicate
@@ -159,7 +176,7 @@ class TestCacheInteraction:
 
     def test_none_ids_are_dropped(self, cache):
         repo = FakeBillRepo([_summary(1, 100000, "paid")])
-        svc = BillingStatsService(repo, cache)
+        svc = BillingStatsService(repo, FakeExpenseRepo(), cache=cache)
         stats = svc.stats_for_ids([1, None], today=TODAY)
         assert stats.expected == 100000
         assert repo.calls == 1
