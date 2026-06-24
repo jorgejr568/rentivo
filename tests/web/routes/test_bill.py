@@ -257,6 +257,14 @@ class TestBillChangeStatus:
         billing = create_billing_in_db(test_engine)
         with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
             bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            # Advance to a lifecycle-valid pre-paid state; draft -> paid is
+            # rejected by the server-side status guard (REN-21).
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET status = 'sent' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
             auth_client.post(
                 f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
                 data={"csrf_token": csrf_token, "status": "paid"},

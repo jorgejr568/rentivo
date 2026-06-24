@@ -1326,7 +1326,7 @@ class TestReciboLifecycle:
         service = BillService(repo, storage)
         bill = self._bill(status="paid", recibo_pdf_path="k/recibo.pdf")
 
-        service.change_status(bill, "draft", billing=self._billing())
+        service.change_status(bill, "cancelled", billing=self._billing())
 
         storage.delete.assert_called_once_with("k/recibo.pdf")
         repo.update_recibo_pdf_path.assert_called_once_with(42, None)
@@ -1339,7 +1339,7 @@ class TestReciboLifecycle:
         service = BillService(repo, storage)
         bill = self._bill(status="paid", recibo_pdf_path="k/recibo.pdf")
 
-        service.change_status(bill, "draft", billing=self._billing())
+        service.change_status(bill, "cancelled", billing=self._billing())
 
         # The column is still cleared even though the file delete failed.
         repo.update_recibo_pdf_path.assert_called_once_with(42, None)
@@ -1351,7 +1351,7 @@ class TestReciboLifecycle:
         service = BillService(repo, MagicMock(), job_service=job_service)
         bill = self._bill(status="paid", recibo_pdf_path=None)
 
-        service.change_status(bill, "draft", billing=self._billing())
+        service.change_status(bill, "cancelled", billing=self._billing())
 
         job_service.enqueue.assert_not_called()
         job_service.enqueue_for.assert_not_called()
