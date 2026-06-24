@@ -79,8 +79,12 @@ class CommunicationService:
     ) -> list[Communication]:
         """Create one queued communication per recipient and enqueue a send job each.
 
-        ``comm_type`` selects which document the send job attaches: ``bill_ready``
-        attaches the invoice PDF, ``payment_receipt`` the stored recibo PDF.
+        ``comm_type`` defaults to ``bill_ready`` (the original invoice email) and
+        selects which document the send job attaches: ``bill_ready`` attaches the
+        invoice PDF, ``payment_receipt`` the stored recibo PDF. Payment reminders
+        pass an offset-specific type (see ``rentivo.communications.reminders``) so
+        each reminder is a distinct, dedup-able row that still flows through the
+        same ``communication.send`` job and email backend.
         """
         results: list[Communication] = []
         # Per-recipient: create row, enqueue job, stamp job_ulid. Not atomic across
