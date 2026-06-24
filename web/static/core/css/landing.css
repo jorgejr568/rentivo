@@ -81,13 +81,16 @@
     border-radius: var(--r); padding: 1.5rem; transition: transform var(--t), box-shadow var(--t), border-color var(--t);
 }
 .fcard:hover { transform: translate(-2px,-2px); box-shadow: 5px 5px 0 var(--accent); border-color: var(--accent); }
-.fcard--accent { background: var(--accent); border-color: var(--accent-dark); }
+/* Text-bearing emerald surface: white copy needs --accent-dark (5.14:1 AA) not --accent (3.64:1 fail). REN-42.
+   --accent-darker (6.6:1) ships in the REN-30 design-system PR (#120); explicit fallback keeps the edge valid until merged. */
+.fcard--accent { background: var(--accent-dark); border-color: var(--accent-darker, var(--accent-dark)); }
 .fcard--accent:hover { box-shadow: 5px 5px 0 #fff; border-color: #fff; }
 .fcard__icon { width: 44px; height: 44px; border-radius: var(--r-sm); display: grid; place-items: center; background: oklch(0.235 0.022 278); border: 2px solid rgba(255,255,255,0.18); color: var(--accent); margin-bottom: 1rem; }
 .fcard--accent .fcard__icon { background: rgba(0,0,0,0.18); border-color: rgba(255,255,255,0.3); color: #fff; }
 .fcard h3 { color: #fff; font-size: 1.12rem; margin-bottom: 0.45rem; }
 .fcard p { color: rgba(255,255,255,0.72); font-size: 0.9rem; line-height: 1.55; margin: 0; }
-.fcard--accent p { color: rgba(255,255,255,0.92); }
+/* Full #fff on the darker --accent-dark fill = 5.14:1, matching h3 (was 92% / 4.61:1, tuned for the lighter --accent). REN-42. */
+.fcard--accent p { color: #fff; }
 
 /* ─── Steps ─── */
 .steps-sec { padding: 4rem 0; }

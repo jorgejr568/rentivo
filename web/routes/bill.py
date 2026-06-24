@@ -158,12 +158,15 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
     bill_service = request.state.services.bill
     receipts = bill_service.list_receipts(ctx.bill.id) if ctx.bill.id else []
     communications = request.state.services.communication.list_for_bill(ctx.bill.id) if ctx.bill.id else []
+<<<<<<< HEAD
     # Recipients with a phone number can receive the invoice via a WhatsApp
     # deep link. The link itself is built (and the click instrumented) by the
     # /whatsapp redirect endpoint, so here we only need to know who to offer.
     recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
     whatsapp_recipients = [r for r in recipients if r.phone]
     primary_transition, other_transitions = transitions_for(ctx.bill.status)
+=======
+>>>>>>> origin/main
     return render(
         request,
         "bill/detail.html",
@@ -173,54 +176,14 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
             "role": ctx.role,
             "receipts": receipts,
             "communications": communications,
+<<<<<<< HEAD
             "whatsapp_recipients": whatsapp_recipients,
             "primary_transition": primary_transition,
             "other_transitions": other_transitions,
+=======
+>>>>>>> origin/main
         },
     )
-
-
-@router.get("/{bill_uuid}/whatsapp")
-async def bill_whatsapp(request: Request, recipient: str = "", ctx: BillContext = Depends(require_bill("view"))):
-    """Record a "Send via WhatsApp" click and redirect to the wa.me deep link.
-
-    Building the link server-side keeps the PIX copia-e-cola construction in one
-    place and gives us a reliable adoption signal (audit log + analytics event)
-    for the cheapest WhatsApp test before any BSP investment.
-    """
-    bill, billing = ctx.bill, ctx.billing
-    back = f"/billings/{billing.uuid}/bills/{bill.uuid}"
-
-    recipients = request.state.services.recipient.list_for_billing(billing.id) if billing.id else []
-    target = next((r for r in recipients if r.uuid == recipient and r.phone), None)
-    if target is None:
-        return flash_redirect(request, "Destinatário sem número de WhatsApp.", back)
-
-    try:
-        link = request.state.services.bill.build_whatsapp_link(bill, billing, target)
-    except ValueError as exc:
-        return flash_redirect(request, str(exc), back)
-    if link is None:
-        return flash_redirect(request, "Número de WhatsApp inválido.", back)
-
-    request.state.services.audit.safe_log_for(
-        request.state.actor,
-        AuditEventType.WHATSAPP_INVOICE_CLICKED,
-        entity_type="bill",
-        entity_id=bill.id,
-        entity_uuid=bill.uuid,
-        new_state={"recipient_uuid": target.uuid},
-    )
-    push_event(
-        request,
-        {
-            "event": "rentivo_whatsapp_invoice_click",
-            "bill_uuid_hash": analytics_hash(bill.uuid),
-            "recipient_uuid_hash": analytics_hash(target.uuid),
-        },
-    )
-    logger.info("whatsapp_invoice_clicked", bill_uuid=bill.uuid, recipient_uuid=target.uuid)
-    return RedirectResponse(link, status_code=302)
 
 
 @router.get("/{bill_uuid}/edit")

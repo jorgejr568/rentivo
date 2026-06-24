@@ -25,9 +25,9 @@ class SQLAlchemyBillingRepository(BillingRepository):
         result = self.conn.execute(
             text(
                 "INSERT INTO billings (name, description, pix_key, pix_merchant_name, pix_merchant_city, "
-                "uuid, owner_type, owner_id, reminders_enabled, created_at, updated_at) "
+                "uuid, owner_type, owner_id, created_at, updated_at) "
                 "VALUES (:name, :description, :pix_key, :pix_merchant_name, :pix_merchant_city, "
-                ":uuid, :owner_type, :owner_id, :reminders_enabled, :created_at, :updated_at)"
+                ":uuid, :owner_type, :owner_id, :created_at, :updated_at)"
             ),
             {
                 "name": self.encryption.encrypt(billing.name),
@@ -38,7 +38,6 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "uuid": billing_uuid,
                 "owner_type": billing.owner_type,
                 "owner_id": billing.owner_id,
-                "reminders_enabled": 1 if billing.reminders_enabled else 0,
                 "created_at": now,
                 "updated_at": now,
             },
@@ -77,7 +76,6 @@ class SQLAlchemyBillingRepository(BillingRepository):
         pix_key = next(plaintexts)
         pix_merchant_name = next(plaintexts)
         pix_merchant_city = next(plaintexts)
-        _reminders = row.get("reminders_enabled", 1)
         items = [
             BillingItem(
                 id=item_row["id"],
@@ -99,9 +97,6 @@ class SQLAlchemyBillingRepository(BillingRepository):
             pix_merchant_city=pix_merchant_city,
             owner_type=row.get("owner_type", "user"),
             owner_id=row.get("owner_id", 0),
-            # Default-on if the column is absent (older rows) or NULL: reminders
-            # are opt-out, not opt-in. SQLite stores the bool as 0/1.
-            reminders_enabled=(_reminders is None or bool(_reminders)),
             items=items,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
@@ -214,8 +209,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             text(
                 "UPDATE billings SET name = :name, description = :description, "
                 "pix_key = :pix_key, pix_merchant_name = :pix_merchant_name, "
-                "pix_merchant_city = :pix_merchant_city, reminders_enabled = :reminders_enabled, "
-                "updated_at = :updated_at WHERE id = :id"
+                "pix_merchant_city = :pix_merchant_city, updated_at = :updated_at WHERE id = :id"
             ),
             {
                 "name": self.encryption.encrypt(billing.name),
@@ -223,7 +217,6 @@ class SQLAlchemyBillingRepository(BillingRepository):
                 "pix_key": self.encryption.encrypt(billing.pix_key),
                 "pix_merchant_name": self.encryption.encrypt(billing.pix_merchant_name),
                 "pix_merchant_city": self.encryption.encrypt(billing.pix_merchant_city),
-                "reminders_enabled": 1 if billing.reminders_enabled else 0,
                 "updated_at": _now(),
                 "id": billing.id,
             },

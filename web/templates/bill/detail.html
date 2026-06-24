@@ -130,22 +130,6 @@
             <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--ink">Abrir PDF com QR</a>
             {% endif %}
         </div>
-
-        {% if role in ("owner", "admin", "manager") and whatsapp_recipients %}
-        <!-- WhatsApp deep-link delivery (REN-4) -->
-        <div class="flex gap mt-3 wrap" style="align-items: center; justify-content: space-between; border: 2px dashed var(--line); border-radius: var(--r); padding: 1rem 1.25rem;">
-            <div>
-                <div class="mono" style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-dark);">Enviar pelo WhatsApp</div>
-                <div class="muted" style="font-size: 0.84rem;">Abre o WhatsApp com a fatura e o PIX copia e cola já preenchidos.</div>
-            </div>
-            <div class="btn-row">
-                {% for r in whatsapp_recipients %}
-                <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/whatsapp?recipient={{ r.uuid }}"
-                   target="_blank" rel="noopener" class="btn btn--primary">Enviar para {{ r.name }}</a>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 
