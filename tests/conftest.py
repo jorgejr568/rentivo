@@ -52,6 +52,7 @@ CREATE TABLE bills (
     reference_month TEXT NOT NULL,
     total_amount INTEGER NOT NULL DEFAULT 0,
     pdf_path TEXT,
+    recibo_pdf_path TEXT,
     notes TEXT NOT NULL DEFAULT '',
     uuid VARCHAR(26) NOT NULL UNIQUE,
     due_date TEXT,
@@ -157,12 +158,26 @@ CREATE TABLE expenses (
     deleted_at DATETIME
 );
 
+CREATE TABLE billing_attachments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    billing_id INTEGER NOT NULL REFERENCES billings(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    storage_key TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL DEFAULT 0,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL
+);
+
 CREATE TABLE billing_recipients (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid VARCHAR(26) NOT NULL UNIQUE,
     billing_id INTEGER NOT NULL REFERENCES billings(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     email TEXT NOT NULL,
+    phone TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL
 );

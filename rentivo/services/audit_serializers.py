@@ -10,6 +10,7 @@ from datetime import datetime
 
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
+from rentivo.models.billing_attachment import BillingAttachment
 from rentivo.models.communication import Communication
 from rentivo.models.expense import Expense
 from rentivo.models.invite import Invite
@@ -111,6 +112,17 @@ def serialize_expense(expense: Expense) -> dict:
         "amount": expense.amount,
         "category": expense.category,
         "incurred_on": expense.incurred_on,
+    }
+
+
+def serialize_billing_attachment(attachment: BillingAttachment, *, billing_uuid: str) -> dict:
+    """Serialize a BillingAttachment for audit state. Omits ``storage_key``."""
+    return {
+        "name": attachment.name,
+        "filename": attachment.filename,
+        "content_type": attachment.content_type,
+        "file_size": attachment.file_size,
+        "billing_uuid": billing_uuid,
     }
 
 

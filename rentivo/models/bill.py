@@ -48,6 +48,7 @@ class Bill(BaseModel):
     total_amount: int = 0  # centavos
     line_items: list[BillLineItem] = []
     pdf_path: str | None = None
+    recibo_pdf_path: str | None = None
     notes: str = ""
     due_date: str | None = None
     status: str = BillStatus.DRAFT.value

@@ -254,6 +254,31 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 }
 
 /* ============================================================
+   Button dropdown (e.g. bill action bar "Enviar comunicação")
+   ============================================================ */
+.btn-dropdown { position: relative; display: inline-block; }
+.btn-dropdown-toggle { display: inline-flex; align-items: center; gap: 0.4rem; }
+.btn-dropdown-caret { font-size: 0.85em; line-height: 1; }
+.btn-dropdown-menu {
+    display: none; position: absolute; right: 0; top: calc(100% + 0.5rem);
+    min-width: 200px; background: var(--surface);
+    border: var(--bw-bold) solid var(--ink); border-radius: var(--r-sm);
+    box-shadow: var(--sh); padding: 0.35rem 0; z-index: 200;
+}
+.btn-dropdown.open .btn-dropdown-menu { display: block; }
+.btn-dropdown-item {
+    display: block; width: 100%; padding: 0.5rem 1rem;
+    font-family: inherit; font-size: 0.9rem; font-weight: 600;
+    color: var(--ink); text-decoration: none; background: none; border: none;
+    cursor: pointer; text-align: left; transition: background var(--t);
+}
+.btn-dropdown-item:hover { background: var(--paper-2); color: var(--ink); text-decoration: none; }
+.btn-dropdown-item--disabled,
+.btn-dropdown-item--disabled:hover {
+    color: var(--muted); background: none; cursor: not-allowed;
+}
+
+/* ============================================================
    Buttons
    ============================================================ */
 .btn {

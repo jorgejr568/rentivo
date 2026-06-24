@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
+from starlette.datastructures import UploadFile
 
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.billing import BillingItem
-from rentivo.services.audit_serializers import serialize_billing
+from rentivo.services.audit_serializers import serialize_billing, serialize_billing_attachment
 from web.analytics import analytics_hash, push_event
 from web.deps import render
 from web.flash import flash, flash_redirect
@@ -216,6 +217,7 @@ async def billing_detail(request: Request, ctx: BillingContext = Depends(require
             "role": ctx.role,
             "user_orgs": user_orgs,
             "pix_needs_setup": pix_needs_setup,
+            "attachments": request.state.services.billing_attachment.list_attachments(billing.id),
         },
     )
 
@@ -224,10 +226,11 @@ async def billing_detail(request: Request, ctx: BillingContext = Depends(require
 async def billing_edit_form(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
     recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
     reply_to = request.state.services.reply_to.list_for_billing(ctx.billing.id) if ctx.billing.id else []
+    attachments = request.state.services.billing_attachment.list_attachments(ctx.billing.id) if ctx.billing.id else []
     return render(
         request,
         "billing/edit.html",
-        {"billing": ctx.billing, "recipients": recipients, "reply_to": reply_to},
+        {"billing": ctx.billing, "recipients": recipients, "reply_to": reply_to, "attachments": attachments},
     )
 
 
@@ -386,3 +389,91 @@ async def billing_delete(request: Request, ctx: BillingContext = Depends(require
     flash(request, f"Cobrança '{billing.name}' excluída.", "success")
     push_event(request, {"event": "rentivo_billing_deleted", "billing_uuid_hash": analytics_hash(billing.uuid)})
     return RedirectResponse("/", status_code=302)
+
+
+@router.post("/{billing_uuid}/attachments/upload")
+async def attachment_upload(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
+    billing = ctx.billing
+    service = request.state.services.billing_attachment
+    redirect_url = f"/billings/{billing.uuid}/edit"
+
+    form = await request.form()
+    upload = form.get("attachment_file")
+    name = str(form.get("name", ""))
+    if not isinstance(upload, UploadFile) or not upload.filename:
+        return flash_redirect(request, "Nenhum arquivo selecionado.", redirect_url)
+
+    file_bytes = await upload.read()
+    # The service is the single source of file validation (type / size / empty).
+    try:
+        attachment = service.add_attachment(
+            billing=billing,
+            name=name,
+            filename=upload.filename,
+            file_bytes=file_bytes,
+            content_type=upload.content_type or "",
+        )
+    except ValueError as e:
+        logger.warning("attachment_upload_rejected", billing_uuid=billing.uuid, error=str(e))
+        return flash_redirect(request, "Arquivo inválido (tipo não suportado, vazio ou maior que 10 MB).", redirect_url)
+
+    request.state.services.audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.ATTACHMENT_UPLOAD,
+        entity_type="billing_attachment",
+        entity_id=attachment.id,
+        entity_uuid=attachment.uuid,
+        new_state=serialize_billing_attachment(attachment, billing_uuid=billing.uuid),
+    )
+    flash(request, "Documento anexado.", "success")
+    push_event(
+        request,
+        {"event": "rentivo_billing_attachment_uploaded", "billing_uuid_hash": analytics_hash(billing.uuid)},
+    )
+    return RedirectResponse(redirect_url, status_code=302)
+
+
+@router.get("/{billing_uuid}/attachments/{attachment_uuid}")
+async def attachment_download(
+    request: Request, attachment_uuid: str, ctx: BillingContext = Depends(require_billing("view"))
+):
+    service = request.state.services.billing_attachment
+    attachment = service.get_attachment_by_uuid(attachment_uuid)
+    if not attachment or not attachment.storage_key or attachment.billing_id != ctx.billing.id:
+        return flash_redirect(request, "Documento não encontrado.", "/")
+
+    ref = service.get_attachment_ref(attachment)
+    if ref.kind == "local":
+        return FileResponse(ref.location, media_type=attachment.content_type)
+    return RedirectResponse(ref.location, status_code=302)
+
+
+@router.post("/{billing_uuid}/attachments/{attachment_uuid}/delete")
+async def attachment_delete(
+    request: Request, attachment_uuid: str, ctx: BillingContext = Depends(require_billing("edit"))
+):
+    billing = ctx.billing
+    service = request.state.services.billing_attachment
+    redirect_url = f"/billings/{billing.uuid}/edit"
+
+    attachment = service.get_attachment_by_uuid(attachment_uuid)
+    if not attachment or attachment.billing_id != billing.id:
+        return flash_redirect(request, "Documento não encontrado.", redirect_url)
+
+    previous_state = serialize_billing_attachment(attachment, billing_uuid=billing.uuid)
+    service.delete_attachment(attachment)
+    request.state.services.storage_cleanup.enqueue_attachment_delete(request.state.actor, attachment)
+    request.state.services.audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.ATTACHMENT_DELETE,
+        entity_type="billing_attachment",
+        entity_id=attachment.id,
+        entity_uuid=attachment.uuid,
+        previous_state=previous_state,
+    )
+    flash(request, "Documento removido.", "success")
+    push_event(
+        request,
+        {"event": "rentivo_billing_attachment_deleted", "billing_uuid_hash": analytics_hash(billing.uuid)},
+    )
+    return RedirectResponse(redirect_url, status_code=302)

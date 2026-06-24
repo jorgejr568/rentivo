@@ -3,6 +3,7 @@ from sqlalchemy import Connection
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.repositories.base import (
     AuditLogRepository,
+    BillingAttachmentRepository,
     BillingRepository,
     BillRepository,
     CommunicationRepository,
@@ -64,6 +65,12 @@ def get_invite_repository() -> InviteRepository:
     from rentivo.repositories.sqlalchemy import SQLAlchemyInviteRepository
 
     return SQLAlchemyInviteRepository(_connection(), _encryption())
+
+
+def get_billing_attachment_repository() -> BillingAttachmentRepository:
+    from rentivo.repositories.sqlalchemy import SQLAlchemyBillingAttachmentRepository
+
+    return SQLAlchemyBillingAttachmentRepository(_connection(), _encryption())
 
 
 def get_receipt_repository() -> ReceiptRepository:

@@ -4,6 +4,7 @@ from datetime import datetime
 from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
+from rentivo.models.billing_attachment import BillingAttachment
 from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.expense import Expense
 from rentivo.models.invite import Invite
@@ -68,6 +69,9 @@ class BillRepository(ABC):
 
     @abstractmethod
     def update_pdf_path(self, bill_id: int, pdf_path: str) -> None: ...
+
+    @abstractmethod
+    def update_recibo_pdf_path(self, bill_id: int, recibo_pdf_path: str | None) -> None: ...
 
     @abstractmethod
     def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None: ...
@@ -212,6 +216,23 @@ class ExpenseRepository(ABC):
         """Sum of ``amount`` (centavos) over all non-deleted expenses for the
         given billings. Returns 0 for an empty id list."""
         ...
+
+
+class BillingAttachmentRepository(ABC):
+    @abstractmethod
+    def create(self, attachment: BillingAttachment) -> BillingAttachment: ...
+
+    @abstractmethod
+    def get_by_id(self, attachment_id: int) -> BillingAttachment | None: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> BillingAttachment | None: ...
+
+    @abstractmethod
+    def list_by_billing(self, billing_id: int) -> list[BillingAttachment]: ...
+
+    @abstractmethod
+    def delete(self, attachment_id: int) -> None: ...
 
 
 class RecipientRepository(ABC):
