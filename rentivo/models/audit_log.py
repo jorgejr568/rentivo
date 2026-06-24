@@ -85,7 +85,6 @@ class AuditEventType:
     BILLING_REPLY_TO_UPDATED = "billing.reply_to_updated"
     COMMUNICATION_BLOCKED = "communication.blocked"
     COMMUNICATION_FLAGGED_OVERRIDE = "communication.flagged_override"
-    WHATSAPP_INVOICE_CLICKED = "whatsapp.invoice_clicked"
 
     # Job queue events
     JOB_ENQUEUED = "job.enqueued"
