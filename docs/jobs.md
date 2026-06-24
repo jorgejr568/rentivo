@@ -123,6 +123,103 @@ docker build -f Dockerfile -t rentivo-web .
 docker build -f Dockerfile --build-arg APP_EXTRAS="cache otel" -t rentivo-web .
 ```
 
+## Scheduled jobs
+
+Most work is enqueued reactively by web flows. One job runs on a **daily schedule**: the payment-reminders sweep (REN-6).
+
+`python -m rentivo.scripts.send_payment_reminders` scans issued-but-unpaid bills and, on the configured offsets relative to each due date, enqueues one `communication.send` job per recipient — the worker delivers them. It is a **one-shot** script (runs, then exits) and **idempotent**: re-running on the same day will not re-send a reminder already queued/sent for that bill+offset, so an accidental double-run is safe.
+
+| Env knob | Default | Meaning |
+|---|---|---|
+| `RENTIVO_PAYMENT_REMINDERS_ENABLED` | `true` | Global on/off **kill switch** for the sweep. |
+| `RENTIVO_PAYMENT_REMINDER_OFFSET_DAYS` | `3,0,-3` | Days from due date to remind: positive = before due (D-3), `0` = due date, negative = overdue (D+3). |
+| `RENTIVO_PAYMENT_REMINDER_CHANNEL` | `email` | Delivery channel. |
+
+`--dry-run` plans and prints the reminders **without enqueuing** anything; `--date=YYYY-MM-DD` overrides "today" for catch-up or testing.
+
+### Deploy: docker-compose
+
+The `reminders` service in `docker-compose.yml` runs the sweep using the **same image and env as the worker**. It is profile-gated (`profiles: ["tools"]`) so `docker compose up` never starts it; the deploy host invokes it once a day:
+
+```bash
+docker compose run --rm reminders                                 # the daily sweep
+docker compose run --rm reminders \
+  python -m rentivo.scripts.send_payment_reminders --dry-run      # verify, enqueues nothing
+```
+
+Schedule it on the deploy host with a **systemd timer** (preferred — journald logs + `Persistent=true` catch-up after downtime):
+
+```ini
+# /etc/systemd/system/rentivo-payment-reminders.service
+[Unit]
+Description=Rentivo daily payment-reminders sweep
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/rentivo
+ExecStart=/usr/bin/docker compose run --rm reminders
+```
+
+```ini
+# /etc/systemd/system/rentivo-payment-reminders.timer
+[Unit]
+Description=Run the Rentivo payment-reminders sweep daily
+
+[Timer]
+OnCalendar=*-*-* 10:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+systemctl enable --now rentivo-payment-reminders.timer
+```
+
+The sweep derives "today" from `America/Sao_Paulo`, so only the calendar day matters — 10:00 local is a safe business-hours window. Set the host timezone to `America/Sao_Paulo`, or use `OnCalendar=*-*-* 13:00:00 UTC`.
+
+Cron alternative:
+
+```cron
+# Rentivo payment-reminders daily sweep — 10:00 America/Sao_Paulo
+CRON_TZ=America/Sao_Paulo
+0 10 * * * cd /opt/rentivo && /usr/bin/docker compose run --rm reminders >> /var/log/rentivo/payment-reminders.log 2>&1
+```
+
+### Deploy: Kubernetes
+
+For a k8s deployment, use a `CronJob` with the **same image and env as the worker** Deployment:
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: payment-reminders
+spec:
+  schedule: "0 13 * * *"          # 13:00 UTC = 10:00 America/Sao_Paulo
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: payment-reminders
+              image: <worker-image>:<tag>     # same image as the worker Deployment
+              command: ["python", "-m", "rentivo.scripts.send_payment_reminders"]
+              envFrom:
+                - secretRef:
+                    name: rentivo-env          # same env as the worker
+```
+
+### Rollback / disable
+
+Set `RENTIVO_PAYMENT_REMINDERS_ENABLED=false` for an **instant kill switch** — the next run no-ops, no redeploy needed. To remove the schedule entirely, `systemctl disable --now rentivo-payment-reminders.timer` (or drop the cron line / delete the CronJob). No schema or data migration is involved, so there is nothing to revert.
+
 ## Known limitations
 
 Neither the database worker nor the Temporal worker performs graceful SIGTERM draining yet: a job in flight when the process is signalled is interrupted and re-claimed/retried rather than being allowed to finish first. Job execution is idempotent-friendly (handlers re-run safely), but a graceful-drain shutdown is future work for both drivers.
