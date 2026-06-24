@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
+from rentivo.communications.moderation import scan
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.billing import BillingItem
 from rentivo.services.audit_serializers import serialize_billing, serialize_billing_attachment
@@ -94,6 +95,7 @@ async def billing_create(request: Request):
     pix_key = str(form.get("pix_key", "")).strip()
     pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
+    reminders_enabled = str(form.get("reminders_enabled", "")).strip() == "1"
 
     if not name:
         logger.warning("billing_create_rejected", reason="empty_name")
@@ -127,6 +129,7 @@ async def billing_create(request: Request):
             pix_merchant_city=pix_merchant_city,
             owner_type=owner_type,
             owner_id=owner_id,
+            reminders_enabled=reminders_enabled,
         )
     except ValueError as e:
         return flash_redirect(request, str(e), "/billings/create")
@@ -227,10 +230,18 @@ async def billing_edit_form(request: Request, ctx: BillingContext = Depends(requ
     recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
     reply_to = request.state.services.reply_to.list_for_billing(ctx.billing.id) if ctx.billing.id else []
     attachments = request.state.services.billing_attachment.list_attachments(ctx.billing.id) if ctx.billing.id else []
+    reminder_template = request.state.services.communication.resolve_template(ctx.billing, "payment_reminder")
     return render(
         request,
         "billing/edit.html",
-        {"billing": ctx.billing, "recipients": recipients, "reply_to": reply_to, "attachments": attachments},
+        {
+            "billing": ctx.billing,
+            "recipients": recipients,
+            "reply_to": reply_to,
+            "attachments": attachments,
+            "reminder_template": reminder_template,
+            "role": ctx.role,
+        },
     )
 
 
@@ -247,6 +258,7 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
     billing.pix_key = str(form.get("pix_key", "")).strip()
     billing.pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     billing.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
+    billing.reminders_enabled = str(form.get("reminders_enabled", "")).strip() == "1"
 
     items: list[BillingItem] = [
         BillingItem(description=p.description, amount=p.amount, item_type=p.item_type)
@@ -305,6 +317,60 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
     flash(request, "Cobrança atualizada com sucesso!", "success")
     push_event(request, {"event": "rentivo_billing_edited", "billing_uuid_hash": analytics_hash(updated.uuid)})
     return RedirectResponse(f"/billings/{billing.uuid}", status_code=302)
+
+
+@router.post("/{billing_uuid}/reminder-template")
+async def billing_reminder_template(request: Request, ctx: BillingContext = Depends(require_billing("edit"))):
+    """Save the per-billing (or owner-wide) ``payment_reminder`` template copy.
+
+    Mirrors the ``bill_ready`` save flow in ``communication.py`` so the reminder
+    email resolves billing → owner → system default exactly like the invoice
+    email, and runs the same moderation gate since the copy is sent automatically.
+    """
+    billing = ctx.billing
+    services = request.state.services
+    redirect_url = f"/billings/{billing.uuid}/edit"
+
+    form = await request.form()
+    subject = str(form.get("subject", "")).strip()
+    body = str(form.get("body", "")).strip()
+    if not subject or not body:
+        return flash_redirect(request, "Preencha o assunto e o corpo do lembrete.", redirect_url)
+
+    moderation = scan(f"{subject}\n{body}")
+    if moderation.blocked:
+        return flash_redirect(
+            request,
+            "O modelo contém conteúdo não permitido (ofensa grave ou ameaça). Edite o texto antes de salvar.",
+            redirect_url,
+        )
+
+    # Owner scope writes the user/organization-wide default applied to *every*
+    # billing of that owner, so it requires owner/admin authority.
+    save_scope = str(form.get("save_scope", "")).strip() or "billing"
+    if save_scope == "owner" and ctx.role not in ("owner", "admin"):
+        return flash_redirect(
+            request,
+            "Você não tem permissão para salvar o modelo para toda a organização.",
+            redirect_url,
+        )
+
+    if save_scope == "owner":
+        services.communication.save_template(billing.owner_type, billing.owner_id, "payment_reminder", subject, body)
+    else:
+        services.communication.save_template("billing", billing.id, "payment_reminder", subject, body)
+
+    services.audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.COMMUNICATION_TEMPLATE_SAVED,
+        entity_type="billing",
+        entity_id=billing.id,
+        entity_uuid=billing.uuid,
+        new_state={"scope": save_scope, "comm_type": "payment_reminder"},
+    )
+
+    flash(request, "Modelo de lembrete de pagamento salvo.", "success")
+    return RedirectResponse(redirect_url, status_code=302)
 
 
 @router.post("/{billing_uuid}/transfer")

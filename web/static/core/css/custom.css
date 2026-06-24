@@ -440,6 +440,13 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 .field-textarea, .textarea { resize: vertical; min-height: 5rem; }
 .field__hint, .field-hint { display: block; font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
 
+/* Checkbox row — native checkbox + label/hint, used in forms */
+.check-row { display: flex; gap: 0.7rem; align-items: flex-start; cursor: pointer; }
+.check-row input[type="checkbox"] { width: 1.15rem; height: 1.15rem; margin-top: 0.1rem; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.check-row__text { display: flex; flex-direction: column; }
+.check-row__label { font-weight: 600; font-size: 0.92rem; color: var(--ink); }
+.check-row__text .field__hint { margin-top: 0.2rem; }
+
 .input-prefix { position: relative; }
 .input-prefix .pfx { position: absolute; left: 0.7rem; top: 50%; transform: translateY(-50%); font-family: var(--font-mono); font-size: 0.85rem; color: var(--muted); pointer-events: none; }
 .input-prefix .input, .input-prefix .field-input { padding-left: 2rem; }
