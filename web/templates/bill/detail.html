@@ -173,7 +173,7 @@
                             <form method="post"
                                   action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/receipts/{{ receipt.uuid }}/delete"
                                   class="inline-form"
-                                  onsubmit="return confirm('Remover comprovante?')">
+                                  data-confirm="Remover comprovante?" data-confirm-label="Remover">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <input type="hidden" name="next" value="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}">
                                 <button type="submit" class="btn btn--sm btn--danger">Remover</button>
@@ -244,7 +244,7 @@
     {% if role in ("owner", "admin", "manager") %}
     <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/delete"
           class="inline-form"
-          onsubmit="return confirm('Tem certeza que deseja excluir esta fatura?')">
+          data-confirm="Tem certeza que deseja excluir esta fatura?" data-confirm-title="Excluir fatura" data-confirm-label="Excluir">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button type="submit" class="btn btn--danger">Excluir fatura</button>
     </form>

@@ -32,7 +32,7 @@
 </div>
 
 {% if pix_needs_setup %}
-<div class="toast toast--warning" role="alert">
+<div class="toast toast--warning" role="note">
     Os dados do PIX não estão configurados. Preencha a chave PIX, o nome e a cidade do recebedor
     {% if billing.owner_type == "organization" %}
     em <a href="/organizations/">Organizações</a>
@@ -192,7 +192,7 @@
 <div class="panel">
     <div class="panel__head"><h3>Transferir para organização</h3></div>
     <div class="panel__body">
-        <form method="post" action="/billings/{{ billing.uuid }}/transfer">
+        <form method="post" action="/billings/{{ billing.uuid }}/transfer" data-confirm="Tem certeza? Esta ação não pode ser desfeita." data-confirm-title="Transferir cobrança" data-confirm-label="Transferir" data-confirm-variant="default">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="item-grid">
                 <div class="field mb-0">
@@ -204,8 +204,7 @@
                     </select>
                 </div>
                 <div>
-                    <button type="submit" class="btn btn--primary"
-                            onclick="return confirm('Tem certeza? Esta ação não pode ser desfeita.')">Transferir</button>
+                    <button type="submit" class="btn btn--primary">Transferir</button>
                 </div>
             </div>
         </form>
@@ -219,7 +218,7 @@
     <div class="panel__body">
         <p class="muted mb-2" style="font-size: 0.88rem;">Excluir remove esta cobrança e suas faturas. Não pode ser desfeito.</p>
         <form method="post" action="/billings/{{ billing.uuid }}/delete"
-              onsubmit="return confirm('Tem certeza que deseja excluir esta cobrança?')">
+              data-confirm="Tem certeza que deseja excluir esta cobrança?" data-confirm-title="Excluir cobrança" data-confirm-label="Excluir">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="btn btn--danger btn--sm">Excluir cobrança</button>
         </form>

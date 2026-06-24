@@ -148,7 +148,7 @@
                         <form method="post"
                               action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/receipts/{{ receipt.uuid }}/delete"
                               style="display:inline"
-                              onsubmit="return confirm('Remover comprovante?')">
+                              data-confirm="Remover comprovante?" data-confirm-label="Remover">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <button type="submit" class="btn btn--sm btn--danger">Remover</button>
                         </form>

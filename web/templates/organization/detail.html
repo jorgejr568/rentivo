@@ -114,7 +114,7 @@
                             <td class="num">
                                 {% if m.user_id != user_id %}
                                 <form method="post" action="/organizations/{{ org.uuid }}/members/{{ m.user_id }}/remove" class="inline-form"
-                                      onsubmit="return confirm('Remover este membro?')">
+                                      data-confirm="Remover este membro?" data-confirm-label="Remover">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="icon-btn" title="Remover" aria-label="Remover membro">
                                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
@@ -223,7 +223,7 @@
             <div class="panel__body">
                 <p class="muted" style="font-size: 0.85rem; margin-top: 0;">Excluir remove a organização e desvincula suas cobranças. Não pode ser desfeito.</p>
                 <form method="post" action="/organizations/{{ org.uuid }}/delete"
-                      onsubmit="return confirm('Tem certeza que deseja excluir esta organização? Esta ação não pode ser desfeita.')">
+                      data-confirm="Tem certeza que deseja excluir esta organização? Esta ação não pode ser desfeita." data-confirm-title="Excluir organização" data-confirm-label="Excluir">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <button type="submit" class="btn btn--danger btn--block">Excluir organização</button>
                 </form>

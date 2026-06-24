@@ -133,7 +133,7 @@
                         <td>{{ pk.last_used_at.strftime('%d/%m/%Y') if pk.last_used_at else 'Nunca' }}</td>
                         <td class="text-right">
                             <form method="post" action="/security/passkeys/{{ pk.uuid }}/delete"
-                                  onsubmit="return confirm('Remover esta passkey?')">
+                                  data-confirm="Remover esta passkey?" data-confirm-label="Remover">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="btn btn--sm btn--danger">Remover</button>
                             </form>

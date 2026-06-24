@@ -34,8 +34,8 @@
     <nav class="topbar">
         <div class="wrapper">
             <a class="topbar-brand" href="/"><span class="brand__mark">R</span><span>rent<em>ivo</em></span></a>
-            <button class="topbar-toggle" type="button" aria-label="Menu">&#9776;</button>
-            <div class="topbar-menu">
+            <button class="topbar-toggle" type="button" aria-label="Menu" aria-controls="topbar-menu" aria-expanded="false">&#9776;</button>
+            <div class="topbar-menu" id="topbar-menu">
                 <a class="topbar-link{% if request.url.path.startswith('/billings') %} is-active{% endif %}" href="/billings/">Minhas Cobranças</a>
                 <a class="topbar-link{% if request.url.path.startswith('/organizations') %} is-active{% endif %}" href="/organizations/">Organizações</a>
                 <div class="topbar-dropdown">
