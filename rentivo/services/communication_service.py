@@ -75,8 +75,16 @@ class CommunicationService:
         subject_template: str,
         body_template: str,
         actor=None,
+        comm_type: str = "bill_ready",
     ) -> list[Communication]:
-        """Create one queued communication per recipient and enqueue a send job each."""
+        """Create one queued communication per recipient and enqueue a send job each.
+
+        ``comm_type`` defaults to ``bill_ready`` (the original invoice email);
+        payment reminders pass an offset-specific type (see
+        ``rentivo.communications.reminders``) so each reminder is a distinct,
+        dedup-able row that still flows through the same ``communication.send``
+        job and email backend.
+        """
         results: list[Communication] = []
         # Per-recipient: create row, enqueue job, stamp job_ulid. Not atomic across
         # recipients — earlier recipients stay queued if a later one fails. If the
@@ -87,7 +95,7 @@ class CommunicationService:
             comm = self.communication_repo.create(
                 Communication(
                     bill_id=bill.id,
-                    comm_type="bill_ready",
+                    comm_type=comm_type,
                     recipient_name=recipient.name,
                     recipient_email=recipient.email,
                     subject=substitute(subject_template, ctx),

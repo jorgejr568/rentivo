@@ -22,8 +22,25 @@ DEFAULT_BILL_READY_BODY = (
     "Atenciosamente."
 )
 
+DEFAULT_PAYMENT_REMINDER_SUBJECT = "Lembrete de pagamento — {{unidade}} ({{mes}})"
+
+DEFAULT_PAYMENT_REMINDER_BODY = (
+    "Prezado {{nome_inquilino}},\n"
+    "\n"
+    "Este é um lembrete amigável sobre a cobrança da unidade **{{unidade}}** "
+    "referente ao mês de **{{mes}}**, no valor de **{{total}}**, com vencimento "
+    "em **{{vencimento}}**.\n"
+    "\n"
+    "Se o pagamento já foi efetuado, por favor desconsidere este e-mail. Caso "
+    "contrário, agradecemos a regularização e ficamos à disposição para qualquer "
+    "dúvida.\n"
+    "\n"
+    "Atenciosamente."
+)
+
 _DEFAULTS: dict[str, tuple[str, str]] = {
     "bill_ready": (DEFAULT_BILL_READY_SUBJECT, DEFAULT_BILL_READY_BODY),
+    "payment_reminder": (DEFAULT_PAYMENT_REMINDER_SUBJECT, DEFAULT_PAYMENT_REMINDER_BODY),
 }
 
 
