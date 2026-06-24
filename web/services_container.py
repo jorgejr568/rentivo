@@ -13,6 +13,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillRepository,
     SQLAlchemyCommunicationRepository,
     SQLAlchemyCommunicationTemplateRepository,
+    SQLAlchemyExpenseRepository,
     SQLAlchemyInviteRepository,
     SQLAlchemyKnownDeviceRepository,
     SQLAlchemyMFATOTPRepository,
@@ -34,6 +35,7 @@ from rentivo.services.billing_notification_service import BillingNotificationSer
 from rentivo.services.billing_service import BillingService
 from rentivo.services.billing_stats_service import BillingStatsService
 from rentivo.services.communication_service import CommunicationService
+from rentivo.services.expense_service import ExpenseService
 from rentivo.services.google_auth_service import GoogleAuthService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.job_service import JobService
@@ -81,7 +83,14 @@ class RequestServices:
 
     @cached_property
     def billing_stats(self) -> BillingStatsService:
-        return BillingStatsService(SQLAlchemyBillRepository(self._conn, self._encryption))
+        return BillingStatsService(
+            SQLAlchemyBillRepository(self._conn, self._encryption),
+            SQLAlchemyExpenseRepository(self._conn, self._encryption),
+        )
+
+    @cached_property
+    def expense(self) -> ExpenseService:
+        return ExpenseService(SQLAlchemyExpenseRepository(self._conn, self._encryption))
 
     @cached_property
     def user(self) -> UserService:

@@ -147,6 +147,18 @@ CREATE TABLE receipts (
     created_at DATETIME NOT NULL
 );
 
+CREATE TABLE expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    billing_id INTEGER NOT NULL REFERENCES billings(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    amount INTEGER NOT NULL DEFAULT 0,
+    category VARCHAR(32) NOT NULL DEFAULT 'outros',
+    incurred_on TEXT NOT NULL DEFAULT '',
+    created_at DATETIME NOT NULL,
+    deleted_at DATETIME
+);
+
 CREATE TABLE billing_attachments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     uuid VARCHAR(26) NOT NULL UNIQUE,

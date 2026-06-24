@@ -12,6 +12,7 @@ from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.billing_attachment import BillingAttachment
 from rentivo.models.communication import Communication
+from rentivo.models.expense import Expense
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization
 from rentivo.models.receipt import Receipt
@@ -94,6 +95,23 @@ def serialize_receipt(receipt: Receipt, *, bill_uuid: str, billing_uuid: str) ->
         "file_size": receipt.file_size,
         "bill_uuid": bill_uuid,
         "billing_uuid": billing_uuid,
+    }
+
+
+def serialize_expense(expense: Expense) -> dict:
+    """Serialize an Expense for audit state.
+
+    ``description`` is encrypted PII and is omitted entirely (mirroring how
+    ``serialize_communication`` drops the subject/body). Only non-sensitive
+    scalars are recorded.
+    """
+    return {
+        "id": expense.id,
+        "uuid": expense.uuid,
+        "billing_id": expense.billing_id,
+        "amount": expense.amount,
+        "category": expense.category,
+        "incurred_on": expense.incurred_on,
     }
 
 
