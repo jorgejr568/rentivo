@@ -22,22 +22,6 @@ DEFAULT_BILL_READY_BODY = (
     "Atenciosamente."
 )
 
-DEFAULT_PAYMENT_REMINDER_SUBJECT = "Lembrete de pagamento — {{unidade}} ({{mes}})"
-
-DEFAULT_PAYMENT_REMINDER_BODY = (
-    "Prezado {{nome_inquilino}},\n"
-    "\n"
-    "Este é um lembrete amigável sobre a cobrança da unidade **{{unidade}}** "
-    "referente ao mês de **{{mes}}**, no valor de **{{total}}**, com vencimento "
-    "em **{{vencimento}}**.\n"
-    "\n"
-    "Se o pagamento já foi efetuado, por favor desconsidere este e-mail. Caso "
-    "contrário, agradecemos a regularização e ficamos à disposição para qualquer "
-    "dúvida.\n"
-    "\n"
-    "Atenciosamente."
-)
-
 DEFAULT_PAYMENT_RECEIPT_SUBJECT = "Recibo de pagamento {{unidade}} — {{mes}}"
 
 DEFAULT_PAYMENT_RECEIPT_BODY = (
@@ -56,10 +40,6 @@ DEFAULT_PAYMENT_RECEIPT_BODY = (
 _DEFAULTS: dict[str, tuple[str, str]] = {
     CommType.BILL_READY.value: (DEFAULT_BILL_READY_SUBJECT, DEFAULT_BILL_READY_BODY),
     CommType.PAYMENT_RECEIPT.value: (DEFAULT_PAYMENT_RECEIPT_SUBJECT, DEFAULT_PAYMENT_RECEIPT_BODY),
-    # Reminders use a free-form template type (not a CommType enum member): the
-    # base key plus offset-specific suffixes (e.g. "payment_reminder:d-3").
-    # See rentivo.communications.reminders.REMINDER_TEMPLATE_COMM_TYPE.
-    "payment_reminder": (DEFAULT_PAYMENT_REMINDER_SUBJECT, DEFAULT_PAYMENT_REMINDER_BODY),
 }
 
 
