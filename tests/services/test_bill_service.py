@@ -1,6 +1,5 @@
 from datetime import datetime
 from unittest.mock import MagicMock, patch
-from urllib.parse import unquote, urlparse
 
 import pytest
 
@@ -9,7 +8,6 @@ from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.bill import Bill, BillLineItem
 from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.receipt import Receipt
-from rentivo.models.recipient import Recipient
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
@@ -1047,43 +1045,6 @@ class TestRenderOrEnqueue:
 
         # The row is marked "pending" (not "succeeded") on the enqueue path.
         self.bill_repo.update_pdf_render_status.assert_called_once_with(42, "pending")
-
-
-class TestBuildWhatsappLink:
-    def setup_method(self):
-        self.service = BillService(MagicMock(), MagicMock(), pix_service=_pix_service_with())
-        self.bill = Bill(
-            id=1,
-            uuid="bill-uuid",
-            billing_id=1,
-            reference_month="2025-03",
-            total_amount=285000,
-            due_date="10/04/2025",
-            line_items=[],
-        )
-        self.billing = Billing(id=1, uuid="billing-uuid", name="Apt 101", items=[])
-
-    def test_builds_link_with_pix_payload_in_message(self):
-        recipient = Recipient(billing_id=1, name="João", email="j@x.com", phone="+5511999998888")
-        link = self.service.build_whatsapp_link(self.bill, self.billing, recipient)
-        assert link is not None
-        assert link.startswith("https://wa.me/5511999998888?text=")
-        # The PIX copia-e-cola is generated from the stub PIX config and embedded.
-        text = unquote(urlparse(link).query.split("text=", 1)[1])
-        assert "Apt 101" in text
-        assert "R$ 2.850,00" in text
-        assert "copia e cola" in text.lower()
-        assert "br.gov.bcb.pix" in text  # the raw EMV PIX payload is embedded
-
-    def test_returns_none_when_recipient_has_no_phone(self):
-        recipient = Recipient(billing_id=1, name="João", email="j@x.com")
-        assert self.service.build_whatsapp_link(self.bill, self.billing, recipient) is None
-
-    def test_raises_when_pix_not_configured(self):
-        service = BillService(MagicMock(), MagicMock(), pix_service=None)
-        recipient = Recipient(billing_id=1, name="João", email="j@x.com", phone="+5511999998888")
-        with pytest.raises(ValueError):
-            service.build_whatsapp_link(self.bill, self.billing, recipient)
 
 
 class TestRenderRecibo:

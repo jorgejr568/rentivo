@@ -32,7 +32,6 @@ CREATE TABLE billings (
     uuid VARCHAR(26) NOT NULL UNIQUE,
     owner_type TEXT NOT NULL DEFAULT 'user',
     owner_id INTEGER NOT NULL DEFAULT 0,
-    reminders_enabled INTEGER NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL,
     deleted_at DATETIME
@@ -178,7 +177,6 @@ CREATE TABLE billing_recipients (
     billing_id INTEGER NOT NULL REFERENCES billings(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     email TEXT NOT NULL,
-    phone TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL
 );
