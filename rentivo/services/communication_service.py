@@ -7,7 +7,7 @@ from rentivo.communications.render import month_long, substitute
 from rentivo.models import format_brl
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
-from rentivo.models.communication import Communication, CommunicationTemplate
+from rentivo.models.communication import CommType, Communication, CommunicationTemplate
 from rentivo.models.recipient import Recipient
 from rentivo.observability import traced
 from rentivo.repositories.base import CommunicationRepository, CommunicationTemplateRepository
@@ -75,15 +75,16 @@ class CommunicationService:
         subject_template: str,
         body_template: str,
         actor=None,
-        comm_type: str = "bill_ready",
+        comm_type: str = CommType.BILL_READY.value,
     ) -> list[Communication]:
         """Create one queued communication per recipient and enqueue a send job each.
 
-        ``comm_type`` defaults to ``bill_ready`` (the original invoice email);
-        payment reminders pass an offset-specific type (see
-        ``rentivo.communications.reminders``) so each reminder is a distinct,
-        dedup-able row that still flows through the same ``communication.send``
-        job and email backend.
+        ``comm_type`` defaults to ``bill_ready`` (the original invoice email) and
+        selects which document the send job attaches: ``bill_ready`` attaches the
+        invoice PDF, ``payment_receipt`` the stored recibo PDF. Payment reminders
+        pass an offset-specific type (see ``rentivo.communications.reminders``) so
+        each reminder is a distinct, dedup-able row that still flows through the
+        same ``communication.send`` job and email backend.
         """
         results: list[Communication] = []
         # Per-recipient: create row, enqueue job, stamp job_ulid. Not atomic across

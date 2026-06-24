@@ -5,18 +5,21 @@ from datetime import datetime
 import structlog
 
 from rentivo.constants import SP_TZ
-from rentivo.models.bill import Bill, BillLineItem
+from rentivo.models.bill import Bill, BillLineItem, BillStatus
 from rentivo.models.billing import Billing, ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
+from rentivo.models.recipient import Recipient
 from rentivo.observability import traced
 from rentivo.pdf.invoice import InvoicePDF
 from rentivo.pdf.merger import merge_receipts
+from rentivo.pdf.recibo import ReciboPDF
 from rentivo.pix import generate_pix_payload, generate_pix_qrcode_png
 from rentivo.repositories.base import BillRepository, ReceiptRepository
 from rentivo.services.job_service import JobService
 from rentivo.services.pix_service import PixConfig, PixService
 from rentivo.settings import settings
 from rentivo.storage.base import FileRef, StorageBackend
+from rentivo.whatsapp import build_invoice_message, build_whatsapp_link
 
 PIX_NOT_CONFIGURED_MESSAGE = "Configure a chave PIX, o nome e a cidade do recebedor antes de gerar faturas."
 
@@ -38,6 +41,10 @@ def _prefixed(path: str) -> str:
 
 def _storage_key(billing_uuid: str, bill_uuid: str) -> str:
     return _prefixed(f"{billing_uuid}/{bill_uuid}.pdf")
+
+
+def _recibo_storage_key(billing_uuid: str, bill_uuid: str) -> str:
+    return _prefixed(f"{billing_uuid}/{bill_uuid}.recibo.pdf")
 
 
 def _receipt_storage_key(billing_uuid: str, bill_uuid: str, receipt_uuid: str, content_type: str) -> str:
@@ -62,6 +69,7 @@ class BillService:
         self.pix_service = pix_service
         self.job_service = job_service
         self.pdf_generator = InvoicePDF()
+        self.recibo_generator = ReciboPDF()
 
     def _resolve_pix(self, billing: Billing) -> PixConfig:
         if self.pix_service is None:
@@ -93,6 +101,26 @@ class BillService:
             payload=payload,
         )
         return png, config.pix_key, payload
+
+    @traced("bill.whatsapp_link")
+    def build_whatsapp_link(self, bill: Bill, billing: Billing, recipient: Recipient) -> str | None:
+        """Build a ``wa.me`` deep link to send this bill to ``recipient`` over WhatsApp.
+
+        The prefilled message carries the invoice essentials (unit, month,
+        amount, due date) plus the PIX copia-e-cola string so the tenant can pay
+        from the chat. Returns ``None`` when the recipient has no usable phone
+        number. Raises ``ValueError`` (via ``_get_pix_data``) when PIX is not
+        configured, since the message is worthless without the copia-e-cola.
+        """
+        _, _, payload = self._get_pix_data(billing, bill.total_amount)
+        message = build_invoice_message(
+            billing_name=billing.name,
+            reference_month=bill.reference_month,
+            amount_centavos=bill.total_amount,
+            due_date=bill.due_date,
+            pix_payload=payload,
+        )
+        return build_whatsapp_link(recipient.phone, message)
 
     def _fetch_receipt_data(self, bill: Bill) -> tuple[list[tuple[bytes, str]], list[Receipt]]:
         """Fetch receipt file data for a bill, for merging into the PDF.
@@ -311,10 +339,131 @@ class BillService:
         With a JobService configured (web), enqueues a pdf.render job
         and returns immediately; bill.pdf_render_status is set to
         'pending'. Without one (CLI), renders synchronously.
+
+        When the bill is already PAID, the payment receipt (recibo) is
+        regenerated alongside the invoice — the recibo embeds the same billing
+        info (issuer, PIX), so re-rendering only the invoice would leave a stale
+        quittance behind. The recibo render goes through the same enqueue/sync
+        path and the ``recibo.render`` handler re-checks PAID, so a status that
+        reverts before the job runs produces no orphan recibo.
         """
         logger.info("bill_pdf_regenerate", bill_uuid=bill.uuid)
         self._render_or_enqueue(bill, billing, actor=actor)
+        if bill.status == BillStatus.PAID.value:
+            self._enqueue_or_render_recibo(bill, billing, actor=actor)
         return bill
+
+    def _resolve_recibo_issuer(self, billing: Billing) -> str:
+        """Issuer ("EMITENTE") shown on the recibo: the organization name for
+        org-owned billings, the account email for user-owned billings. Falls
+        back to the billing name when the owner can't be resolved (no
+        pix_service, missing owner row, or empty name)."""
+        if self.pix_service is not None and billing.owner_id is not None:
+            if billing.owner_type == "organization":
+                org = self.pix_service.org_repo.get_by_id(billing.owner_id)
+                if org is not None and org.name:
+                    return org.name
+            else:
+                user = self.pix_service.user_repo.get_by_id(billing.owner_id)
+                if user is not None and user.email:
+                    return user.email
+        return billing.name
+
+    @traced("bill.render_recibo")
+    def render_recibo(self, bill: Bill, billing: Billing) -> bytes:
+        """Render a payment-receipt ("Recibo de Pagamento") PDF on the fly.
+
+        Unlike the invoice, the recibo is NOT persisted to storage — the bytes
+        are returned for the caller to stream. The payer is the billing name;
+        the issuer is the billing owner (organization name or account email,
+        falling back to the billing name). The payment date is the bill's
+        status-change timestamp (when the bill moved to PAID), DD/MM/YYYY.
+        """
+        theme = None
+        if self.theme_service is not None:
+            theme = self.theme_service.resolve_theme_for_billing(billing)
+
+        issuer_name = self._resolve_recibo_issuer(billing)
+        payment_date = ""
+        if bill.status_updated_at is not None:
+            payment_date = bill.status_updated_at.strftime("%d/%m/%Y")
+
+        pdf_bytes = self.recibo_generator.generate(
+            bill,
+            billing_name=billing.name,
+            issuer_name=issuer_name,
+            payment_date=payment_date,
+            theme=theme,
+        )
+        logger.info("recibo_rendered", bill_uuid=bill.uuid, bytes=len(pdf_bytes))
+        return pdf_bytes
+
+    @traced("bill.store_recibo")
+    def store_recibo(self, bill: Bill, billing: Billing) -> str:
+        """Render the recibo and persist it to storage, recording its key.
+
+        Used by the ``recibo.render`` background job (web) and the synchronous
+        fallback when no JobService is configured (CLI). Returns the storage key
+        and stamps it onto ``bill.recibo_pdf_path``.
+        """
+        if bill.id is None:
+            raise ValueError("Cannot store recibo for bill without an id")
+        pdf_bytes = self.render_recibo(bill, billing)
+        key = _recibo_storage_key(billing.uuid, bill.uuid)
+        path = self.storage.save(key, bytes(pdf_bytes), content_type="application/pdf")
+        self.bill_repo.update_recibo_pdf_path(bill.id, path)
+        bill.recibo_pdf_path = path
+        logger.info("recibo_stored", bill_uuid=bill.uuid, storage_key=key)
+        return path
+
+    def _enqueue_or_render_recibo(self, bill: Bill, billing: Billing | None, actor=None) -> None:
+        """Render the recibo synchronously (CLI) or enqueue a ``recibo.render``
+        job (web). Called from ``change_status``, which has already validated
+        ``bill.id`` is set."""
+        if self.job_service is None:
+            if billing is not None:
+                self.store_recibo(bill, billing)
+            return
+        if actor is not None:
+            self.job_service.enqueue_for(actor, "recibo.render", {"bill_id": bill.id}, max_attempts=3)
+        else:
+            self.job_service.enqueue(
+                "recibo.render",
+                {"bill_id": bill.id},
+                source="",
+                actor_id=None,
+                actor_username="",
+                max_attempts=3,
+            )
+
+    def _remove_recibo(self, bill: Bill, actor=None) -> None:
+        """Delete a stored recibo and clear its key. Called when a bill leaves
+        the PAID status (the quittance no longer reflects reality). Called from
+        ``change_status``, which has already validated ``bill.id`` is set."""
+        key = bill.recibo_pdf_path
+        if not key:
+            return
+        if self.job_service is None:
+            try:
+                self.storage.delete(key)
+            except Exception:
+                logger.exception("recibo_delete_failed", bill_uuid=bill.uuid, storage_key=key)
+        elif actor is not None:
+            self.job_service.enqueue_for(actor, "s3.delete", {"key": key})
+        else:
+            self.job_service.enqueue("s3.delete", {"key": key}, source="", actor_id=None, actor_username="")
+        self.bill_repo.update_recibo_pdf_path(bill.id, None)
+        bill.recibo_pdf_path = None
+        logger.info("recibo_removed", bill_uuid=bill.uuid, storage_key=key)
+
+    @traced("bill.get_recibo_ref")
+    def get_recibo_ref(self, bill: Bill) -> FileRef:
+        """Resolve the bill's stored recibo to a FileRef (local path or URL).
+
+        Callers must ensure ``bill.recibo_pdf_path`` is non-empty first.
+        """
+        logger.debug("recibo_ref_resolve", storage_key=bill.recibo_pdf_path)
+        return self.storage.get_ref(bill.recibo_pdf_path or "")
 
     @traced("bill.get_invoice_url")
     def get_invoice_url(self, pdf_path: str | None) -> str:
@@ -348,17 +497,26 @@ class BillService:
         return result
 
     @traced("bill.change_status")
-    def change_status(self, bill: Bill, new_status: str) -> Bill:
-        from rentivo.models.bill import BillStatus
-
+    def change_status(self, bill: Bill, new_status: str, billing: Billing | None = None, actor=None) -> Bill:
         BillStatus(new_status)  # raises ValueError if invalid
         if bill.id is None:
             raise ValueError("Cannot change status for bill without an id")
+        previous_status = bill.status
         now = datetime.now(SP_TZ)
         self.bill_repo.update_status(bill.id, new_status, now)
         bill.status = new_status
         bill.status_updated_at = now
         logger.info("bill_status_changed", bill_id=bill.id, new_status=new_status)
+
+        # Payment-receipt lifecycle: generate the recibo in the background when a
+        # bill becomes PAID, and tear it down when it leaves PAID (the quittance
+        # would otherwise outlive the payment it certifies). Transitions between
+        # two non-PAID statuses — and re-saving PAID — touch nothing extra.
+        paid = BillStatus.PAID.value
+        if new_status == paid and previous_status != paid:
+            self._enqueue_or_render_recibo(bill, billing, actor=actor)
+        elif previous_status == paid and new_status != paid:
+            self._remove_recibo(bill, actor=actor)
         return bill
 
     @traced("bill.get_bill")

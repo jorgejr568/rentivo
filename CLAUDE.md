@@ -20,16 +20,19 @@ make web-run             # http://localhost:8000
 # Local
 make regenerate-pdfs
 make regenerate-pdfs-dry
+make regenerate-recibos       # enqueue recibo.render for every PAID bill (backfill)
+make regenerate-recibos-dry
 
 # Docker
 make docker-regenerate
+make docker-regenerate-recibos
 ```
 
 ## Docker
 
 Two Dockerfiles:
 - **`Dockerfile`** — Web app (FastAPI + uvicorn on port 8000)
-- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `s3.delete`)
+- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `recibo.render`, `s3.delete`, `communication.send`, `export.generate`, `export.send`)
 
 ```bash
 # Web container (default)
@@ -136,6 +139,19 @@ make web-run             # start uvicorn at http://localhost:8000
 - Model: `rentivo/models/receipt.py`, Repository: `ReceiptRepository`, Service: integrated into `BillService`
 - Upload/delete via separate forms on the bill edit page
 
+## Payment Receipt (Recibo de Pagamento)
+
+- A **recibo** is a quittance PDF (`rentivo/pdf/recibo.py:ReciboPDF`) issued for a **PAID** bill — distinct from both the invoice and the bill-level `receipt` attachments. Naming is deliberately kept apart (`recibo` ≠ `receipt`).
+- **Lifecycle is driven by `BillService.change_status`** (the single status-change path, called from `web/routes/bill.py`):
+  - entering PAID (from any non-PAID status) enqueues a `recibo.render` job (web) or renders synchronously (CLI, no JobService);
+  - leaving PAID enqueues an `s3.delete` for the stored key and NULLs `bills.recibo_pdf_path` — the quittance must not outlive the payment it certifies. Re-saving PAID is a no-op.
+- **`BillService.regenerate_pdf` also (re)generates the recibo when the bill is already PAID** — "Regenerar PDF" rebuilds both the invoice and the recibo through the same enqueue/sync path (the recibo embeds the same issuer/PIX info, so re-rendering only the invoice would leave a stale quittance). Same idempotency guard via the `recibo.render` PAID re-check.
+- `recibo.render` handler (`rentivo/jobs/handlers/recibo.py`) re-checks `status == PAID` before rendering (status may revert before the job runs) → no orphan recibo for an unpaid bill.
+- Storage key pattern: `{billing_uuid}/{bill_uuid}.recibo.pdf`; the key is stored in the `bills.recibo_pdf_path` column (Alembic `08c21e96caa6`). `BillService.store_recibo` renders + persists + records the key; `_remove_recibo` tears it down. `StorageCleanupService.enqueue_bill_delete_cascade` also deletes the recibo key.
+- Download: `GET …/recibo` (PAID-only). Serves the stored object when present; falls back to on-the-fly rendering during the brief render window or if the worker is behind, so the download never breaks. Audit `bill.recibo_download`; GTM `rentivo_recibo_downloaded` (hashed uuid).
+- Backfill: bills already PAID before stored recibos existed have `recibo_pdf_path = NULL` (the migration is schema-only). `make regenerate-recibos` (`rentivo/scripts/regenerate_recibos.py`, `--dry-run` supported, mirrors `regenerate_pdfs`) enqueues one `recibo.render` per PAID bill so they get a stored recibo — required before they can be e-mailed as a `payment_receipt` communication (download already works via the on-the-fly fallback). No PIX pre-flight: the issuer falls back to the billing name, so a paid bill always renders. Idempotent (the handler re-checks PAID; re-runs overwrite the same key).
+- Send: the recibo can be e-mailed to billing recipients as a communication of type `payment_receipt` (see Tenant Communications).
+
 ## Billing Attachments
 
 - Billings can carry named documents (e.g. a lease contract) — separate from bill-level receipts and **never merged into a bill PDF**.
@@ -145,6 +161,20 @@ make web-run             # start uvicorn at http://localhost:8000
 - Routes on the billing router (`web/routes/billing.py`): `POST /billings/<id>/attachments/upload` (single file + name), `GET /billings/<id>/attachments/<att_id>` (download), `POST /billings/<id>/attachments/<att_id>/delete`. Upload/delete need `edit`; download needs `view`.
 - UI: upload + list + delete panel on the billing edit page; read-only download list on the billing detail page.
 - Audit events: `attachment.upload`, `attachment.delete` (serializer omits `storage_key`). GTM: `rentivo_billing_attachment_uploaded/deleted`. Deleting a billing cascades attachment-file cleanup via `StorageCleanupService.enqueue_billing_delete_cascade` (which requires an `attachment_repo`).
+
+## Bill Export
+
+- A billing's bills can be exported as **CSV or Excel (XLSX)** for accounting. Export runs in the background and is **emailed to the account that requested it** — NOT a synchronous download, and **NOT** sent to the billing's tenant recipients. Recipients (`billing_recipients`) are tenants; they are never the export audience.
+- Trigger: `POST /billings/<id>/bills/export` (form `format=csv|xlsx`, default/fallback csv; needs `view`). Buttons live on the billing detail page (labelled "Exportar CSV" / "Exportar Excel"). The route enqueues one `export.generate` job carrying `{billing_id, format, requested_by_user_id}` and flashes "exportação iniciada … para o seu e-mail". No recipient is required.
+- **Job chain (storage-backed):**
+  1. `export.generate` (`rentivo/jobs/handlers/export.py:handle_export_generate`): loads the billing + bills, builds rows via `ExportService`, serializes via `rentivo/export/serializers.py:serialize_rows` (returns `(body, content_type, ext)`; csv fallback), uploads the file to storage under `{billing_uuid}/exports/{token}.{ext}`, and enqueues `export.send`. No PII (billing name, recipient data) rides in the payload — only ids/keys.
+  2. `export.send` (`handle_export_send`): resolves the requesting user's e-mail fresh from the encrypted `users` row (by `requested_by_user_id`), downloads the file from storage, sends **one** email to that account (event `export_ready`, attachment named via `export_filename`), then enqueues `s3.delete` for the temp object.
+  3. `s3.delete`: removes the temp export object.
+  - Chained enqueues use `source="worker"`. At-least-once: a retried `export.send` re-downloads and re-sends (a duplicate accounting export is benign) and re-enqueues the delete. A crash between upload and the `export.generate` enqueue commit can orphan a temp object (harmless; a fresh run uses a new token).
+- `ExportService` (`rentivo/services/export_service.py`) is FastAPI-free row building: PT-BR headers, a numeric `Valor (R$)` column (centavos/100) plus a formatted `R$` column. Serializers neutralize spreadsheet **formula injection** (cells starting with `= + - @ \t \r` get a leading `'`). `export_filename`/`export_slug` build an accent-folded slug filename (`São João` → `faturas_sao-joao.csv`). `format_label(ext)` maps the internal token to the human label (`xlsx` → "Excel", else uppercased) for the flash and the email body.
+- `EmailService.send(..., attachments=...)` carries the generated file; templates `web/templates/emails/export_ready.{html,txt}` (PT-BR). The `From` uses the SES default (transactional), not the communications override.
+- Audit event: `billing.export` (`new_state={format}`). GTM: `rentivo_data_exported` (`export_format`, `billing_uuid_hash`). Temporal: `ExportGenerateWorkflow` + `ExportSendWorkflow` (and the existing `S3DeleteWorkflow`) wrap the same registry handlers.
+- Dependency: **openpyxl** (XLSX).
 
 ## Audit Logging
 
@@ -181,7 +211,7 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 - **Suffering** — `form_submit_error`, `form_field_error`, `form_abandon`, `rage_click`, `js_error`, `promise_rejection`.
 - **Issues** — `network_error`, `file_upload_error`.
 - **Waiting** — `web_vital` (LCP/INP/CLS/TTFB/FCP), `slow_page`, `interaction_slow`, `layout_shift_bad`, `long_task`, `slow_form_submit`.
-- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_billing_attachment_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`.
+- **Business** — `rentivo_bill_generated`, `rentivo_billing_created/edited/deleted/transferred`, `rentivo_bill_*`, `rentivo_invoice_downloaded`, `rentivo_recibo_downloaded`, `rentivo_receipt_uploaded/deleted`, `rentivo_billing_attachment_uploaded/deleted`, `rentivo_login_success/failed`, `rentivo_logout`, `rentivo_signup_completed`, `rentivo_password_changed`, `rentivo_mfa_*`, `rentivo_passkey_*`, `rentivo_organization_created`, `rentivo_invite_*`, `rentivo_theme_changed`, `rentivo_communication_sent`, `rentivo_data_exported`.
 
 ### Privacy
 
@@ -265,7 +295,8 @@ All dispatched via `EmailService.safe_send_*` (swallow failures, never block the
 - **From override**: `RENTIVO_COMMUNICATIONS_FROM_EMAIL` (optional) overrides the `From` for communication emails only; empty falls back to `RENTIVO_SES_FROM_EMAIL` then `noreply@localhost`. Account/security/transactional emails always use `RENTIVO_SES_FROM_EMAIL`.
 - **Templates** (`communication_templates`) are polymorphic-owned (`owner_type` ∈ `user` | `organization` | `billing`) per `comm_type`, unique on `(owner_type, owner_id, comm_type)` (`uq_comm_template_owner`). `CommunicationService.resolve_template` resolves most-specific-first: billing → billing owner (user/org) → system default (`rentivo/communications/defaults.py`, seeded from the landlord's PT-BR copy; the synthetic fallback uses `owner_type='system'` / `owner_id=0` and is never persisted). Encrypted `subject` + `body_markdown`.
 - **Bodies are Markdown**, rendered by `rentivo/communications/render.py:render_markdown` with `markdown-it-py` and raw HTML disabled (`MarkdownIt("commonmark", {"html": False})`) — `<tag>` in the source is escaped to inert text, so user input can never inject live HTML. Placeholders (PT-BR): `{{nome_inquilino}}` (recipient name), `{{unidade}}` (billing name), `{{mes}}` (e.g. "maio de 2026", via `month_long`), `{{vencimento}}` (due date), `{{total}}` (BRL). Substituted at send time and snapshotted onto the communication row; unknown tokens are left verbatim.
-- **Sends** are manual: compose/preview on the bill page (`web/routes/communication.py`, router prefix `/billings/{billing_uuid}/bills/{bill_uuid}/communications`: `GET /compose`, `POST /preview`, `POST /send`), then one `communication.send` job per recipient. The handler (`rentivo/jobs/handlers/communication.py`) renders the stored row, attaches the bill PDF, sends one email, and marks the row `sent`; the registered `register_on_fail` dead-letter hook marks it `failed`.
+- **Comm types** are the `CommType` enum (`rentivo/models/communication.py`): `bill_ready` (attaches the invoice PDF) and `payment_receipt` (attaches the stored **recibo** PDF, PAID bills only). Each has its own system-default template. The compose/send routes take the type **explicitly** (`?type=…` on compose, hidden `comm_type` field on send) and validate it strictly via `CommType(...)` — an unknown value is rejected (flash redirect), never silently defaulted, so a bad value can't send the wrong document. The `communication.send` handler branches on `comm.comm_type` to pick invoice-vs-recibo (`fatura-…pdf` / `recibo-…pdf`) and fails permanently if the chosen document is absent.
+- **Sends** are manual: compose/preview on the bill page (`web/routes/communication.py`, router prefix `/billings/{billing_uuid}/bills/{bill_uuid}/communications`: `GET /compose`, `POST /preview`, `POST /send`), then one `communication.send` job per recipient. The handler (`rentivo/jobs/handlers/communication.py`) renders the stored row, attaches the bill/recibo PDF, sends one email, and marks the row `sent`; the registered `register_on_fail` dead-letter hook marks it `failed`.
 - **Communications** (`communications`, the sent log; encrypted `recipient_name` / `recipient_email` / `subject` / `body_markdown`) are listed on the bill page with status (`queued` / `sent` / `failed`). Audit events: `communication.sent`, `communication.template_saved`, `billing.recipients_updated`. GTM: `rentivo_communication_sent`.
 - Email attachments: `EmailAttachment` on `EmailMessage`; `rentivo/email/mime.py:build_mime` is shared by the local backend and SES. SES switches to `send_raw_email` only when attachments are present, preserving `ConfigurationSetName`.
 - **Content guardrails**: `rentivo/communications/moderation.py:scan(text)` does a tiered, in-process PT-BR lexicon scan (no external API/LLM, deterministic; `_normalize` handles accents/leetspeak/repeated-chars/whitespace, word-token matching for the word lists and normalized-substring matching for phrases). `POST /send` is the authoritative gate: SEVERE (slurs/hate/threats) is blocked (no communication row, no job; audit `communication.blocked`); MILD (profanity) requires an explicit `acknowledge_warning` checkbox (audit `communication.flagged_override`). `POST /preview` returns `{html, severe, mild}` to drive the compose-page moderation panel. Audit `new_state` stores counts (`severe_count`/`mild_count`), never the flagged words.
@@ -484,5 +515,5 @@ Currently the Docker images aren't published to a registry — deploy is a webho
 - **NEVER delete `invoices/`** without explicit user confirmation
 - Do not use floats for monetary values — always centavos (int)
 - Keep repository and storage abstractions — they exist so backends can be swapped (S3, etc.)
-- Dependencies are managed with **uv**. Install with `make install` (= `uv sync --all-extras`). Run tools via `uv run` (e.g. `uv run python`, `uv run pytest`) or the equivalent `.venv/bin/` executables that `uv sync` creates — never bare `python`/`pip`/`pytest`. Add or change dependencies in `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
+- Dependencies are managed with **uv**. Install with `make install` (= `uv sync --all-extras`). Run tools via `uv run` (e.g. `uv run python`, `uv run pytest`, `uv run ruff`) — never bare `python`/`pip`/`pytest`. Add or change dependencies in `pyproject.toml`, then run `uv lock` and commit `uv.lock`.
 - Always run tests in parallel: `uv run pytest -n auto` (or `make test`)

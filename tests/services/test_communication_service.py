@@ -110,6 +110,30 @@ def test_send_creates_one_communication_per_recipient_and_enqueues(ctx):
     assert first.job_ulid == "01JOBULID0000000000000000"
 
 
+def test_send_defaults_comm_type_to_bill_ready(ctx):
+    service, _job, _c = ctx
+    comms = service.send(
+        _bill(), _billing(), [Recipient(billing_id=1, name="R", email="r@x.com")], "s", "b", actor=None
+    )
+    assert comms[0].comm_type == "bill_ready"
+
+
+def test_send_honors_payment_receipt_comm_type(ctx):
+    service, job, _c = ctx
+    comms = service.send(
+        _bill(),
+        _billing(),
+        [Recipient(billing_id=1, name="R", email="r@x.com")],
+        "Recibo {{unidade}}",
+        "Segue o recibo de {{total}}.",
+        actor=None,
+        comm_type="payment_receipt",
+    )
+    assert comms[0].comm_type == "payment_receipt"
+    assert "R$ 1.285,00" in comms[0].body_markdown
+    assert job.enqueued[0][0] == "communication.send"
+
+
 def test_send_with_no_recipients_returns_empty(ctx):
     service, job, _c = ctx
     assert service.send(_bill(), _billing(), [], "s", "b", actor=None) == []

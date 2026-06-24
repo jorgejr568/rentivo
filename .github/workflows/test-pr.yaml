@@ -13,21 +13,21 @@ jobs:
     name: ruff check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/ruff-check
 
   ruff-format:
     name: ruff format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/ruff-format
 
   tests:
     name: pytest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/pytest
 
   docker-build:
@@ -42,7 +42,7 @@ jobs:
             image: rentivo-web
             scope: web
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/docker-build
         with:
           dockerfile: ${{ matrix.dockerfile }}

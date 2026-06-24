@@ -27,13 +27,43 @@
         <span class="tag tag--cancelled" title="Falha ao gerar o PDF. Tente regenerar manualmente.">Falha no PDF</span>
         {% endif %}
         {% if bill.pdf_path %}
-        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--primary">Ver PDF</a>
+        <div class="btn-dropdown">
+            <button type="button" class="btn btn-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                Baixar <span class="btn-dropdown-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="btn-dropdown-menu" role="menu">
+                <a class="btn-dropdown-item" role="menuitem" target="_blank"
+                   href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice">Baixar fatura</a>
+                {% if bill.status == "paid" %}
+                <a class="btn-dropdown-item" role="menuitem" target="_blank"
+                   href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/recibo">Baixar recibo</a>
+                {% else %}
+                <span class="btn-dropdown-item btn-dropdown-item--disabled" aria-disabled="true"
+                      title="O recibo fica disponível quando a fatura está paga.">Baixar recibo</span>
+                {% endif %}
+            </div>
+        </div>
         {% endif %}
         {% if role in ("owner", "admin", "manager") %}
         <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/edit" class="btn">Editar</a>
         {% endif %}
         {% if role in ("owner", "admin", "manager") and bill.pdf_path %}
-        <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/compose" class="btn btn--primary">Enviar comunicação</a>
+        <div class="btn-dropdown">
+            <button type="button" class="btn btn--primary btn-dropdown-toggle" aria-haspopup="true" aria-expanded="false">
+                Enviar comunicação <span class="btn-dropdown-caret" aria-hidden="true">▾</span>
+            </button>
+            <div class="btn-dropdown-menu" role="menu">
+                <a class="btn-dropdown-item" role="menuitem"
+                   href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/compose?type=bill_ready">Enviar fatura</a>
+                {% if bill.status == "paid" and bill.recibo_pdf_path %}
+                <a class="btn-dropdown-item" role="menuitem"
+                   href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/communications/compose?type=payment_receipt">Enviar recibo</a>
+                {% else %}
+                <span class="btn-dropdown-item btn-dropdown-item--disabled" aria-disabled="true"
+                      title="O recibo fica disponível quando a fatura está paga.">Enviar recibo</span>
+                {% endif %}
+            </div>
+        </div>
         {% endif %}
     </div>
 </div>
@@ -100,6 +130,22 @@
             <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/invoice" target="_blank" class="btn btn--ink">Abrir PDF com QR</a>
             {% endif %}
         </div>
+
+        {% if role in ("owner", "admin", "manager") and whatsapp_recipients %}
+        <!-- WhatsApp deep-link delivery (REN-4) -->
+        <div class="flex gap mt-3 wrap" style="align-items: center; justify-content: space-between; border: 2px dashed var(--line); border-radius: var(--r); padding: 1rem 1.25rem;">
+            <div>
+                <div class="mono" style="font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-dark);">Enviar pelo WhatsApp</div>
+                <div class="muted" style="font-size: 0.84rem;">Abre o WhatsApp com a fatura e o PIX copia e cola já preenchidos.</div>
+            </div>
+            <div class="btn-row">
+                {% for r in whatsapp_recipients %}
+                <a href="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/whatsapp?recipient={{ r.uuid }}"
+                   target="_blank" rel="noopener" class="btn btn--primary">Enviar para {{ r.name }}</a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </div>
 </div>
 

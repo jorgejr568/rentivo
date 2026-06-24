@@ -17,7 +17,14 @@ class SQLAlchemyRecipientRepository(RecipientRepository):
         self.encryption = encryption
 
     def _build(self, rows: list[RowMapping]) -> list[Recipient]:
-        return build_recipients(self.encryption, rows)
+        recipients = build_recipients(self.encryption, rows)
+        # ``phone`` is unique to this table (the reply-to table that shares
+        # ``build_recipients`` has no phone column), so decrypt it here in one
+        # batched call and attach. Empty/NULL ciphertext decrypts to "" -> None.
+        phones = self.encryption.decrypt_many([row["phone"] or "" for row in rows])
+        for recipient, phone in zip(recipients, phones):
+            recipient.phone = phone or None
+        return recipients
 
     @traced("recipient_repo.list_by_billing")
     def list_by_billing(self, billing_id: int) -> list[Recipient]:
@@ -49,14 +56,15 @@ class SQLAlchemyRecipientRepository(RecipientRepository):
         for i, recipient in enumerate(recipients):
             self.conn.execute(
                 text(
-                    "INSERT INTO billing_recipients (uuid, billing_id, name, email, sort_order, created_at) "
-                    "VALUES (:uuid, :billing_id, :name, :email, :sort_order, :created_at)"
+                    "INSERT INTO billing_recipients (uuid, billing_id, name, email, phone, sort_order, created_at) "
+                    "VALUES (:uuid, :billing_id, :name, :email, :phone, :sort_order, :created_at)"
                 ),
                 {
                     "uuid": str(ULID()),
                     "billing_id": billing_id,
                     "name": self.encryption.encrypt(recipient.name),
                     "email": self.encryption.encrypt(recipient.email),
+                    "phone": self.encryption.encrypt(recipient.phone) if recipient.phone else None,
                     "sort_order": i,
                     "created_at": now,
                 },

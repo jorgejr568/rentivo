@@ -1,8 +1,24 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel
+
+
+class CommType(str, Enum):
+    """Communication types. Each maps to a default template
+    (rentivo/communications/defaults.py) and the document its send job attaches:
+    BILL_READY -> invoice PDF, PAYMENT_RECEIPT -> recibo (payment-receipt) PDF.
+
+    Payment reminders/dunning are a free-form template type (base
+    ``payment_reminder`` plus offset suffixes like ``payment_reminder:d-3``),
+    not an enum member — see rentivo/communications/reminders.py. Their send job
+    falls through to the invoice-PDF attachment branch.
+    """
+
+    BILL_READY = "bill_ready"
+    PAYMENT_RECEIPT = "payment_receipt"
 
 
 class CommunicationTemplate(BaseModel):
@@ -10,7 +26,7 @@ class CommunicationTemplate(BaseModel):
     uuid: str = ""
     owner_type: str  # 'user' | 'organization' | 'billing' | 'system'
     owner_id: int
-    comm_type: str  # 'bill_ready'
+    comm_type: str  # one of CommType
     subject: str
     body_markdown: str
     created_at: datetime | None = None
@@ -21,7 +37,7 @@ class Communication(BaseModel):
     id: int | None = None
     uuid: str = ""
     bill_id: int
-    comm_type: str  # 'bill_ready'
+    comm_type: str  # one of CommType
     recipient_name: str
     recipient_email: str
     subject: str

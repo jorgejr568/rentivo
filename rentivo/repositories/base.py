@@ -70,6 +70,9 @@ class BillRepository(ABC):
     def update_pdf_path(self, bill_id: int, pdf_path: str) -> None: ...
 
     @abstractmethod
+    def update_recibo_pdf_path(self, bill_id: int, recibo_pdf_path: str | None) -> None: ...
+
+    @abstractmethod
     def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None: ...
 
     @abstractmethod

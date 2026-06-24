@@ -48,6 +48,23 @@ def test_values_are_encrypted_at_rest(conn):
     assert raw[1].startswith("b64:v1:")
 
 
+def test_phone_round_trips_and_is_encrypted(conn):
+    repo = _repo(conn)
+    repo.replace_for_billing(
+        1, [Recipient(billing_id=1, name="João", email="joao@example.com", phone="+5511999998888")]
+    )
+    assert repo.list_by_billing(1)[0].phone == "+5511999998888"
+    raw = conn.execute(text("SELECT phone FROM billing_recipients")).scalar()
+    assert raw.startswith("b64:v1:")
+
+
+def test_missing_phone_stored_as_null_and_read_as_none(conn):
+    repo = _repo(conn)
+    repo.replace_for_billing(1, [Recipient(billing_id=1, name="João", email="joao@example.com")])
+    assert repo.list_by_billing(1)[0].phone is None
+    assert conn.execute(text("SELECT phone FROM billing_recipients")).scalar() is None
+
+
 def test_list_empty_returns_empty(conn):
     repo = _repo(conn)
     assert repo.list_by_billing(999) == []

@@ -7,6 +7,7 @@ from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
 from rentivo.storage.local import LocalStorage
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs, get_test_user_id
+from web.analytics import analytics_hash
 from web.services_container import RequestServices
 
 
@@ -174,6 +175,27 @@ class TestBillRegeneratePdf:
             )
         assert response.status_code == 302
 
+    def test_regenerate_paid_bill_also_enqueues_recibo(self, auth_client, test_engine, tmp_path, csrf_token):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            with test_engine.connect() as conn:
+                conn.execute(text("UPDATE bills SET status = 'paid' WHERE id = :id"), {"id": bill.id})
+                conn.commit()
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/regenerate-pdf",
+                data={"csrf_token": csrf_token},
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            recibo = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'recibo.render'")).scalar()
+            invoice = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'pdf.render'")).scalar()
+        assert recibo == 1
+        assert invoice >= 1
+
     def test_regenerate_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
             "/billings/x/bills/nonexistent/regenerate-pdf",
@@ -221,6 +243,46 @@ class TestBillChangeStatus:
             follow_redirects=False,
         )
         assert response.status_code == 302
+
+    def test_change_status_to_paid_enqueues_recibo_render(self, auth_client, test_engine, tmp_path, csrf_token):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "paid"},
+                follow_redirects=False,
+            )
+        with test_engine.connect() as conn:
+            n = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'recibo.render'")).scalar()
+        assert n == 1
+
+    def test_change_status_leaving_paid_enqueues_s3_delete_and_clears(
+        self, auth_client, test_engine, tmp_path, csrf_token
+    ):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET status = 'paid', recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "sent"},
+                follow_redirects=False,
+            )
+        with test_engine.connect() as conn:
+            jobs = conn.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 's3.delete'")).scalar()
+            recibo = conn.execute(text("SELECT recibo_pdf_path FROM bills WHERE id = :id"), {"id": bill.id}).scalar()
+        assert jobs == 1
+        assert recibo is None
 
 
 class TestBillChangeStatusEdgeCases:
@@ -1973,3 +2035,249 @@ class TestReceiptOpsWithoutPix:
         )
         assert response.status_code == 200
         assert response.json() == {"ok": True}
+
+
+class TestReciboAuditConstant:
+    def test_recibo_download_event_type_exists(self):
+        from rentivo.models.audit_log import AuditEventType
+
+        assert AuditEventType.BILL_RECIBO_DOWNLOAD == "bill.recibo_download"
+
+
+class TestBillRecibo:
+    def _mark_paid(self, test_engine, bill):
+        """Set the bill's status to PAID with a status_updated_at timestamp."""
+        from datetime import datetime
+
+        from rentivo.constants import SP_TZ
+
+        with test_engine.connect() as conn:
+            from sqlalchemy import text
+
+            conn.execute(
+                text("UPDATE bills SET status = :s, status_updated_at = :t WHERE id = :id"),
+                {"s": "paid", "t": datetime(2026, 6, 14, 10, 0, tzinfo=SP_TZ), "id": bill.id},
+            )
+            conn.commit()
+
+    def test_recibo_paid_returns_pdf(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 200
+        assert response.headers.get("content-type", "").startswith("application/pdf")
+        disposition = response.headers.get("content-disposition", "")
+        assert disposition == f'attachment; filename="recibo-{bill.uuid}.pdf"'
+        assert response.content[:5] == b"%PDF-"
+        logs = get_audit_logs(test_engine, AuditEventType.BILL_RECIBO_DOWNLOAD)
+        assert len(logs) >= 1
+
+    def test_recibo_serves_stored_file(self, auth_client, test_engine, tmp_path):
+        """When the background-generated recibo exists, the route serves it from storage."""
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with (
+            patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))),
+            patch("web.services_container.get_storage", return_value=LocalStorage(str(tmp_path))),
+        ):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            stored_path = LocalStorage(str(tmp_path)).save("bg/stored.recibo.pdf", b"%PDF-STORED")
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = :p WHERE id = :id"),
+                    {"p": stored_path, "id": bill.id},
+                )
+                conn.commit()
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 200
+        assert response.content == b"%PDF-STORED"
+
+    def test_recibo_redirects_for_remote_storage(self, auth_client, test_engine, tmp_path):
+        """A non-local storage ref (e.g. S3 presigned URL) is served via redirect."""
+        from sqlalchemy import text
+
+        from rentivo.storage.base import FileRef
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            with patch(
+                "rentivo.services.bill_service.BillService.get_recibo_ref",
+                return_value=FileRef(kind="url", location="https://s3.example/recibo.pdf"),
+            ):
+                response = auth_client.get(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                    follow_redirects=False,
+                )
+        assert response.status_code == 302
+        assert response.headers["location"] == "https://s3.example/recibo.pdf"
+
+    def test_recibo_not_paid_redirects(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # default status: draft
+            response = auth_client.get(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert f"/bills/{bill.uuid}" in response.headers["location"]
+
+    def test_recibo_not_found(self, auth_client):
+        response = auth_client.get(
+            "/billings/x/bills/nonexistent/recibo",
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+
+    def test_recibo_rejects_unauthorized_user(self, auth_client, test_engine, tmp_path):
+        other_billing = _create_other_user_billing(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, other_billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(
+                f"/billings/{other_billing.uuid}/bills/{bill.uuid}/recibo",
+                follow_redirects=False,
+            )
+        assert response.status_code == 302
+        assert response.headers["location"] == "/"
+
+    def test_recibo_fires_gtm_event(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            captured: list[dict] = []
+            with patch("web.routes.bill.push_event", side_effect=lambda req, ev: captured.append(ev)):
+                response = auth_client.get(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/recibo",
+                    follow_redirects=False,
+                )
+        assert response.status_code == 200
+        captured_event = next(e for e in captured if e["event"] == "rentivo_recibo_downloaded")
+        assert captured_event["bill_uuid_hash"] == analytics_hash(bill.uuid)
+        assert captured_event["bill_uuid_hash"] != bill.uuid
+
+    def test_detail_shows_recibo_button_when_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        assert f"/bills/{bill.uuid}/recibo" in response.text
+        assert "Baixar recibo" in response.text
+
+    def test_detail_hides_recibo_button_when_not_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # draft
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        assert f"/bills/{bill.uuid}/recibo" not in response.text
+
+    def test_detail_shows_send_recibo_button_when_recibo_available(self, auth_client, test_engine, tmp_path):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        assert "communications/compose?type=payment_receipt" in response.text
+        assert "Enviar recibo" in response.text
+
+    def test_detail_send_dropdown_lists_fatura_and_recibo(self, auth_client, test_engine, tmp_path):
+        from sqlalchemy import text
+
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            with test_engine.connect() as conn:
+                conn.execute(
+                    text("UPDATE bills SET recibo_pdf_path = 'bg/recibo.pdf' WHERE id = :id"),
+                    {"id": bill.id},
+                )
+                conn.commit()
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        # The two separate send buttons are now one dropdown trigger.
+        assert "Enviar comunicação" in html
+        assert "btn-dropdown-toggle" in html
+        # Both documents are enabled options.
+        assert "communications/compose?type=bill_ready" in html
+        assert "Enviar fatura" in html
+        assert "communications/compose?type=payment_receipt" in html
+        assert "Enviar recibo" in html
+        assert "btn-dropdown-item--disabled" not in html
+
+    def test_detail_send_dropdown_disables_recibo_when_unavailable(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # draft, unpaid, no recibo
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        # Fatura is still sendable from the dropdown...
+        assert "Enviar comunicação" in html
+        assert "communications/compose?type=bill_ready" in html
+        assert "Enviar fatura" in html
+        # ...but the recibo option is shown disabled with a hint, not a working link.
+        assert "communications/compose?type=payment_receipt" not in html
+        assert "btn-dropdown-item--disabled" in html
+        assert "Enviar recibo" in html
+
+    def test_detail_baixar_dropdown_enables_recibo_when_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            self._mark_paid(test_engine, bill)
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        assert "Baixar <span" in html  # the dropdown trigger (text + caret)
+        assert f"/bills/{bill.uuid}/invoice" in html
+        assert "Baixar fatura" in html
+        # Download works on-the-fly for any paid bill — no recibo_pdf_path required.
+        assert f"/bills/{bill.uuid}/recibo" in html
+        assert "Baixar recibo" in html
+
+    def test_detail_baixar_dropdown_disables_recibo_when_not_paid(self, auth_client, test_engine, tmp_path):
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)  # draft, unpaid
+            response = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")
+        assert response.status_code == 200
+        html = response.text
+        assert "Baixar <span" in html  # the dropdown trigger
+        assert f"/bills/{bill.uuid}/invoice" in html
+        assert "Baixar fatura" in html
+        # Recibo download disabled (no working /recibo link) until the bill is paid.
+        assert f"/bills/{bill.uuid}/recibo" not in html
+        assert "btn-dropdown-item--disabled" in html
