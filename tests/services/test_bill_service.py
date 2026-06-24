@@ -137,11 +137,13 @@ class TestBillService:
         assert result.pdf_path == "/regen/path.pdf"
 
     def test_change_status_to_paid(self):
+        # sent → paid is the canonical "mark as paid" transition.
         bill = Bill(
             id=1,
             uuid="u",
             billing_id=1,
             reference_month="2025-03",
+            status="sent",
         )
         result = self.service.change_status(bill, "paid")
         self.mock_repo.update_status.assert_called_once()
@@ -149,18 +151,52 @@ class TestBillService:
         assert result.status_updated_at is not None
 
     def test_change_status_to_draft(self):
+        # published → draft (back to rascunho) is an allowed backward transition.
         bill = Bill(
             id=1,
             uuid="u",
             billing_id=1,
             reference_month="2025-03",
-            status="paid",
+            status="published",
             status_updated_at=datetime.now(SP_TZ),
         )
         result = self.service.change_status(bill, "draft")
         self.mock_repo.update_status.assert_called_once()
         assert result.status == "draft"
         assert result.status_updated_at is not None
+
+    def test_change_status_rejects_disallowed_transition(self):
+        # paid → draft is not in the lifecycle; the service must reject it
+        # (defense-in-depth, REN-21) without touching the repo.
+        import pytest
+
+        from rentivo.models.bill import InvalidStatusTransition
+
+        bill = Bill(
+            id=1,
+            uuid="u",
+            billing_id=1,
+            reference_month="2025-03",
+            status="paid",
+        )
+        with pytest.raises(InvalidStatusTransition):
+            self.service.change_status(bill, "draft")
+        self.mock_repo.update_status.assert_not_called()
+        # Bill state is left untouched.
+        assert bill.status == "paid"
+
+    def test_change_status_noop_same_status_allowed(self):
+        # A no-op (same status) is idempotent and allowed.
+        bill = Bill(
+            id=1,
+            uuid="u",
+            billing_id=1,
+            reference_month="2025-03",
+            status="sent",
+        )
+        result = self.service.change_status(bill, "sent")
+        self.mock_repo.update_status.assert_called_once()
+        assert result.status == "sent"
 
     def test_get_invoice_url(self):
         self.mock_storage.get_url.return_value = "https://example.com/file.pdf"

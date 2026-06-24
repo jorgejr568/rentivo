@@ -7,8 +7,15 @@ as consequential (require a confirmation dialog).
 
 from __future__ import annotations
 
-from rentivo.models.bill import BillStatus
+from rentivo.models.bill import ALLOWED_STATUS_TRANSITIONS, BillStatus
 from web.bill_transitions import STATUS_LABELS, transitions_for
+
+
+def _offered_targets(status: str) -> set[str]:
+    """The set of target statuses the UI policy offers from ``status``."""
+    primary, others = transitions_for(status)
+    offered = ([primary] if primary else []) + list(others)
+    return {t.to for t in offered}
 
 
 def test_expected_primary_next_action_per_status():
@@ -75,3 +82,17 @@ def test_all_offered_transitions_are_valid_bill_statuses():
 
 def test_unknown_status_offers_nothing():
     assert transitions_for("not_a_status") == (None, [])
+
+
+def test_ui_policy_matches_server_lifecycle():
+    """Defense-in-depth (REN-21): the UI affordance policy and the server-enforced
+    ALLOWED_STATUS_TRANSITIONS must not drift. Every status offered in the UI must
+    match exactly the set of transitions the backend will accept."""
+    for status in ALLOWED_STATUS_TRANSITIONS:
+        assert _offered_targets(status) == set(ALLOWED_STATUS_TRANSITIONS[status]), (
+            f"UI policy and server lifecycle disagree for status {status!r}"
+        )
+    # Every status that offers UI transitions is also a key in the server map.
+    for status in STATUS_LABELS:
+        if _offered_targets(status):
+            assert status in ALLOWED_STATUS_TRANSITIONS, f"{status!r} offers transitions but has no server policy"

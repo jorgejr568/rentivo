@@ -10,9 +10,11 @@ from a given status and *how* each is presented: the dominant next-step action,
 the rarer "Alterar status" options, and which transitions are consequential
 enough to require an explicit, side-effect-describing confirmation.
 
-It only shapes the UI affordances. The route still validates the submitted
-status; defense-in-depth server enforcement of the lifecycle is tracked
-separately with the backend.
+It shapes the UI affordances. The lifecycle itself — *which* transitions are
+permitted — is owned by ``rentivo.models.bill.ALLOWED_STATUS_TRANSITIONS`` and
+enforced server-side in ``BillService.change_status`` (REN-21). The targets
+offered by ``_POLICY`` below MUST stay in sync with that canonical map; a
+consistency test (tests/web/test_bill_transitions.py) fails if they drift.
 """
 
 from __future__ import annotations

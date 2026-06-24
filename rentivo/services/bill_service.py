@@ -5,7 +5,7 @@ from datetime import datetime
 import structlog
 
 from rentivo.constants import SP_TZ
-from rentivo.models.bill import Bill, BillLineItem, BillStatus
+from rentivo.models.bill import Bill, BillLineItem, BillStatus, InvalidStatusTransition, is_transition_allowed
 from rentivo.models.billing import Billing, ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
 from rentivo.models.recipient import Recipient
@@ -501,6 +501,17 @@ class BillService:
         BillStatus(new_status)  # raises ValueError if invalid
         if bill.id is None:
             raise ValueError("Cannot change status for bill without an id")
+        # Defense-in-depth: enforce the lifecycle server-side so a crafted POST
+        # cannot perform any-to-any transitions (e.g. paid → draft) that the UI
+        # never offers. Source of truth is ALLOWED_STATUS_TRANSITIONS (REN-21).
+        if not is_transition_allowed(bill.status, new_status):
+            logger.warning(
+                "bill_status_transition_rejected",
+                bill_id=bill.id,
+                current_status=bill.status,
+                new_status=new_status,
+            )
+            raise InvalidStatusTransition(bill.status, new_status)
         previous_status = bill.status
         now = datetime.now(SP_TZ)
         self.bill_repo.update_status(bill.id, new_status, now)

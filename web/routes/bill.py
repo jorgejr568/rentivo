@@ -7,7 +7,7 @@ from starlette.datastructures import UploadFile
 
 from rentivo.export.serializers import format_label
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.bill import BillLineItem, BillStatus
+from rentivo.models.bill import BillLineItem, BillStatus, InvalidStatusTransition
 from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
@@ -328,6 +328,8 @@ async def bill_change_status(request: Request, ctx: BillContext = Depends(requir
 
     try:
         bill_service.change_status(bill, new_status, billing=billing, actor=request.state.actor)
+    except InvalidStatusTransition:
+        return flash_redirect(request, "Transição de status inválida.", f"/billings/{billing.uuid}/bills/{bill.uuid}")
     except ValueError:
         return flash_redirect(request, "Status inválido.", f"/billings/{billing.uuid}/bills/{bill.uuid}")
 
