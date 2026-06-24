@@ -89,7 +89,8 @@
 .fcard--accent .fcard__icon { background: rgba(0,0,0,0.18); border-color: rgba(255,255,255,0.3); color: #fff; }
 .fcard h3 { color: #fff; font-size: 1.12rem; margin-bottom: 0.45rem; }
 .fcard p { color: rgba(255,255,255,0.72); font-size: 0.9rem; line-height: 1.55; margin: 0; }
-.fcard--accent p { color: rgba(255,255,255,0.92); }
+/* Full #fff on the darker --accent-dark fill = 5.14:1, matching h3 (was 92% / 4.61:1, tuned for the lighter --accent). REN-42. */
+.fcard--accent p { color: #fff; }
 
 /* ─── Steps ─── */
 .steps-sec { padding: 4rem 0; }
