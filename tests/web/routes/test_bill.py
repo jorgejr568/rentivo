@@ -79,6 +79,32 @@ class TestBillDetail:
         response = auth_client.get("/billings/x/bills/nonexistent", follow_redirects=False)
         assert response.status_code == 302
 
+    def test_detail_renders_policy_status_menu(self, auth_client, test_engine, tmp_path, csrf_token):
+        """REN-40: the legacy <select onchange> is replaced by the policy-driven
+        action bar (web/bill_transitions.py). A 'sent' bill exposes the dominant
+        "Marcar como pago" primary action wired to the shared confirm dialog, plus
+        an "Alterar status" menu of the rarer moves."""
+        billing = create_billing_in_db(test_engine)
+        with patch("web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/change-status",
+                data={"csrf_token": csrf_token, "status": "sent"},
+                follow_redirects=False,
+            )
+            html = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}").text
+
+        # Legacy flat select with silent JS submit is gone.
+        assert 'onchange="this.form.submit()"' not in html
+        # Dominant next step + its consequential confirm wiring (primary variant).
+        assert "Marcar como pago" in html
+        assert 'data-confirm-variant="primary"' in html
+        assert 'data-confirm-body="Isto marca a fatura como paga' in html
+        # Rarer moves live behind the status menu; cancel is a danger confirm.
+        assert 'class="status-menu"' in html
+        assert 'data-confirm-variant="danger"' in html
+        assert 'name="status" value="cancelled"' in html
+
 
 class TestBillEdit:
     def test_edit_form(self, auth_client, test_engine, tmp_path):

@@ -10,6 +10,7 @@ from rentivo.models.bill import BillLineItem
 from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
+from web.bill_transitions import transitions_for
 from web.deps import render
 from web.flash import flash, flash_redirect
 from web.forms import parse_brl, parse_extras, parse_line_items, safe_redirect_path
@@ -105,6 +106,7 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
     bill_service = request.state.services.bill
     receipts = bill_service.list_receipts(ctx.bill.id) if ctx.bill.id else []
     communications = request.state.services.communication.list_for_bill(ctx.bill.id) if ctx.bill.id else []
+    status_primary, status_others = transitions_for(ctx.bill.status)
     return render(
         request,
         "bill/detail.html",
@@ -114,6 +116,8 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
             "role": ctx.role,
             "receipts": receipts,
             "communications": communications,
+            "status_primary": status_primary,
+            "status_others": status_others,
         },
     )
 

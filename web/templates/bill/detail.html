@@ -109,17 +109,31 @@
     <div class="panel__head"><h3>Gerenciar fatura</h3></div>
     <div class="panel__body">
         <div class="btn-row">
-            <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/change-status" class="inline-form">
+            {# Status transitions are policy-driven (web/bill_transitions.py): the
+               dominant next step is a primary button; rarer/backward moves live in
+               the "Alterar status" menu. Consequential moves carry data-confirm*
+               and open the shared confirm dialog (app.js). #}
+            {% macro status_form(t, btn_class) %}
+            <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/change-status" class="inline-form"
+                  {%- if t.confirm %} data-confirm
+                  data-confirm-variant="{{ t.variant }}"
+                  data-confirm-title="{{ t.confirm_title }}"
+                  data-confirm-body="{{ t.confirm_body }}"
+                  data-confirm-accept="{{ t.confirm_accept }}"{% endif %}>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <select name="status" class="select" style="width: auto; display: inline-block;" onchange="this.form.submit()">
-                    <option value="draft" {% if bill.status == "draft" %}selected{% endif %}>Rascunho</option>
-                    <option value="published" {% if bill.status == "published" %}selected{% endif %}>Publicado</option>
-                    <option value="sent" {% if bill.status == "sent" %}selected{% endif %}>Enviado</option>
-                    <option value="paid" {% if bill.status == "paid" %}selected{% endif %}>Pago</option>
-                    <option value="cancelled" {% if bill.status == "cancelled" %}selected{% endif %}>Cancelado</option>
-                    <option value="delayed_payment" {% if bill.status == "delayed_payment" %}selected{% endif %}>Pag. Atrasado</option>
-                </select>
+                <input type="hidden" name="status" value="{{ t.to }}">
+                <button type="submit" class="{{ btn_class }}">{{ t.label }}</button>
             </form>
+            {% endmacro %}
+            {% if status_primary %}{{ status_form(status_primary, "btn btn--primary") }}{% endif %}
+            {% if status_others %}
+            <details class="status-menu">
+                <summary class="btn">Alterar status</summary>
+                <div class="status-menu__list" role="menu">
+                    {% for t in status_others %}{{ status_form(t, "status-menu__item") }}{% endfor %}
+                </div>
+            </details>
+            {% endif %}
             <form method="post" action="/billings/{{ billing.uuid }}/bills/{{ bill.uuid }}/regenerate-pdf" class="inline-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn">Regenerar PDF</button>
