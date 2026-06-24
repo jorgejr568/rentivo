@@ -54,5 +54,10 @@ class Bill(BaseModel):
     status: str = BillStatus.DRAFT.value
     status_updated_at: datetime | None = None
     pdf_render_status: str | None = None
+    # Dynamic-PIX (PSP) linkage — non-PII operational identifiers, all nullable.
+    pix_provider: str | None = None
+    pix_charge_id: str | None = None
+    pix_txid: str | None = None
+    pix_e2eid: str | None = None
     created_at: datetime | None = None
     deleted_at: datetime | None = None

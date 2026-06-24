@@ -99,6 +99,10 @@ class SQLAlchemyBillRepository(BillRepository):
             status=row.get("status", "draft"),
             status_updated_at=row.get("status_updated_at"),
             pdf_render_status=row.get("pdf_render_status"),
+            pix_provider=row.get("pix_provider"),
+            pix_charge_id=row.get("pix_charge_id"),
+            pix_txid=row.get("pix_txid"),
+            pix_e2eid=row.get("pix_e2eid"),
             created_at=row["created_at"],
             deleted_at=row["deleted_at"],
         )
