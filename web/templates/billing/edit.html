@@ -117,6 +117,10 @@
                             <input type="email" class="input" name="recipients-{{ loop.index0 }}-email" value="{{ r.email }}">
                         </div>
                         <div class="field mb-0">
+                            <label class="field__label">WhatsApp <span class="muted">(opcional)</span></label>
+                            <input type="tel" class="input" name="recipients-{{ loop.index0 }}-phone" value="{{ r.phone or '' }}" placeholder="+55 11 99999-8888">
+                        </div>
+                        <div class="field mb-0">
                             <label class="field__label sr-only">Remover</label>
                             <button type="button" class="icon-btn" onclick="removeFormsetRow('recipients', {{ loop.index0 }})" title="Remover destinatário" aria-label="Remover destinatário">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
@@ -135,6 +139,10 @@
                     <div class="field mb-0">
                         <label class="field__label">E-mail</label>
                         <input type="email" class="input" name="recipients-__prefix__-email" placeholder="joao@email.com">
+                    </div>
+                    <div class="field mb-0">
+                        <label class="field__label">WhatsApp <span class="muted">(opcional)</span></label>
+                        <input type="tel" class="input" name="recipients-__prefix__-phone" placeholder="+55 11 99999-8888">
                     </div>
                     <div class="field mb-0">
                         <label class="field__label sr-only">Remover</label>
@@ -289,6 +297,61 @@
         </div>
     </div>
 </form>
+
+<!-- Documents (outside the main form — has its own upload form) -->
+<div class="panel" style="margin-top: 1.5rem;">
+    <div class="panel__head"><h3>Documentos</h3><span class="panel__title-eyebrow">Contrato, etc.</span></div>
+    <div class="panel__body">
+        {% if attachments %}
+        <div class="table-wrap" style="margin-bottom: 1rem;">
+            <table class="table">
+                <thead>
+                    <tr><th>Nome</th><th>Arquivo</th><th class="num">Tamanho</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for attachment in attachments %}
+                    <tr>
+                        <td class="table__primary">{{ attachment.name }}</td>
+                        <td class="muted">{{ attachment.filename }}</td>
+                        <td class="num">{{ "%.1f" | format(attachment.file_size / 1024) }} KB</td>
+                        <td class="num" style="white-space: nowrap;">
+                            <a href="/billings/{{ billing.uuid }}/attachments/{{ attachment.uuid }}"
+                               target="_blank" class="btn btn--sm">Ver</a>
+                            <form method="post"
+                                  action="/billings/{{ billing.uuid }}/attachments/{{ attachment.uuid }}/delete"
+                                  style="display:inline"
+                                  onsubmit="return confirm('Remover documento?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn--sm btn--danger">Remover</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="muted mb-2" style="font-size: 0.88rem;">Nenhum documento anexado.</p>
+        {% endif %}
+
+        <form method="post"
+              action="/billings/{{ billing.uuid }}/attachments/upload"
+              enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="field">
+                <label for="attachment_name" class="field__label">Nome do documento</label>
+                <input type="text" class="input" id="attachment_name" name="name" maxlength="255" placeholder="Ex.: Contrato de locação">
+            </div>
+            <div class="field">
+                <label for="attachment_file" class="field__label">Arquivo</label>
+                <input type="file" class="input" id="attachment_file" name="attachment_file"
+                       accept=".pdf,.jpg,.jpeg,.png">
+                <span class="field__hint">PDF, JPG ou PNG. Máximo 10 MB.</span>
+            </div>
+            <button type="submit" class="btn btn--sm btn--primary">Enviar</button>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}

@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from rentivo.communications.moderation import scan
 from rentivo.communications.render import render_markdown
 from rentivo.models.audit_log import AuditEventType
+from rentivo.models.communication import CommType
 from rentivo.services.audit_serializers import serialize_communication
 from web.analytics import analytics_hash, push_event
 from web.deps import render
@@ -18,11 +19,32 @@ logger = structlog.get_logger(__name__)
 router = APIRouter(prefix="/billings/{billing_uuid}/bills/{bill_uuid}/communications")
 
 
+def _parse_comm_type(raw: str) -> CommType | None:
+    """Strictly parse a communication type — no silent default, so a bad value is
+    rejected instead of coerced into sending the wrong document."""
+    try:
+        return CommType(raw.strip())
+    except ValueError:
+        return None
+
+
 @router.get("/compose")
 async def communication_compose(request: Request, ctx: BillContext = Depends(require_bill("manage"))):
     bill, billing = ctx.bill, ctx.billing
     services = request.state.services
-    template = services.communication.resolve_template(billing, "bill_ready")
+    bill_url = f"/billings/{billing.uuid}/bills/{bill.uuid}"
+
+    comm_type = _parse_comm_type(str(request.query_params.get("type", "")))
+    if comm_type is None:
+        return flash_redirect(request, "Tipo de comunicação inválido.", bill_url)
+    if comm_type is CommType.PAYMENT_RECEIPT and not bill.recibo_pdf_path:
+        return flash_redirect(
+            request,
+            "O recibo ainda não está disponível. Ele é gerado quando a fatura é marcada como paga.",
+            bill_url,
+        )
+
+    template = services.communication.resolve_template(billing, comm_type.value)
     recipients = services.recipient.list_for_billing(billing.id) if billing.id else []
     return render(
         request,
@@ -33,6 +55,7 @@ async def communication_compose(request: Request, ctx: BillContext = Depends(req
             "template": template,
             "recipients": recipients,
             "role": ctx.role,
+            "comm_type": comm_type.value,
         },
     )
 
@@ -52,12 +75,19 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
     services = request.state.services
 
     bill_url = f"/billings/{billing.uuid}/bills/{bill.uuid}"
-    compose_url = f"{bill_url}/communications/compose"
-
-    if not bill.pdf_path:
-        return flash_redirect(request, "Gere o PDF da fatura antes de enviar a comunicação.", bill_url)
 
     form = await request.form()
+    comm_type = _parse_comm_type(str(form.get("comm_type", "")))
+    if comm_type is None:
+        return flash_redirect(request, "Tipo de comunicação inválido.", bill_url)
+    compose_url = f"{bill_url}/communications/compose?type={comm_type.value}"
+
+    if comm_type is CommType.PAYMENT_RECEIPT:
+        if not bill.recibo_pdf_path:
+            return flash_redirect(request, "O recibo ainda não está disponível para envio.", bill_url)
+    elif not bill.pdf_path:
+        return flash_redirect(request, "Gere o PDF da fatura antes de enviar a comunicação.", bill_url)
+
     subject = str(form.get("subject", "")).strip()
     body = str(form.get("body", "")).strip()
     selected = set(form.getlist("recipient_uuids"))
@@ -115,12 +145,13 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
         subject_template=subject,
         body_template=body,
         actor=request.state.actor,
+        comm_type=comm_type.value,
     )
 
     if save_scope == "billing":
-        services.communication.save_template("billing", billing.id, "bill_ready", subject, body)
+        services.communication.save_template("billing", billing.id, comm_type.value, subject, body)
     elif save_scope == "owner":
-        services.communication.save_template(billing.owner_type, billing.owner_id, "bill_ready", subject, body)
+        services.communication.save_template(billing.owner_type, billing.owner_id, comm_type.value, subject, body)
     if save_scope in ("billing", "owner"):
         services.audit.safe_log_for(
             request.state.actor,
@@ -128,7 +159,7 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
             entity_type="billing",
             entity_id=billing.id,
             entity_uuid=billing.uuid,
-            new_state={"scope": save_scope, "comm_type": "bill_ready"},
+            new_state={"scope": save_scope, "comm_type": comm_type.value},
         )
 
     for comm in comms:
@@ -159,7 +190,7 @@ async def communication_send(request: Request, ctx: BillContext = Depends(requir
             "event": "rentivo_communication_sent",
             "bill_uuid_hash": analytics_hash(bill.uuid),
             "recipient_count": len(comms),
-            "comm_type": "bill_ready",
+            "comm_type": comm_type.value,
         },
     )
     return RedirectResponse(bill_url, status_code=302)

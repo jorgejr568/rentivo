@@ -25,6 +25,7 @@ class AuditEventType:
     BILLING_DELETE = "billing.delete"
     BILLING_TRANSFER = "billing.transfer"
     BILLING_READJUSTED = "billing.readjusted"
+    BILLING_EXPORT = "billing.export"
 
     # Bill events
     BILL_CREATE = "bill.create"
@@ -32,11 +33,16 @@ class AuditEventType:
     BILL_DELETE = "bill.delete"
     BILL_STATUS_CHANGE = "bill.status_change"
     BILL_REGENERATE_PDF = "bill.regenerate_pdf"
+    BILL_RECIBO_DOWNLOAD = "bill.recibo_download"
 
     # Receipt events
     RECEIPT_UPLOAD = "receipt.upload"
     RECEIPT_DELETE = "receipt.delete"
     RECEIPT_REORDER = "receipt.reorder"
+
+    # Billing attachment events
+    ATTACHMENT_UPLOAD = "attachment.upload"
+    ATTACHMENT_DELETE = "attachment.delete"
 
     # Organization events
     ORGANIZATION_CREATE = "organization.create"
@@ -76,6 +82,7 @@ class AuditEventType:
     BILLING_REPLY_TO_UPDATED = "billing.reply_to_updated"
     COMMUNICATION_BLOCKED = "communication.blocked"
     COMMUNICATION_FLAGGED_OVERRIDE = "communication.flagged_override"
+    WHATSAPP_INVOICE_CLICKED = "whatsapp.invoice_clicked"
 
     # Job queue events
     JOB_ENQUEUED = "job.enqueued"

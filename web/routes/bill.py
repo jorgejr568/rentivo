@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import structlog
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from starlette.datastructures import UploadFile
 
+from rentivo.export.serializers import format_label
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.bill import BillLineItem
+from rentivo.models.bill import BillLineItem, BillStatus
 from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
 from web.analytics import analytics_hash, push_event
@@ -100,11 +101,67 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
+# NOTE: this route MUST stay registered before the "/{bill_uuid}" catch-all
+# below, otherwise "export" would be captured as a bill_uuid and shadowed.
+@router.post("/export")
+async def bill_export(request: Request, ctx: BillingContext = Depends(require_billing("view"))):
+    """Kick off a background export of the billing's bills, e-mailed to the
+    requesting account.
+
+    The file is built + uploaded by ``export.generate``, then ``export.send``
+    mails it to the account that clicked (NOT the billing's tenant recipients)
+    and cleans up the temp object. The response is just a flash + redirect.
+    """
+    billing = ctx.billing
+    actor = request.state.actor
+
+    form = await request.form()
+    fmt = str(form.get("format", "csv")).strip().lower()
+    if fmt != "xlsx":
+        fmt = "csv"
+
+    request.state.services.job.enqueue_for(
+        actor,
+        "export.generate",
+        {"billing_id": billing.id, "format": fmt, "requested_by_user_id": actor.user_id},
+    )
+
+    audit = request.state.services.audit
+    audit.safe_log_for(
+        actor,
+        AuditEventType.BILLING_EXPORT,
+        entity_type="billing",
+        entity_id=billing.id,
+        entity_uuid=billing.uuid,
+        new_state={"format": fmt},
+    )
+    push_event(
+        request,
+        {
+            "event": "rentivo_data_exported",
+            "billing_uuid_hash": analytics_hash(billing.uuid),
+            "export_format": fmt,
+        },
+    )
+
+    return flash_redirect(
+        request,
+        f"Exportação iniciada. As faturas em {format_label(fmt)} serão enviadas para o seu e-mail.",
+        f"/billings/{billing.uuid}",
+        category="success",
+    )
+
+
 @router.get("/{bill_uuid}")
 async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill("view"))):
     bill_service = request.state.services.bill
     receipts = bill_service.list_receipts(ctx.bill.id) if ctx.bill.id else []
     communications = request.state.services.communication.list_for_bill(ctx.bill.id) if ctx.bill.id else []
+    # Recipients with a phone number can receive the invoice via a WhatsApp
+    # deep link. The link itself is built (and the click instrumented) by the
+    # /whatsapp redirect endpoint, so here we only need to know who to offer.
+    recipients = request.state.services.recipient.list_for_billing(ctx.billing.id) if ctx.billing.id else []
+    whatsapp_recipients = [r for r in recipients if r.phone]
     return render(
         request,
         "bill/detail.html",
@@ -114,8 +171,52 @@ async def bill_detail(request: Request, ctx: BillContext = Depends(require_bill(
             "role": ctx.role,
             "receipts": receipts,
             "communications": communications,
+            "whatsapp_recipients": whatsapp_recipients,
         },
     )
+
+
+@router.get("/{bill_uuid}/whatsapp")
+async def bill_whatsapp(request: Request, recipient: str = "", ctx: BillContext = Depends(require_bill("view"))):
+    """Record a "Send via WhatsApp" click and redirect to the wa.me deep link.
+
+    Building the link server-side keeps the PIX copia-e-cola construction in one
+    place and gives us a reliable adoption signal (audit log + analytics event)
+    for the cheapest WhatsApp test before any BSP investment.
+    """
+    bill, billing = ctx.bill, ctx.billing
+    back = f"/billings/{billing.uuid}/bills/{bill.uuid}"
+
+    recipients = request.state.services.recipient.list_for_billing(billing.id) if billing.id else []
+    target = next((r for r in recipients if r.uuid == recipient and r.phone), None)
+    if target is None:
+        return flash_redirect(request, "Destinatário sem número de WhatsApp.", back)
+
+    try:
+        link = request.state.services.bill.build_whatsapp_link(bill, billing, target)
+    except ValueError as exc:
+        return flash_redirect(request, str(exc), back)
+    if link is None:
+        return flash_redirect(request, "Número de WhatsApp inválido.", back)
+
+    request.state.services.audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.WHATSAPP_INVOICE_CLICKED,
+        entity_type="bill",
+        entity_id=bill.id,
+        entity_uuid=bill.uuid,
+        new_state={"recipient_uuid": target.uuid},
+    )
+    push_event(
+        request,
+        {
+            "event": "rentivo_whatsapp_invoice_click",
+            "bill_uuid_hash": analytics_hash(bill.uuid),
+            "recipient_uuid_hash": analytics_hash(target.uuid),
+        },
+    )
+    logger.info("whatsapp_invoice_clicked", bill_uuid=bill.uuid, recipient_uuid=target.uuid)
+    return RedirectResponse(link, status_code=302)
 
 
 @router.get("/{bill_uuid}/edit")
@@ -201,11 +302,13 @@ async def bill_regenerate_pdf(request: Request, ctx: BillContext = Depends(requi
         new_state={"pdf_render_status": bill.pdf_render_status},
     )
 
-    flash(
-        request,
-        "Regeneração do PDF iniciada. O download estará disponível em alguns segundos.",
-        "success",
-    )
+    # A PAID bill also regenerates its recibo (see BillService.regenerate_pdf),
+    # so tell the user both documents are being rebuilt.
+    if bill.status == "paid":
+        message = "Regeneração da fatura e do recibo iniciada. Os downloads estarão disponíveis em alguns segundos."
+    else:
+        message = "Regeneração do PDF iniciada. O download estará disponível em alguns segundos."
+    flash(request, message, "success")
     push_event(request, {"event": "rentivo_bill_regenerated", "bill_uuid_hash": analytics_hash(bill.uuid)})
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
@@ -220,7 +323,7 @@ async def bill_change_status(request: Request, ctx: BillContext = Depends(requir
     previous_status = bill.status
 
     try:
-        bill_service.change_status(bill, new_status)
+        bill_service.change_status(bill, new_status, billing=billing, actor=request.state.actor)
     except ValueError:
         return flash_redirect(request, "Status inválido.", f"/billings/{billing.uuid}/bills/{bill.uuid}")
 
@@ -290,6 +393,52 @@ async def bill_invoice(request: Request, ctx: BillContext = Depends(require_bill
     if ref.kind == "local":
         return FileResponse(ref.location, media_type="application/pdf")
     return RedirectResponse(ref.location, status_code=302)
+
+
+@router.get("/{bill_uuid}/recibo")
+async def bill_recibo(request: Request, ctx: BillContext = Depends(require_bill("view"))):
+    bill, billing = ctx.bill, ctx.billing
+
+    if bill.status != BillStatus.PAID.value:
+        logger.warning("recibo_not_paid", bill_uuid=bill.uuid, status=bill.status)
+        return flash_redirect(
+            request,
+            "O recibo só fica disponível quando a fatura está paga.",
+            f"/billings/{billing.uuid}/bills/{bill.uuid}",
+        )
+
+    bill_service = request.state.services.bill
+    audit = request.state.services.audit
+    audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.BILL_RECIBO_DOWNLOAD,
+        entity_type="bill",
+        entity_id=bill.id,
+        entity_uuid=bill.uuid,
+    )
+    push_event(request, {"event": "rentivo_recibo_downloaded", "bill_uuid_hash": analytics_hash(bill.uuid)})
+
+    # The recibo is rendered in the background when the bill becomes PAID. Serve
+    # the stored object when it exists; during the brief render window (or if the
+    # worker is behind) fall back to rendering on the fly so the download never
+    # breaks.
+    if bill.recibo_pdf_path:
+        ref = bill_service.get_recibo_ref(bill)
+        logger.debug("recibo_ref", storage_key=bill.recibo_pdf_path, kind=ref.kind)
+        if ref.kind == "local":
+            return FileResponse(
+                ref.location,
+                media_type="application/pdf",
+                filename=f"recibo-{bill.uuid}.pdf",
+            )
+        return RedirectResponse(ref.location, status_code=302)
+
+    pdf_bytes = bill_service.render_recibo(bill, billing)
+    return Response(
+        content=bytes(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="recibo-{bill.uuid}.pdf"'},
+    )
 
 
 @router.get("/{bill_uuid}/receipts/{receipt_uuid}")

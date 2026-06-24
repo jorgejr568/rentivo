@@ -16,7 +16,7 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 - Money is stored as **centavos (int)** — never floats. Format with `rentivo.models.format_brl()`.
 - Currency is **BRL (R$)**.
 - Keep the repository / storage / encryption / cache abstractions intact — backends must stay swappable.
-- Dependencies are managed with **uv**: edit `pyproject.toml`, run `uv lock`, commit `uv.lock`. Never bare `pip`/`python`/`pytest` — use `uv run ...` or `.venv/bin/...`.
+- Dependencies are managed with **uv**: edit `pyproject.toml`, run `uv lock`, commit `uv.lock`. Never bare `pip`/`python`/`pytest` — use `uv run ...`.
 - Lint and formatting are enforced by ruff (`make fmt` to fix).
 
 ## Tests
@@ -27,7 +27,7 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 
 ## Database migrations
 
-- Generate revisions with `.venv/bin/alembic revision -m "description"` — **never hand-write revision IDs**.
+- Generate revisions with `uv run alembic revision -m "description"` — **never hand-write revision IDs**.
 - Migrations that drop or rename columns are breaking changes (see Versioning below).
 
 ## Commits & pull requests

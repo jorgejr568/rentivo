@@ -5,8 +5,9 @@ Run with: ``python -m rentivo.workers``
 Dispatches on ``RENTIVO_JOB_BACKEND``: the ``database`` driver runs the
 polling ``Worker`` over the jobs table; the ``temporal`` driver hands off to
 ``rentivo.jobs.temporal.runner``. Either way the registered handlers
-(``email.send``, ``communication.send``, ``pdf.render``, ``s3.delete``) plug
-in via the registry without touching this file.
+(``email.send``, ``communication.send``, ``pdf.render``, ``recibo.render``,
+``s3.delete``, ``export.generate``) plug in via the registry without touching
+this file.
 
 This module is omitted from coverage; its job is to wire production config
 into the chosen driver. The ``Worker`` class and the Temporal runner are

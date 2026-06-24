@@ -37,6 +37,10 @@ class Billing(BaseModel):
     pix_merchant_city: str = ""
     owner_type: str = "user"
     owner_id: int = 0
+    # Per-template landlord toggle for automated payment reminders / dunning.
+    # Defaults on so existing templates keep nagging late-payers; a landlord can
+    # opt a template out without deleting its reminder copy.
+    reminders_enabled: bool = True
     items: list[BillingItem] = []
     readjustment_index: ReadjustmentIndex = ReadjustmentIndex.NONE
     readjustment_month: int | None = None  # 1-12 anniversary month, None when not configured

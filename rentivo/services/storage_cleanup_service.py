@@ -4,9 +4,10 @@ import structlog
 
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
+from rentivo.models.billing_attachment import BillingAttachment
 from rentivo.models.receipt import Receipt
 from rentivo.observability import traced
-from rentivo.repositories.base import BillRepository, ReceiptRepository
+from rentivo.repositories.base import BillingAttachmentRepository, BillRepository, ReceiptRepository
 from rentivo.services.job_service import JobService
 
 logger = structlog.get_logger(__name__)
@@ -19,8 +20,8 @@ class StorageCleanupService:
     docs/superpowers/specs/2026-05-02-s3-delete-job-design.md. In short:
 
     - delete_receipt -> 1 job (the receipt's storage_key)
-    - delete_bill    -> N+1 jobs (each receipt + the bill PDF)
-    - delete_billing -> walks bills then receipts under each bill
+    - delete_bill    -> N+2 jobs (each receipt + the bill PDF + the recibo PDF)
+    - delete_billing -> walks bills (then receipts under each) + billing attachments
 
     Empty keys are silently skipped -- bills can have ``pdf_path=""`` if a
     PDF render previously failed.
@@ -35,10 +36,12 @@ class StorageCleanupService:
         job_service: JobService,
         bill_repo: BillRepository,
         receipt_repo: ReceiptRepository,
+        attachment_repo: BillingAttachmentRepository,
     ) -> None:
         self.job_service = job_service
         self.bill_repo = bill_repo
         self.receipt_repo = receipt_repo
+        self.attachment_repo = attachment_repo
 
     @traced("storage_cleanup.enqueue_key")
     def enqueue_key(self, actor, key: str | None) -> None:
@@ -56,6 +59,11 @@ class StorageCleanupService:
             for receipt in self.receipt_repo.list_by_bill(bill.id):
                 self.enqueue_key(actor, receipt.storage_key)
         self.enqueue_key(actor, bill.pdf_path or "")
+        self.enqueue_key(actor, bill.recibo_pdf_path or "")
+
+    @traced("storage_cleanup.enqueue_attachment_delete")
+    def enqueue_attachment_delete(self, actor, attachment: BillingAttachment) -> None:
+        self.enqueue_key(actor, attachment.storage_key)
 
     @traced("storage_cleanup.enqueue_billing_delete_cascade")
     def enqueue_billing_delete_cascade(self, actor, billing: Billing) -> None:
@@ -63,3 +71,5 @@ class StorageCleanupService:
             return
         for bill in self.bill_repo.list_by_billing(billing.id):
             self.enqueue_bill_delete_cascade(actor, bill)
+        for attachment in self.attachment_repo.list_by_billing(billing.id):
+            self.enqueue_key(actor, attachment.storage_key)

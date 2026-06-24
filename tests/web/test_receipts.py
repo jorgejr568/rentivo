@@ -71,6 +71,7 @@ class TestAttachReceipts:
         )
 
         assert result == AttachResult(attached=1, skipped=0, total_bytes=9)
+        # Files are attached without per-file rendering...
         svc.add_receipt.assert_called_once_with(
             bill=bill,
             billing=billing,
@@ -78,8 +79,10 @@ class TestAttachReceipts:
             file_bytes=b"%PDF-test",
             content_type="application/pdf",
             actor=request.state.actor,
-            render=True,
+            render=False,
         )
+        # ...and the PDF is rendered exactly once after the batch.
+        svc.regenerate_pdf.assert_called_once_with(bill, billing, actor=request.state.actor)
         request.state.services.audit.safe_log_for.assert_called_once_with(
             request.state.actor,
             AuditEventType.RECEIPT_UPLOAD,
@@ -160,3 +163,47 @@ class TestAttachReceipts:
         assert result == AttachResult(attached=1, skipped=1, total_bytes=9)
         assert svc.add_receipt.call_count == 1
         assert request.session["_messages"][0]["message"].startswith("1 arquivo(s) ignorado(s)")
+
+    @pytest.mark.asyncio
+    async def test_multiple_files_render_once(self):
+        """Uploading N receipts attaches all but renders the PDF exactly once."""
+        svc = _bill_service()
+        request = _request(svc)
+        bill, billing = _bill(), _billing()
+        uploads = [
+            _upload("a.pdf", b"%PDF-a", "application/pdf"),
+            _upload("b.pdf", b"%PDF-b", "application/pdf"),
+            _upload("c.pdf", b"%PDF-c", "application/pdf"),
+        ]
+
+        result = await attach_receipts(request, bill, billing, uploads)
+
+        assert result.attached == 3
+        assert svc.add_receipt.call_count == 3
+        for call in svc.add_receipt.call_args_list:
+            assert call.kwargs["render"] is False
+        svc.regenerate_pdf.assert_called_once_with(bill, billing, actor=request.state.actor)
+
+    @pytest.mark.asyncio
+    async def test_render_false_skips_final_render(self):
+        """render=False (bill-create flow) attaches without any render here."""
+        svc = _bill_service()
+        request = _request(svc)
+
+        result = await attach_receipts(
+            request, _bill(), _billing(), [_upload("a.pdf", b"%PDF-a", "application/pdf")], render=False
+        )
+
+        assert result.attached == 1
+        svc.regenerate_pdf.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_valid_files_does_not_render(self):
+        """A batch with nothing attached must not render the PDF."""
+        svc = _bill_service()
+        request = _request(svc)
+
+        result = await attach_receipts(request, _bill(), _billing(), [_upload("bad.gif", b"GIF89a", "image/gif")])
+
+        assert result.attached == 0
+        svc.regenerate_pdf.assert_not_called()

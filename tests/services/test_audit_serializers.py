@@ -595,3 +595,28 @@ class TestSerializeReceipt:
         assert result["filename"] == "foto.png"
         assert result["content_type"] == "image/png"
         assert result["file_size"] == 10
+
+
+def test_serialize_billing_attachment_omits_storage_key():
+    from rentivo.models.billing_attachment import BillingAttachment
+    from rentivo.services.audit_serializers import serialize_billing_attachment
+
+    a = BillingAttachment(
+        id=1,
+        uuid="u1",
+        billing_id=5,
+        name="Contrato",
+        filename="c.pdf",
+        storage_key="secret/key.pdf",
+        content_type="application/pdf",
+        file_size=99,
+    )
+    out = serialize_billing_attachment(a, billing_uuid="b-uuid")
+    assert out == {
+        "name": "Contrato",
+        "filename": "c.pdf",
+        "content_type": "application/pdf",
+        "file_size": 99,
+        "billing_uuid": "b-uuid",
+    }
+    assert "storage_key" not in out

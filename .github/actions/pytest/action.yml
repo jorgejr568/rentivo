@@ -8,4 +8,4 @@ runs:
 
     - name: Run pytest
       shell: bash
-      run: .venv/bin/python -m pytest -n auto -q
+      run: uv run --no-sync python -m pytest -n auto -q

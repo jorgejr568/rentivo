@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 from rentivo.encryption.factory import get_encryption  # noqa: F401
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAuditLogRepository,
+    SQLAlchemyBillingAttachmentRepository,
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyCommunicationRepository,
@@ -28,6 +29,7 @@ from rentivo.repositories.sqlalchemy import (
 from rentivo.services.audit_service import AuditService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
+from rentivo.services.billing_attachment_service import BillingAttachmentService
 from rentivo.services.billing_notification_service import BillingNotificationService
 from rentivo.services.billing_service import BillingService
 from rentivo.services.billing_stats_service import BillingStatsService
@@ -74,6 +76,13 @@ class RequestServices:
     @cached_property
     def readjustment(self) -> ReadjustmentService:
         return ReadjustmentService(billing_service=self.billing)
+
+    @cached_property
+    def billing_attachment(self) -> BillingAttachmentService:
+        return BillingAttachmentService(
+            SQLAlchemyBillingAttachmentRepository(self._conn, self._encryption),
+            get_storage(),
+        )
 
     @cached_property
     def billing_stats(self) -> BillingStatsService:
@@ -199,6 +208,7 @@ class RequestServices:
             job_service=self.job,
             bill_repo=SQLAlchemyBillRepository(self._conn, self._encryption),
             receipt_repo=SQLAlchemyReceiptRepository(self._conn, self._encryption),
+            attachment_repo=SQLAlchemyBillingAttachmentRepository(self._conn, self._encryption),
         )
 
     @cached_property

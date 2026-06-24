@@ -77,6 +77,18 @@ class Settings(BaseSettings):
     communications_from_name: str = ""
     public_app_url: str = "http://localhost:8000"
 
+    # --- Automated payment reminders / dunning (REN-6) ---
+    # Global kill switch for the reminder sweep; the per-template toggle
+    # (billings.reminders_enabled) gates individual templates underneath this.
+    payment_reminders_enabled: bool = True
+    # Days relative to a bill's due date on which to send a reminder. Positive =
+    # before due (D-3), 0 = on the due date, negative = after due (D+3 dunning).
+    # Comma-separated so it stays env-overridable without code changes.
+    payment_reminder_offset_days: str = "3,0,-3"
+    # Channel for the reminder send-step. "email" today; "whatsapp" can register
+    # later (idea #1) without touching the sweep or service.
+    payment_reminder_channel: str = "email"
+
     encryption_backend: str = "base64"
     kms_key_id: str = ""
     kms_region: str = ""

@@ -30,8 +30,9 @@ dependencies = [
     "pyotp>=2.9,<3",
     "webauthn>=2.0,<3",
     "cachetools>=5.3,<8",
-    "markdown-it-py>=3.0,<4",
+    "markdown-it-py>=3.0,<5",
     "watchtower>=3.3,<4",
+    "openpyxl>=3.1.5",
 ]
 
 [tool.setuptools.packages.find]
