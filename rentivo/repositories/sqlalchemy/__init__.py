@@ -27,6 +27,7 @@ from rentivo.repositories.sqlalchemy.mfa import (
     SQLAlchemyRecoveryCodeRepository,
 )
 from rentivo.repositories.sqlalchemy.organization import SQLAlchemyOrganizationRepository
+from rentivo.repositories.sqlalchemy.pix_webhook_event import SQLAlchemyPixWebhookEventRepository
 from rentivo.repositories.sqlalchemy.receipt import SQLAlchemyReceiptRepository
 from rentivo.repositories.sqlalchemy.recipient import SQLAlchemyRecipientRepository
 from rentivo.repositories.sqlalchemy.reply_to import SQLAlchemyReplyToRecipientRepository
@@ -45,6 +46,7 @@ __all__ = [
     "SQLAlchemyKnownDeviceRepository",
     "SQLAlchemyMFATOTPRepository",
     "SQLAlchemyOrganizationRepository",
+    "SQLAlchemyPixWebhookEventRepository",
     "SQLAlchemyPasskeyRepository",
     "SQLAlchemyPasswordResetTokenRepository",
     "SQLAlchemyReceiptRepository",

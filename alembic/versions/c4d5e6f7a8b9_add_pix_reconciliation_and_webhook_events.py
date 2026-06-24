@@ -15,8 +15,14 @@ Portable across MySQL (prod, ``mysql+pymysql``) and SQLite (tests): indexed /
 constrained string columns use explicit ``String`` lengths as MySQL requires.
 
 Revision ID: c4d5e6f7a8b9
-Revises: 51f6a33c87b3
+Revises: 08c21e96caa6
 Create Date: 2026-06-24
+
+Rebased onto current ``main`` head ``08c21e96caa6`` (add_recibo_pdf_path_to_bills)
+so this feature migration does not introduce an additional Alembic head. NOTE:
+``main`` currently carries a pre-existing two-head divergence
+(``08c21e96caa6`` and ``ca7e47b1ebdf``) being reconciled separately on REN-51 /
+REN-45. This branch must be rebased onto the reconciled single head before merge.
 """
 
 from typing import Sequence, Union
@@ -26,7 +32,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "c4d5e6f7a8b9"
-down_revision: Union[str, Sequence[str], None] = "51f6a33c87b3"
+down_revision: Union[str, Sequence[str], None] = "08c21e96caa6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -65,14 +71,10 @@ def upgrade() -> None:
         ),
         # Replayed delivery -> no-op insert (handler uses INSERT ... ON CONFLICT
         # DO NOTHING on this pair).
-        sa.UniqueConstraint(
-            "provider", "event_id", name="uq_pix_webhook_events_provider_event"
-        ),
+        sa.UniqueConstraint("provider", "event_id", name="uq_pix_webhook_events_provider_event"),
     )
     # Reconciliation / lookup access paths.
-    op.create_index(
-        "ix_pix_webhook_events_charge_id", "pix_webhook_events", ["charge_id"]
-    )
+    op.create_index("ix_pix_webhook_events_charge_id", "pix_webhook_events", ["charge_id"])
     op.create_index("ix_pix_webhook_events_bill_id", "pix_webhook_events", ["bill_id"])
 
 

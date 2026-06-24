@@ -301,6 +301,68 @@ async def bill_change_status(request: Request, ctx: BillContext = Depends(requir
     return RedirectResponse(f"/billings/{billing.uuid}/bills/{bill.uuid}", status_code=302)
 
 
+@router.post("/{bill_uuid}/pix-charge")
+async def bill_create_pix_charge(request: Request, ctx: BillContext = Depends(require_bill("manage"))):
+    """Issue a dynamic-PIX charge (``cob``) for a bill and return its QR / copy-paste.
+
+    Landlord-as-merchant sandbox path (REN-26): creates the charge with
+    ``externalReference = bill.uuid`` so the inbound Asaas webhook can reconcile
+    the payment back to this bill and auto-confirm it. Returns the copy-paste
+    string and base64 QR for the UI to surface to the tenant.
+    """
+    from rentivo.services.asaas_pix_service import ProviderError
+
+    bill, billing = ctx.bill, ctx.billing
+    asaas = request.state.services.asaas_pix
+    if not asaas.is_enabled:
+        return JSONResponse({"error": "pix_provider_disabled"}, status_code=503)
+
+    form = await request.form()
+    customer_id = str(form.get("customer_id", "")).strip()
+    if not customer_id:
+        return JSONResponse({"error": "customer_id_required"}, status_code=400)
+    due_date = str(form.get("due_date", "")).strip() or (bill.due_date or "")
+    description = str(form.get("description", "")).strip()
+
+    try:
+        charge = await asaas.create_charge(
+            external_reference=bill.uuid,
+            amount_centavos=bill.total_amount,
+            customer_id=customer_id,
+            due_date=due_date,
+            description=description,
+        )
+    except ProviderError as exc:
+        logger.warning("bill_pix_charge_failed", bill_uuid=bill.uuid, error=str(exc))
+        return JSONResponse({"error": "provider_error", "detail": str(exc)}, status_code=502)
+
+    bill_service = request.state.services.bill
+    bill_service.set_pix_charge(bill, provider=asaas.provider_name, charge_id=charge.charge_id)
+
+    audit = request.state.services.audit
+    audit.safe_log_for(
+        request.state.actor,
+        AuditEventType.BILL_UPDATE,
+        entity_type="bill",
+        entity_id=bill.id,
+        entity_uuid=bill.uuid,
+        previous_state={"pix_charge_id": None},
+        new_state={"pix_provider": asaas.provider_name, "pix_charge_id": charge.charge_id},
+    )
+    push_event(request, {"event": "rentivo_bill_pix_charge_created", "bill_uuid_hash": analytics_hash(bill.uuid)})
+    logger.info("bill_pix_charge_created", bill_uuid=bill.uuid, billing_uuid=billing.uuid, charge_id=charge.charge_id)
+    return JSONResponse(
+        {
+            "charge_id": charge.charge_id,
+            "copy_paste": charge.copy_paste,
+            "qrcode_base64": charge.qrcode_base64,
+            "amount_centavos": charge.amount_centavos,
+            "status": charge.status,
+            "expiration": charge.expiration,
+        }
+    )
+
+
 @router.post("/{bill_uuid}/delete")
 async def bill_delete(request: Request, ctx: BillContext = Depends(require_bill("delete"))):
     bill, billing = ctx.bill, ctx.billing

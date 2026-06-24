@@ -20,6 +20,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasskeyRepository,
     SQLAlchemyPasswordResetTokenRepository,
+    SQLAlchemyPixWebhookEventRepository,
     SQLAlchemyReceiptRepository,
     SQLAlchemyRecipientRepository,
     SQLAlchemyRecoveryCodeRepository,
@@ -27,6 +28,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
+from rentivo.services.asaas_pix_service import AsaasPixService
 from rentivo.services.audit_service import AuditService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
@@ -43,6 +45,7 @@ from rentivo.services.known_device_service import KnownDeviceService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.password_reset_service import PasswordResetService
+from rentivo.services.pix_reconciliation_service import PixReconciliationService
 from rentivo.services.pix_service import PixService
 from rentivo.services.recipient_service import RecipientService
 from rentivo.services.storage_cleanup_service import StorageCleanupService
@@ -186,6 +189,30 @@ class RequestServices:
             theme_service=self.theme,
             pix_service=self.pix,
             job_service=self.job,
+        )
+
+    @cached_property
+    def asaas_pix(self) -> AsaasPixService:
+        """Asaas dynamic-PIX provider client (REN-15/REN-26).
+
+        Constructed unconditionally from settings; a no-op (``is_enabled`` is
+        False) until ``RENTIVO_ASAAS_API_KEY`` is set — mirrors the Turnstile
+        convention so callers can wire it and gate on the flag.
+        """
+        return AsaasPixService(
+            api_key=settings.asaas_api_key,
+            webhook_token=settings.asaas_webhook_token,
+            base_url=settings.asaas_base_url,
+        )
+
+    @cached_property
+    def pix_reconciliation(self) -> PixReconciliationService:
+        return PixReconciliationService(
+            bill_service=self.bill,
+            bill_repo=SQLAlchemyBillRepository(self._conn, self._encryption),
+            webhook_event_repo=SQLAlchemyPixWebhookEventRepository(self._conn),
+            audit_service=self.audit,
+            provider_name=self.asaas_pix.provider_name,
         )
 
     @cached_property

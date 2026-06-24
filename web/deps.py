@@ -30,11 +30,14 @@ PUBLIC_PREFIX_PATHS = {
     "/forgot-password",
     "/reset-password",
     "/auth/google",
+    # Public PSP payment webhook — authenticated by shared-secret header, not a
+    # session. Idempotency/replay protection live in the reconciliation layer.
+    "/webhooks",
 }
 PUBLIC_EXACT_PATHS = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
 # Paths that MFA-enforcement redirect allows even when mfa_setup_required is set
-MFA_EXEMPT_PREFIXES = {"/security", "/logout", "/login", "/signup", "/static", "/mfa-verify"}
+MFA_EXEMPT_PREFIXES = {"/security", "/logout", "/login", "/signup", "/static", "/mfa-verify", "/webhooks"}
 MFA_EXEMPT_EXACT = {"/", "/robots.txt", "/sitemap.xml", "/health"}
 
 
