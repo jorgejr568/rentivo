@@ -36,6 +36,24 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 - Fill out **every** section of [.github/pull_request_template.md](.github/pull_request_template.md) — summary (lead with the why), what changed, test plan, screenshots for UI changes, config/deployment notes, risk & rollback.
 - CI on PRs (`test-pr.yaml`) runs ruff check, ruff format, pytest, and both Docker image builds; all must pass.
 
+## Merging policy — human-only
+
+**Merges to `main` are performed by a human, never by an automated agent.** Agents (Claude, Paperclip, CI bots, or any non-human account) **open** pull requests and stop there; a human reviews and clicks merge.
+
+This is enforced both behaviorally and at the repo level:
+
+- `main` is a protected branch: **direct pushes are blocked for everyone (including admins)** — all changes land through a PR.
+- **Auto-merge is disabled** repo-wide, so no agent can queue a merge to happen automatically.
+- Force-pushes and branch deletion on `main` are blocked.
+
+Rules for everyone, especially automated contributors:
+
+- Never use the merge button, `gh pr merge`, squash/rebase/auto-merge, or any equivalent to land a PR. Open the PR and request human review.
+- Never push directly to `main` (or any protected branch) to bypass the PR flow.
+- If a task says "merge X", read it as "open a PR for X and request review". Only a human maintainer performs the actual merge.
+
+See [AGENTS.md](AGENTS.md) for the agent-facing version of this rule.
+
 ## Versioning & releases
 
 Rentivo follows [SemVer 2.0.0](https://semver.org/); the release history lives in [CHANGELOG.md](CHANGELOG.md) (Keep a Changelog format). Releases are cut by maintainers: version bump + changelog PR (`chore(release): vX.Y.Z`), then a `vX.Y.Z` tag triggers the release workflow. When unsure which component to bump, bump higher.
