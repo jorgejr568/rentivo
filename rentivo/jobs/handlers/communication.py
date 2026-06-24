@@ -13,6 +13,7 @@ from rentivo.email.factory import get_email_backend
 from rentivo.encryption.factory import get_encryption
 from rentivo.jobs.base import PermanentJobError
 from rentivo.jobs.registry import register, register_on_fail
+from rentivo.models.communication import CommType
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
 from rentivo.repositories.sqlalchemy.communication import SQLAlchemyCommunicationRepository
@@ -77,15 +78,29 @@ def handle_communication_send(payload: dict) -> None:
             return
 
         bill = SQLAlchemyBillRepository(conn, encryption).get_by_id(comm.bill_id)
-        if bill is None or not bill.pdf_path:
-            raise PermanentJobError(f"bill {comm.bill_id} missing or has no PDF")
+        if bill is None:
+            raise PermanentJobError(f"bill {comm.bill_id} missing")
+
+        # The attached document depends on the communication type: a recibo
+        # (payment-receipt) send carries the stored recibo PDF; everything else
+        # carries the invoice PDF.
+        if comm.comm_type == CommType.PAYMENT_RECEIPT.value:
+            attachment_key = bill.recibo_pdf_path
+            attachment_filename = f"recibo-{bill.reference_month}.pdf"
+            doc_label = "recibo"
+        else:
+            attachment_key = bill.pdf_path
+            attachment_filename = f"fatura-{bill.reference_month}.pdf"
+            doc_label = "invoice"
+        if not attachment_key:
+            raise PermanentJobError(f"bill {comm.bill_id} has no {doc_label} PDF")
 
         try:
-            pdf_bytes = get_storage().get(bill.pdf_path)
+            pdf_bytes = get_storage().get(attachment_key)
         except FileNotFoundError as exc:
             # The DB still references a key whose object is gone — it will never
             # reappear, so fail permanently instead of burning every retry.
-            raise PermanentJobError(f"bill {comm.bill_id} PDF object missing at {bill.pdf_path!r}") from exc
+            raise PermanentJobError(f"bill {comm.bill_id} {doc_label} object missing at {attachment_key!r}") from exc
 
         # Reply-To is delivery config, resolved fresh from the billing at send time
         # (unlike subject/body, which are snapshotted onto the communication row).
@@ -104,7 +119,7 @@ def handle_communication_send(payload: dict) -> None:
         service = EmailService(get_email_backend(), from_address=from_address)
         body_html = render_markdown(comm.body_markdown)
         attachment = EmailAttachment(
-            filename=f"fatura-{bill.reference_month}.pdf",
+            filename=attachment_filename,
             content=pdf_bytes,
             content_type="application/pdf",
         )

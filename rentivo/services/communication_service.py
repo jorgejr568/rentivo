@@ -7,7 +7,7 @@ from rentivo.communications.render import month_long, substitute
 from rentivo.models import format_brl
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
-from rentivo.models.communication import Communication, CommunicationTemplate
+from rentivo.models.communication import CommType, Communication, CommunicationTemplate
 from rentivo.models.recipient import Recipient
 from rentivo.observability import traced
 from rentivo.repositories.base import CommunicationRepository, CommunicationTemplateRepository
@@ -75,8 +75,13 @@ class CommunicationService:
         subject_template: str,
         body_template: str,
         actor=None,
+        comm_type: str = CommType.BILL_READY.value,
     ) -> list[Communication]:
-        """Create one queued communication per recipient and enqueue a send job each."""
+        """Create one queued communication per recipient and enqueue a send job each.
+
+        ``comm_type`` selects which document the send job attaches: ``bill_ready``
+        attaches the invoice PDF, ``payment_receipt`` the stored recibo PDF.
+        """
         results: list[Communication] = []
         # Per-recipient: create row, enqueue job, stamp job_ulid. Not atomic across
         # recipients — earlier recipients stay queued if a later one fails. If the
@@ -87,7 +92,7 @@ class CommunicationService:
             comm = self.communication_repo.create(
                 Communication(
                     bill_id=bill.id,
-                    comm_type="bill_ready",
+                    comm_type=comm_type,
                     recipient_name=recipient.name,
                     recipient_email=recipient.email,
                     subject=substitute(subject_template, ctx),

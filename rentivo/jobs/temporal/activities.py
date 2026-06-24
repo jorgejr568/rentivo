@@ -55,9 +55,24 @@ def pdf_render_activity(payload: dict) -> None:
     run_registered_handler("pdf.render", payload)
 
 
+@activity.defn(name="recibo.render")
+def recibo_render_activity(payload: dict) -> None:
+    run_registered_handler("recibo.render", payload)
+
+
 @activity.defn(name="s3.delete")
 def s3_delete_activity(payload: dict) -> None:
     run_registered_handler("s3.delete", payload)
+
+
+@activity.defn(name="export.generate")
+def export_generate_activity(payload: dict) -> None:
+    run_registered_handler("export.generate", payload)
+
+
+@activity.defn(name="export.send")
+def export_send_activity(payload: dict) -> None:
+    run_registered_handler("export.send", payload)
 
 
 # ---- Terminal/audit activity (mirrors Worker._audit_job + _fail) -----------

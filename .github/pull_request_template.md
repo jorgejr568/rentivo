@@ -11,9 +11,9 @@
 ## Test plan
 <!-- Checklist of what was verified and what the reviewer should verify. -->
 
-- [ ] `.venv/bin/python -m pytest -n auto` passes locally
-- [ ] `.venv/bin/ruff check .` clean
-- [ ] `.venv/bin/ruff format --check .` clean
+- [ ] `uv run pytest -n auto` passes locally
+- [ ] `uv run ruff check .` clean
+- [ ] `uv run ruff format --check .` clean
 - [ ] Manual smoke: <!-- describe the flow you exercised in a browser / CLI, or write "N/A" -->
 
 ## Screenshots / recordings

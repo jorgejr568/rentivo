@@ -1,7 +1,7 @@
 """add phone to billing_recipients
 
 Revision ID: b7e2c4a9d1f0
-Revises: 51f6a33c87b3
+Revises: 08c21e96caa6
 Create Date: 2026-06-24 19:30:00.000000
 
 Adds an optional, encrypted ``phone`` column to ``billing_recipients`` so a
@@ -19,7 +19,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "b7e2c4a9d1f0"
-down_revision: Union[str, Sequence[str], None] = "51f6a33c87b3"
+down_revision: Union[str, Sequence[str], None] = "08c21e96caa6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

@@ -5,7 +5,7 @@ template exists for a communication type.
 
 from __future__ import annotations
 
-from rentivo.models.communication import CommunicationTemplate
+from rentivo.models.communication import CommType, CommunicationTemplate
 
 DEFAULT_BILL_READY_SUBJECT = "Cobrança {{unidade}} — {{mes}}"
 
@@ -22,8 +22,24 @@ DEFAULT_BILL_READY_BODY = (
     "Atenciosamente."
 )
 
+DEFAULT_PAYMENT_RECEIPT_SUBJECT = "Recibo de pagamento {{unidade}} — {{mes}}"
+
+DEFAULT_PAYMENT_RECEIPT_BODY = (
+    "Prezado {{nome_inquilino}},\n"
+    "\n"
+    "Confirmamos o recebimento do pagamento referente à unidade **{{unidade}}**, "
+    "no valor de **{{total}}**, relativo ao mês de **{{mes}}**.\n"
+    "\n"
+    "Segue em anexo o **recibo de pagamento** correspondente.\n"
+    "\n"
+    "Agradecemos e permanecemos à disposição para qualquer dúvida.\n"
+    "\n"
+    "Atenciosamente."
+)
+
 _DEFAULTS: dict[str, tuple[str, str]] = {
-    "bill_ready": (DEFAULT_BILL_READY_SUBJECT, DEFAULT_BILL_READY_BODY),
+    CommType.BILL_READY.value: (DEFAULT_BILL_READY_SUBJECT, DEFAULT_BILL_READY_BODY),
+    CommType.PAYMENT_RECEIPT.value: (DEFAULT_PAYMENT_RECEIPT_SUBJECT, DEFAULT_PAYMENT_RECEIPT_BODY),
 }
 
 

@@ -87,6 +87,18 @@ class TestBillRepoCRUD:
         fetched = bill_repo.get_by_id(created.id)
         assert fetched.pdf_path == "/new/path.pdf"
 
+    def test_update_recibo_pdf_path(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        created = bill_repo.create(sample_bill(billing_id=billing.id))
+        assert bill_repo.get_by_id(created.id).recibo_pdf_path is None
+
+        bill_repo.update_recibo_pdf_path(created.id, "/r/recibo.pdf")
+        assert bill_repo.get_by_id(created.id).recibo_pdf_path == "/r/recibo.pdf"
+
+        # Clearing it (bill leaves PAID) round-trips back to None.
+        bill_repo.update_recibo_pdf_path(created.id, None)
+        assert bill_repo.get_by_id(created.id).recibo_pdf_path is None
+
     def test_update_status(self, bill_repo, billing_repo, sample_billing, sample_bill):
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))

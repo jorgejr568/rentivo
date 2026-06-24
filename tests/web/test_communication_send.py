@@ -74,6 +74,7 @@ def test_send_creates_communication_and_enqueues_job(auth_client, test_engine, c
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
         data={
             "csrf_token": csrf_token,
+            "comm_type": "bill_ready",
             "subject": "Cobrança {{unidade}}",
             "body": "Prezado {{nome_inquilino}}",
             "recipient_uuids": ruuid,
@@ -96,11 +97,17 @@ def test_send_with_empty_body_redirects_to_compose(auth_client, test_engine, csr
     ruuid = _recipient_uuid(test_engine)
     resp = auth_client.post(
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
-        data={"csrf_token": csrf_token, "subject": "Assunto", "body": "  ", "recipient_uuids": ruuid},
+        data={
+            "csrf_token": csrf_token,
+            "comm_type": "bill_ready",
+            "subject": "Assunto",
+            "body": "  ",
+            "recipient_uuids": ruuid,
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"].endswith("/communications/compose")
+    assert resp.headers["location"].endswith("/communications/compose?type=bill_ready")
     with test_engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
 
@@ -117,6 +124,7 @@ def test_send_fans_out_to_multiple_recipients(auth_client, test_engine, csrf_tok
         content=urlencode(
             [
                 ("csrf_token", csrf_token),
+                ("comm_type", "bill_ready"),
                 ("subject", "Cobrança {{unidade}}"),
                 ("body", "Prezado {{nome_inquilino}}"),
                 ("recipient_uuids", uuids[0]),
@@ -140,11 +148,11 @@ def test_send_without_recipient_selected_redirects_to_compose(auth_client, test_
     _seed_recipient(auth_client, billing, csrf_token)
     resp = auth_client.post(
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
-        data={"csrf_token": csrf_token, "subject": "s", "body": "b"},
+        data={"csrf_token": csrf_token, "comm_type": "bill_ready", "subject": "s", "body": "b"},
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"].endswith("/communications/compose")
+    assert resp.headers["location"].endswith("/communications/compose?type=bill_ready")
     with test_engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
 
@@ -160,13 +168,87 @@ def test_send_without_pdf_redirects_with_error(auth_client, test_engine, csrf_to
         c.commit()
     resp = auth_client.post(
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
-        data={"csrf_token": csrf_token, "subject": "s", "body": "b", "recipient_uuids": ruuid},
+        data={
+            "csrf_token": csrf_token,
+            "comm_type": "bill_ready",
+            "subject": "s",
+            "body": "b",
+            "recipient_uuids": ruuid,
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 302
     assert resp.headers["location"].endswith(f"/bills/{bill.uuid}")
     with test_engine.connect() as c:
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
+
+
+def test_send_rejects_invalid_comm_type(auth_client, test_engine, csrf_token, tmp_path):
+    billing = create_billing_in_db(test_engine)
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)
+    _seed_recipient(auth_client, billing, csrf_token)
+    ruuid = _recipient_uuid(test_engine)
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
+        data={"csrf_token": csrf_token, "comm_type": "bogus", "subject": "s", "body": "b", "recipient_uuids": ruuid},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"].endswith(f"/bills/{bill.uuid}")
+    with test_engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
+
+
+def test_send_payment_receipt_without_recibo_redirects(auth_client, test_engine, csrf_token, tmp_path):
+    billing = create_billing_in_db(test_engine)
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)  # no recibo stored
+    _seed_recipient(auth_client, billing, csrf_token)
+    ruuid = _recipient_uuid(test_engine)
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
+        data={
+            "csrf_token": csrf_token,
+            "comm_type": "payment_receipt",
+            "subject": "s",
+            "body": "b",
+            "recipient_uuids": ruuid,
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    assert resp.headers["location"].endswith(f"/bills/{bill.uuid}")
+    with test_engine.connect() as c:
+        assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
+
+
+def test_send_payment_receipt_creates_communication(auth_client, test_engine, csrf_token, tmp_path):
+    billing = create_billing_in_db(test_engine)
+    bill = generate_bill_in_db(test_engine, billing, tmp_path)
+    _seed_recipient(auth_client, billing, csrf_token)
+    ruuid = _recipient_uuid(test_engine)
+    with test_engine.connect() as c:
+        c.execute(
+            text("UPDATE bills SET status = 'paid', recibo_pdf_path = 'bg/recibo.pdf' WHERE uuid = :u"),
+            {"u": bill.uuid},
+        )
+        c.commit()
+    resp = auth_client.post(
+        f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
+        data={
+            "csrf_token": csrf_token,
+            "comm_type": "payment_receipt",
+            "subject": "Recibo {{unidade}}",
+            "body": "Segue o recibo de {{total}}.",
+            "recipient_uuids": ruuid,
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 302
+    with test_engine.connect() as c:
+        row = c.execute(text("SELECT comm_type FROM communications")).fetchone()
+        job_n = c.execute(text("SELECT COUNT(*) FROM jobs WHERE job_type = 'communication.send'")).scalar()
+    assert row[0] == "payment_receipt"
+    assert job_n == 1
 
 
 def test_send_saves_billing_template(auth_client, test_engine, csrf_token, tmp_path):
@@ -178,6 +260,7 @@ def test_send_saves_billing_template(auth_client, test_engine, csrf_token, tmp_p
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
         data={
             "csrf_token": csrf_token,
+            "comm_type": "bill_ready",
             "subject": "Assunto",
             "body": "Corpo",
             "recipient_uuids": ruuid,
@@ -203,6 +286,7 @@ def test_send_saves_owner_template(auth_client, test_engine, csrf_token, tmp_pat
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
         data={
             "csrf_token": csrf_token,
+            "comm_type": "bill_ready",
             "subject": "Assunto",
             "body": "Corpo",
             "recipient_uuids": ruuid,
@@ -252,6 +336,7 @@ def test_send_owner_scope_blocked_for_manager(auth_client, test_engine, csrf_tok
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
         data={
             "csrf_token": csrf_token,
+            "comm_type": "bill_ready",
             "subject": "Assunto",
             "body": "Corpo",
             "recipient_uuids": ruuid,
@@ -260,7 +345,7 @@ def test_send_owner_scope_blocked_for_manager(auth_client, test_engine, csrf_tok
         follow_redirects=False,
     )
     assert resp.status_code == 302
-    assert resp.headers["location"].endswith("/communications/compose")
+    assert resp.headers["location"].endswith("/communications/compose?type=bill_ready")
     with test_engine.connect() as c:
         # Nothing was sent and no org-wide template was written.
         assert c.execute(text("SELECT COUNT(*) FROM communications")).scalar() == 0
@@ -277,7 +362,13 @@ def test_bill_detail_lists_sent_communication(auth_client, test_engine, csrf_tok
     ruuid = _recipient_uuid(test_engine)
     auth_client.post(
         f"/billings/{billing.uuid}/bills/{bill.uuid}/communications/send",
-        data={"csrf_token": csrf_token, "subject": "Cobrança Joy", "body": "Prezado João", "recipient_uuids": ruuid},
+        data={
+            "csrf_token": csrf_token,
+            "comm_type": "bill_ready",
+            "subject": "Cobrança Joy",
+            "body": "Prezado João",
+            "recipient_uuids": ruuid,
+        },
         follow_redirects=False,
     )
     page = auth_client.get(f"/billings/{billing.uuid}/bills/{bill.uuid}")

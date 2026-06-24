@@ -8,4 +8,4 @@ runs:
 
     - name: Run ruff format --check
       shell: bash
-      run: .venv/bin/ruff format --check .
+      run: uv run --no-sync ruff format --check .

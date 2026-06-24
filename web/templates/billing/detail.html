@@ -121,6 +121,15 @@
 <div class="panel">
     <div class="panel__head"><h3>Faturas</h3><span class="panel__title-eyebrow">{{ bills | length }} gerada{{ "" if bills | length == 1 else "s" }}</span></div>
     {% if bills %}
+    <div style="display:flex; gap:0.5rem; justify-content:flex-end; padding:0.75rem 1rem;">
+        <form method="post" action="/billings/{{ billing.uuid }}/bills/export" style="display:inline-flex; gap:0.5rem;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="btn btn--sm" name="format" value="csv"
+                    title="Enviar as faturas em CSV para o seu e-mail">Exportar CSV</button>
+            <button type="submit" class="btn btn--sm" name="format" value="xlsx"
+                    title="Enviar as faturas em Excel para o seu e-mail">Exportar Excel</button>
+        </form>
+    </div>
     <div class="table-wrap">
         <table class="table">
             <thead>

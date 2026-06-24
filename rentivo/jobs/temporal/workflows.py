@@ -110,8 +110,29 @@ class PdfRenderWorkflow:
         await _run_job("pdf.render", payload, ulid, max_attempts)
 
 
+@workflow.defn(name="ReciboRenderWorkflow")
+class ReciboRenderWorkflow:
+    @workflow.run
+    async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
+        await _run_job("recibo.render", payload, ulid, max_attempts)
+
+
 @workflow.defn(name="S3DeleteWorkflow")
 class S3DeleteWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
         await _run_job("s3.delete", payload, ulid, max_attempts)
+
+
+@workflow.defn(name="ExportGenerateWorkflow")
+class ExportGenerateWorkflow:
+    @workflow.run
+    async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
+        await _run_job("export.generate", payload, ulid, max_attempts)
+
+
+@workflow.defn(name="ExportSendWorkflow")
+class ExportSendWorkflow:
+    @workflow.run
+    async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
+        await _run_job("export.send", payload, ulid, max_attempts)
