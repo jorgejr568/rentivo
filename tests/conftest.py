@@ -177,7 +177,6 @@ CREATE TABLE billing_recipients (
     billing_id INTEGER NOT NULL REFERENCES billings(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     email TEXT NOT NULL,
-    phone TEXT,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL
 );
