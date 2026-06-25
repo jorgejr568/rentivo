@@ -185,6 +185,107 @@ class TestBillingEdit:
         assert response.status_code == 302
 
 
+class TestBillingReminders:
+    """Payment-reminders per-template toggle + payment_reminder template editor (REN-31)."""
+
+    def _checkbox_checked(self, html: str) -> bool:
+        return 'name="reminders_enabled" value="1" checked' in html
+
+    def test_create_defaults_reminders_on(self, auth_client, test_engine, csrf_token):
+        auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Reminders On",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+                "reminders_enabled": "1",
+            },
+            follow_redirects=False,
+        )
+        billing = self._latest_billing(test_engine, "Reminders On")
+        response = auth_client.get(f"/billings/{billing.uuid}/edit")
+        assert self._checkbox_checked(response.text)
+
+    def test_create_with_reminders_off_persists(self, auth_client, test_engine, csrf_token):
+        # Unchecked checkbox: the field is simply absent from the POST body.
+        auth_client.post(
+            "/billings/create",
+            data={
+                "csrf_token": csrf_token,
+                "name": "Reminders Off",
+                "items-TOTAL_FORMS": "1",
+                "items-0-description": "Rent",
+                "items-0-amount": "1000,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+        billing = self._latest_billing(test_engine, "Reminders Off")
+        response = auth_client.get(f"/billings/{billing.uuid}/edit")
+        assert not self._checkbox_checked(response.text)
+
+    def test_edit_toggles_reminders_off_then_on(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        base = {
+            "csrf_token": csrf_token,
+            "name": "Apt 101",
+            "description": "",
+            "pix_key": "",
+            "items-TOTAL_FORMS": "1",
+            "items-0-description": "Rent",
+            "items-0-amount": "1000,00",
+            "items-0-item_type": "fixed",
+        }
+        # Toggle OFF (omit the field), then confirm round-trip.
+        auth_client.post(f"/billings/{billing.uuid}/edit", data=base, follow_redirects=False)
+        assert not self._checkbox_checked(auth_client.get(f"/billings/{billing.uuid}/edit").text)
+        # Toggle back ON.
+        auth_client.post(
+            f"/billings/{billing.uuid}/edit", data={**base, "reminders_enabled": "1"}, follow_redirects=False
+        )
+        assert self._checkbox_checked(auth_client.get(f"/billings/{billing.uuid}/edit").text)
+
+    def test_reminder_template_saves_and_round_trips(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/reminder-template",
+            data={
+                "csrf_token": csrf_token,
+                "subject": "Lembrete personalizado",
+                "body": "Olá {{nome_inquilino}}, sua fatura venceu.",
+                "save_scope": "billing",
+            },
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        page = auth_client.get(f"/billings/{billing.uuid}/edit").text
+        assert "Lembrete personalizado" in page
+        assert "sua fatura venceu" in page
+
+    def test_reminder_template_requires_subject_and_body(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/reminder-template",
+            data={"csrf_token": csrf_token, "subject": "", "body": ""},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        assert response.headers["location"] == f"/billings/{billing.uuid}/edit"
+
+    @staticmethod
+    def _latest_billing(test_engine, name):
+        from rentivo.encryption.base64 import Base64Backend
+        from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository
+
+        with test_engine.connect() as conn:
+            repo = SQLAlchemyBillingRepository(conn, Base64Backend())
+            matches = [b for b in repo.list_all() if b.name == name]
+        return matches[-1]
+
+
 class TestBillingDelete:
     def test_delete(self, auth_client, test_engine, csrf_token):
         billing = create_billing_in_db(test_engine)

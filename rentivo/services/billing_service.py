@@ -32,6 +32,7 @@ class BillingService:
         pix_merchant_city: str = "",
         owner_type: str = "user",
         owner_id: int = 0,
+        reminders_enabled: bool = True,
     ) -> Billing:
         billing = Billing(
             name=name,
@@ -42,6 +43,7 @@ class BillingService:
             pix_merchant_city=pix_merchant_city.strip(),
             owner_type=owner_type,
             owner_id=owner_id,
+            reminders_enabled=reminders_enabled,
         )
         result = self.repo.create(billing)
         logger.info("billing_created", billing_id=result.id, name=result.name)
