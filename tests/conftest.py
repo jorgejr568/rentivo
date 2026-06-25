@@ -59,8 +59,26 @@ CREATE TABLE bills (
     status TEXT NOT NULL DEFAULT 'draft',
     status_updated_at DATETIME,
     pdf_render_status VARCHAR(16),
+    pix_provider VARCHAR(32),
+    pix_charge_id VARCHAR(64),
+    pix_txid VARCHAR(64),
+    pix_e2eid VARCHAR(64),
     created_at DATETIME NOT NULL,
     deleted_at DATETIME
+);
+
+CREATE TABLE pix_webhook_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider VARCHAR(32) NOT NULL,
+    event_id VARCHAR(191) NOT NULL,
+    charge_id VARCHAR(64),
+    external_reference VARCHAR(191),
+    e2eid VARCHAR(64),
+    event_type VARCHAR(64) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    bill_id INTEGER REFERENCES bills(id) ON DELETE SET NULL,
+    UNIQUE(provider, event_id)
 );
 
 CREATE TABLE bill_line_items (
