@@ -219,9 +219,21 @@ document.addEventListener("DOMContentLoaded", function () {
         activeDialog = { overlay: overlay, trigger: opts.trigger, onKeydown: onKeydown };
         document.addEventListener("keydown", onKeydown, true);
 
-        cancelBtn.addEventListener("click", closeConfirm);
+        // Dismissing via the Cancel button or an overlay click runs closeConfirm,
+        // which re-opens the collapsed status-menu to return focus to the trigger
+        // (see restoreFocus). Stop the click here so the document-level outside-click
+        // handler can't immediately re-collapse that menu and strand focus on <body>
+        // — mirrors the Escape handler's stopPropagation. Covers keyboard activation
+        // of Cancel (Enter/Space dispatch a click) as well as mouse.
+        cancelBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            closeConfirm();
+        });
         overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) closeConfirm();
+            if (e.target === overlay) {
+                e.stopPropagation();
+                closeConfirm();
+            }
         });
         okBtn.addEventListener("click", function () {
             var cb = opts.onConfirm;
