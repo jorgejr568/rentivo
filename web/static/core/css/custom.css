@@ -703,6 +703,13 @@ body::before { content: ""; display: block; height: 4px; background: var(--accen
 .status-menu__item:hover, .status-menu__item:focus-visible { background: var(--paper-2); outline: none; }
 .status-menu__item--danger { color: var(--overdue); }
 .status-menu__item--danger:hover, .status-menu__item--danger:focus-visible { background: var(--overdue-pale); }
+/* A panel hosting the status menu must not clip the open dropdown.
+   Override the default .panel overflow:hidden and re-round the head's
+   top corners (otherwise overflow:visible squares them off). */
+.panel--menu-host { overflow: visible; }
+.panel--menu-host > .panel__head {
+    border-radius: calc(var(--r) - var(--bw-bold)) calc(var(--r) - var(--bw-bold)) 0 0;
+}
 
 /* ============================================================
    MFA / security
