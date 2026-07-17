@@ -45,7 +45,7 @@ class FakeAPIKeyRepository(APIKeyRepository):
         self.keys_by_hash: dict[bytes, APIKey] = {}
         self.next_id = 1
         self.secret_lookups: list[bytes] = []
-        self.touch_calls: list[tuple[int, datetime]] = []
+        self.touch_calls: list[tuple[int, datetime, datetime]] = []
         self.deleted_login_ids: list[int] = []
         self.revoke_calls: list[tuple[int, str, datetime]] = []
         self.revoke_all_calls: list[int] = []
@@ -130,10 +130,10 @@ class FakeAPIKeyRepository(APIKeyRepository):
             del self.keys_by_hash[digest]
         return len(matches)
 
-    def touch_last_used(self, api_key_id: int, used_at: datetime) -> bool:
-        self.touch_calls.append((api_key_id, used_at))
+    def touch_last_used(self, api_key_id: int, used_at: datetime, cutoff: datetime) -> bool:
+        self.touch_calls.append((api_key_id, used_at, cutoff))
         for digest, key in self.keys_by_hash.items():
-            if key.id == api_key_id:
+            if key.id == api_key_id and (key.last_used_at is None or key.last_used_at <= cutoff):
                 self.keys_by_hash[digest] = key.model_copy(update={"last_used_at": used_at})
                 return True
         return False
@@ -341,6 +341,11 @@ def test_integration_accepts_expiration_at_exactly_one_year(
     assert issued.key.expires_at == NOW + timedelta(days=365)
 
 
+def test_integration_rejects_expiration_without_timezone(service: APIKeyService) -> None:
+    with pytest.raises(ValueError, match="timezone"):
+        service.issue_integration(**_integration_args(expires_at=datetime(2026, 10, 15, 12, 0)))
+
+
 def test_authenticate_rejects_expired_and_revoked_keys(
     service: APIKeyService,
     repository: FakeAPIKeyRepository,
@@ -364,7 +369,7 @@ def test_authenticate_touches_last_use_at_most_once_per_five_minutes(
     issued = service.issue_integration(**_integration_args())
 
     assert service.authenticate(issued.secret) is not None
-    assert repository.touch_calls == [(issued.key.id, NOW)]
+    assert repository.touch_calls == [(issued.key.id, NOW, NOW - timedelta(minutes=5))]
 
     clock.advance(timedelta(minutes=4, seconds=59))
     assert service.authenticate(issued.secret) is not None
@@ -372,7 +377,21 @@ def test_authenticate_touches_last_use_at_most_once_per_five_minutes(
 
     clock.advance(timedelta(seconds=1))
     assert service.authenticate(issued.secret) is not None
-    assert repository.touch_calls[-1] == (issued.key.id, NOW + timedelta(minutes=5))
+    assert repository.touch_calls[-1] == (
+        issued.key.id,
+        NOW + timedelta(minutes=5),
+        NOW,
+    )
+
+
+def test_authenticate_constant_time_checks_loaded_digest(
+    service: APIKeyService,
+    repository: FakeAPIKeyRepository,
+) -> None:
+    issued = service.issue_integration(**_integration_args())
+    repository.keys_by_hash[issued.key.secret_hash] = issued.key.model_copy(update={"secret_hash": b"X" * 32})
+
+    assert service.authenticate(issued.secret) is None
 
 
 def test_login_key_access_uses_owner_and_live_membership(

@@ -5,11 +5,12 @@ from typing import cast
 
 from sqlalchemy import Connection, text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import SQLAlchemyError
 from ulid import ULID
 
 from rentivo.models.api_key import APIKey, APIKeyGrant
 from rentivo.observability import suppress_tracing, traced
-from rentivo.repositories.base import APIKeyRepository
+from rentivo.repositories.base import APIKeyPersistenceError, APIKeyRepository
 
 
 def _to_storage(value: datetime | None) -> datetime | None:
@@ -99,6 +100,7 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
     ) -> APIKey:
         key_uuid = api_key.uuid or str(ULID())
         created_at = api_key.created_at or datetime.now(UTC)
+        persistence_error: APIKeyPersistenceError | None = None
         try:
             with suppress_tracing():
                 result = self.conn.execute(
@@ -124,22 +126,35 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
                 )
             self._insert_children(cast(int, result.lastrowid), scopes, grants)
             self.conn.commit()
+        except SQLAlchemyError:
+            self.conn.rollback()
+            persistence_error = APIKeyPersistenceError("API-key persistence failed")
         except BaseException:
             self.conn.rollback()
             raise
+        if persistence_error is not None:
+            raise persistence_error
         return cast(APIKey, self.get_by_secret_hash(api_key.secret_hash))
 
     @traced("api_key_repo.get_by_secret_hash", record_exception_details=False)
     def get_by_secret_hash(self, secret_hash: bytes) -> APIKey | None:
-        with suppress_tracing():
-            row = (
-                self.conn.execute(
-                    text("SELECT * FROM api_keys WHERE secret_hash = :secret_hash"),
-                    {"secret_hash": secret_hash},
+        persistence_error: APIKeyPersistenceError | None = None
+        row = None
+        try:
+            with suppress_tracing():
+                row = (
+                    self.conn.execute(
+                        text("SELECT * FROM api_keys WHERE secret_hash = :secret_hash"),
+                        {"secret_hash": secret_hash},
+                    )
+                    .mappings()
+                    .one_or_none()
                 )
-                .mappings()
-                .one_or_none()
-            )
+        except SQLAlchemyError:
+            self.conn.rollback()
+            persistence_error = APIKeyPersistenceError("API-key lookup failed")
+        if persistence_error is not None:
+            raise persistence_error
         return None if row is None else self._hydrate(row)
 
     @traced("api_key_repo.get_integration_by_uuid")
@@ -177,6 +192,7 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
         scopes: frozenset[str],
         grants: tuple[APIKeyGrant, ...],
     ) -> APIKey | None:
+        persistence_error: APIKeyPersistenceError | None = None
         try:
             api_key_id = self.conn.execute(
                 text("SELECT id FROM api_keys WHERE uuid = :uuid AND user_id = :user_id AND is_login_token = 0"),
@@ -185,10 +201,11 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
             if api_key_id is None:
                 self.conn.rollback()
                 return None
-            self.conn.execute(
-                text("UPDATE api_keys SET name = :name WHERE id = :id"),
-                {"name": api_key.name, "id": api_key_id},
-            )
+            with suppress_tracing():
+                self.conn.execute(
+                    text("UPDATE api_keys SET name = :name WHERE id = :id"),
+                    {"name": api_key.name, "id": api_key_id},
+                )
             self.conn.execute(text("DELETE FROM api_key_scopes WHERE api_key_id = :id"), {"id": api_key_id})
             self.conn.execute(
                 text("DELETE FROM api_key_resource_grants WHERE api_key_id = :id"),
@@ -196,9 +213,14 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
             )
             self._insert_children(api_key_id, scopes, grants)
             self.conn.commit()
+        except SQLAlchemyError:
+            self.conn.rollback()
+            persistence_error = APIKeyPersistenceError("API-key update failed")
         except BaseException:
             self.conn.rollback()
             raise
+        if persistence_error is not None:
+            raise persistence_error
         return self.get_integration_by_uuid(api_key.user_id, api_key.uuid)
 
     @traced("api_key_repo.delete_login_token")
@@ -241,10 +263,17 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
         return result.rowcount
 
     @traced("api_key_repo.touch_last_used")
-    def touch_last_used(self, api_key_id: int, used_at: datetime) -> bool:
+    def touch_last_used(self, api_key_id: int, used_at: datetime, cutoff: datetime) -> bool:
         result = self.conn.execute(
-            text("UPDATE api_keys SET last_used_at = :used_at WHERE id = :id"),
-            {"used_at": _to_storage(used_at), "id": api_key_id},
+            text(
+                "UPDATE api_keys SET last_used_at = :used_at "
+                "WHERE id = :id AND (last_used_at IS NULL OR last_used_at <= :cutoff)"
+            ),
+            {
+                "used_at": _to_storage(used_at),
+                "cutoff": _to_storage(cutoff),
+                "id": api_key_id,
+            },
         )
         self.conn.commit()
         return result.rowcount > 0

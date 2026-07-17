@@ -19,6 +19,10 @@ from rentivo.models.theme import Theme
 from rentivo.models.user import User
 
 
+class APIKeyPersistenceError(RuntimeError):
+    """Sanitized failure that is safe to propagate through request telemetry."""
+
+
 class BillingRepository(ABC):
     @abstractmethod
     def create(self, billing: Billing) -> Billing: ...
@@ -381,7 +385,7 @@ class APIKeyRepository(ABC):
     def delete_expired_login_tokens(self, cutoff: datetime) -> int: ...
 
     @abstractmethod
-    def touch_last_used(self, api_key_id: int, used_at: datetime) -> bool: ...
+    def touch_last_used(self, api_key_id: int, used_at: datetime, cutoff: datetime) -> bool: ...
 
 
 class CommunicationTemplateRepository(ABC):

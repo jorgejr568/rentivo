@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import traceback
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
@@ -8,11 +10,12 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import Connection, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import SQLAlchemyError
 
 from rentivo.models import APIKey, APIKeyGrant
 from rentivo.models.user import User
-from rentivo.observability import instrument_sqlalchemy, tracing
+from rentivo.observability import instrument_sqlalchemy, span, tracing
+from rentivo.repositories.base import APIKeyPersistenceError
 from rentivo.repositories.sqlalchemy import SQLAlchemyAPIKeyRepository, SQLAlchemyUserRepository
 
 
@@ -190,10 +193,37 @@ def test_create_rolls_back_entire_aggregate_on_child_failure(
     key = make_key(key_owner.id)
     duplicate_grant = APIKeyGrant(resource_type="user", resource_id=key_owner.id)
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(APIKeyPersistenceError):
         api_key_repo.create(key, scopes=frozenset(), grants=(duplicate_grant, duplicate_grant))
 
     assert api_key_repo.get_by_secret_hash(key.secret_hash) is None
+
+
+def test_create_rolls_back_and_reraises_non_database_failure(
+    api_key_repo: SQLAlchemyAPIKeyRepository,
+    key_owner: User,
+    monkeypatch,
+) -> None:
+    key = make_key(key_owner.id)
+    monkeypatch.setattr(api_key_repo, "_insert_children", MagicMock(side_effect=RuntimeError("child failure")))
+
+    with pytest.raises(RuntimeError, match="child failure"):
+        api_key_repo.create(key, scopes=frozenset(), grants=())
+
+    assert api_key_repo.get_by_secret_hash(key.secret_hash) is None
+
+
+def test_hash_lookup_sanitizes_database_failures() -> None:
+    connection = MagicMock()
+    connection.execute.side_effect = SQLAlchemyError("S" * 32)
+    repository = SQLAlchemyAPIKeyRepository(connection)
+
+    with pytest.raises(APIKeyPersistenceError) as exc_info:
+        repository.get_by_secret_hash(b"S" * 32)
+
+    assert "S" * 32 not in "".join(traceback.format_exception(exc_info.value))
+    assert exc_info.value.__context__ is None
+    connection.rollback.assert_called_once_with()
 
 
 def test_duplicate_hash_never_reaches_trace_details(
@@ -215,16 +245,17 @@ def test_duplicate_hash_never_reaches_trace_details(
         )
         exporter.clear()
 
-        with pytest.raises(IntegrityError):
-            api_key_repo.create(
-                make_key(
-                    key_owner.id,
-                    uuid="01K0DUPLICATE0000000000000",
-                    secret_hash=secret_hash,
-                ),
-                scopes=frozenset(),
-                grants=(),
-            )
+        with pytest.raises(APIKeyPersistenceError) as exc_info:
+            with span("HTTP POST"):
+                api_key_repo.create(
+                    make_key(
+                        key_owner.id,
+                        uuid="01K0DUPLICATE0000000000000",
+                        secret_hash=secret_hash,
+                    ),
+                    scopes=frozenset(),
+                    grants=(),
+                )
 
         serialized_spans = repr(
             [
@@ -235,6 +266,10 @@ def test_duplicate_hash_never_reaches_trace_details(
         assert all(span.attributes.get("db.system") is None for span in exporter.get_finished_spans())
         assert "S" * 32 not in serialized_spans
         assert secret_hash.hex() not in serialized_spans
+        formatted_exception = "".join(traceback.format_exception(exc_info.value))
+        assert "S" * 32 not in formatted_exception
+        assert secret_hash.hex() not in formatted_exception
+        assert exc_info.value.__context__ is None
     finally:
         SQLAlchemyInstrumentor().uninstrument()
         tracing._reset_for_tests()
@@ -251,7 +286,7 @@ def test_update_rolls_back_entire_aggregate_on_child_failure(
         grants=(original_grant,),
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(APIKeyPersistenceError):
         api_key_repo.update_integration(
             created.model_copy(update={"name": "Must roll back"}),
             scopes=frozenset({"billings:read"}),
@@ -263,6 +298,26 @@ def test_update_rolls_back_entire_aggregate_on_child_failure(
     assert loaded.name == created.name
     assert loaded.scopes == frozenset({"profile:read"})
     assert loaded.grants == (original_grant,)
+
+
+def test_update_rolls_back_and_reraises_non_database_failure(
+    api_key_repo: SQLAlchemyAPIKeyRepository,
+    key_owner: User,
+    monkeypatch,
+) -> None:
+    created = api_key_repo.create(make_key(key_owner.id), scopes=frozenset(), grants=())
+    monkeypatch.setattr(api_key_repo, "_insert_children", MagicMock(side_effect=RuntimeError("child failure")))
+
+    with pytest.raises(RuntimeError, match="child failure"):
+        api_key_repo.update_integration(
+            created.model_copy(update={"name": "Must roll back"}),
+            scopes=frozenset({"profile:read"}),
+            grants=(),
+        )
+
+    loaded = api_key_repo.get_by_secret_hash(created.secret_hash)
+    assert loaded is not None
+    assert loaded.name == created.name
 
 
 def test_update_integration_rejects_login_token_and_unknown_key(
@@ -400,11 +455,14 @@ def test_touch_last_used_updates_timestamp(
     key = api_key_repo.create(make_key(key_owner.id), scopes=frozenset(), grants=())
     used_at = datetime(2026, 7, 17, 12, 34, 56, 987654, tzinfo=UTC)
 
-    assert api_key_repo.touch_last_used(key.id, used_at) is True
-    assert api_key_repo.touch_last_used(key.id + 999, used_at) is False
+    first_cutoff = used_at - timedelta(minutes=5)
+    assert api_key_repo.touch_last_used(key.id, used_at, first_cutoff) is True
+    assert api_key_repo.touch_last_used(key.id + 999, used_at, first_cutoff) is False
+    assert api_key_repo.touch_last_used(key.id, used_at + timedelta(minutes=1), used_at - timedelta(minutes=4)) is False
+    assert api_key_repo.touch_last_used(key.id, used_at + timedelta(minutes=5), used_at) is True
     loaded = api_key_repo.get_by_secret_hash(key.secret_hash)
     assert loaded is not None
-    assert loaded.last_used_at == used_at
+    assert loaded.last_used_at == used_at + timedelta(minutes=5)
 
 
 def test_key_uniqueness_and_owner_delete_cascade(
@@ -418,7 +476,7 @@ def test_key_uniqueness_and_owner_delete_cascade(
         grants=(APIKeyGrant(resource_type="user", resource_id=key_owner.id),),
     )
 
-    with pytest.raises(IntegrityError):
+    with pytest.raises(APIKeyPersistenceError):
         api_key_repo.create(
             make_key(
                 key_owner.id,

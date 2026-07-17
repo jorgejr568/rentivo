@@ -5,6 +5,7 @@ import secrets
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from hmac import compare_digest
 from typing import Literal, NamedTuple
 
 from rentivo.constants.api_scopes import (
@@ -26,6 +27,12 @@ _LAST_USED_INTERVAL = timedelta(minutes=5)
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+def _as_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("API-key datetime requires a timezone offset")
+    return value.astimezone(UTC)
 
 
 class IssuedAPIKey(NamedTuple):
@@ -126,7 +133,7 @@ class APIKeyService:
 
     @traced("api_key.issue_login", record_exception_details=False)
     def issue_login(self, *, user_id: int, name: str) -> IssuedAPIKey:
-        now = self.now()
+        now = _as_aware_utc(self.now())
         return self._issue(
             user_id=user_id,
             name=self._name(name),
@@ -146,14 +153,14 @@ class APIKeyService:
         grants: Iterable[APIKeyGrant],
         expires_at: datetime | None = None,
     ) -> IssuedAPIKey:
-        now = self.now()
+        now = _as_aware_utc(self.now())
         normalized_name, normalized_scopes, normalized_grants = self._integration_metadata(
             user_id=user_id,
             name=name,
             scopes=scopes,
             grants=grants,
         )
-        expiration = expires_at or now + _INTEGRATION_DEFAULT_TTL
+        expiration = _as_aware_utc(expires_at) if expires_at is not None else now + _INTEGRATION_DEFAULT_TTL
         if expiration <= now or expiration > now + _INTEGRATION_MAX_TTL:
             raise ValueError("API-key expiration must be within one year")
         return self._issue(
@@ -169,12 +176,15 @@ class APIKeyService:
     def authenticate(self, secret: str) -> APIKey | None:
         if not isinstance(secret, str) or _CREDENTIAL_PATTERN.fullmatch(secret) is None:
             return None
-        key = self.repository.get_by_secret_hash(self._digest(secret))
-        now = self.now()
-        if key is None or key.revoked_at is not None or key.expires_at <= now:
+        digest = self._digest(secret)
+        key = self.repository.get_by_secret_hash(digest)
+        now = _as_aware_utc(self.now())
+        if key is None or not compare_digest(key.secret_hash, digest):
+            return None
+        if key.revoked_at is not None or _as_aware_utc(key.expires_at) <= now:
             return None
         if key.id is not None and (key.last_used_at is None or key.last_used_at <= now - _LAST_USED_INTERVAL):
-            if self.repository.touch_last_used(key.id, now):
+            if self.repository.touch_last_used(key.id, now, now - _LAST_USED_INTERVAL):
                 key = key.model_copy(update={"last_used_at": now})
         return key
 

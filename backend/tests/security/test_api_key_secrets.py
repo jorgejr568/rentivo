@@ -35,7 +35,7 @@ class RecordingRepository:
             return self.saved
         return None
 
-    def touch_last_used(self, api_key_id: int, used_at: datetime) -> bool:
+    def touch_last_used(self, api_key_id: int, used_at: datetime, cutoff: datetime) -> bool:
         return True
 
 
