@@ -1,7 +1,9 @@
+from threading import get_ident
 from unittest.mock import MagicMock
 
 from fastapi import Depends
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event, text
 from starlette.background import BackgroundTask
 from starlette.responses import JSONResponse, StreamingResponse
 
@@ -84,6 +86,51 @@ def test_services_dependency_uses_and_closes_a_request_connection(monkeypatch):
 
     assert response.json() == {"is_shared_container": True}
     connection.close.assert_called_once_with()
+
+
+def test_services_dependency_uses_real_sqlite_connection_on_application_thread(monkeypatch, tmp_path):
+    import rentivo.api.app as api_app
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'api.db'}")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE users ("
+                "id INTEGER PRIMARY KEY, email TEXT NOT NULL, email_hash TEXT, "
+                "password_hash TEXT NOT NULL, pix_key TEXT NOT NULL DEFAULT '', "
+                "pix_merchant_name TEXT NOT NULL DEFAULT '', "
+                "pix_merchant_city TEXT NOT NULL DEFAULT '', created_at DATETIME)"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO users (id, email, password_hash) VALUES (1, 'thread@example.com', 'hash')")
+        )
+    request_threads: dict[str, int] = {}
+
+    @event.listens_for(engine, "engine_connect")
+    def observe_connection(connection) -> None:
+        request_threads["connect"] = get_ident()
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def observe_query(connection, cursor, statement, parameters, context, executemany) -> None:
+        request_threads["query"] = get_ident()
+
+    monkeypatch.setattr(api_app, "get_engine", lambda: engine)
+    app = create_app()
+
+    @app.get("/api/v1/real-services")
+    async def real_services(services: RequestServices = Depends(get_services)) -> dict[str, str]:
+        user = services.user.get_by_id(1)
+        assert user is not None
+        return {"email": user.email}
+
+    with TestClient(app) as client:
+        response = client.get("/api/v1/real-services")
+
+    assert response.status_code == 200
+    assert response.json() == {"email": "thread@example.com"}
+    assert request_threads["connect"] == request_threads["query"]
+    engine.dispose()
 
 
 def test_stream_keeps_request_connection_and_context_until_body_finishes(monkeypatch):
