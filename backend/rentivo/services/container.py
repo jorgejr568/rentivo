@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from rentivo.encryption.factory import get_encryption  # noqa: F401
 from rentivo.repositories.sqlalchemy import (
+    SQLAlchemyAPIKeyRepository,
     SQLAlchemyAuditLogRepository,
     SQLAlchemyBillingAttachmentRepository,
     SQLAlchemyBillingRepository,
@@ -27,6 +28,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
+from rentivo.services.api_key_service import APIKeyService
 from rentivo.services.audit_service import AuditService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
@@ -68,6 +70,14 @@ class RequestServices:
     @cached_property
     def billing(self) -> BillingService:
         return BillingService(SQLAlchemyBillingRepository(self._conn, self._encryption))
+
+    @cached_property
+    def api_key(self) -> APIKeyService:
+        return APIKeyService(
+            repository=SQLAlchemyAPIKeyRepository(self._conn),
+            user_repository=SQLAlchemyUserRepository(self._conn, self._encryption),
+            organization_repository=SQLAlchemyOrganizationRepository(self._conn, self._encryption),
+        )
 
     @cached_property
     def billing_attachment(self) -> BillingAttachmentService:
