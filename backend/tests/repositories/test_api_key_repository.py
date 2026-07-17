@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from opentelemetry.instrumentation.sqlalchemy import SQLAlchemyInstrumentor
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
@@ -11,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 
 from rentivo.models import APIKey, APIKeyGrant
 from rentivo.models.user import User
-from rentivo.observability import tracing
+from rentivo.observability import instrument_sqlalchemy, tracing
 from rentivo.repositories.sqlalchemy import SQLAlchemyAPIKeyRepository, SQLAlchemyUserRepository
 
 
@@ -205,12 +206,14 @@ def test_duplicate_hash_never_reaches_trace_details(
     provider.add_span_processor(SimpleSpanProcessor(exporter))
     tracing._reset_for_tests()
     tracing.configure_tracing(provider=provider)
+    instrument_sqlalchemy(api_key_repo.conn.engine)
     try:
         api_key_repo.create(
             make_key(key_owner.id, secret_hash=secret_hash),
             scopes=frozenset(),
             grants=(),
         )
+        exporter.clear()
 
         with pytest.raises(IntegrityError):
             api_key_repo.create(
@@ -229,9 +232,11 @@ def test_duplicate_hash_never_reaches_trace_details(
                 for span in exporter.get_finished_spans()
             ]
         )
+        assert all(span.attributes.get("db.system") is None for span in exporter.get_finished_spans())
         assert "S" * 32 not in serialized_spans
         assert secret_hash.hex() not in serialized_spans
     finally:
+        SQLAlchemyInstrumentor().uninstrument()
         tracing._reset_for_tests()
 
 

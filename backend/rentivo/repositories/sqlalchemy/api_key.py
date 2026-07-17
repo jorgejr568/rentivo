@@ -8,7 +8,7 @@ from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
 from rentivo.models.api_key import APIKey, APIKeyGrant
-from rentivo.observability import traced
+from rentivo.observability import suppress_tracing, traced
 from rentivo.repositories.base import APIKeyRepository
 
 
@@ -100,27 +100,28 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
         key_uuid = api_key.uuid or str(ULID())
         created_at = api_key.created_at or datetime.now(UTC)
         try:
-            result = self.conn.execute(
-                text(
-                    "INSERT INTO api_keys (uuid, user_id, name, secret_hash, key_start, key_end, "
-                    "is_login_token, expires_at, last_used_at, created_at, revoked_at) "
-                    "VALUES (:uuid, :user_id, :name, :secret_hash, :key_start, :key_end, "
-                    ":is_login_token, :expires_at, :last_used_at, :created_at, :revoked_at)"
-                ),
-                {
-                    "uuid": key_uuid,
-                    "user_id": api_key.user_id,
-                    "name": api_key.name,
-                    "secret_hash": api_key.secret_hash,
-                    "key_start": api_key.key_start,
-                    "key_end": api_key.key_end,
-                    "is_login_token": api_key.is_login_token,
-                    "expires_at": _to_storage(api_key.expires_at),
-                    "last_used_at": _to_storage(api_key.last_used_at),
-                    "created_at": _to_storage(created_at),
-                    "revoked_at": _to_storage(api_key.revoked_at),
-                },
-            )
+            with suppress_tracing():
+                result = self.conn.execute(
+                    text(
+                        "INSERT INTO api_keys (uuid, user_id, name, secret_hash, key_start, key_end, "
+                        "is_login_token, expires_at, last_used_at, created_at, revoked_at) "
+                        "VALUES (:uuid, :user_id, :name, :secret_hash, :key_start, :key_end, "
+                        ":is_login_token, :expires_at, :last_used_at, :created_at, :revoked_at)"
+                    ),
+                    {
+                        "uuid": key_uuid,
+                        "user_id": api_key.user_id,
+                        "name": api_key.name,
+                        "secret_hash": api_key.secret_hash,
+                        "key_start": api_key.key_start,
+                        "key_end": api_key.key_end,
+                        "is_login_token": api_key.is_login_token,
+                        "expires_at": _to_storage(api_key.expires_at),
+                        "last_used_at": _to_storage(api_key.last_used_at),
+                        "created_at": _to_storage(created_at),
+                        "revoked_at": _to_storage(api_key.revoked_at),
+                    },
+                )
             self._insert_children(cast(int, result.lastrowid), scopes, grants)
             self.conn.commit()
         except BaseException:
@@ -130,14 +131,15 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
 
     @traced("api_key_repo.get_by_secret_hash", record_exception_details=False)
     def get_by_secret_hash(self, secret_hash: bytes) -> APIKey | None:
-        row = (
-            self.conn.execute(
-                text("SELECT * FROM api_keys WHERE secret_hash = :secret_hash"),
-                {"secret_hash": secret_hash},
+        with suppress_tracing():
+            row = (
+                self.conn.execute(
+                    text("SELECT * FROM api_keys WHERE secret_hash = :secret_hash"),
+                    {"secret_hash": secret_hash},
+                )
+                .mappings()
+                .one_or_none()
             )
-            .mappings()
-            .one_or_none()
-        )
         return None if row is None else self._hydrate(row)
 
     @traced("api_key_repo.get_integration_by_uuid")
