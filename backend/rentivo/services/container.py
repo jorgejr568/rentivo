@@ -20,6 +20,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyExpenseRepository,
     SQLAlchemyInviteRepository,
     SQLAlchemyKnownDeviceRepository,
+    SQLAlchemyMFAFactorRepository,
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyOrganizationRepository,
     SQLAlchemyPasskeyRepository,
@@ -188,6 +189,7 @@ class RequestServices:
             SQLAlchemyRecoveryCodeRepository(self._conn),
             SQLAlchemyPasskeyRepository(self._conn),
             SQLAlchemyOrganizationRepository(self._conn, self._encryption),
+            SQLAlchemyMFAFactorRepository(self._conn),
         )
 
     @cached_property

@@ -136,3 +136,10 @@ class ExportSendWorkflow:
     @workflow.run
     async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
         await _run_job("export.send", payload, ulid, max_attempts)
+
+
+@workflow.defn(name="AuthCleanupWorkflow")
+class AuthCleanupWorkflow:
+    @workflow.run
+    async def run(self, payload: dict, ulid: str, max_attempts: int) -> None:
+        await _run_job("auth.cleanup", payload, ulid, max_attempts)

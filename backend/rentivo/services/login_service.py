@@ -299,6 +299,24 @@ class LoginService:
     def login(self, **kwargs: Any) -> LoginResult | None:
         return self.login_with_password(**kwargs)
 
+    @traced("login.change_password", record_exception_details=False)
+    def change_password(
+        self,
+        *,
+        principal: Any,
+        current_password: str,
+        new_password: str,
+    ) -> bool:
+        user = self.user_service.authenticate(principal.user.email, current_password)
+        if user is None:
+            return False
+        self.user_service.change_password_and_revoke_other_logins(
+            principal.user.id,
+            new_password,
+            principal.api_key.uuid,
+        )
+        return True
+
     @traced("login.signup", record_exception_details=False)
     def signup(
         self,

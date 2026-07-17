@@ -6,6 +6,7 @@ import pyotp
 
 from legacy_web.services_container import RequestServices
 from rentivo.encryption.base64 import Base64Backend
+from rentivo.models.audit_log import AuditEventType
 from rentivo.models.mfa import UserPasskey, UserTOTP
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyMFATOTPRepository,
@@ -669,6 +670,42 @@ class TestPasskeyAuthComplete:
                 json={"id": passkey.credential_id},
             )
             assert response.status_code == 400
+
+    def test_usage_compare_and_set_loss_does_not_complete_login(self, client, test_engine):
+        user, passkey = self._setup_mfa_pending_with_passkey(client, test_engine)
+        self._begin_auth(client)
+        mock_mfa = MagicMock()
+        mock_mfa.get_passkey_by_credential_id.return_value = passkey
+        mock_mfa.update_passkey_sign_count.return_value = False
+        mock_audit = MagicMock()
+
+        with (
+            patch.object(RequestServices, "mfa", new_callable=PropertyMock, return_value=mock_mfa),
+            patch.object(RequestServices, "audit", new_callable=PropertyMock, return_value=mock_audit),
+            patch("legacy_web.routes.security.webauthn") as mock_webauthn,
+        ):
+            mock_webauthn.base64url_to_bytes.return_value = b"pk_bytes"
+            mock_webauthn.verify_authentication_response.return_value = MagicMock(new_sign_count=0)
+
+            response = client.post(
+                "/security/passkeys/auth/complete",
+                json={"id": passkey.credential_id},
+            )
+
+        assert response.status_code == 400
+        assert response.json() == {"error": "Falha na verificação."}
+        mock_mfa.update_passkey_sign_count.assert_called_once_with(
+            passkey.id,
+            passkey.sign_count,
+            passkey.last_used_at,
+            0,
+        )
+        assert mock_audit.safe_log_for.call_args.args[1] == AuditEventType.MFA_VERIFY_FAILED
+        assert mock_audit.safe_log_for.call_args.kwargs["metadata"] == {
+            "ip": "testclient",
+            "method": "passkey",
+        }
+        assert client.get("/billings/", follow_redirects=False).status_code == 302
 
     def test_complete_sets_mfa_setup_required(self, client, test_engine):
         """After passkey auth, if user needs MFA setup, session flag is set."""

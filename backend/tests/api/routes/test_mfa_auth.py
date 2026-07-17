@@ -19,10 +19,13 @@ from rentivo.settings import settings
 
 CHALLENGE_ID = "01K0MFAAUTHCHALLENGE0000000"
 CHALLENGE_NONCE = "mfa-challenge-cookie-nonce"
+FRESH_CHALLENGE_ID = "01K0MFAAUTHCHALLENGE0000001"
+FRESH_CHALLENGE_NONCE = "fresh-mfa-challenge-cookie-nonce"
 ACCESS_SECRET = f"rntv-v1-{'M' * 43}"
 NOW = datetime(2026, 7, 17, 12, tzinfo=UTC)
 
 USER = User(id=7, email="mfa-user@example.com")
+OTHER_USER = User(id=8, email="other-mfa-user@example.com")
 LOGIN_KEY = APIKey(
     id=11,
     uuid="mfa-login-key-uuid",
@@ -69,6 +72,7 @@ class FakeAuthChallengeService:
     def __init__(self, events: list[str]) -> None:
         self.events = events
         self.challenge: AuthChallenge | None = _challenge()
+        self.nonce = CHALLENGE_NONCE
         self.allow_consume = True
         self.consumed = False
         self.get_valid_calls: list[tuple[str, str, str, str | None]] = []
@@ -88,7 +92,7 @@ class FakeAuthChallengeService:
             and not self.consumed
             and challenge.expires_at > NOW
             and uuid == challenge.uuid
-            and nonce == CHALLENGE_NONCE
+            and nonce == self.nonce
             and challenge.phase == expected_phase
             and (expected_method is None or expected_method in challenge.allowed_methods)
         )
@@ -181,17 +185,19 @@ class FakeAuditService:
 
 class FakeRateLimitService:
     def __init__(self) -> None:
-        self.reservations = 0
+        self.reservations: dict[tuple[str, str], int] = {}
         self.reserve_calls: list[dict[str, Any]] = []
         self.clear_calls: list[dict[str, str]] = []
 
     def reserve(self, **kwargs: Any) -> bool:
         self.reserve_calls.append(kwargs)
-        self.reservations += 1
-        return self.reservations <= 5
+        key = (kwargs["action"], kwargs["identity"])
+        self.reservations[key] = self.reservations.get(key, 0) + 1
+        return self.reservations[key] <= kwargs["limit"]
 
     def clear(self, **kwargs: str) -> None:
         self.clear_calls.append(kwargs)
+        self.reservations.pop((kwargs["action"], kwargs["identity"]), None)
 
 
 @dataclass(slots=True)
@@ -203,6 +209,7 @@ class MFAHarness:
     user: FakeUserService
     login: FakeLoginService
     audit: FakeAuditService
+    rate_limit: FakeRateLimitService
     events: list[str]
 
 
@@ -223,9 +230,10 @@ def mfa_harness(monkeypatch: pytest.MonkeyPatch) -> MFAHarness:
     user = FakeUserService()
     login = FakeLoginService(events)
     audit = FakeAuditService()
+    rate_limit = FakeRateLimitService()
     services = SimpleNamespace(
         auth_challenge=challenge,
-        auth_rate_limit=FakeRateLimitService(),
+        auth_rate_limit=rate_limit,
         mfa=mfa,
         user=user,
         login=login,
@@ -241,6 +249,7 @@ def mfa_harness(monkeypatch: pytest.MonkeyPatch) -> MFAHarness:
         user=user,
         login=login,
         audit=audit,
+        rate_limit=rate_limit,
         events=events,
     )
 
@@ -361,6 +370,74 @@ def test_sixth_invalid_mfa_attempt_is_rate_limited_without_rechecking_the_code(
     assert len(mfa_harness.challenge.failure_calls) == 5
     assert len(mfa_harness.audit.calls) == 5
     assert mfa_harness.login.calls == []
+
+
+def test_fresh_challenge_does_not_reset_the_per_user_and_ip_mfa_rate_limit(
+    mfa_harness: MFAHarness,
+) -> None:
+    mfa_harness.mfa.totp_result = False
+
+    first_challenge = [_verify(mfa_harness, "totp", code="000000") for _ in range(5)]
+    mfa_harness.challenge.challenge = _challenge().model_copy(update={"uuid": FRESH_CHALLENGE_ID})
+    mfa_harness.challenge.nonce = FRESH_CHALLENGE_NONCE
+    fresh_challenge = _verify(
+        mfa_harness,
+        "totp",
+        challenge_id=FRESH_CHALLENGE_ID,
+        nonce=FRESH_CHALLENGE_NONCE,
+        code="000000",
+    )
+
+    assert [response.status_code for response in first_challenge] == [401] * 5
+    assert fresh_challenge.status_code == 429
+    assert fresh_challenge.json()["code"] == "mfa_rate_limited"
+    assert len(mfa_harness.mfa.totp_calls) == 5
+    assert [call["identity"] for call in mfa_harness.rate_limit.reserve_calls] == [f"{USER.id}:testclient"] * 6
+
+
+def test_success_for_another_user_on_same_ip_does_not_clear_exhausted_bucket(
+    mfa_harness: MFAHarness,
+) -> None:
+    mfa_harness.mfa.totp_result = False
+    first_user = [_verify(mfa_harness, "totp", code="000000") for _ in range(5)]
+
+    mfa_harness.challenge.challenge = _challenge().model_copy(
+        update={"uuid": FRESH_CHALLENGE_ID, "user_id": OTHER_USER.id}
+    )
+    mfa_harness.challenge.nonce = FRESH_CHALLENGE_NONCE
+    mfa_harness.user.user = OTHER_USER
+    mfa_harness.mfa.totp_result = True
+    other_user = _verify(
+        mfa_harness,
+        "totp",
+        challenge_id=FRESH_CHALLENGE_ID,
+        nonce=FRESH_CHALLENGE_NONCE,
+    )
+
+    final_challenge_id = "01K0MFAAUTHCHALLENGE0000002"
+    final_nonce = "final-mfa-challenge-cookie-nonce"
+    mfa_harness.challenge.challenge = _challenge().model_copy(update={"uuid": final_challenge_id})
+    mfa_harness.challenge.nonce = final_nonce
+    mfa_harness.challenge.consumed = False
+    mfa_harness.user.user = USER
+    mfa_harness.mfa.totp_result = False
+    first_user_again = _verify(
+        mfa_harness,
+        "totp",
+        challenge_id=final_challenge_id,
+        nonce=final_nonce,
+        code="000000",
+    )
+
+    assert [response.status_code for response in first_user] == [401] * 5
+    assert other_user.status_code == 200
+    assert first_user_again.status_code == 429
+    assert mfa_harness.rate_limit.clear_calls == [{"action": "mfa_verify", "identity": f"{OTHER_USER.id}:testclient"}]
+    assert [call["identity"] for call in mfa_harness.rate_limit.reserve_calls] == [
+        *([f"{USER.id}:testclient"] * 5),
+        f"{OTHER_USER.id}:testclient",
+        f"{USER.id}:testclient",
+    ]
 
 
 def test_missing_challenge_cookie_is_rejected_before_service_lookup(mfa_harness: MFAHarness) -> None:

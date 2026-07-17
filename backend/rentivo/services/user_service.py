@@ -81,6 +81,22 @@ class UserService:
         self.repo.update_password_hash(user_id, password_hash)
         logger.info("password_changed", user_id=user_id)
 
+    @traced("user.change_password_and_revoke_other_logins")
+    def change_password_and_revoke_other_logins(
+        self,
+        user_id: int,
+        new_password: str,
+        current_key_uuid: str,
+    ) -> int:
+        password_hash = self.hash_password(new_password)
+        revoked = self.repo.change_password_and_revoke_other_login_tokens(
+            user_id,
+            password_hash,
+            current_key_uuid,
+        )
+        logger.info("password_changed", user_id=user_id, revoked_other_logins=revoked)
+        return revoked
+
     @traced("user.delete_new_user")
     def delete_new_user(self, user_id: int) -> bool:
         return self.repo.delete(user_id)

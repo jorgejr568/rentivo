@@ -11,6 +11,7 @@ from rentivo.jobs.base import Job
 from rentivo.jobs.temporal.client import AsyncBridge, build_client
 from rentivo.jobs.temporal.config import TemporalConfig, config_from_settings
 from rentivo.jobs.temporal.workflows import (
+    AuthCleanupWorkflow,
     CommunicationSendWorkflow,
     EmailSendWorkflow,
     ExportGenerateWorkflow,
@@ -30,6 +31,7 @@ _WORKFLOW_BY_TYPE = {
     "s3.delete": S3DeleteWorkflow,
     "export.generate": ExportGenerateWorkflow,
     "export.send": ExportSendWorkflow,
+    "auth.cleanup": AuthCleanupWorkflow,
 }
 
 

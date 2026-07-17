@@ -3,35 +3,192 @@ name: Test PR
 on:
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: test-pr-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  ruff-check:
-    name: ruff check
+  backend:
+    name: backend lint, tests, and coverage
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/ruff-check
 
-  ruff-format:
-    name: ruff format
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Ruff check
+        run: uv run --project backend --no-sync ruff check .
+
+      - name: Ruff format check
+        run: uv run --project backend --no-sync ruff format --check .
+
+      - name: Run backend suite with coverage
+        run: |
+          mkdir -p artifacts
+          uv run --project backend --no-sync pytest -c backend/pyproject.toml -n auto -q \
+            --cov --cov-config=backend/pyproject.toml \
+            --cov-report=term-missing \
+            --cov-report=xml:artifacts/backend-coverage.xml
+
+      - name: Upload backend coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: backend-coverage
+          path: artifacts/backend-coverage.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v7
+        with:
+          files: artifacts/backend-coverage.xml
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  frontend:
+    name: frontend OpenAPI, tests, typecheck, lint, and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv for API contract generation
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Sync backend dependencies
+        working-directory: .
+        run: uv sync --all-extras --frozen
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Verify generated API contract is current
+        run: npm run api:check
+
+      - name: Run unit tests with coverage
+        run: npm run test -- --run --coverage
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload frontend coverage and build artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-results
+          path: |
+            frontend/coverage
+            frontend/dist
+          if-no-files-found: warn
+          retention-days: 14
+
+  migrations:
+    name: migration single head and clean upgrade
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_DATABASE: rentivo_ci
+          MARIADB_ROOT_PASSWORD: ci-only-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      RENTIVO_DB_URL: mysql+pymysql://root:ci-only-root-password@127.0.0.1:3306/rentivo_ci
+      RENTIVO_ENVIRONMENT: dev
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Require exactly one Alembic head
+        run: |
+          heads="$(uv run --project backend --no-sync alembic -c backend/alembic.ini heads)"
+          printf '%s\n' "$heads"
+          count="$(printf '%s\n' "$heads" | grep -c ' (head)$')"
+          if [ "$count" -ne 1 ]; then
+            echo "Expected exactly one Alembic head; found $count."
+            exit 1
+          fi
+
+      - name: Verify MariaDB authentication concurrency contracts
+        env:
+          RENTIVO_TEST_MARIADB_URL: ${{ env.RENTIVO_DB_URL }}
+        run: >-
+          uv run --project backend --no-sync pytest
+          backend/tests/repositories/test_mfa_repos.py
+          -k mariadb -q
+
+      - name: Upgrade an empty database to head
+        run: uv run --project backend --no-sync alembic -c backend/alembic.ini upgrade head
+
+      - name: Report the applied revision
+        run: uv run --project backend --no-sync alembic -c backend/alembic.ini current
+
+  compose-config:
+    name: preview Compose configuration
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: ./.github/actions/ruff-format
 
-  tests:
-    name: pytest
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/pytest
+      - name: Validate local preview Compose
+        run: docker compose -f docker-compose.next.yml config --quiet
 
-  docker-build:
-    name: docker build (${{ matrix.name }})
+      - name: Validate remote preview Compose
+        env:
+          MYSQL_DATABASE: rentivo_ci
+          MYSQL_PASSWORD: ci-only-database-password
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+          MYSQL_USER: rentivo_ci
+          RENTIVO_APP_ENV_FILE: /dev/null
+          RENTIVO_PREVIEW_ORIGIN: https://preview.example.test
+          RENTIVO_PREVIEW_PORT: 8080
+          RENTIVO_WEBAUTHN_RP_ID: preview.example.test
+          RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: 172.30.0.1/32
+        run: docker compose -f docker-compose.next.yml -f docker-compose.next.remote.yml config --quiet
+
+  preview-images:
+    name: preview image (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -40,11 +197,19 @@ jobs:
           - name: legacy
             dockerfile: backend/Dockerfile.legacy
             image: rentivo-legacy
-            scope: legacy
+            scope: preview-legacy
+          - name: api
+            dockerfile: backend/Dockerfile.api
+            image: rentivo-api
+            scope: preview-api
           - name: worker
             dockerfile: backend/Dockerfile.worker
             image: rentivo-worker
-            scope: worker
+            scope: preview-worker
+          - name: frontend
+            dockerfile: frontend/Dockerfile
+            image: rentivo-frontend
+            scope: preview-frontend
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/docker-build
@@ -56,25 +221,28 @@ jobs:
   all-checks-pass:
     name: all-checks-pass
     runs-on: ubuntu-latest
-    needs: [ruff-check, ruff-format, tests, docker-build]
+    needs: [backend, frontend, migrations, compose-config, preview-images]
     if: always()
     env:
-      RUFF_CHECK_RESULT: ${{ needs.ruff-check.result }}
-      RUFF_FORMAT_RESULT: ${{ needs.ruff-format.result }}
-      TESTS_RESULT: ${{ needs.tests.result }}
-      DOCKER_BUILD_RESULT: ${{ needs.docker-build.result }}
+      BACKEND_RESULT: ${{ needs.backend.result }}
+      FRONTEND_RESULT: ${{ needs.frontend.result }}
+      MIGRATIONS_RESULT: ${{ needs.migrations.result }}
+      COMPOSE_RESULT: ${{ needs.compose-config.result }}
+      IMAGES_RESULT: ${{ needs.preview-images.result }}
     steps:
       - name: Verify all required jobs succeeded
         run: |
-          if [ "$RUFF_CHECK_RESULT" != "success" ] \
-             || [ "$RUFF_FORMAT_RESULT" != "success" ] \
-             || [ "$TESTS_RESULT" != "success" ] \
-             || [ "$DOCKER_BUILD_RESULT" != "success" ]; then
+          if [ "$BACKEND_RESULT" != "success" ] \
+             || [ "$FRONTEND_RESULT" != "success" ] \
+             || [ "$MIGRATIONS_RESULT" != "success" ] \
+             || [ "$COMPOSE_RESULT" != "success" ] \
+             || [ "$IMAGES_RESULT" != "success" ]; then
             echo "One or more required jobs failed."
-            echo "ruff-check=$RUFF_CHECK_RESULT"
-            echo "ruff-format=$RUFF_FORMAT_RESULT"
-            echo "tests=$TESTS_RESULT"
-            echo "docker-build=$DOCKER_BUILD_RESULT"
+            echo "backend=$BACKEND_RESULT"
+            echo "frontend=$FRONTEND_RESULT"
+            echo "migrations=$MIGRATIONS_RESULT"
+            echo "compose-config=$COMPOSE_RESULT"
+            echo "preview-images=$IMAGES_RESULT"
             exit 1
           fi
           echo "All required jobs succeeded."

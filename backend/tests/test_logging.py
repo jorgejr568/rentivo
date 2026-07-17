@@ -9,8 +9,11 @@ from unittest.mock import patch
 
 import pytest
 import structlog
+from structlog.stdlib import ProcessorFormatter
 
-from rentivo.logging import configure_logging
+from rentivo.logging import _shared_processors, configure_logging
+
+API_KEY = "rntv-v1-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789_-abc"
 
 
 def _capture(mode_json: bool, *, cli: bool = False) -> StringIO:
@@ -109,6 +112,115 @@ class TestConfigureLogging:
             assert len(parsed["span_id"]) == 16
         finally:
             tracing._reset_for_tests()
+
+    def test_structlog_recursively_redacts_credentials(self):
+        buf = _capture(mode_json=True)
+        structlog.get_logger("t").info(
+            "credential_event",
+            payload={"password": "plain-password", "items": [{"accessToken": "plain-token"}]},
+            api_key_uuid="01SAFEKEYUUID",
+            request_id="request-123",
+        )
+
+        parsed = json.loads(buf.getvalue().strip().splitlines()[-1])
+        assert parsed["payload"] == {
+            "password": "[REDACTED]",
+            "items": [{"accessToken": "[REDACTED]"}],
+        }
+        assert parsed["api_key_uuid"] == "01SAFEKEYUUID"
+        assert parsed["request_id"] == "request-123"
+
+    def test_structlog_exception_does_not_render_api_key(self):
+        buf = _capture(mode_json=True)
+        try:
+            raise RuntimeError(f"upstream rejected {API_KEY}")
+        except RuntimeError:
+            structlog.get_logger("t").exception("request_failed")
+
+        output = buf.getvalue()
+        assert API_KEY not in output
+        assert "[REDACTED]" in output
+
+    @pytest.mark.parametrize("mode_json", [True, False])
+    def test_structlog_exception_redacts_embedded_credentials(self, mode_json):
+        buf = _capture(mode_json=mode_json)
+        try:
+            raise RuntimeError(
+                "OIDC failed id_token=oidc-secret recovery_code=recovery-secret Authorization: Bearer bearer-secret"
+            )
+        except RuntimeError:
+            structlog.get_logger("t").exception("request_failed")
+
+        output = buf.getvalue()
+        assert "oidc-secret" not in output
+        assert "recovery-secret" not in output
+        assert "bearer-secret" not in output
+        assert "[REDACTED]" in output
+
+    @pytest.mark.parametrize("mode_json", [True, False])
+    @pytest.mark.parametrize("logger_kind", ["structlog", "stdlib"])
+    def test_exception_redacts_opaque_cookie_headers(self, mode_json, logger_kind):
+        buf = _capture(mode_json=mode_json)
+        try:
+            raise RuntimeError("Cookie: __Host-session=opaque-session-secret; theme=dark")
+        except RuntimeError:
+            if logger_kind == "structlog":
+                structlog.get_logger("t").exception("request_failed")
+            else:
+                logging.getLogger("foreign").exception("request_failed")
+
+        output = buf.getvalue()
+        assert "opaque-session-secret" not in output
+        assert "[REDACTED]" in output
+
+    def test_stdlib_log_recursively_redacts_extra_payload(self):
+        buf = _capture(mode_json=True)
+        logging.getLogger("foreign").warning(
+            "foreign_event",
+            extra={"payload": {"recoveryCode": "recovery-secret"}},
+        )
+
+        parsed = json.loads(buf.getvalue().strip().splitlines()[-1])
+        assert parsed["payload"] == {"recoveryCode": "[REDACTED]"}
+
+    @pytest.mark.parametrize("mode_json", [True, False])
+    def test_stdlib_exception_redacts_embedded_credentials(self, mode_json):
+        buf = _capture(mode_json=mode_json)
+        try:
+            raise RuntimeError("client_secret=client-secret Cookie: session_token=session-secret")
+        except RuntimeError:
+            logging.getLogger("foreign").exception("provider_failed")
+
+        output = buf.getvalue()
+        assert "client-secret" not in output
+        assert "session-secret" not in output
+        assert "[REDACTED]" in output
+
+    def test_cloudwatch_formatter_redacts_embedded_credentials(self):
+        buf = StringIO()
+        handler = logging.StreamHandler(buf)
+        handler.setFormatter(
+            ProcessorFormatter(
+                keep_exc_info=False,
+                foreign_pre_chain=_shared_processors(json_output=True),
+                processors=[ProcessorFormatter.remove_processors_meta, structlog.processors.JSONRenderer()],
+            )
+        )
+        root = logging.getLogger()
+        for existing in root.handlers[:]:
+            existing.close()
+        root.handlers[:] = [handler]
+        root.setLevel(logging.INFO)
+
+        try:
+            raise RuntimeError("id_token=oidc-secret Authorization: Bearer bearer-secret")
+        except RuntimeError:
+            logging.getLogger("foreign").exception("provider_failed")
+
+        output = buf.getvalue()
+        assert "oidc-secret" not in output
+        assert "bearer-secret" not in output
+        assert "[REDACTED]" in output
 
 
 def _cw_settings(monkeypatch_target, *, stream="", access_key="", secret=""):

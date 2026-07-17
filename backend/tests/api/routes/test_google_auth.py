@@ -352,10 +352,13 @@ def _callback(
     *,
     query: str = f"code={AUTH_CODE}&state={OAUTH_STATE}",
     nonce: str | None = OAUTH_NONCE,
+    accept_json: bool = False,
 ) -> Any:
     headers = {"User-Agent": USER_AGENT}
     if nonce is not None:
         headers["Cookie"] = f"{settings.challenge_cookie_name}={nonce}"
+    if accept_json:
+        headers["Accept"] = "application/json"
     return harness.client.get(
         f"/api/v1/auth/google/callback?{query}",
         headers=headers,
@@ -564,6 +567,61 @@ def test_google_login_without_mfa_issues_access_and_csrf_and_clears_oauth_cookie
     assert ACCESS_SECRET not in response.headers["location"]
 
 
+def test_google_json_callback_returns_bootstrap_with_full_google_analytics_event(
+    google_harness: GoogleAuthHarness,
+) -> None:
+    response = _callback(google_harness, accept_json=True)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "authenticated"
+    assert response.json()["bootstrap"]["user"] == {
+        "id": EXISTING_USER.id,
+        "email": EXISTING_USER.email,
+    }
+    assert response.json()["bootstrap"]["analytics"]["events"] == [
+        {"event": "rentivo_login_success", "via": "google", "reason": None}
+    ]
+    assert "location" not in response.headers
+    assert response.cookies[settings.access_cookie_name] == ACCESS_SECRET
+    assert response.cookies[settings.csrf_cookie_name]
+    _assert_deleted_cookie(response, settings.challenge_cookie_name, http_only=True)
+
+
+def test_google_json_callback_returns_typed_mfa_handoff(
+    google_harness: GoogleAuthHarness,
+) -> None:
+    google_harness.mfa.has_totp = True
+
+    response = _callback(google_harness, accept_json=True)
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "status": "mfa_required",
+        "challenge_id": MFA_CHALLENGE_ID,
+        "methods": ["totp", "recovery"],
+    }
+    assert "location" not in response.headers
+    assert response.cookies[settings.challenge_cookie_name] == MFA_NONCE
+    assert settings.access_cookie_name not in response.cookies
+
+
+def test_google_json_callback_returns_problem_instead_of_redirect_on_failure(
+    google_harness: GoogleAuthHarness,
+) -> None:
+    response = _callback(
+        google_harness,
+        query=f"code={AUTH_CODE}&state=01J00000000000000000000999",
+        accept_json=True,
+    )
+
+    assert response.status_code == 401
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "google_auth_failed"
+    assert "location" not in response.headers
+    assert google_harness.google_auth.exchange_calls == []
+    _assert_deleted_cookie(response, settings.challenge_cookie_name, http_only=True)
+
+
 def test_google_login_with_mfa_replaces_oauth_cookie_and_redirects_with_public_challenge_only(
     google_harness: GoogleAuthHarness,
 ) -> None:
@@ -634,3 +692,14 @@ def test_google_oauth_operations_are_exposed_in_openapi(google_harness: GoogleAu
         operation = schema["paths"][path]["get"]
         assert operation["operationId"]
         assert "auth" in operation["tags"]
+
+    start_responses = schema["paths"]["/api/v1/auth/google/start"]["get"]["responses"]
+    assert "200" not in start_responses
+    assert "302" in start_responses
+    assert "content" not in start_responses["302"]
+
+    callback_responses = schema["paths"]["/api/v1/auth/google/callback"]["get"]["responses"]
+    assert {"200", "202", "302", "401", "404", "422"}.issubset(callback_responses)
+    assert callback_responses["200"]["content"]["application/json"]["schema"]["$ref"].endswith("/AuthenticatedResponse")
+    assert callback_responses["202"]["content"]["application/json"]["schema"]["$ref"].endswith("/MFARequiredResponse")
+    assert "content" not in callback_responses["302"]

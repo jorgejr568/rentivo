@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel
+
+
+class MFAFactorRemovalResult(str, Enum):
+    REMOVED = "removed"
+    LAST_FACTOR = "last_factor"
+    NOT_FOUND = "not_found"
 
 
 class UserTOTP(BaseModel):

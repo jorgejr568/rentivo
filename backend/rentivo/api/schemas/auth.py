@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -82,9 +82,59 @@ class PasskeyAuthBeginRequest(_AuthRequest):
     challenge_id: str = Field(min_length=1)
 
 
+class WebAuthnModel(_StrictModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+
+class WebAuthnCredentialDescriptor(WebAuthnModel):
+    id: str = Field(min_length=1)
+    type: Literal["public-key"]
+    transports: (
+        tuple[
+            Literal["ble", "cable", "hybrid", "internal", "nfc", "smart-card", "usb"],
+            ...,
+        ]
+        | None
+    ) = None
+
+
+class WebAuthnAuthenticationOptions(WebAuthnModel):
+    challenge: str = Field(min_length=1)
+    timeout: int = Field(gt=0)
+    rp_id: str = Field(alias="rpId", min_length=1)
+    allow_credentials: tuple[WebAuthnCredentialDescriptor, ...] = Field(alias="allowCredentials")
+    user_verification: Literal["discouraged", "preferred", "required"] = Field(alias="userVerification")
+
+
+class WebAuthnAuthenticatorAssertionResponse(WebAuthnModel):
+    client_data_json: str = Field(alias="clientDataJSON", min_length=1)
+    authenticator_data: str = Field(alias="authenticatorData", min_length=1)
+    signature: str = Field(min_length=1)
+    user_handle: str | None = Field(default=None, alias="userHandle")
+
+
+class WebAuthnAuthenticationExtensions(WebAuthnModel):
+    appid: bool | None = None
+
+
+class WebAuthnAuthenticationCredential(WebAuthnModel):
+    id: str = Field(min_length=1)
+    raw_id: str = Field(alias="rawId", min_length=1)
+    type: Literal["public-key"]
+    response: WebAuthnAuthenticatorAssertionResponse
+    authenticator_attachment: Literal["cross-platform", "platform"] | None = Field(
+        default=None,
+        alias="authenticatorAttachment",
+    )
+    client_extension_results: WebAuthnAuthenticationExtensions = Field(
+        default_factory=WebAuthnAuthenticationExtensions,
+        alias="clientExtensionResults",
+    )
+
+
 class PasskeyAuthCompleteRequest(_AuthRequest):
     challenge_id: str = Field(min_length=1)
-    credential: dict[str, Any]
+    credential: WebAuthnAuthenticationCredential
 
 
 class AnalyticsEvent(_StrictModel):

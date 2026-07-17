@@ -17,6 +17,7 @@ import structlog
 from structlog.stdlib import ProcessorFormatter
 
 from rentivo.observability import current_trace_ids
+from rentivo.pii_redaction import redact
 from rentivo.settings import settings
 
 
@@ -31,22 +32,35 @@ def _add_trace_context(logger, method_name, event_dict):
     return event_dict
 
 
+def _redact_event_dict(logger, method_name, event_dict):
+    """Remove credential material before any renderer or exporter sees it."""
+    return redact(event_dict)
+
+
 def _shared_processors(json_output: bool) -> list:
     base = [
         structlog.contextvars.merge_contextvars,
+        structlog.stdlib.ExtraAdder(),
         structlog.stdlib.add_log_level,
         _add_trace_context,
         structlog.processors.TimeStamper(fmt="iso", utc=True),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.CallsiteParameterAdder(
-            {
-                structlog.processors.CallsiteParameter.FILENAME,
-                structlog.processors.CallsiteParameter.LINENO,
-            }
-        ),
     ]
     if json_output:
-        base.insert(5, structlog.processors.dict_tracebacks)
+        base.append(structlog.processors.dict_tracebacks)
+    else:
+        base.append(structlog.processors.format_exc_info)
+    base.extend(
+        [
+            structlog.processors.CallsiteParameterAdder(
+                {
+                    structlog.processors.CallsiteParameter.FILENAME,
+                    structlog.processors.CallsiteParameter.LINENO,
+                }
+            ),
+            _redact_event_dict,
+        ]
+    )
     return base
 
 
@@ -77,7 +91,7 @@ def _cloudwatch_handler() -> logging.Handler:
     )
     handler.setFormatter(
         ProcessorFormatter(
-            keep_exc_info=True,
+            keep_exc_info=False,
             foreign_pre_chain=_shared_processors(json_output=True),
             processors=[ProcessorFormatter.remove_processors_meta, structlog.processors.JSONRenderer()],
         )
@@ -98,11 +112,9 @@ def configure_logging(cli: bool = False) -> None:
     renderer = _pick_renderer(cli)
 
     formatter = ProcessorFormatter(
-        # Keep the raw exc_info tuple on the record so ConsoleRenderer and
-        # dict_tracebacks can format it themselves. Without this, ProcessorFormatter
-        # silently applies format_exc_info and structlog warns that pretty
-        # tracebacks won't work.
-        keep_exc_info=True,
+        # Exception processors above render before recursive credential redaction.
+        # Do not let stdlib append the original traceback after the safe output.
+        keep_exc_info=False,
         foreign_pre_chain=shared,
         processors=[
             ProcessorFormatter.remove_processors_meta,

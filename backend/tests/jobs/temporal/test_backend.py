@@ -5,6 +5,7 @@ import pytest
 
 from rentivo.jobs.base import Job
 from rentivo.jobs.temporal import backend as backend_mod
+from rentivo.jobs.temporal import workflows as workflow_mod
 from rentivo.jobs.temporal.backend import TemporalJobBackend, _start_delay, build_temporal_backend
 from rentivo.jobs.temporal.config import TemporalConfig
 from rentivo.jobs.temporal.workflows import EmailSendWorkflow
@@ -46,8 +47,23 @@ def test_workflow_map_covers_all_handlers():
         "s3.delete",
         "export.generate",
         "export.send",
+        "auth.cleanup",
     }
     assert backend_mod._WORKFLOW_BY_TYPE["email.send"] is EmailSendWorkflow
+    assert hasattr(workflow_mod, "AuthCleanupWorkflow")
+    assert backend_mod._WORKFLOW_BY_TYPE["auth.cleanup"] is workflow_mod.AuthCleanupWorkflow
+
+
+def test_enqueue_auth_cleanup_starts_registered_workflow(cfg):
+    bridge = MagicMock()
+    client = MagicMock()
+    bridge.run.side_effect = [client, "HANDLE"]
+    be = TemporalJobBackend(cfg, bridge=bridge, connect=lambda c: "ignored")
+
+    job = be.enqueue("auth.cleanup", {"now": "2026-07-17T12:00:00Z"})
+
+    assert job.job_type == "auth.cleanup"
+    assert bridge.run.call_count == 2
 
 
 def test_start_delay_none_when_no_run_after():

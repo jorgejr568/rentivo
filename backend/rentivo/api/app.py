@@ -11,10 +11,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from rentivo.api.errors import ProblemException, problem, problem_response
+from rentivo.api.routes.api_keys import router as api_keys_router
 from rentivo.api.routes.auth import router as auth_router
 from rentivo.api.routes.google_auth import router as google_auth_router
 from rentivo.api.routes.health import router as health_router
 from rentivo.api.routes.mfa_auth import router as mfa_auth_router
+from rentivo.api.routes.profile import router as profile_router
+from rentivo.api.routes.security import router as security_router
 from rentivo.context import accept_inbound_request_id, new_request_id
 from rentivo.db import get_engine, initialize_db
 from rentivo.encryption.factory import get_encryption
@@ -124,6 +127,9 @@ def create_app() -> FastAPI:
     api.include_router(auth_router)
     api.include_router(mfa_auth_router)
     api.include_router(google_auth_router)
+    api.include_router(profile_router)
+    api.include_router(security_router)
+    api.include_router(api_keys_router)
     app.include_router(api)
 
     app.add_middleware(_RequestServicesMiddleware)

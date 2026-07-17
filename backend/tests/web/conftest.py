@@ -21,6 +21,34 @@ from rentivo.services.pix_service import PixService
 from rentivo.storage.local import LocalStorage
 from tests.conftest import SCHEMA_DDL
 
+_API_KEY_SCHEMA_DDL = """
+CREATE TABLE api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(255) NOT NULL,
+    secret_hash BINARY(32) NOT NULL UNIQUE,
+    key_start VARCHAR(4) NOT NULL,
+    key_end VARCHAR(2) NOT NULL,
+    is_login_token BOOLEAN NOT NULL DEFAULT 0,
+    expires_at DATETIME NOT NULL,
+    last_used_at DATETIME,
+    created_at DATETIME NOT NULL,
+    revoked_at DATETIME
+);
+CREATE TABLE api_key_scopes (
+    api_key_id INTEGER NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+    scope VARCHAR(64) NOT NULL,
+    PRIMARY KEY (api_key_id, scope)
+);
+CREATE TABLE api_key_resource_grants (
+    api_key_id INTEGER NOT NULL REFERENCES api_keys(id) ON DELETE CASCADE,
+    resource_type VARCHAR(20) NOT NULL,
+    resource_id INTEGER NOT NULL,
+    PRIMARY KEY (api_key_id, resource_type, resource_id)
+);
+"""
+
 
 def _make_test_engine():
     """Create a fresh in-memory SQLite engine with shared connection pool."""
@@ -37,7 +65,7 @@ def _make_test_engine():
         cursor.close()
 
     with engine.connect() as conn:
-        for statement in SCHEMA_DDL.strip().split(";"):
+        for statement in (SCHEMA_DDL + _API_KEY_SCHEMA_DDL).strip().split(";"):
             stmt = statement.strip()
             if stmt:
                 conn.execute(text(stmt))

@@ -1,4 +1,7 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+import pytest
 
 from rentivo.models.audit_log import AuditEventType, AuditLog
 from rentivo.services.audit_service import AuditService
@@ -65,6 +68,40 @@ class TestAuditServiceLog:
         created_log = self.mock_repo.create.call_args[0][0]
         assert created_log.previous_state == {"name": "old"}
         assert created_log.new_state == {"name": "new"}
+
+    def test_log_recursively_redacts_credentials_before_persistence(self):
+        self.mock_repo.create.side_effect = lambda log: log
+
+        result = self.service.log(
+            "api_key.used",
+            previous_state={"credentials": [{"password": "old-password"}]},
+            new_state={"session": {"loginToken": "login-secret"}},
+            metadata={
+                "api_key_uuid": "01SAFEKEYUUID",
+                "api_key_class": "integration",
+                "source": "api",
+                "key_hint": "rntv-v1-abcd...yz",
+                "nested": ({"Authorization": "Bearer token-value"},),
+                "provider": {
+                    "client_secret": "client-secret",
+                    "error": "id_token=oidc-secret recovery_code=recovery-secret",
+                },
+            },
+        )
+
+        assert result.previous_state == {"credentials": [{"password": "[REDACTED]"}]}
+        assert result.new_state == {"session": {"loginToken": "[REDACTED]"}}
+        assert result.metadata == {
+            "api_key_uuid": "01SAFEKEYUUID",
+            "api_key_class": "integration",
+            "source": "api",
+            "key_hint": "rntv-v1-abcd...yz",
+            "nested": ({"Authorization": "[REDACTED]"},),
+            "provider": {
+                "client_secret": "[REDACTED]",
+                "error": "id_token=[REDACTED] recovery_code=[REDACTED]",
+            },
+        }
 
     def test_log_defaults(self):
         self.mock_repo.create.return_value = AuditLog(id=1, event_type="test")
@@ -200,6 +237,26 @@ class TestSafeLogFor:
         assert created_log.source == "web"
         assert created_log.entity_type == "billing"
         assert created_log.entity_id == 1
+
+    @pytest.mark.parametrize(("is_login_token", "key_class"), [(True, "login"), (False, "integration")])
+    def test_safe_log_for_preserves_api_key_attribution(self, is_login_token, key_class):
+        actor = SimpleNamespace(
+            user_id=42,
+            email="alice@example.com",
+            source="api",
+            api_key_uuid="01SAFEKEYUUID",
+            is_login_token=is_login_token,
+        )
+
+        self.service.safe_log_for(actor, "api.request", metadata={"request_id": "request-123"})
+
+        created_log = self.mock_repo.create.call_args[0][0]
+        assert created_log.source == "api"
+        assert created_log.metadata == {
+            "request_id": "request-123",
+            "api_key_uuid": "01SAFEKEYUUID",
+            "api_key_class": key_class,
+        }
 
     def test_safe_log_for_anon_actor(self):
         from legacy_web.context import ANON_ACTOR

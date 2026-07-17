@@ -494,7 +494,23 @@ async def passkey_auth_complete(request: Request):
         )
         return JSONResponse({"error": "Falha na verificação."}, status_code=400)
 
-    mfa_service.update_passkey_sign_count(passkey.id, verification.new_sign_count)
+    usage_updated = mfa_service.update_passkey_sign_count(
+        passkey.id,
+        passkey.sign_count,
+        passkey.last_used_at,
+        verification.new_sign_count,
+    )
+    if not usage_updated:
+        logger.warning("passkey_auth_stale_usage", user_id=user_id)
+        audit = request.state.services.audit
+        audit.safe_log_for(
+            verify_actor,
+            AuditEventType.MFA_VERIFY_FAILED,
+            entity_type="user",
+            entity_id=user_id,
+            metadata={"ip": client_ip, "method": "passkey"},
+        )
+        return JSONResponse({"error": "Falha na verificação."}, status_code=400)
 
     user = request.state.services.user.get_by_id(user_id)
     if user is None:

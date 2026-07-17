@@ -1,0 +1,39 @@
+# Remote preview/staging override. Use with docker-compose.next.yml and set
+# the required public origin, RP ID, and exact TLS-terminator address/network.
+services:
+  db:
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MYSQL_ROOT_PASSWORD:?Set the remote database root password}"
+      MYSQL_DATABASE: "${MYSQL_DATABASE:?Set the remote database name}"
+      MYSQL_USER: "${MYSQL_USER:?Set the remote database user}"
+      MYSQL_PASSWORD: "${MYSQL_PASSWORD:?Set the remote database password}"
+
+  rentivo:
+    env_file:
+      - path: "${RENTIVO_APP_ENV_FILE:?Set the remote application environment file}"
+        required: true
+
+  worker:
+    env_file:
+      - path: "${RENTIVO_APP_ENV_FILE:?Set the remote application environment file}"
+        required: true
+
+  api:
+    env_file:
+      - path: "${RENTIVO_APP_ENV_FILE:?Set the remote application environment file}"
+        required: true
+    environment:
+      RENTIVO_ENVIRONMENT: staging
+      RENTIVO_PUBLIC_APP_URL: "${RENTIVO_PREVIEW_ORIGIN:?Set the public HTTPS preview origin}"
+      RENTIVO_WEBAUTHN_ORIGIN: "${RENTIVO_PREVIEW_ORIGIN:?Set the public HTTPS preview origin}"
+      RENTIVO_WEBAUTHN_RP_ID: "${RENTIVO_WEBAUTHN_RP_ID:?Set the preview hostname}"
+      RENTIVO_COOKIE_SECURE: "true"
+      RENTIVO_ACCESS_COOKIE_NAME: __Host-rentivo_access
+      RENTIVO_CHALLENGE_COOKIE_NAME: __Host-rentivo_challenge
+      RENTIVO_CSRF_COOKIE_NAME: __Host-rentivo_csrf
+
+  proxy:
+    ports:
+      - "127.0.0.1:${RENTIVO_PREVIEW_PORT:?Set the host-only preview port}:80"
+    environment:
+      RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: "${RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR:?Set the TLS terminator IP or CIDR}"

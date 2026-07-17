@@ -40,3 +40,16 @@ def test_auth_rate_limit_service_is_lazily_cached(db_connection, fake_encryption
 
     assert isinstance(services.auth_rate_limit, RateLimitService)
     assert services.auth_rate_limit is services.auth_rate_limit
+
+
+def test_mfa_and_pix_services_resolve_with_their_own_repositories(db_connection, fake_encryption):
+    from rentivo.services.container import RequestServices
+    from rentivo.services.mfa_service import MFAService
+    from rentivo.services.pix_service import PixService
+
+    services = RequestServices(conn=db_connection, encryption=fake_encryption)
+
+    assert isinstance(services.mfa, MFAService)
+    assert isinstance(services.pix, PixService)
+    assert services.mfa is services.mfa
+    assert services.pix is services.pix

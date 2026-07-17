@@ -42,6 +42,18 @@ class TestUserService:
         assert user_id == 42
         assert bcrypt.checkpw(b"new-secret", new_hash.encode())
 
+    def test_change_password_and_revoke_other_logins_uses_one_repository_operation(self):
+        self.mock_repo.change_password_and_revoke_other_login_tokens.return_value = 2
+
+        revoked = self.service.change_password_and_revoke_other_logins(42, "new-secret", "current-login")
+
+        user_id, new_hash, current_uuid = self.mock_repo.change_password_and_revoke_other_login_tokens.call_args.args
+        assert user_id == 42
+        assert bcrypt.checkpw(b"new-secret", new_hash.encode())
+        assert current_uuid == "current-login"
+        assert revoked == 2
+        self.mock_repo.update_password_hash.assert_not_called()
+
     def test_list_users(self):
         self.mock_repo.list_all.return_value = [User(email="a@b.com"), User(email="c@d.com")]
         assert [u.email for u in self.service.list_users()] == ["a@b.com", "c@d.com"]

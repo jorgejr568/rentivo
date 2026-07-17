@@ -44,9 +44,9 @@ class AuditService:
             entity_type=entity_type,
             entity_id=entity_id,
             entity_uuid=entity_uuid,
-            previous_state=previous_state,
-            new_state=new_state,
-            metadata=metadata or {},
+            previous_state=redact(previous_state) if previous_state is not None else None,
+            new_state=redact(new_state) if new_state is not None else None,
+            metadata=redact(metadata or {}),
         )
         result = self.repo.create(audit_log)
         logger.info(

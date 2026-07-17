@@ -25,6 +25,7 @@ from rentivo.repositories.sqlalchemy.communication import (
 from rentivo.repositories.sqlalchemy.expense import SQLAlchemyExpenseRepository
 from rentivo.repositories.sqlalchemy.invite import SQLAlchemyInviteRepository
 from rentivo.repositories.sqlalchemy.mfa import (
+    SQLAlchemyMFAFactorRepository,
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyPasskeyRepository,
     SQLAlchemyRecoveryCodeRepository,
@@ -50,6 +51,7 @@ __all__ = [
     "SQLAlchemyInviteRepository",
     "SQLAlchemyKnownDeviceRepository",
     "SQLAlchemyMFATOTPRepository",
+    "SQLAlchemyMFAFactorRepository",
     "SQLAlchemyOrganizationRepository",
     "SQLAlchemyPasskeyRepository",
     "SQLAlchemyPasswordResetTokenRepository",

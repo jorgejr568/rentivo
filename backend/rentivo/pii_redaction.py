@@ -9,6 +9,7 @@ value is a no-op for typical inputs), and requires no key material.
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, overload
 
@@ -26,8 +27,75 @@ class PIIKind(str, Enum):
     EMAIL = "email"
 
 
-_CREDENTIAL_FIELDS = frozenset({"authorization", "cookie", "secret", "secret_hash"})
+_CREDENTIAL_FIELDS = frozenset(
+    {
+        "accesstoken",
+        "apikey",
+        "apikeyhash",
+        "apikeysecret",
+        "assertion",
+        "attestationobject",
+        "authenticationtoken",
+        "accesscredential",
+        "authenticatordata",
+        "authorization",
+        "authorizationcode",
+        "bearertoken",
+        "challenge",
+        "challengehash",
+        "challengetoken",
+        "clientsecret",
+        "clientdatajson",
+        "cookie",
+        "credential",
+        "credentialhash",
+        "credentialsecret",
+        "csrf",
+        "csrftoken",
+        "currentpassword",
+        "codeverifier",
+        "logintoken",
+        "mfacode",
+        "newpassword",
+        "nonce",
+        "noncehash",
+        "idtoken",
+        "oauthcode",
+        "oauthtoken",
+        "oldpassword",
+        "password",
+        "passwordconfirm",
+        "passwordconfirmation",
+        "passwordhash",
+        "passwordresettoken",
+        "rawid",
+        "recoverycode",
+        "recoverycodes",
+        "refreshtoken",
+        "resettoken",
+        "secret",
+        "secrethash",
+        "secretkey",
+        "sessiontoken",
+        "setcookie",
+        "signature",
+        "totp",
+        "totpcode",
+        "totpsecret",
+        "userhandle",
+        "verificationtoken",
+        "awssecretaccesskey",
+    }
+)
 _REDACTED = "[REDACTED]"
+_API_KEY_PATTERN = re.compile(r"rntv-v1-[A-Za-z0-9_-]{12,}")
+_BEARER_PATTERN = re.compile(r"(?i)(\bbearer\s+)(?P<value>\[REDACTED\]|[^\s,;\"')\]}]+)")
+_COOKIE_HEADER_PATTERN = re.compile(r"(?i)(\b(?:set-cookie|cookie)\s*:\s*)[^\r\n]+")
+_CREDENTIAL_ASSIGNMENT_PATTERN = re.compile(
+    r"(?P<prefix>\b(?P<field>[A-Za-z][A-Za-z0-9_.-]{1,63})\s*[:=]\s*)"
+    r"(?P<value>\[REDACTED\]|\"[^\"]*\"|'[^']*'|[^\s,;\"')\]}]+)"
+)
+_HEADER_FIELDS = frozenset({"authorization", "cookie", "setcookie"})
 
 
 @overload
@@ -58,16 +126,38 @@ def redact(value: Any, kind: PIIKind | None = None) -> Any:
 def _redact_credentials(value: Any) -> Any:
     if isinstance(value, dict):
         return {
-            key: _REDACTED if str(key).lower() in _CREDENTIAL_FIELDS else _redact_credentials(item)
+            key: _REDACTED if _normalize_field(key) in _CREDENTIAL_FIELDS else _redact_credentials(item)
             for key, item in value.items()
         }
     if isinstance(value, list):
         return [_redact_credentials(item) for item in value]
     if isinstance(value, tuple):
         return tuple(_redact_credentials(item) for item in value)
-    if isinstance(value, str) and "rntv-v1-" in value:
-        return _REDACTED
+    if isinstance(value, str):
+        if _API_KEY_PATTERN.search(value):
+            return _REDACTED
+        return _redact_credential_string(value)
     return value
+
+
+def _redact_credential_string(value: str) -> str:
+    value = _COOKIE_HEADER_PATTERN.sub(lambda match: f"{match.group(1)}{_REDACTED}", value)
+    value = _BEARER_PATTERN.sub(lambda match: f"{match.group(1)}{_REDACTED}", value)
+
+    def replace_assignment(match: re.Match[str]) -> str:
+        field = _normalize_field(match.group("field"))
+        assigned_value = match.group("value")
+        if field not in _CREDENTIAL_FIELDS or field in _HEADER_FIELDS:
+            return f"{match.group('prefix')}{_redact_credential_string(assigned_value)}"
+        if assigned_value == _REDACTED:
+            return match.group(0)
+        return f"{match.group('prefix')}{_REDACTED}"
+
+    return _CREDENTIAL_ASSIGNMENT_PATTERN.sub(replace_assignment, value)
+
+
+def _normalize_field(field: Any) -> str:
+    return "".join(character for character in str(field).casefold() if character.isalnum())
 
 
 def _mask_pix(value: str) -> str:

@@ -343,6 +343,53 @@ def test_update_integration_rejects_login_token_and_unknown_key(
     )
 
 
+def test_update_integration_rejects_a_stale_snapshot_after_revocation(
+    api_key_repo: SQLAlchemyAPIKeyRepository,
+    key_owner: User,
+) -> None:
+    original_grant = APIKeyGrant(resource_type="user", resource_id=key_owner.id)
+    created = api_key_repo.create(
+        make_key(key_owner.id),
+        scopes=frozenset({"profile:read"}),
+        grants=(original_grant,),
+    )
+    revoked_at = datetime(2026, 7, 17, 15, 1, 2, tzinfo=UTC)
+    assert api_key_repo.revoke_integration(key_owner.id, created.uuid, revoked_at) is True
+
+    updated = api_key_repo.update_integration(
+        created.model_copy(update={"name": "Stale update"}),
+        scopes=frozenset({"billings:read"}),
+        grants=(APIKeyGrant(resource_type="organization", resource_id=42),),
+    )
+
+    loaded = api_key_repo.get_by_secret_hash(created.secret_hash)
+    assert updated is None
+    assert loaded is not None
+    assert loaded.name == created.name
+    assert loaded.scopes == frozenset({"profile:read"})
+    assert loaded.grants == (original_grant,)
+
+
+def test_update_integration_compare_and_set_loss_rolls_back_before_child_writes() -> None:
+    connection = MagicMock()
+    selected = MagicMock()
+    selected.scalar_one_or_none.return_value = 17
+    update = MagicMock(rowcount=0)
+    connection.execute.side_effect = [selected, update]
+    repository = SQLAlchemyAPIKeyRepository(connection)
+
+    result = repository.update_integration(
+        make_key(7),
+        scopes=frozenset({"profile:read"}),
+        grants=(APIKeyGrant(resource_type="user", resource_id=7),),
+    )
+
+    assert result is None
+    assert connection.execute.call_count == 2
+    connection.rollback.assert_called_once_with()
+    connection.commit.assert_not_called()
+
+
 def test_delete_login_token_only_deletes_login_tokens(
     api_key_repo: SQLAlchemyAPIKeyRepository,
     key_owner: User,
@@ -374,7 +421,7 @@ def test_revoke_integration_is_owner_scoped_and_idempotent(
 
     assert api_key_repo.revoke_integration(key_owner.id + 1, integration.uuid, revoked_at) is False
     assert api_key_repo.revoke_integration(key_owner.id, integration.uuid, revoked_at) is True
-    assert api_key_repo.revoke_integration(key_owner.id, integration.uuid, revoked_at + timedelta(seconds=1)) is True
+    assert api_key_repo.revoke_integration(key_owner.id, integration.uuid, revoked_at + timedelta(seconds=1)) is False
     loaded = api_key_repo.get_by_secret_hash(integration.secret_hash)
     assert loaded is not None
     assert loaded.revoked_at == revoked_at
@@ -397,6 +444,41 @@ def test_revoke_all_login_tokens_leaves_integrations_active(
 
     assert api_key_repo.revoke_all_login_tokens(key_owner.id) == 1
     assert api_key_repo.get_by_secret_hash(login.secret_hash) is None
+    assert api_key_repo.get_by_secret_hash(integration.secret_hash) is not None
+
+
+def test_revoke_other_login_tokens_keeps_current_session_and_integrations(
+    api_key_repo: SQLAlchemyAPIKeyRepository,
+    key_owner: User,
+) -> None:
+    current = api_key_repo.create(
+        make_key(key_owner.id, secret_hash=b"c" * 32, is_login_token=True),
+        scopes=frozenset(),
+        grants=(),
+    )
+    other = api_key_repo.create(
+        make_key(
+            key_owner.id,
+            uuid="01K0OTHERLOGIN000000000000",
+            secret_hash=b"o" * 32,
+            is_login_token=True,
+        ),
+        scopes=frozenset(),
+        grants=(),
+    )
+    integration = api_key_repo.create(
+        make_key(
+            key_owner.id,
+            uuid="01K0INTEGRATIONOTHER000000",
+            secret_hash=b"i" * 32,
+        ),
+        scopes=frozenset(),
+        grants=(),
+    )
+
+    assert api_key_repo.revoke_other_login_tokens(key_owner.id, current.uuid) == 1
+    assert api_key_repo.get_by_secret_hash(current.secret_hash) is not None
+    assert api_key_repo.get_by_secret_hash(other.secret_hash) is None
     assert api_key_repo.get_by_secret_hash(integration.secret_hash) is not None
 
 

@@ -201,17 +201,23 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
         persistence_error: APIKeyPersistenceError | None = None
         try:
             api_key_id = self.conn.execute(
-                text("SELECT id FROM api_keys WHERE uuid = :uuid AND user_id = :user_id AND is_login_token = 0"),
+                text(
+                    "SELECT id FROM api_keys WHERE uuid = :uuid AND user_id = :user_id "
+                    "AND is_login_token = 0 AND revoked_at IS NULL"
+                ),
                 {"uuid": api_key.uuid, "user_id": api_key.user_id},
             ).scalar_one_or_none()
             if api_key_id is None:
                 self.conn.rollback()
                 return None
             with suppress_tracing():
-                self.conn.execute(
-                    text("UPDATE api_keys SET name = :name WHERE id = :id"),
+                result = self.conn.execute(
+                    text("UPDATE api_keys SET name = :name WHERE id = :id AND revoked_at IS NULL"),
                     {"name": api_key.name, "id": api_key_id},
                 )
+            if result.rowcount == 0:
+                self.conn.rollback()
+                return None
             self.conn.execute(text("DELETE FROM api_key_scopes WHERE api_key_id = :id"), {"id": api_key_id})
             self.conn.execute(
                 text("DELETE FROM api_key_resource_grants WHERE api_key_id = :id"),
@@ -242,13 +248,23 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
     def revoke_integration(self, user_id: int, uuid: str, revoked_at: datetime) -> bool:
         result = self.conn.execute(
             text(
-                "UPDATE api_keys SET revoked_at = COALESCE(revoked_at, :revoked_at) "
-                "WHERE user_id = :user_id AND uuid = :uuid AND is_login_token = 0"
+                "UPDATE api_keys SET revoked_at = :revoked_at "
+                "WHERE user_id = :user_id AND uuid = :uuid AND is_login_token = 0 "
+                "AND revoked_at IS NULL"
             ),
             {"user_id": user_id, "uuid": uuid, "revoked_at": _to_storage(revoked_at)},
         )
         self.conn.commit()
         return result.rowcount > 0
+
+    @traced("api_key_repo.revoke_other_login_tokens")
+    def revoke_other_login_tokens(self, user_id: int, current_key_uuid: str) -> int:
+        result = self.conn.execute(
+            text("DELETE FROM api_keys WHERE user_id = :user_id AND is_login_token = 1 AND uuid != :current_key_uuid"),
+            {"user_id": user_id, "current_key_uuid": current_key_uuid},
+        )
+        self.conn.commit()
+        return result.rowcount
 
     @traced("api_key_repo.revoke_all_login_tokens")
     def revoke_all_login_tokens(self, user_id: int) -> int:

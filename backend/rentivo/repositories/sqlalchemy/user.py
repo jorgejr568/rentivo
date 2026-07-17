@@ -104,6 +104,30 @@ class SQLAlchemyUserRepository(UserRepository):
         )
         self.conn.commit()
 
+    @traced("user_repo.change_password_and_revoke_other_login_tokens")
+    def change_password_and_revoke_other_login_tokens(
+        self,
+        user_id: int,
+        password_hash: str,
+        current_key_uuid: str,
+    ) -> int:
+        try:
+            self.conn.execute(
+                text("UPDATE users SET password_hash = :password_hash WHERE id = :id"),
+                {"password_hash": password_hash, "id": user_id},
+            )
+            result = self.conn.execute(
+                text(
+                    "DELETE FROM api_keys WHERE user_id = :user_id AND is_login_token = 1 AND uuid != :current_key_uuid"
+                ),
+                {"user_id": user_id, "current_key_uuid": current_key_uuid},
+            )
+            self.conn.commit()
+        except BaseException:
+            self.conn.rollback()
+            raise
+        return result.rowcount
+
     @traced("user_repo.delete")
     def delete(self, user_id: int) -> bool:
         result = self.conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})

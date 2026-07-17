@@ -5,6 +5,7 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from rentivo.jobs.temporal import workflows as workflow_mod
 from rentivo.jobs.temporal.retry import PERMANENT_ERROR_TYPE
 from rentivo.jobs.temporal.workflows import (
     CommunicationSendWorkflow,
@@ -128,9 +129,11 @@ def _make_named_activity(name):
         (S3DeleteWorkflow, "s3.delete"),
         (ExportGenerateWorkflow, "export.generate"),
         (ExportSendWorkflow, "export.send"),
+        (getattr(workflow_mod, "AuthCleanupWorkflow", None), "auth.cleanup"),
     ],
 )
 async def test_each_workflow_class_delegates_to_run_job(wf, activity_name):
+    assert wf is not None
     act, _ = _make_named_activity(activity_name)
     finalize, events = _make_finalize_sink()
     async with await WorkflowEnvironment.start_time_skipping() as env:

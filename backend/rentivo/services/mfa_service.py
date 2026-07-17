@@ -3,15 +3,17 @@ from __future__ import annotations
 import base64
 import io
 import secrets
+from datetime import datetime
 
 import bcrypt
 import pyotp
 import qrcode
 import structlog
 
-from rentivo.models.mfa import UserPasskey, UserTOTP
+from rentivo.models.mfa import MFAFactorRemovalResult, UserPasskey, UserTOTP
 from rentivo.observability import traced
 from rentivo.repositories.base import (
+    MFAFactorRepository,
     MFATOTPRepository,
     OrganizationRepository,
     PasskeyRepository,
@@ -24,6 +26,10 @@ RECOVERY_CODE_COUNT = 10
 RECOVERY_CODE_LENGTH = 8
 
 
+class LastMFAFactorError(ValueError):
+    """Raised when organization policy requires the factor to remain enrolled."""
+
+
 class MFAService:
     def __init__(
         self,
@@ -31,11 +37,13 @@ class MFAService:
         recovery_repo: RecoveryCodeRepository,
         passkey_repo: PasskeyRepository,
         org_repo: OrganizationRepository,
+        factor_repo: MFAFactorRepository,
     ) -> None:
         self.totp_repo = totp_repo
         self.recovery_repo = recovery_repo
         self.passkey_repo = passkey_repo
         self.org_repo = org_repo
+        self.factor_repo = factor_repo
 
     # --- TOTP ---
 
@@ -107,8 +115,11 @@ class MFAService:
     @traced("mfa.disable_totp")
     def disable_totp(self, user_id: int) -> None:
         """Disable TOTP and delete all recovery codes."""
-        self.totp_repo.delete_by_user_id(user_id)
-        self.recovery_repo.delete_all_by_user(user_id)
+        result = self.factor_repo.remove_totp_and_revoke_logins(user_id)
+        if result is MFAFactorRemovalResult.LAST_FACTOR:
+            raise LastMFAFactorError("MFA is required by an organization")
+        if result is MFAFactorRemovalResult.NOT_FOUND:
+            raise ValueError("TOTP não encontrado")
         logger.info("totp_disabled", user_id=user_id)
 
     # --- Recovery Codes ---
@@ -140,9 +151,10 @@ class MFAService:
         unused = self.recovery_repo.list_unused_by_user(user_id)
         for rc in unused:
             if bcrypt.checkpw(code.encode(), rc.code_hash.encode()):
-                self.recovery_repo.mark_used(rc.id)
-                logger.info("recovery_code_used", user_id=user_id)
-                return True
+                consumed = self.recovery_repo.mark_used(rc.id)
+                if consumed:
+                    logger.info("recovery_code_used", user_id=user_id)
+                return consumed
         return False
 
     @traced("mfa.count_unused_recovery_codes")
@@ -166,16 +178,27 @@ class MFAService:
         return self.passkey_repo.get_by_credential_id(credential_id)
 
     @traced("mfa.update_passkey_sign_count")
-    def update_passkey_sign_count(self, passkey_id: int, sign_count: int) -> None:
-        self.passkey_repo.update_sign_count(passkey_id, sign_count)
-        self.passkey_repo.update_last_used(passkey_id)
+    def update_passkey_sign_count(
+        self,
+        passkey_id: int,
+        expected_sign_count: int,
+        expected_last_used_at: datetime | None,
+        new_sign_count: int,
+    ) -> bool:
+        return self.passkey_repo.update_sign_count(
+            passkey_id,
+            expected_sign_count,
+            expected_last_used_at,
+            new_sign_count,
+        )
 
     @traced("mfa.delete_passkey")
     def delete_passkey(self, passkey_uuid: str, user_id: int) -> None:
-        passkey = self.passkey_repo.get_by_uuid(passkey_uuid)
-        if passkey is None or passkey.user_id != user_id:
+        result = self.factor_repo.remove_passkey_and_revoke_logins(passkey_uuid, user_id)
+        if result is MFAFactorRemovalResult.LAST_FACTOR:
+            raise LastMFAFactorError("MFA is required by an organization")
+        if result is MFAFactorRemovalResult.NOT_FOUND:
             raise ValueError("Passkey não encontrada")
-        self.passkey_repo.delete(passkey.id)
         logger.info("passkey_deleted", passkey_uuid=passkey_uuid, user_id=user_id)
 
     # --- MFA Status ---

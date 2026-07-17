@@ -22,6 +22,8 @@ from rentivo.settings import settings
 
 CHALLENGE_ID = "01K0PASSKEYCHALLENGE0000000"
 CHALLENGE_NONCE = "passkey-challenge-cookie-nonce"
+FRESH_CHALLENGE_ID = "01K0PASSKEYCHALLENGE0000001"
+FRESH_CHALLENGE_NONCE = "fresh-passkey-challenge-cookie-nonce"
 SERVER_CHALLENGE = b"deterministic-server-webauthn-challenge"
 ACCESS_SECRET = f"rntv-v1-{'P' * 43}"
 CREDENTIAL_ID = "Y3JlZGVudGlhbC1pZA"
@@ -71,8 +73,10 @@ ASSERTION = {
 }
 OPTIONS_PAYLOAD = {
     "challenge": "ZGV0ZXJtaW5pc3RpYy1zZXJ2ZXItd2ViYXV0aG4tY2hhbGxlbmdl",
+    "timeout": 60000,
     "rpId": "auth.rentivo.test",
     "allowCredentials": [{"id": CREDENTIAL_ID, "type": "public-key"}],
+    "userVerification": "preferred",
 }
 
 
@@ -107,6 +111,7 @@ class FakeAuthChallengeService:
     def __init__(self, events: list[str]) -> None:
         self.events = events
         self.challenge: AuthChallenge | None = _challenge()
+        self.nonce = CHALLENGE_NONCE
         self.allow_webauthn_update = True
         self.allow_consume = True
         self.consumed = False
@@ -128,7 +133,7 @@ class FakeAuthChallengeService:
             and not self.consumed
             and challenge.expires_at > NOW
             and uuid == challenge.uuid
-            and nonce == CHALLENGE_NONCE
+            and nonce == self.nonce
             and challenge.phase == expected_phase
             and (expected_method is None or expected_method in challenge.allowed_methods)
         )
@@ -194,9 +199,12 @@ class FakeMFAService:
         self.events = events
         self.passkeys = [PASSKEY]
         self.passkey_by_credential: UserPasskey | None = PASSKEY
+        self.current_sign_count = PASSKEY.sign_count
+        self.current_last_used_at = PASSKEY.last_used_at
+        self.allow_usage_update = True
         self.list_calls: list[int] = []
         self.lookup_calls: list[str] = []
-        self.sign_count_calls: list[tuple[int, int]] = []
+        self.sign_count_calls: list[tuple[int, int, datetime | None, int]] = []
 
     def list_passkeys(self, user_id: int) -> list[UserPasskey]:
         self.list_calls.append(user_id)
@@ -206,9 +214,28 @@ class FakeMFAService:
         self.lookup_calls.append(credential_id)
         return self.passkey_by_credential
 
-    def update_passkey_sign_count(self, passkey_id: int, sign_count: int) -> None:
+    def update_passkey_sign_count(
+        self,
+        passkey_id: int,
+        expected_sign_count: int,
+        expected_last_used_at: datetime | None = None,
+        new_sign_count: int | None = None,
+    ) -> bool:
         self.events.append("mfa.update_sign_count")
-        self.sign_count_calls.append((passkey_id, sign_count))
+        if new_sign_count is None:
+            new_sign_count = expected_sign_count
+            expected_sign_count = self.current_sign_count
+            expected_last_used_at = self.current_last_used_at
+        self.sign_count_calls.append((passkey_id, expected_sign_count, expected_last_used_at, new_sign_count))
+        won = bool(
+            self.allow_usage_update
+            and expected_sign_count == self.current_sign_count
+            and expected_last_used_at == self.current_last_used_at
+        )
+        if won:
+            self.current_sign_count = new_sign_count
+            self.current_last_used_at = NOW + timedelta(microseconds=len(self.sign_count_calls))
+        return won
 
 
 class FakeUserService:
@@ -477,7 +504,7 @@ def test_passkey_complete_validates_server_values_then_consumes_before_one_login
     }
     assert passkey_harness.challenge.consume_calls == [(CHALLENGE_ID, CHALLENGE_NONCE, "login", "passkey")]
     assert passkey_harness.events == ["challenge.consume", "mfa.update_sign_count", "login.issue_key"]
-    assert passkey_harness.mfa.sign_count_calls == [(PASSKEY.id, 8)]
+    assert passkey_harness.mfa.sign_count_calls == [(PASSKEY.id, PASSKEY.sign_count, PASSKEY.last_used_at, 8)]
     assert len(passkey_harness.login.calls) == 1
     login_call = passkey_harness.login.calls[0]
     assert login_call["user"] == USER
@@ -610,6 +637,59 @@ def test_atomic_consume_loss_after_valid_passkey_cannot_update_counter_or_issue_
     assert settings.access_cookie_name not in response.cookies
 
 
+def test_passkey_usage_compare_and_set_loss_cannot_issue_login_key(
+    passkey_harness: PasskeyHarness,
+) -> None:
+    passkey_harness.mfa.allow_usage_update = False
+
+    response = _complete(passkey_harness)
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "invalid_passkey"
+    assert passkey_harness.events == ["challenge.consume", "mfa.update_sign_count"]
+    assert passkey_harness.mfa.sign_count_calls == [(PASSKEY.id, PASSKEY.sign_count, PASSKEY.last_used_at, 8)]
+    assert passkey_harness.login.calls == []
+    assert [args[1] for args, _kwargs in passkey_harness.audit.calls] == [AuditEventType.MFA_VERIFY_FAILED]
+    assert passkey_harness.audit.calls[0][1]["metadata"] == {"ip": "testclient", "method": "passkey"}
+    assert settings.access_cookie_name not in response.cookies
+    challenge_cookie = _cookie_line(response, settings.challenge_cookie_name)
+    assert challenge_cookie.startswith((f"{settings.challenge_cookie_name}=;", f'{settings.challenge_cookie_name}="";'))
+    assert "Max-Age=0" in challenge_cookie
+
+
+def test_same_passkey_assertion_across_fresh_challenges_issues_only_one_login_key(
+    passkey_harness: PasskeyHarness,
+) -> None:
+    passkey_harness.webauthn.new_sign_count = 0
+    passkey_harness.mfa.current_sign_count = 0
+    passkey_harness.mfa.passkey_by_credential = PASSKEY.model_copy(update={"sign_count": 0, "last_used_at": None})
+
+    first = _complete(passkey_harness)
+    passkey_harness.challenge.challenge = _challenge().model_copy(update={"uuid": FRESH_CHALLENGE_ID})
+    passkey_harness.challenge.nonce = FRESH_CHALLENGE_NONCE
+    passkey_harness.challenge.consumed = False
+    second = _complete(
+        passkey_harness,
+        challenge_id=FRESH_CHALLENGE_ID,
+        nonce=FRESH_CHALLENGE_NONCE,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 401
+    assert second.json()["code"] == "invalid_passkey"
+    assert len(passkey_harness.webauthn.verify_calls) == 2
+    assert len(passkey_harness.challenge.consume_calls) == 2
+    assert passkey_harness.mfa.sign_count_calls == [
+        (PASSKEY.id, 0, None, 0),
+        (PASSKEY.id, 0, None, 0),
+    ]
+    assert len(passkey_harness.login.calls) == 1
+    assert [args[1] for args, _kwargs in passkey_harness.audit.calls] == [
+        AuditEventType.MFA_PASSKEY_USED,
+        AuditEventType.MFA_VERIFY_FAILED,
+    ]
+
+
 def test_replayed_passkey_completion_cannot_issue_a_second_login_key(
     passkey_harness: PasskeyHarness,
 ) -> None:
@@ -633,3 +713,23 @@ def test_passkey_openapi_exposes_begin_and_complete_json_contracts(passkey_harne
         assert "auth" in operation["tags"]
         assert "application/json" in operation["requestBody"]["content"]
         assert {"200", "401", "422"}.issubset(operation["responses"])
+
+    begin_response = schema["paths"]["/api/v1/auth/mfa/passkeys/begin"]["post"]["responses"]["200"]
+    assert begin_response["content"]["application/json"]["schema"]["$ref"].endswith("/WebAuthnAuthenticationOptions")
+
+    complete_request = schema["components"]["schemas"]["PasskeyAuthCompleteRequest"]
+    credential_ref = complete_request["properties"]["credential"]["$ref"]
+    assert credential_ref.endswith("/WebAuthnAuthenticationCredential")
+    credential_schema = schema["components"]["schemas"]["WebAuthnAuthenticationCredential"]
+    assert credential_schema["additionalProperties"] is False
+    assert credential_schema["properties"]["response"]["$ref"].endswith("/WebAuthnAuthenticatorAssertionResponse")
+
+    options_schema = schema["components"]["schemas"]["WebAuthnAuthenticationOptions"]
+    assert options_schema["additionalProperties"] is False
+    assert set(options_schema["properties"]) == {
+        "challenge",
+        "timeout",
+        "rpId",
+        "allowCredentials",
+        "userVerification",
+    }

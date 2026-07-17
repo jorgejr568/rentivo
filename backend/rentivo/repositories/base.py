@@ -11,7 +11,7 @@ from rentivo.models.communication import Communication, CommunicationTemplate
 from rentivo.models.expense import Expense
 from rentivo.models.invite import Invite
 from rentivo.models.known_device import KnownDevice
-from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
+from rentivo.models.mfa import MFAFactorRemovalResult, RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.models.password_reset_token import PasswordResetToken
 from rentivo.models.receipt import Receipt
@@ -112,6 +112,14 @@ class UserRepository(ABC):
 
     @abstractmethod
     def update_password_hash(self, user_id: int, password_hash: str) -> None: ...
+
+    @abstractmethod
+    def change_password_and_revoke_other_login_tokens(
+        self,
+        user_id: int,
+        password_hash: str,
+        current_key_uuid: str,
+    ) -> int: ...
 
     @abstractmethod
     def delete(self, user_id: int) -> bool: ...
@@ -285,7 +293,7 @@ class RecoveryCodeRepository(ABC):
     def list_unused_by_user(self, user_id: int) -> list[RecoveryCode]: ...
 
     @abstractmethod
-    def mark_used(self, code_id: int) -> None: ...
+    def mark_used(self, code_id: int) -> bool: ...
 
     @abstractmethod
     def delete_all_by_user(self, user_id: int) -> None: ...
@@ -305,13 +313,31 @@ class PasskeyRepository(ABC):
     def list_by_user(self, user_id: int) -> list[UserPasskey]: ...
 
     @abstractmethod
-    def update_sign_count(self, passkey_id: int, sign_count: int) -> None: ...
+    def update_sign_count(
+        self,
+        passkey_id: int,
+        expected_sign_count: int,
+        expected_last_used_at: datetime | None,
+        new_sign_count: int,
+    ) -> bool: ...
 
     @abstractmethod
     def update_last_used(self, passkey_id: int) -> None: ...
 
     @abstractmethod
     def delete(self, passkey_id: int) -> None: ...
+
+
+class MFAFactorRepository(ABC):
+    @abstractmethod
+    def remove_totp_and_revoke_logins(self, user_id: int) -> MFAFactorRemovalResult: ...
+
+    @abstractmethod
+    def remove_passkey_and_revoke_logins(
+        self,
+        passkey_uuid: str,
+        user_id: int,
+    ) -> MFAFactorRemovalResult: ...
 
 
 class ThemeRepository(ABC):
@@ -418,6 +444,9 @@ class APIKeyRepository(ABC):
 
     @abstractmethod
     def revoke_integration(self, user_id: int, uuid: str, revoked_at: datetime) -> bool: ...
+
+    @abstractmethod
+    def revoke_other_login_tokens(self, user_id: int, current_key_uuid: str) -> int: ...
 
     @abstractmethod
     def revoke_all_login_tokens(self, user_id: int) -> int: ...

@@ -1,19 +1,48 @@
-from unittest.mock import patch
+import os
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from threading import Barrier
+from unittest.mock import MagicMock, call, patch
 
 import pytest
+from sqlalchemy import create_engine, text
+from sqlalchemy.dialects import mysql
 
-from rentivo.models.mfa import RecoveryCode, UserPasskey, UserTOTP
+from rentivo.models.mfa import MFAFactorRemovalResult, RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.user import User
 from rentivo.repositories.sqlalchemy import (
+    SQLAlchemyMFAFactorRepository,
     SQLAlchemyMFATOTPRepository,
     SQLAlchemyPasskeyRepository,
     SQLAlchemyRecoveryCodeRepository,
     SQLAlchemyUserRepository,
 )
+from rentivo.repositories.sqlalchemy.mfa import (
+    _ENFORCING_ORG_LOCK,
+    _PASSKEY_FACTORS_LOCK,
+    _TOTP_FACTOR_LOCK,
+    _USER_LOCK,
+    _next_usage_time,
+)
 
 
 def _create_user(user_repo, email="mfa_user@example.com"):
     return user_repo.create(User(email=email, password_hash="hash"))
+
+
+def test_next_usage_time_normalizes_naive_and_aware_values() -> None:
+    naive = datetime(2026, 7, 17, 12)
+    aware = datetime(2026, 7, 17, 12, tzinfo=UTC)
+
+    with patch("rentivo.repositories.sqlalchemy.mfa._now", return_value=aware):
+        next_naive = _next_usage_time(naive)
+    with patch("rentivo.repositories.sqlalchemy.mfa._now", return_value=naive):
+        next_aware = _next_usage_time(aware)
+
+    assert next_naive.tzinfo is None
+    assert next_naive > naive
+    assert next_aware.tzinfo is UTC
+    assert next_aware > aware
 
 
 @pytest.fixture()
@@ -38,6 +67,189 @@ def recovery_repo(db_connection):
 @pytest.fixture()
 def passkey_repo(db_connection):
     return SQLAlchemyPasskeyRepository(db_connection)
+
+
+@pytest.fixture()
+def factor_repo(db_connection):
+    db_connection.execute(
+        text(
+            "CREATE TABLE api_keys ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, uuid VARCHAR(26) NOT NULL, "
+            "user_id INTEGER NOT NULL, is_login_token BOOLEAN NOT NULL DEFAULT 0)"
+        )
+    )
+    db_connection.commit()
+    return SQLAlchemyMFAFactorRepository(db_connection)
+
+
+def _insert_key(db_connection, user_id: int, uuid: str, *, is_login_token: bool) -> None:
+    db_connection.execute(
+        text("INSERT INTO api_keys (uuid, user_id, is_login_token) VALUES (:uuid, :user_id, :is_login_token)"),
+        {"uuid": uuid, "user_id": user_id, "is_login_token": is_login_token},
+    )
+    db_connection.commit()
+
+
+def _enforce_mfa_for(db_connection, user_id: int) -> None:
+    now = datetime(2026, 7, 17, 12)
+    result = db_connection.execute(
+        text(
+            "INSERT INTO organizations "
+            "(uuid, name, created_by, enforce_mfa, created_at, updated_at) "
+            "VALUES (:uuid, 'Enforced', :user_id, 1, :now, :now)"
+        ),
+        {"uuid": "01JENFORCED000000000000000", "user_id": user_id, "now": now},
+    )
+    db_connection.execute(
+        text(
+            "INSERT INTO organization_members (organization_id, user_id, role, created_at) "
+            "VALUES (:organization_id, :user_id, 'member', :now)"
+        ),
+        {"organization_id": result.lastrowid, "user_id": user_id, "now": now},
+    )
+    db_connection.commit()
+
+
+class TestMFAFactorRepository:
+    @pytest.mark.parametrize(
+        "statement",
+        [_USER_LOCK, _ENFORCING_ORG_LOCK, _TOTP_FACTOR_LOCK, _PASSKEY_FACTORS_LOCK],
+    )
+    def test_policy_and_factor_reads_are_current_locking_reads_on_mysql(self, statement):
+        assert "FOR UPDATE" in str(statement.compile(dialect=mysql.dialect()))
+
+    def test_remove_totp_cleans_recovery_and_login_tokens_atomically(
+        self,
+        factor_repo,
+        totp_repo,
+        recovery_repo,
+        passkey_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "remove-totp@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=True))
+        recovery_repo.create_batch(user.id, ["recovery"])
+        remaining = passkey_repo.create(
+            UserPasskey(user_id=user.id, credential_id="remaining", public_key="pk", name="Remaining")
+        )
+        _insert_key(db_connection, user.id, "login", is_login_token=True)
+        _insert_key(db_connection, user.id, "integration", is_login_token=False)
+
+        result = factor_repo.remove_totp_and_revoke_logins(user.id)
+
+        assert result is MFAFactorRemovalResult.REMOVED
+        assert totp_repo.get_by_user_id(user.id) is None
+        assert recovery_repo.list_unused_by_user(user.id) == []
+        assert passkey_repo.get_by_uuid(remaining.uuid) is not None
+        keys = db_connection.execute(text("SELECT uuid FROM api_keys ORDER BY uuid")).scalars().all()
+        assert keys == ["integration"]
+
+    def test_remove_totp_preserves_everything_when_it_is_the_enforced_last_factor(
+        self,
+        factor_repo,
+        totp_repo,
+        recovery_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "last-totp@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=True))
+        recovery_repo.create_batch(user.id, ["recovery"])
+        _insert_key(db_connection, user.id, "login", is_login_token=True)
+        _enforce_mfa_for(db_connection, user.id)
+
+        result = factor_repo.remove_totp_and_revoke_logins(user.id)
+
+        assert result is MFAFactorRemovalResult.LAST_FACTOR
+        assert totp_repo.get_by_user_id(user.id) is not None
+        assert len(recovery_repo.list_unused_by_user(user.id)) == 1
+        assert db_connection.execute(text("SELECT COUNT(*) FROM api_keys")).scalar_one() == 1
+
+    def test_remove_passkey_keeps_totp_and_revokes_only_login_tokens(
+        self,
+        factor_repo,
+        totp_repo,
+        passkey_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "remove-passkey@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=True))
+        target = passkey_repo.create(
+            UserPasskey(user_id=user.id, credential_id="target", public_key="pk", name="Target")
+        )
+        _insert_key(db_connection, user.id, "login", is_login_token=True)
+        _insert_key(db_connection, user.id, "integration", is_login_token=False)
+        _enforce_mfa_for(db_connection, user.id)
+
+        result = factor_repo.remove_passkey_and_revoke_logins(target.uuid, user.id)
+
+        assert result is MFAFactorRemovalResult.REMOVED
+        assert passkey_repo.get_by_uuid(target.uuid) is None
+        assert totp_repo.get_by_user_id(user.id) is not None
+        keys = db_connection.execute(text("SELECT uuid FROM api_keys ORDER BY uuid")).scalars().all()
+        assert keys == ["integration"]
+
+    def test_remove_passkey_rejects_missing_wrong_user_and_enforced_last_factor(
+        self,
+        factor_repo,
+        passkey_repo,
+        user_repo,
+        db_connection,
+    ):
+        owner = _create_user(user_repo, "passkey-owner@example.com")
+        other = _create_user(user_repo, "passkey-other@example.com")
+        target = passkey_repo.create(UserPasskey(user_id=owner.id, credential_id="last", public_key="pk", name="Last"))
+        _insert_key(db_connection, owner.id, "login", is_login_token=True)
+        _enforce_mfa_for(db_connection, owner.id)
+
+        assert factor_repo.remove_passkey_and_revoke_logins(target.uuid, other.id) is MFAFactorRemovalResult.NOT_FOUND
+        assert factor_repo.remove_passkey_and_revoke_logins(target.uuid, owner.id) is MFAFactorRemovalResult.LAST_FACTOR
+        assert passkey_repo.get_by_uuid(target.uuid) is not None
+        assert db_connection.execute(text("SELECT COUNT(*) FROM api_keys")).scalar_one() == 1
+
+    def test_missing_user_and_database_failure_roll_back(self):
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.return_value = None
+        repository = SQLAlchemyMFAFactorRepository(connection)
+
+        assert repository.remove_totp_and_revoke_logins(404) is MFAFactorRemovalResult.NOT_FOUND
+        assert connection.method_calls[:2] == [call.rollback(), call.execute(_USER_LOCK, {"user_id": 404})]
+        assert connection.rollback.call_count == 2
+
+        connection.reset_mock()
+        connection.execute.side_effect = RuntimeError("database unavailable")
+        with pytest.raises(RuntimeError, match="database unavailable"):
+            repository.remove_passkey_and_revoke_logins("missing", 404)
+        assert connection.method_calls[0] == call.rollback()
+        assert connection.rollback.call_count == 2
+
+    def test_missing_totp_missing_passkey_user_and_totp_failure_roll_back(self):
+        connection = MagicMock()
+        locked = MagicMock()
+        locked.fetchone.return_value = (7,)
+        missing = MagicMock()
+        missing.fetchone.return_value = None
+        connection.execute.side_effect = [locked, missing]
+        repository = SQLAlchemyMFAFactorRepository(connection)
+
+        assert repository.remove_totp_and_revoke_logins(7) is MFAFactorRemovalResult.NOT_FOUND
+        assert connection.rollback.call_count == 2
+
+        connection.reset_mock()
+        unlocked = MagicMock()
+        unlocked.fetchone.return_value = None
+        connection.execute.return_value = unlocked
+        connection.execute.side_effect = None
+        assert repository.remove_passkey_and_revoke_logins("missing", 404) is MFAFactorRemovalResult.NOT_FOUND
+        assert connection.rollback.call_count == 2
+
+        connection.reset_mock()
+        connection.execute.side_effect = RuntimeError("totp database unavailable")
+        with pytest.raises(RuntimeError, match="totp database unavailable"):
+            repository.remove_totp_and_revoke_logins(7)
+        assert connection.rollback.call_count == 2
 
 
 class TestMFATOTPRepository:
@@ -114,11 +326,20 @@ class TestRecoveryCodeRepository:
         unused = recovery_repo.list_unused_by_user(user.id)
         assert len(unused) == 2
 
-        recovery_repo.mark_used(unused[0].id)
+        assert recovery_repo.mark_used(unused[0].id) is True
 
         still_unused = recovery_repo.list_unused_by_user(user.id)
         assert len(still_unused) == 1
         assert still_unused[0].code_hash == "hash_b"
+
+    def test_mark_used_allows_only_one_consumer(self, recovery_repo, user_repo):
+        user = _create_user(user_repo)
+        recovery_repo.create_batch(user.id, ["single-use-hash"])
+        code = recovery_repo.list_unused_by_user(user.id)[0]
+
+        assert recovery_repo.mark_used(code.id) is True
+        assert recovery_repo.mark_used(code.id) is False
+        assert recovery_repo.list_unused_by_user(user.id) == []
 
     def test_delete_all_by_user(self, recovery_repo, user_repo):
         user = _create_user(user_repo)
@@ -139,7 +360,7 @@ class TestRecoveryCodeRepository:
         recovery_repo.create_batch(user2.id, ["h2"])
 
         codes1 = recovery_repo.list_unused_by_user(user1.id)
-        recovery_repo.mark_used(codes1[0].id)
+        assert recovery_repo.mark_used(codes1[0].id) is True
 
         assert len(recovery_repo.list_unused_by_user(user1.id)) == 0
         assert len(recovery_repo.list_unused_by_user(user2.id)) == 1
@@ -222,9 +443,53 @@ class TestPasskeyRepository:
         )
         assert created.sign_count == 0
 
-        passkey_repo.update_sign_count(created.id, 5)
+        assert passkey_repo.update_sign_count(created.id, 0, None, 5) is True
         fetched = passkey_repo.get_by_uuid(created.uuid)
         assert fetched.sign_count == 5
+        assert fetched.last_used_at is not None
+
+        assert passkey_repo.update_sign_count(created.id, 0, None, 6) is False
+        unchanged = passkey_repo.get_by_uuid(created.uuid)
+        assert unchanged.sign_count == 5
+        assert unchanged.last_used_at == fetched.last_used_at
+
+    def test_update_sign_count_allows_only_one_zero_counter_use(self, passkey_repo, user_repo):
+        user = _create_user(user_repo)
+        created = passkey_repo.create(
+            UserPasskey(
+                user_id=user.id,
+                credential_id="zero-counter-cred",
+                public_key="pk",
+                sign_count=0,
+                name="Zero Counter Key",
+            )
+        )
+
+        assert passkey_repo.update_sign_count(created.id, 0, None, 0) is True
+        first_use = passkey_repo.get_by_uuid(created.uuid)
+        assert first_use.sign_count == 0
+        assert first_use.last_used_at is not None
+
+        assert passkey_repo.update_sign_count(created.id, 0, None, 0) is False
+        second_use = passkey_repo.get_by_uuid(created.uuid)
+        assert second_use.last_used_at == first_use.last_used_at
+
+        with patch(
+            "rentivo.repositories.sqlalchemy.mfa._now",
+            return_value=second_use.last_used_at,
+        ):
+            assert (
+                passkey_repo.update_sign_count(
+                    created.id,
+                    second_use.sign_count,
+                    second_use.last_used_at,
+                    0,
+                )
+                is True
+            )
+
+        third_use = passkey_repo.get_by_uuid(created.uuid)
+        assert third_use.last_used_at > second_use.last_used_at
 
     def test_update_last_used(self, passkey_repo, user_repo):
         user = _create_user(user_repo)
@@ -280,6 +545,139 @@ class TestPasskeyRepository:
 
         assert len(passkey_repo.list_by_user(user1.id)) == 1
         assert len(passkey_repo.list_by_user(user2.id)) == 1
+
+
+@pytest.mark.skipif(
+    not os.getenv("RENTIVO_TEST_MARIADB_URL"),
+    reason="Set RENTIVO_TEST_MARIADB_URL to run the real MariaDB concurrency contract",
+)
+def test_parallel_zero_counter_usage_is_atomic_on_mariadb() -> None:
+    engine = create_engine(os.environ["RENTIVO_TEST_MARIADB_URL"], pool_size=20, max_overflow=0)
+    baseline = datetime(2026, 7, 17, 12)
+    with engine.begin() as connection:
+        connection.execute(text("DROP TABLE IF EXISTS user_passkeys"))
+        connection.execute(
+            text(
+                "CREATE TABLE user_passkeys ("
+                "id INTEGER NOT NULL PRIMARY KEY, sign_count INTEGER NOT NULL, "
+                "last_used_at DATETIME(6) NULL) ENGINE=InnoDB"
+            )
+        )
+        connection.execute(
+            text("INSERT INTO user_passkeys (id, sign_count, last_used_at) VALUES (1, 0, :baseline)"),
+            {"baseline": baseline},
+        )
+
+    def update_usage() -> bool:
+        with engine.connect() as connection:
+            return SQLAlchemyPasskeyRepository(connection).update_sign_count(1, 0, baseline, 0)
+
+    try:
+        with patch("rentivo.repositories.sqlalchemy.mfa._now", return_value=baseline):
+            with ThreadPoolExecutor(max_workers=20) as pool:
+                results = list(pool.map(lambda _index: update_usage(), range(20)))
+
+        assert results.count(True) == 1
+        assert results.count(False) == 19
+        with engine.connect() as connection:
+            stored = connection.execute(text("SELECT sign_count, last_used_at FROM user_passkeys WHERE id = 1")).one()
+        assert stored.sign_count == 0
+        assert stored.last_used_at > baseline
+    finally:
+        with engine.begin() as connection:
+            connection.execute(text("DROP TABLE IF EXISTS user_passkeys"))
+        engine.dispose()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RENTIVO_TEST_MARIADB_URL"),
+    reason="Set RENTIVO_TEST_MARIADB_URL to run the real MariaDB concurrency contract",
+)
+def test_parallel_factor_removal_uses_current_reads_after_stale_snapshots_on_mariadb() -> None:
+    engine = create_engine(os.environ["RENTIVO_TEST_MARIADB_URL"], pool_size=2, max_overflow=0)
+    tables = (
+        "api_keys",
+        "user_recovery_codes",
+        "user_passkeys",
+        "user_totp",
+        "organization_members",
+        "organizations",
+        "users",
+    )
+    with engine.begin() as connection:
+        for name in tables:
+            connection.execute(text(f"DROP TABLE IF EXISTS {name}"))
+        connection.execute(text("CREATE TABLE users (id INTEGER PRIMARY KEY) ENGINE=InnoDB"))
+        connection.execute(
+            text(
+                "CREATE TABLE organizations (id INTEGER PRIMARY KEY, enforce_mfa BOOLEAN NOT NULL, "
+                "deleted_at DATETIME NULL) ENGINE=InnoDB"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE organization_members (organization_id INTEGER NOT NULL, user_id INTEGER NOT NULL, "
+                "INDEX ix_member_user (user_id)) ENGINE=InnoDB"
+            )
+        )
+        connection.execute(
+            text("CREATE TABLE user_totp (user_id INTEGER PRIMARY KEY, confirmed BOOLEAN NOT NULL) ENGINE=InnoDB")
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE user_recovery_codes (id INTEGER PRIMARY KEY AUTO_INCREMENT, "
+                "user_id INTEGER NOT NULL) ENGINE=InnoDB"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE user_passkeys (id INTEGER PRIMARY KEY, uuid VARCHAR(26) NOT NULL UNIQUE, "
+                "user_id INTEGER NOT NULL, INDEX ix_passkey_user (user_id)) ENGINE=InnoDB"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE api_keys (id INTEGER PRIMARY KEY AUTO_INCREMENT, user_id INTEGER NOT NULL, "
+                "is_login_token BOOLEAN NOT NULL, INDEX ix_key_user (user_id)) ENGINE=InnoDB"
+            )
+        )
+        connection.execute(text("INSERT INTO users (id) VALUES (1)"))
+        connection.execute(text("INSERT INTO organizations (id, enforce_mfa) VALUES (1, 1)"))
+        connection.execute(text("INSERT INTO organization_members (organization_id, user_id) VALUES (1, 1)"))
+        connection.execute(text("INSERT INTO user_totp (user_id, confirmed) VALUES (1, 1)"))
+        connection.execute(text("INSERT INTO user_recovery_codes (user_id) VALUES (1)"))
+        connection.execute(text("INSERT INTO user_passkeys (id, uuid, user_id) VALUES (1, 'passkey-1', 1)"))
+        connection.execute(text("INSERT INTO api_keys (user_id, is_login_token) VALUES (1, 1), (1, 1)"))
+
+    barrier = Barrier(2)
+
+    def remove_factor(kind: str) -> MFAFactorRemovalResult:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT confirmed FROM user_totp WHERE user_id = 1")).all()
+            connection.execute(text("SELECT uuid FROM user_passkeys WHERE user_id = 1")).all()
+            barrier.wait()
+            repository = SQLAlchemyMFAFactorRepository(connection)
+            if kind == "totp":
+                return repository.remove_totp_and_revoke_logins(1)
+            return repository.remove_passkey_and_revoke_logins("passkey-1", 1)
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(remove_factor, ("totp", "passkey")))
+
+        assert sorted(results) == sorted([MFAFactorRemovalResult.REMOVED, MFAFactorRemovalResult.LAST_FACTOR])
+        with engine.connect() as connection:
+            factor_count = connection.execute(
+                text("SELECT (SELECT COUNT(*) FROM user_totp) + (SELECT COUNT(*) FROM user_passkeys)")
+            ).scalar_one()
+            login_count = connection.execute(text("SELECT COUNT(*) FROM api_keys")).scalar_one()
+        assert factor_count == 1
+        assert login_count == 0
+    finally:
+        with engine.begin() as connection:
+            for name in tables:
+                connection.execute(text(f"DROP TABLE IF EXISTS {name}"))
+        engine.dispose()
 
 
 class TestMFATOTPRepoEncryption:

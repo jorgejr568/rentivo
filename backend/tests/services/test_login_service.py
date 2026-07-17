@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, call
 
@@ -444,6 +445,51 @@ def test_google_welcome_dispatch_failure_does_not_fail_new_user_login(
 
     assert result.status == "authenticated"
     dependencies["api_key_service"].issue_login.assert_called_once_with(user_id=7, name="Web login")
+
+
+def test_change_password_rotates_password_and_revokes_only_other_login_tokens(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    principal = SimpleNamespace(user=_user(), api_key=_issued_key().key)
+
+    assert (
+        service.change_password(
+            principal=principal,
+            current_password="current-password",
+            new_password="new-password",
+        )
+        is True
+    )
+
+    dependencies["user_service"].authenticate.assert_called_with("user@example.com", "current-password")
+    dependencies["user_service"].change_password_and_revoke_other_logins.assert_called_once_with(
+        7,
+        "new-password",
+        principal.api_key.uuid,
+    )
+    dependencies["user_service"].change_password.assert_not_called()
+    dependencies["api_key_service"].revoke_other_logins.assert_not_called()
+
+
+def test_change_password_rejects_incorrect_current_password_without_side_effects(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    dependencies["user_service"].authenticate.return_value = None
+    principal = SimpleNamespace(user=_user(), api_key=_issued_key().key)
+
+    assert (
+        service.change_password(
+            principal=principal,
+            current_password="wrong-password",
+            new_password="new-password",
+        )
+        is False
+    )
+
+    dependencies["user_service"].change_password_and_revoke_other_logins.assert_not_called()
+    dependencies["api_key_service"].revoke_other_logins.assert_not_called()
 
 
 def test_complete_login_supports_post_mfa_callers_with_the_same_stable_payload(

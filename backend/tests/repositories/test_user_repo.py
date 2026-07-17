@@ -1,10 +1,41 @@
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from rentivo.models.user import User
 from rentivo.repositories.base import UserAlreadyRegisteredError
 from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+
+
+def _insert_api_key(db_connection, *, user_id: int, uuid: str, is_login_token: bool) -> None:
+    db_connection.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS api_keys ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, uuid VARCHAR(64) NOT NULL UNIQUE, "
+            "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name VARCHAR(255) NOT NULL, "
+            "secret_hash BLOB NOT NULL UNIQUE, key_start VARCHAR(4) NOT NULL, key_end VARCHAR(2) NOT NULL, "
+            "is_login_token BOOLEAN NOT NULL DEFAULT 0, expires_at DATETIME NOT NULL, "
+            "last_used_at DATETIME NULL, created_at DATETIME NOT NULL, revoked_at DATETIME NULL)"
+        )
+    )
+    db_connection.execute(
+        text(
+            "INSERT INTO api_keys "
+            "(uuid, user_id, name, secret_hash, key_start, key_end, is_login_token, expires_at, created_at) "
+            "VALUES (:uuid, :user_id, :name, :secret_hash, 'abcd', 'yz', :is_login_token, "
+            "'2099-01-01 00:00:00', '2026-07-17 12:00:00')"
+        ),
+        {
+            "uuid": uuid,
+            "user_id": user_id,
+            "name": uuid,
+            "secret_hash": uuid.encode().ljust(32, b"0")[:32],
+            "is_login_token": is_login_token,
+        },
+    )
+    db_connection.commit()
 
 
 class TestUserRepo:
@@ -43,6 +74,72 @@ class TestUserRepo:
         refreshed = user_repo.get_by_id(user.id)
         assert refreshed is not None
         assert refreshed.password_hash == "new-hash"
+
+    def test_change_password_and_revoke_other_logins_is_one_transaction(
+        self,
+        user_repo: SQLAlchemyUserRepository,
+        db_connection,
+    ):
+        user = user_repo.create(User(email="atomic@example.com", password_hash="old-hash"))
+        _insert_api_key(db_connection, user_id=user.id, uuid="current-login", is_login_token=True)
+        _insert_api_key(db_connection, user_id=user.id, uuid="other-login", is_login_token=True)
+        _insert_api_key(db_connection, user_id=user.id, uuid="integration", is_login_token=False)
+
+        revoked = user_repo.change_password_and_revoke_other_login_tokens(
+            user.id,
+            "new-hash",
+            "current-login",
+        )
+
+        refreshed = user_repo.get_by_id(user.id)
+        remaining = (
+            db_connection.execute(
+                text("SELECT uuid FROM api_keys WHERE user_id = :user_id ORDER BY uuid"),
+                {"user_id": user.id},
+            )
+            .scalars()
+            .all()
+        )
+        assert refreshed is not None
+        assert refreshed.password_hash == "new-hash"
+        assert revoked == 1
+        assert remaining == ["current-login", "integration"]
+
+    def test_change_password_rolls_back_hash_when_login_revocation_fails(
+        self,
+        user_repo: SQLAlchemyUserRepository,
+        db_connection,
+    ):
+        user = user_repo.create(User(email="rollback@example.com", password_hash="old-hash"))
+        _insert_api_key(db_connection, user_id=user.id, uuid="current-login", is_login_token=True)
+        _insert_api_key(db_connection, user_id=user.id, uuid="other-login", is_login_token=True)
+        db_connection.execute(
+            text(
+                "CREATE TRIGGER fail_login_revoke BEFORE DELETE ON api_keys "
+                "WHEN OLD.uuid = 'other-login' BEGIN SELECT RAISE(ABORT, 'forced failure'); END"
+            )
+        )
+        db_connection.commit()
+
+        with pytest.raises(SQLAlchemyError):
+            user_repo.change_password_and_revoke_other_login_tokens(
+                user.id,
+                "must-roll-back",
+                "current-login",
+            )
+
+        refreshed = user_repo.get_by_id(user.id)
+        remaining = (
+            db_connection.execute(
+                text("SELECT uuid FROM api_keys WHERE user_id = :user_id ORDER BY uuid"),
+                {"user_id": user.id},
+            )
+            .scalars()
+            .all()
+        )
+        assert refreshed is not None
+        assert refreshed.password_hash == "old-hash"
+        assert remaining == ["current-login", "other-login"]
 
     def test_get_by_id(self, user_repo: SQLAlchemyUserRepository):
         created = user_repo.create(User(email="admin@example.com", password_hash="hash"))

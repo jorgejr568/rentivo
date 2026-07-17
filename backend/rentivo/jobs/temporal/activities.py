@@ -75,6 +75,11 @@ def export_send_activity(payload: dict) -> None:
     run_registered_handler("export.send", payload)
 
 
+@activity.defn(name="auth.cleanup")
+def auth_cleanup_activity(payload: dict) -> None:
+    run_registered_handler("auth.cleanup", payload)
+
+
 # ---- Terminal/audit activity (mirrors Worker._audit_job + _fail) -----------
 
 _EVENT_BY_KIND = {

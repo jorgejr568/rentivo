@@ -48,6 +48,7 @@ class FakeAPIKeyRepository(APIKeyRepository):
         self.touch_calls: list[tuple[int, datetime, datetime]] = []
         self.deleted_login_ids: list[int] = []
         self.revoke_calls: list[tuple[int, str, datetime]] = []
+        self.revoke_other_calls: list[tuple[int, str]] = []
         self.revoke_all_calls: list[int] = []
         self.cleanup_calls: list[datetime] = []
 
@@ -58,7 +59,14 @@ class FakeAPIKeyRepository(APIKeyRepository):
         scopes: frozenset[str],
         grants: tuple[APIKeyGrant, ...],
     ) -> APIKey:
-        saved = api_key.model_copy(update={"id": self.next_id, "scopes": scopes, "grants": grants})
+        saved = api_key.model_copy(
+            update={
+                "id": self.next_id,
+                "uuid": api_key.uuid or f"fake-api-key-{self.next_id}",
+                "scopes": scopes,
+                "grants": grants,
+            }
+        )
         self.next_id += 1
         self.keys_by_hash[saved.secret_hash] = saved
         return saved
@@ -88,7 +96,7 @@ class FakeAPIKeyRepository(APIKeyRepository):
         grants: tuple[APIKeyGrant, ...],
     ) -> APIKey | None:
         existing = self.get_integration_by_uuid(api_key.user_id, api_key.uuid)
-        if existing is None:
+        if existing is None or existing.revoked_at is not None:
             return None
         updated = existing.model_copy(update={"name": api_key.name, "scopes": scopes, "grants": grants})
         self.keys_by_hash[updated.secret_hash] = updated
@@ -110,13 +118,25 @@ class FakeAPIKeyRepository(APIKeyRepository):
         existing = self.get_integration_by_uuid(user_id, uuid)
         if existing is None:
             return False
-        if existing.revoked_at is None:
-            self.keys_by_hash[existing.secret_hash] = existing.model_copy(update={"revoked_at": revoked_at})
+        if existing.revoked_at is not None:
+            return False
+        self.keys_by_hash[existing.secret_hash] = existing.model_copy(update={"revoked_at": revoked_at})
         return True
 
     def revoke_all_login_tokens(self, user_id: int) -> int:
         self.revoke_all_calls.append(user_id)
         matches = [digest for digest, key in self.keys_by_hash.items() if key.user_id == user_id and key.is_login_token]
+        for digest in matches:
+            del self.keys_by_hash[digest]
+        return len(matches)
+
+    def revoke_other_login_tokens(self, user_id: int, current_key_uuid: str) -> int:
+        self.revoke_other_calls.append((user_id, current_key_uuid))
+        matches = [
+            digest
+            for digest, key in self.keys_by_hash.items()
+            if key.user_id == user_id and key.is_login_token and key.uuid != current_key_uuid
+        ]
         for digest in matches:
             del self.keys_by_hash[digest]
         return len(matches)
@@ -244,6 +264,17 @@ def test_integration_defaults_to_90_days_when_expiration_is_omitted(
     issued = service.issue_integration(**args)
 
     assert issued.key.expires_at == NOW + timedelta(days=90)
+
+
+def test_validate_integration_checks_business_rules_without_persisting(
+    service: APIKeyService,
+    repository: FakeAPIKeyRepository,
+) -> None:
+    service.validate_integration(**_integration_args())
+
+    assert repository.keys_by_hash == {}
+    with pytest.raises(ValueError):
+        service.validate_integration(**_integration_args(scopes={"security:manage"}))
 
 
 @pytest.mark.parametrize("name", ["", "   ", "\n\t"])
@@ -515,6 +546,15 @@ def test_list_integrations_returns_only_owned_visible_keys(service: APIKeyServic
     assert service.list_integrations(7) == [integration.key]
 
 
+def test_get_integration_returns_only_an_owned_visible_key(service: APIKeyService) -> None:
+    login = service.issue_login(user_id=7, name="Browser")
+    integration = service.issue_integration(**_integration_args())
+
+    assert service.get_integration(7, integration.key.uuid) == integration.key
+    assert service.get_integration(8, integration.key.uuid) is None
+    assert service.get_integration(7, login.key.uuid) is None
+
+
 def test_logout_deletes_only_the_current_login_token(
     service: APIKeyService,
     repository: FakeAPIKeyRepository,
@@ -537,7 +577,7 @@ def test_integration_revocation_is_idempotent(
     issued = service.issue_integration(**_integration_args())
 
     assert service.revoke_integration(7, issued.key.uuid) is True
-    assert service.revoke_integration(7, issued.key.uuid) is True
+    assert service.revoke_integration(7, issued.key.uuid) is False
     assert service.authenticate(issued.secret) is None
 
 
@@ -560,6 +600,46 @@ def test_revoke_all_logins_preserves_integration_keys(
     assert service.authenticate(second.secret) is None
     assert service.authenticate(other_user.secret) is not None
     assert service.authenticate(integration.secret) is not None
+
+
+def test_revoke_other_logins_preserves_current_session_and_integrations(
+    service: APIKeyService,
+    repository: FakeAPIKeyRepository,
+) -> None:
+    current = service.issue_login(user_id=7, name="Current browser")
+    other = service.issue_login(user_id=7, name="Other browser")
+    other_user = service.issue_login(user_id=8, name="Other user")
+    integration = service.issue_integration(**_integration_args())
+
+    assert service.revoke_other_logins(7, current.key.uuid) == 1
+    assert repository.revoke_other_calls == [(7, current.key.uuid)]
+    assert service.authenticate(current.secret) is not None
+    assert service.authenticate(other.secret) is None
+    assert service.authenticate(other_user.secret) is not None
+    assert service.authenticate(integration.secret) is not None
+
+
+def test_invalid_token_factory_output_is_rejected_before_persistence(
+    service: APIKeyService,
+    token_factory: TokenFactory,
+    repository: FakeAPIKeyRepository,
+) -> None:
+    token_factory.value = "too-short"
+
+    with pytest.raises(RuntimeError, match="invalid credential"):
+        service.issue_login(user_id=7, name="Browser")
+
+    assert repository.keys_by_hash == {}
+
+
+@pytest.mark.parametrize("credential", [None, "", "not-a-rentivo-key"])
+def test_malformed_credentials_are_rejected_without_repository_lookup(
+    service: APIKeyService,
+    repository: FakeAPIKeyRepository,
+    credential: object,
+) -> None:
+    assert service.authenticate(credential) is None  # type: ignore[arg-type]
+    assert repository.secret_lookups == []
 
 
 def test_cleanup_removes_only_login_tokens_expired_at_the_cutoff(

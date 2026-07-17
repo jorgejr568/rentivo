@@ -1,0 +1,181 @@
+# Non-production replacement preview. The default docker-compose.yml remains
+# the legacy deployment and is intentionally unchanged.
+x-backend-runtime: &backend-runtime
+  restart: unless-stopped
+  env_file:
+    - path: ${RENTIVO_APP_ENV_FILE:-.env.preview-app}
+      required: false
+  volumes:
+    - invoices:/app/invoices
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-rentivo}
+      MYSQL_USER: ${MYSQL_USER:-rentivo}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-rentivo}
+    ports:
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # The legacy app remains available during parity work and keeps its existing
+  # host port; preview traffic never routes to it.
+  rentivo:
+    <<: *backend-runtime
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.legacy
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  worker:
+    <<: *backend-runtime
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.worker
+    depends_on:
+      rentivo:
+        condition: service_healthy
+
+  api:
+    <<: *backend-runtime
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.api
+    environment:
+      # Local preview is plain HTTP. The remote override replaces these with
+      # staging-safe origins, Secure cookies, and __Host- cookie names.
+      RENTIVO_ENVIRONMENT: dev
+      RENTIVO_PUBLIC_APP_URL: &preview-origin ${RENTIVO_PREVIEW_ORIGIN:-http://localhost:8080}
+      RENTIVO_WEBAUTHN_ORIGIN: *preview-origin
+      RENTIVO_WEBAUTHN_RP_ID: localhost
+      RENTIVO_COOKIE_SECURE: "false"
+      RENTIVO_ACCESS_COOKIE_NAME: rentivo_access
+      RENTIVO_CHALLENGE_COOKIE_NAME: rentivo_challenge
+      RENTIVO_CSRF_COOKIE_NAME: rentivo_csrf
+    command:
+      - uvicorn
+      - rentivo.api.app:create_app
+      - --factory
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=${RENTIVO_PROXY_IP:-172.30.0.10}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "from sqlalchemy import text; from rentivo.db import get_engine; connection = get_engine().connect(); connection.execute(text('SELECT 1')); connection.close(); import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health', timeout=2).close()",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - default
+      - preview-edge
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - preview-edge
+
+  proxy:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${RENTIVO_PREVIEW_PORT:-8080}:80"
+    environment:
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: ${RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR:-127.0.0.1/32}
+    volumes:
+      - ./infra/proxy/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/api/v1/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      preview-edge:
+        ipv4_address: ${RENTIVO_PROXY_IP:-172.30.0.10}
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    profiles: ["observability"]
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+      - "4317:4317"
+
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    profiles: ["temporal"]
+    restart: unless-stopped
+    environment:
+      DB: sqlite3
+    ports:
+      - "7233:7233"
+
+  temporal-ui:
+    image: temporalio/ui:2.34.0
+    profiles: ["temporal"]
+    restart: unless-stopped
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports:
+      - "8233:8080"
+    depends_on:
+      - temporal
+
+volumes:
+  mysql-data:
+  invoices:
+
+networks:
+  preview-edge:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${RENTIVO_PREVIEW_SUBNET:-172.30.0.0/24}

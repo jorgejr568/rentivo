@@ -5,6 +5,9 @@ __pycache__/
 dist/
 build/
 .env
+.env.preview-app
+.env.preview-db
+!.env.example
 invoices/
 outbox/
 .coverage

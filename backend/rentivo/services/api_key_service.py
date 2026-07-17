@@ -153,6 +153,49 @@ class APIKeyService:
         grants: Iterable[APIKeyGrant],
         expires_at: datetime | None = None,
     ) -> IssuedAPIKey:
+        _, normalized_name, normalized_scopes, normalized_grants, expiration = self._integration_configuration(
+            user_id=user_id,
+            name=name,
+            scopes=scopes,
+            grants=grants,
+            expires_at=expires_at,
+        )
+        return self._issue(
+            user_id=user_id,
+            name=normalized_name,
+            is_login_token=False,
+            scopes=normalized_scopes,
+            grants=normalized_grants,
+            expires_at=expiration,
+        )
+
+    def validate_integration(
+        self,
+        *,
+        user_id: int,
+        name: str,
+        scopes: Iterable[str],
+        grants: Iterable[APIKeyGrant],
+        expires_at: datetime | None = None,
+    ) -> None:
+        """Validate a prospective key without persisting it or reserving quota."""
+        self._integration_configuration(
+            user_id=user_id,
+            name=name,
+            scopes=scopes,
+            grants=grants,
+            expires_at=expires_at,
+        )
+
+    def _integration_configuration(
+        self,
+        *,
+        user_id: int,
+        name: str,
+        scopes: Iterable[str],
+        grants: Iterable[APIKeyGrant],
+        expires_at: datetime | None,
+    ) -> tuple[datetime, str, frozenset[str], tuple[APIKeyGrant, ...], datetime]:
         now = _as_aware_utc(self.now())
         normalized_name, normalized_scopes, normalized_grants = self._integration_metadata(
             user_id=user_id,
@@ -163,14 +206,7 @@ class APIKeyService:
         expiration = _as_aware_utc(expires_at) if expires_at is not None else now + _INTEGRATION_DEFAULT_TTL
         if expiration <= now or expiration > now + _INTEGRATION_MAX_TTL:
             raise ValueError("API-key expiration must be within one year")
-        return self._issue(
-            user_id=user_id,
-            name=normalized_name,
-            is_login_token=False,
-            scopes=normalized_scopes,
-            grants=normalized_grants,
-            expires_at=expiration,
-        )
+        return now, normalized_name, normalized_scopes, normalized_grants, expiration
 
     @traced("api_key.authenticate", record_exception_details=False)
     def authenticate(self, secret: str) -> APIKey | None:
@@ -234,18 +270,19 @@ class APIKeyService:
     def list_integrations(self, user_id: int) -> list[APIKey]:
         return self.repository.list_integrations(user_id)
 
+    def get_integration(self, user_id: int, uuid: str) -> APIKey | None:
+        return self.repository.get_integration_by_uuid(user_id, uuid)
+
     def logout(self, key: APIKey) -> bool:
         if not key.is_login_token or key.id is None:
             return False
         return self.repository.delete_login_token(key.id)
 
     def revoke_integration(self, user_id: int, uuid: str) -> bool:
-        existing = self.repository.get_integration_by_uuid(user_id, uuid)
-        if existing is None:
-            return False
-        if existing.revoked_at is not None:
-            return True
         return self.repository.revoke_integration(user_id, uuid, self.now())
+
+    def revoke_other_logins(self, user_id: int, current_key_uuid: str) -> int:
+        return self.repository.revoke_other_login_tokens(user_id, current_key_uuid)
 
     def revoke_all_logins(self, user_id: int) -> int:
         return self.repository.revoke_all_login_tokens(user_id)
