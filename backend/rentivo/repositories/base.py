@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import datetime
 
+from rentivo.models.api_key import APIKey, APIKeyGrant
 from rentivo.models.audit_log import AuditLog
 from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
@@ -337,6 +338,50 @@ class KnownDeviceRepository(ABC):
 
     @abstractmethod
     def upsert(self, device: KnownDevice) -> KnownDevice: ...
+
+
+class APIKeyRepository(ABC):
+    @abstractmethod
+    def create(
+        self,
+        api_key: APIKey,
+        *,
+        scopes: frozenset[str],
+        grants: tuple[APIKeyGrant, ...],
+    ) -> APIKey: ...
+
+    @abstractmethod
+    def get_by_secret_hash(self, secret_hash: bytes) -> APIKey | None: ...
+
+    @abstractmethod
+    def get_integration_by_uuid(self, user_id: int, uuid: str) -> APIKey | None: ...
+
+    @abstractmethod
+    def list_integrations(self, user_id: int) -> list[APIKey]: ...
+
+    @abstractmethod
+    def update_integration(
+        self,
+        api_key: APIKey,
+        *,
+        scopes: frozenset[str],
+        grants: tuple[APIKeyGrant, ...],
+    ) -> APIKey | None: ...
+
+    @abstractmethod
+    def delete_login_token(self, api_key_id: int) -> bool: ...
+
+    @abstractmethod
+    def revoke_integration(self, user_id: int, uuid: str, revoked_at: datetime) -> bool: ...
+
+    @abstractmethod
+    def revoke_all_login_tokens(self, user_id: int) -> int: ...
+
+    @abstractmethod
+    def delete_expired_login_tokens(self, cutoff: datetime) -> int: ...
+
+    @abstractmethod
+    def touch_last_used(self, api_key_id: int, used_at: datetime) -> bool: ...
 
 
 class CommunicationTemplateRepository(ABC):

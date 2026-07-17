@@ -7,6 +7,7 @@ through these re-exports.
 
 from __future__ import annotations
 
+from rentivo.repositories.sqlalchemy.api_key import SQLAlchemyAPIKeyRepository
 from rentivo.repositories.sqlalchemy.audit_log import SQLAlchemyAuditLogRepository
 from rentivo.repositories.sqlalchemy.auth import (
     SQLAlchemyKnownDeviceRepository,
@@ -34,6 +35,7 @@ from rentivo.repositories.sqlalchemy.theme import SQLAlchemyThemeRepository
 from rentivo.repositories.sqlalchemy.user import SQLAlchemyUserRepository
 
 __all__ = [
+    "SQLAlchemyAPIKeyRepository",
     "SQLAlchemyAuditLogRepository",
     "SQLAlchemyBillRepository",
     "SQLAlchemyBillingAttachmentRepository",
