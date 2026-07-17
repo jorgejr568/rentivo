@@ -29,7 +29,17 @@ describe("AppShell", () => {
   });
 
   it("uses the browser location when no current path is supplied", () => {
-    window.history.pushState({}, "", "/organizations/browser-path");
+    render(
+      <MemoryRouter initialEntries={["/organizations/browser-path"]}>
+        <AppShell currentUser={{ email: "user@example.com" }} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByRole("link", { name: "Organizações" })).toHaveClass("is-active");
+  });
+
+  it("closes navigation menus after client-side route changes", async () => {
+    const user = userEvent.setup();
 
     render(
       <MemoryRouter>
@@ -37,8 +47,15 @@ describe("AppShell", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("link", { name: "Organizações" })).toHaveClass("is-active");
-    window.history.pushState({}, "", "/");
+    const mobileTrigger = screen.getByRole("button", { name: "Menu" });
+    await user.click(mobileTrigger);
+    await user.click(screen.getByRole("link", { name: "Minhas Cobranças" }));
+    expect(mobileTrigger).toHaveAttribute("aria-expanded", "false");
+
+    const accountTrigger = screen.getByRole("button", { name: /user@example.com/i });
+    await user.click(accountTrigger);
+    await user.click(screen.getByRole("link", { name: "Segurança" }));
+    expect(accountTrigger).toHaveAttribute("aria-expanded", "false");
   });
 
   it("handles mobile navigation, outside menu closure, invites, toasts, and logout", async () => {

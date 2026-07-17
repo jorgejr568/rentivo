@@ -1,6 +1,6 @@
 import { CircleUserRound, Menu } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 export interface TopbarProps {
   currentPath?: string;
@@ -9,11 +9,18 @@ export interface TopbarProps {
   pendingInviteCount: number;
 }
 
-export function Topbar({ currentPath = window.location.pathname, currentUser, onLogout, pendingInviteCount }: TopbarProps) {
+export function Topbar({ currentPath, currentUser, onLogout, pendingInviteCount }: TopbarProps) {
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const location = useLocation();
+  const resolvedCurrentPath = currentPath ?? location.pathname;
+
+  useEffect(() => {
+    setIsAccountMenuOpen(false);
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!isAccountMenuOpen) {
@@ -60,11 +67,14 @@ export function Topbar({ currentPath = window.location.pathname, currentUser, on
           <Menu aria-hidden="true" size={20} />
         </button>
         <div className={`topbar-menu${isMobileMenuOpen ? " open" : ""}`}>
-          <Link className={`topbar-link${currentPath.startsWith("/billings") ? " is-active" : ""}`} to="/billings/">
+          <Link
+            className={`topbar-link${resolvedCurrentPath.startsWith("/billings") ? " is-active" : ""}`}
+            to="/billings/"
+          >
             Minhas Cobranças
           </Link>
           <Link
-            className={`topbar-link${currentPath.startsWith("/organizations") ? " is-active" : ""}`}
+            className={`topbar-link${resolvedCurrentPath.startsWith("/organizations") ? " is-active" : ""}`}
             to="/organizations/"
           >
             Organizações
