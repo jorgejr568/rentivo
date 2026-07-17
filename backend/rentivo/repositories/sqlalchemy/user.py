@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import IntegrityError
 
 from rentivo.encryption.base import EncryptionBackend
 from rentivo.models.user import User
 from rentivo.observability import traced
-from rentivo.repositories.base import UserRepository
+from rentivo.repositories.base import UserAlreadyRegisteredError, UserRepository
 from rentivo.repositories.sqlalchemy._common import _now
 
 
@@ -30,19 +31,23 @@ class SQLAlchemyUserRepository(UserRepository):
     def create(self, user: User) -> User:
         from rentivo.blind_index import compute_email_hash
 
-        self.conn.execute(
-            text(
-                "INSERT INTO users (email, email_hash, password_hash, created_at) "
-                "VALUES (:email, :email_hash, :password_hash, :created_at)"
-            ),
-            {
-                "email": self.encryption.encrypt(user.email),
-                "email_hash": compute_email_hash(user.email),
-                "password_hash": user.password_hash,
-                "created_at": _now(),
-            },
-        )
-        self.conn.commit()
+        try:
+            self.conn.execute(
+                text(
+                    "INSERT INTO users (email, email_hash, password_hash, created_at) "
+                    "VALUES (:email, :email_hash, :password_hash, :created_at)"
+                ),
+                {
+                    "email": self.encryption.encrypt(user.email),
+                    "email_hash": compute_email_hash(user.email),
+                    "password_hash": user.password_hash,
+                    "created_at": _now(),
+                },
+            )
+            self.conn.commit()
+        except IntegrityError:
+            self.conn.rollback()
+            raise UserAlreadyRegisteredError(f"Email '{user.email}' is already registered") from None
         result = self.get_by_email(user.email)
         if result is None:
             raise RuntimeError("Failed to retrieve user after create")
@@ -98,6 +103,12 @@ class SQLAlchemyUserRepository(UserRepository):
             {"password_hash": password_hash, "id": user_id},
         )
         self.conn.commit()
+
+    @traced("user_repo.delete")
+    def delete(self, user_id: int) -> bool:
+        result = self.conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+        self.conn.commit()
+        return result.rowcount > 0
 
     @traced("user_repo.update_pix")
     def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None:

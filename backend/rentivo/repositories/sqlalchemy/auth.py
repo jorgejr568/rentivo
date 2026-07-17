@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import Connection, text
 from sqlalchemy.engine import RowMapping
 
@@ -75,6 +77,55 @@ class SQLAlchemyPasswordResetTokenRepository(PasswordResetTokenRepository):
             {"now": _now(), "uid": user_id},
         )
         self.conn.commit()
+
+    @traced("password_reset_repo.complete")
+    def complete_password_reset(
+        self,
+        *,
+        token_id: int,
+        user_id: int,
+        password_hash: str,
+        completed_at: datetime,
+    ) -> bool:
+        stored_at = completed_at
+        if completed_at.tzinfo is not None and completed_at.utcoffset() is not None:
+            stored_at = completed_at.astimezone(UTC).replace(tzinfo=None)
+        try:
+            consumed = self.conn.execute(
+                text(
+                    "UPDATE password_reset_tokens SET used_at = :completed_at "
+                    "WHERE id = :token_id AND user_id = :user_id AND used_at IS NULL "
+                    "AND expires_at > :completed_at"
+                ),
+                {
+                    "token_id": token_id,
+                    "user_id": user_id,
+                    "completed_at": stored_at,
+                },
+            )
+            if consumed.rowcount != 1:
+                self.conn.rollback()
+                return False
+            self.conn.execute(
+                text("DELETE FROM api_keys WHERE user_id = :user_id AND is_login_token = 1"),
+                {"user_id": user_id},
+            )
+            self.conn.execute(
+                text("UPDATE users SET password_hash = :password_hash WHERE id = :user_id"),
+                {"password_hash": password_hash, "user_id": user_id},
+            )
+            self.conn.execute(
+                text(
+                    "UPDATE password_reset_tokens SET used_at = :completed_at "
+                    "WHERE user_id = :user_id AND used_at IS NULL"
+                ),
+                {"completed_at": stored_at, "user_id": user_id},
+            )
+            self.conn.commit()
+            return True
+        except BaseException:
+            self.conn.rollback()
+            raise
 
 
 class SQLAlchemyKnownDeviceRepository(KnownDeviceRepository):

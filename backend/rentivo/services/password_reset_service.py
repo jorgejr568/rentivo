@@ -89,12 +89,19 @@ class PasswordResetService:
         if token.used_at is not None:
             logger.warning("password_reset_token_already_used", token_id=token.id)
             return None
-        if token.expires_at < self.now():
+        if token.expires_at <= self.now():
             logger.warning("password_reset_token_expired", token_id=token.id)
             return None
 
-        self.user_service.change_password(token.user_id, new_password)
-        self.token_repo.mark_used(token.id)
-        self.token_repo.invalidate_all_for_user(token.user_id)
+        password_hash = self.user_service.hash_password(new_password)
+        completed = self.token_repo.complete_password_reset(
+            token_id=token.id,
+            user_id=token.user_id,
+            password_hash=password_hash,
+            completed_at=self.now(),
+        )
+        if not completed:
+            logger.warning("password_reset_token_concurrently_consumed", token_id=token.id)
+            return None
         logger.info("password_reset_completed", user_id=token.user_id)
         return token.user_id

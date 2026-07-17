@@ -30,3 +30,13 @@ def test_auth_challenge_service_is_lazily_cached(db_connection, fake_encryption)
 
     assert isinstance(services.auth_challenge, AuthChallengeService)
     assert services.auth_challenge is services.auth_challenge
+
+
+def test_auth_rate_limit_service_is_lazily_cached(db_connection, fake_encryption):
+    from rentivo.services.container import RequestServices
+    from rentivo.services.rate_limit_service import RateLimitService
+
+    services = RequestServices(conn=db_connection, encryption=fake_encryption)
+
+    assert isinstance(services.auth_rate_limit, RateLimitService)
+    assert services.auth_rate_limit is services.auth_rate_limit

@@ -6,7 +6,7 @@ import structlog
 from rentivo.models.user import User
 from rentivo.observability import span, traced
 from rentivo.pix import validate_pix_key
-from rentivo.repositories.base import UserRepository
+from rentivo.repositories.base import UserAlreadyRegisteredError, UserRepository
 
 logger = structlog.get_logger(__name__)
 
@@ -15,9 +15,13 @@ class UserService:
     def __init__(self, repo: UserRepository) -> None:
         self.repo = repo
 
+    @staticmethod
+    def hash_password(password: str) -> str:
+        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
     @traced("user.create_user")
     def create_user(self, email: str, password: str) -> User:
-        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        password_hash = self.hash_password(password)
         user = User(email=email, password_hash=password_hash)
         result = self.repo.create(user)
         logger.info("user_created", email=email)
@@ -25,12 +29,12 @@ class UserService:
 
     def _reject_if_registered(self, email: str) -> None:
         if self.repo.get_by_email(email) is not None:
-            raise ValueError(f"Email '{email}' is already registered")
+            raise UserAlreadyRegisteredError(f"Email '{email}' is already registered")
 
     @traced("user.register_user")
     def register_user(self, email: str, password: str) -> User:
         self._reject_if_registered(email)
-        password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+        password_hash = self.hash_password(password)
         user = User(email=email, password_hash=password_hash)
         result = self.repo.create(user)
         logger.info("user_registered", email=email)
@@ -73,9 +77,13 @@ class UserService:
 
     @traced("user.change_password")
     def change_password(self, user_id: int, new_password: str) -> None:
-        password_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        password_hash = self.hash_password(new_password)
         self.repo.update_password_hash(user_id, password_hash)
         logger.info("password_changed", user_id=user_id)
+
+    @traced("user.delete_new_user")
+    def delete_new_user(self, user_id: int) -> bool:
+        return self.repo.delete(user_id)
 
     @traced("user.list_users")
     def list_users(self) -> list[User]:

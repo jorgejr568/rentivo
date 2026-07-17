@@ -45,8 +45,9 @@ def problem_response(value: Problem) -> JSONResponse:
 
 
 class ProblemException(Exception):
-    def __init__(self, problem: Problem) -> None:
+    def __init__(self, problem: Problem, *, headers: dict[str, str] | None = None) -> None:
         self.problem = problem
+        self.headers = headers or {}
         super().__init__(problem.detail)
 
     @classmethod

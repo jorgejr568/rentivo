@@ -35,7 +35,7 @@ def _contains_out_of_band_credential(value: Any) -> bool:
     return False
 
 
-async def _reject_out_of_band_credentials(request: Request) -> None:
+async def reject_out_of_band_credentials(request: Request) -> None:
     if any(key.lower() in _OUT_OF_BAND_CREDENTIAL_FIELDS for key in request.query_params):
         raise ProblemException.bad_request(
             "malformed_credentials",
@@ -50,21 +50,19 @@ async def _reject_out_of_band_credentials(request: Request) -> None:
                 "malformed_credentials",
                 "A chave deve ser enviada apenas por cookie ou cabeçalho Authorization Bearer.",
             )
-        return
-    if media_type != "application/json" and not media_type.endswith("+json"):
-        return
-    body = await request.body()
-    if not body:
-        return
-    try:
-        payload = json.loads(body)
-    except TypeError, ValueError:
-        return
-    if _contains_out_of_band_credential(payload):
-        raise ProblemException.bad_request(
-            "malformed_credentials",
-            "A chave deve ser enviada apenas por cookie ou cabeçalho Authorization Bearer.",
-        )
+    elif media_type == "application/json" or media_type.endswith("+json"):
+        body = await request.body()
+        if body:
+            try:
+                payload = json.loads(body)
+            except TypeError, ValueError:
+                payload = None
+            if _contains_out_of_band_credential(payload):
+                raise ProblemException.bad_request(
+                    "malformed_credentials",
+                    "A chave deve ser enviada apenas por cookie ou cabeçalho Authorization Bearer.",
+                )
+    _credential_transport(request)
 
 
 def _bearer_credential(request: Request) -> str | None:
@@ -77,11 +75,7 @@ def _bearer_credential(request: Request) -> str | None:
     return parts[1]
 
 
-async def get_optional_principal(
-    request: Request,
-    services: RequestServices = Depends(get_services),
-) -> Principal | None:
-    await _reject_out_of_band_credentials(request)
+def _credential_transport(request: Request) -> tuple[str | None, str | None]:
     cookie_credential = request.cookies.get(settings.access_cookie_name)
     bearer_credential = _bearer_credential(request)
     if (
@@ -93,6 +87,15 @@ async def get_optional_principal(
             "ambiguous_credentials",
             "A requisição contém credenciais de identidades diferentes.",
         )
+    return cookie_credential, bearer_credential
+
+
+async def get_optional_principal(
+    request: Request,
+    services: RequestServices = Depends(get_services),
+) -> Principal | None:
+    await reject_out_of_band_credentials(request)
+    cookie_credential, bearer_credential = _credential_transport(request)
 
     credential = cookie_credential or bearer_credential
     if credential is None:

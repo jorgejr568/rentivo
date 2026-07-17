@@ -20,6 +20,10 @@ from rentivo.models.theme import Theme
 from rentivo.models.user import User
 
 
+class UserAlreadyRegisteredError(ValueError):
+    pass
+
+
 class APIKeyPersistenceError(RuntimeError):
     """Sanitized failure that is safe to propagate through request telemetry."""
 
@@ -108,6 +112,9 @@ class UserRepository(ABC):
 
     @abstractmethod
     def update_password_hash(self, user_id: int, password_hash: str) -> None: ...
+
+    @abstractmethod
+    def delete(self, user_id: int) -> bool: ...
 
     @abstractmethod
     def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None: ...
@@ -339,6 +346,35 @@ class PasswordResetTokenRepository(ABC):
 
     @abstractmethod
     def invalidate_all_for_user(self, user_id: int) -> None: ...
+
+    @abstractmethod
+    def complete_password_reset(
+        self,
+        *,
+        token_id: int,
+        user_id: int,
+        password_hash: str,
+        completed_at: datetime,
+    ) -> bool: ...
+
+
+class AuthRateLimitRepository(ABC):
+    @abstractmethod
+    def reserve(
+        self,
+        *,
+        action: str,
+        identity_hash: bytes,
+        limit: int,
+        window_seconds: int,
+        now: datetime,
+    ) -> bool: ...
+
+    @abstractmethod
+    def clear(self, *, action: str, identity_hash: bytes) -> None: ...
+
+    @abstractmethod
+    def delete_expired(self, *, cutoff: datetime, limit: int) -> int: ...
 
 
 class KnownDeviceRepository(ABC):

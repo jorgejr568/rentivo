@@ -4,7 +4,7 @@ import bcrypt
 import pytest
 
 from rentivo.models.user import User
-from rentivo.services.user_service import UserService
+from rentivo.services.user_service import UserAlreadyRegisteredError, UserService
 
 
 class TestUserService:
@@ -61,13 +61,25 @@ class TestUserService:
 
     def test_register_user_duplicate_email(self):
         self.mock_repo.get_by_email.return_value = User(email="dup@b.com")
-        with pytest.raises(ValueError):
+        with pytest.raises(UserAlreadyRegisteredError):
             self.service.register_user("dup@b.com", "pw")
+
+    def test_delete_new_user_delegates_to_repository(self):
+        self.mock_repo.delete.return_value = True
+
+        assert self.service.delete_new_user(42) is True
+        self.mock_repo.delete.assert_called_once_with(42)
 
     def test_update_pix_raises_when_user_disappears(self):
         self.mock_repo.get_by_id.return_value = None
         with pytest.raises(ValueError, match="não encontrado"):
             self.service.update_pix(1, "key@example.com", "Merchant", "Sao Paulo")
+
+    def test_update_pix_returns_the_refreshed_user(self):
+        refreshed = User(id=1, email="a@b.com", pix_key="key@example.com")
+        self.mock_repo.get_by_id.return_value = refreshed
+
+        assert self.service.update_pix(1, "key@example.com", "Merchant", "Sao Paulo") == refreshed
 
     def test_authenticate_returns_none_for_passwordless_user(self):
         # Google-created users have password_hash="" — bcrypt would raise on it.

@@ -11,6 +11,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAPIKeyRepository,
     SQLAlchemyAuditLogRepository,
     SQLAlchemyAuthChallengeRepository,
+    SQLAlchemyAuthRateLimitRepository,
     SQLAlchemyBillingAttachmentRepository,
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
@@ -45,10 +46,12 @@ from rentivo.services.google_auth_service import GoogleAuthService
 from rentivo.services.invite_service import InviteService
 from rentivo.services.job_service import JobService
 from rentivo.services.known_device_service import KnownDeviceService
+from rentivo.services.login_service import LoginService
 from rentivo.services.mfa_service import MFAService
 from rentivo.services.organization_service import OrganizationService
 from rentivo.services.password_reset_service import PasswordResetService
 from rentivo.services.pix_service import PixService
+from rentivo.services.rate_limit_service import RateLimitService
 from rentivo.services.recipient_service import RecipientService
 from rentivo.services.storage_cleanup_service import StorageCleanupService
 from rentivo.services.theme_service import ThemeService
@@ -87,6 +90,42 @@ class RequestServices:
         return AuthChallengeService(
             repository=SQLAlchemyAuthChallengeRepository(self._conn),
             ttl=timedelta(seconds=settings.auth_challenge_ttl_seconds),
+        )
+
+    @cached_property
+    def auth_rate_limit(self) -> RateLimitService:
+        return RateLimitService(repository=SQLAlchemyAuthRateLimitRepository(self._conn))
+
+    @cached_property
+    def login(self) -> LoginService:
+        invite_repository = SQLAlchemyInviteRepository(self._conn, self._encryption)
+
+        def build_bootstrap(*, user, api_key, mfa_setup_required):
+            return {
+                "user": {"id": user.id, "email": user.email},
+                "capabilities": {
+                    "scopes": sorted(api_key.scopes),
+                    "mfa_setup_required": mfa_setup_required,
+                },
+                "pending_invite_count": invite_repository.count_pending_for_user(user.id),
+                "feature_flags": {
+                    "google_auth": self.google_auth.is_enabled,
+                    "turnstile": self.turnstile.is_enabled,
+                    "turnstile_site_key": self.turnstile.site_key if self.turnstile.is_enabled else "",
+                },
+                "analytics": {"gtm_container_id": settings.gtm_container_id},
+            }
+
+        return LoginService(
+            user_service=self.user,
+            api_key_service=self.api_key,
+            challenge_service=self.auth_challenge,
+            mfa_service=self.mfa,
+            audit_service=self.audit,
+            known_device_service=self.known_device,
+            job_service=self.job,
+            bootstrap_builder=build_bootstrap,
+            public_app_url=settings.public_app_url,
         )
 
     @cached_property

@@ -14,6 +14,7 @@ from rentivo.repositories.sqlalchemy.auth import (
     SQLAlchemyPasswordResetTokenRepository,
 )
 from rentivo.repositories.sqlalchemy.auth_challenge import SQLAlchemyAuthChallengeRepository
+from rentivo.repositories.sqlalchemy.auth_rate_limit import SQLAlchemyAuthRateLimitRepository
 from rentivo.repositories.sqlalchemy.bill import SQLAlchemyBillRepository
 from rentivo.repositories.sqlalchemy.billing import SQLAlchemyBillingRepository
 from rentivo.repositories.sqlalchemy.billing_attachment import SQLAlchemyBillingAttachmentRepository
@@ -39,6 +40,7 @@ __all__ = [
     "SQLAlchemyAPIKeyRepository",
     "SQLAlchemyAuditLogRepository",
     "SQLAlchemyAuthChallengeRepository",
+    "SQLAlchemyAuthRateLimitRepository",
     "SQLAlchemyBillRepository",
     "SQLAlchemyBillingAttachmentRepository",
     "SQLAlchemyBillingRepository",

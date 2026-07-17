@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from rentivo.api.errors import ProblemException, problem, problem_response
+from rentivo.api.routes.auth import router as auth_router
 from rentivo.api.routes.health import router as health_router
 from rentivo.context import accept_inbound_request_id, new_request_id
 from rentivo.db import get_engine, initialize_db
@@ -118,6 +119,7 @@ def create_app() -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     api = APIRouter(prefix="/api/v1")
     api.include_router(health_router)
+    api.include_router(auth_router)
     app.include_router(api)
 
     app.add_middleware(_RequestServicesMiddleware)
@@ -127,6 +129,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(ProblemException)
     async def problem_exception_handler(request: Request, exc: ProblemException):
         response = problem_response(exc.problem)
+        response.headers.update(exc.headers)
         if exc.problem.status == 401 and getattr(request.state, "clear_auth_cookies", False):
             from rentivo.api.authentication import ACCESS_COOKIE_NAME
             from rentivo.api.csrf import CSRF_COOKIE_NAME

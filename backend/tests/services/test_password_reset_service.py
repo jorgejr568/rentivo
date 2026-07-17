@@ -22,6 +22,8 @@ def _build():
     job_service = MagicMock(spec=JobService)
     job_service.enqueue.return_value = MagicMock(ulid="01HXYZ")
     user_service = MagicMock()
+    user_service.hash_password.return_value = "hashed-password"
+    token_repo.complete_password_reset.return_value = True
     now = datetime(2026, 4, 30, 12, 0, 0)
     service = PasswordResetService(
         user_repo=user_repo,
@@ -79,6 +81,13 @@ def test_consume_rejects_expired_token():
     assert service.consume("any", new_password="np") is None
 
 
+def test_consume_rejects_token_at_exact_expiry():
+    service, _, token_repo, _, _, now = _build()
+    token_repo.get_by_hash.return_value = PasswordResetToken(id=5, user_id=1, token_hash="h", expires_at=now)
+
+    assert service.consume("any", new_password="np") is None
+
+
 def test_consume_rejects_already_used_token():
     service, _, token_repo, _, _, now = _build()
     token_repo.get_by_hash.return_value = PasswordResetToken(
@@ -91,7 +100,7 @@ def test_consume_rejects_already_used_token():
     assert service.consume("any", new_password="np") is None
 
 
-def test_consume_resets_password_and_marks_used():
+def test_consume_atomically_resets_password_revokes_logins_and_invalidates_tokens():
     service, _, token_repo, _, user_service, now = _build()
     raw = "raw-token-value"
     token = PasswordResetToken(
@@ -103,9 +112,13 @@ def test_consume_resets_password_and_marks_used():
     token_repo.get_by_hash.return_value = token
     user_id = service.consume(raw, new_password="brand-new")
     assert user_id == 42
-    user_service.change_password.assert_called_once_with(42, "brand-new")
-    token_repo.mark_used.assert_called_once_with(5)
-    token_repo.invalidate_all_for_user.assert_called_once_with(42)
+    user_service.hash_password.assert_called_once_with("brand-new")
+    token_repo.complete_password_reset.assert_called_once_with(
+        token_id=5,
+        user_id=42,
+        password_hash="hashed-password",
+        completed_at=now,
+    )
 
 
 def test_default_now_does_not_emit_deprecation_warning():
@@ -131,3 +144,17 @@ def test_default_now_does_not_emit_deprecation_warning():
         result = service.now()
 
     assert result.tzinfo is None  # naive datetime preserves DB-column compatibility
+
+
+def test_consume_rejects_a_token_lost_to_a_concurrent_request():
+    service, _, token_repo, _, user_service, now = _build()
+    token_repo.get_by_hash.return_value = PasswordResetToken(
+        id=5,
+        user_id=42,
+        token_hash="h",
+        expires_at=now + timedelta(hours=1),
+    )
+    token_repo.complete_password_reset.return_value = False
+
+    assert service.consume("raw", new_password="new") is None
+    user_service.hash_password.assert_called_once_with("new")

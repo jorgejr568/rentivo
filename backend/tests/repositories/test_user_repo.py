@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from rentivo.models.user import User
+from rentivo.repositories.base import UserAlreadyRegisteredError
 from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
 
 
@@ -56,6 +57,20 @@ class TestUserRepo:
         with patch.object(user_repo, "get_by_email", return_value=None):
             with pytest.raises(RuntimeError, match="Failed to retrieve user after create"):
                 user_repo.create(User(email="admin@example.com", password_hash="hash"))
+
+    def test_create_maps_concurrent_duplicate_to_domain_error(self, user_repo: SQLAlchemyUserRepository):
+        user_repo.create(User(email="duplicate@example.com", password_hash="hash"))
+
+        with pytest.raises(UserAlreadyRegisteredError):
+            user_repo.create(User(email="duplicate@example.com", password_hash="hash"))
+
+    def test_delete_is_idempotent(self, user_repo: SQLAlchemyUserRepository):
+        user = user_repo.create(User(email="delete-me@example.com", password_hash="hash"))
+
+        assert user.id is not None
+        assert user_repo.delete(user.id) is True
+        assert user_repo.delete(user.id) is False
+        assert user_repo.get_by_id(user.id) is None
 
 
 class TestUserRepoEncryption:

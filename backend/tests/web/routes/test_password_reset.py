@@ -1,5 +1,19 @@
 from unittest.mock import MagicMock, patch
 
+from sqlalchemy import text
+
+
+def _create_api_key_table(conn) -> None:
+    conn.execute(
+        text(
+            "CREATE TABLE api_keys ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+            "is_login_token TINYINT NOT NULL DEFAULT 0)"
+        )
+    )
+    conn.commit()
+
 
 def test_forgot_password_get_renders(client):
     response = client.get("/forgot-password")
@@ -70,6 +84,7 @@ def test_reset_password_full_flow_changes_password(client, csrf_token, test_engi
     from rentivo.services.user_service import UserService
 
     with test_engine.connect() as conn:
+        _create_api_key_table(conn)
         user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         UserService(user_repo).register_user("flow@example.com", "old-password")
         token_repo = SQLAlchemyPasswordResetTokenRepository(conn)
@@ -268,6 +283,7 @@ def test_reset_password_sends_completion_notification(client, csrf_token, test_e
     monkeypatch.setattr(JobService, "enqueue", _capture)
 
     with test_engine.connect() as conn:
+        _create_api_key_table(conn)
         user_repo = SQLAlchemyUserRepository(conn, Base64Backend())
         UserService(user_repo).register_user("flow2@example.com", "old-password")
         token_repo = SQLAlchemyPasswordResetTokenRepository(conn)
