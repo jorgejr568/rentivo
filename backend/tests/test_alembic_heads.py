@@ -12,7 +12,7 @@ gap by parsing the migration scripts directly — no database required — so an
 branch that introduces a second head fails CI before merge.
 
 The fix when this test fails is a merge migration:
-``uv run alembic merge -m "merge heads" <head1> <head2> ...``
+``uv run --project backend alembic -c backend/alembic.ini merge -m "merge heads" <head1> <head2> ...``
 """
 
 from alembic.script import ScriptDirectory

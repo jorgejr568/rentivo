@@ -1,6 +1,6 @@
 # Configuration Reference
 
-All application settings are environment variables with the `RENTIVO_` prefix, defined in [`rentivo/settings.py`](../rentivo/settings.py) (Pydantic Settings). They can also be placed in a `.env` file at the repo root — copy [`.env.example`](../.env.example) to get started. A test (`tests/test_env_example.py`) keeps `.env.example` in sync with the settings class.
+All application settings are environment variables with the `RENTIVO_` prefix, defined in [`backend/rentivo/settings.py`](../backend/rentivo/settings.py) (Pydantic Settings). They can also be placed in a `.env` file at the repo root — copy [`.env.example`](../.env.example) to get started. A test (`backend/tests/test_env_example.py`) keeps `.env.example` in sync with the settings class.
 
 Invalid values fail fast at process startup with a clear error.
 

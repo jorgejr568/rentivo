@@ -7,7 +7,7 @@ Rentivo runs background work — `email.send`, `communication.send`, `pdf.render
 The default and fully supported production driver. It needs **zero extra dependencies** beyond what Rentivo already requires — no message broker, no external cluster.
 
 - Enqueue inserts a row into the `jobs` table (`DatabaseJobBackend` over `SQLAlchemyJobRepository`).
-- A polling `Worker` (`rentivo/jobs/worker.py`) claims due jobs in batches, runs the registered handler, and updates the row.
+- A polling `Worker` (`backend/rentivo/jobs/worker.py`) claims due jobs in batches, runs the registered handler, and updates the row.
 - Retries use an exponential backoff schedule (see the parity table below); on exhaustion or a `PermanentJobError` the job is dead-lettered.
 
 Tunables (see [`configuration.md`](configuration.md) for the full reference):
@@ -37,8 +37,8 @@ The Temporal driver offloads job execution to a Temporal cluster instead of the 
 uv sync --extra temporal
 ```
 
-- Enqueue starts one workflow per job — `TemporalJobBackend.enqueue()` (`rentivo/jobs/temporal/backend.py`) calls the Temporal client's `start_workflow(...)`.
-- A per-job-type workflow (`rentivo/jobs/temporal/workflows.py`) wraps the **unchanged** registry handler in an activity (`rentivo/jobs/temporal/activities.py`).
+- Enqueue starts one workflow per job — `TemporalJobBackend.enqueue()` (`backend/rentivo/jobs/temporal/backend.py`) calls the Temporal client's `start_workflow(...)`.
+- A per-job-type workflow (`backend/rentivo/jobs/temporal/workflows.py`) wraps the **unchanged** registry handler in an activity (`backend/rentivo/jobs/temporal/activities.py`).
 - The workflow owns the retry loop, mirroring the database backoff exactly.
 
 Settings (only read when `RENTIVO_JOB_BACKEND=temporal`):
@@ -61,19 +61,19 @@ Both drivers present the same `JobBackend.enqueue(...)` seam and the same observ
 |---|---|---|
 | Enqueue | `INSERT` a `jobs` row | `start_workflow` (one workflow per job) |
 | Retries | Polling worker re-claims with backoff | Workflow retry loop |
-| Backoff schedule | `60s / 5m / 15m / 1h / 6h`, max 5 attempts (`rentivo/jobs/backoff.py`) | Identical — same `rentivo/jobs/backoff.py` |
+| Backoff schedule | `60s / 5m / 15m / 1h / 6h`, max 5 attempts (`backend/rentivo/jobs/backoff.py`) | Identical — same `backend/rentivo/jobs/backoff.py` |
 | `PermanentJobError` | Dead-letter immediately (no retry) | Mapped to a non-retryable failure, dead-lettered immediately |
 | Fail hooks + audit events | `JOB_SUCCEEDED` / `JOB_RETRY_SCHEDULED` / `JOB_FAILED` fire | Same events fire via the `rentivo.finalize_job` activity |
 | OTel context | `_otel` carrier propagated from enqueue to handler | `_otel` carrier propagated identically |
 
 ## Handlers are shared
 
-The same registry handlers (`rentivo/jobs/handlers/`) run under **both** drivers — the handler code is identical and unaware of the driver. Adding a new background job:
+The same registry handlers (`backend/rentivo/jobs/handlers/`) run under **both** drivers — the handler code is identical and unaware of the driver. Adding a new background job:
 
-1. **Always:** register the handler with `@register("job.type")` in `rentivo/jobs/handlers/`. This is all the database driver needs.
-2. **For Temporal as well:** add a `@workflow.defn` workflow class plus its activity in `rentivo/jobs/temporal/`, and add a `_WORKFLOW_BY_TYPE` entry mapping the job type to that workflow (`rentivo/jobs/temporal/backend.py`).
+1. **Always:** register the handler with `@register("job.type")` in `backend/rentivo/jobs/handlers/`. This is all the database driver needs.
+2. **For Temporal as well:** add a `@workflow.defn` workflow class plus its activity in `backend/rentivo/jobs/temporal/`, and add a `_WORKFLOW_BY_TYPE` entry mapping the job type to that workflow (`backend/rentivo/jobs/temporal/backend.py`).
 
-The shared backoff schedule lives once in `rentivo/jobs/backoff.py` and is reused by both drivers, so retry semantics stay in lockstep.
+The shared backoff schedule lives once in `backend/rentivo/jobs/backoff.py` and is reused by both drivers, so retry semantics stay in lockstep.
 
 ## Local development with Temporal
 

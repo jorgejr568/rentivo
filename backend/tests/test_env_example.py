@@ -10,7 +10,21 @@ from pathlib import Path
 
 from rentivo.settings import Settings
 
-ENV_EXAMPLE = Path(__file__).resolve().parents[2] / ".env.example"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ENV_EXAMPLE = REPO_ROOT / ".env.example"
+CURRENT_GUIDES = (
+    REPO_ROOT / ".env.example",
+    REPO_ROOT / "CLAUDE.md",
+    REPO_ROOT / "CONTRIBUTING.md",
+    REPO_ROOT / "docs" / "configuration.md",
+)
+STALE_RELOCATION_REFERENCES = (
+    "see rentivo/settings.py",
+    "`rentivo/settings.py`",
+    "`tests/test_env_example.py`",
+    "`tests/web/conftest.py`",
+    "uv run alembic revision",
+)
 
 # Consumed by docker-compose.yml to provision the MariaDB container,
 # not read by the application's Settings.
@@ -44,3 +58,14 @@ def test_every_setting_is_documented_in_env_example():
 def test_env_example_has_no_unknown_keys():
     unknown = _env_example_keys() - _settings_env_keys() - COMPOSE_ONLY_KEYS
     assert unknown == set(), f".env.example has unknown keys (typo or stale prefix?): {sorted(unknown)}"
+
+
+def test_current_guides_use_relocated_backend_paths():
+    stale_matches = {
+        str(path.relative_to(REPO_ROOT)): [
+            reference for reference in STALE_RELOCATION_REFERENCES if reference in path.read_text()
+        ]
+        for path in CURRENT_GUIDES
+    }
+    stale_matches = {path: matches for path, matches in stale_matches.items() if matches}
+    assert stale_matches == {}, f"Current guides contain pre-monorepo paths: {stale_matches}"

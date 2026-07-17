@@ -56,16 +56,16 @@ make build-worker / up-worker / down-worker / logs-worker / shell-worker
 
 ## Architecture
 
-- **Settings**: `rentivo/settings.py` — Pydantic Settings, env prefix `RENTIVO_`, reads `.env`
-- **Database**: `rentivo/db.py` — SQLAlchemy engine + connection to MariaDB. Schema managed by Alembic. Configured via `RENTIVO_DB_URL`
-- **Repositories**: `rentivo/repositories/` — Abstract base classes in `base.py`, SQLAlchemy Core impl in `sqlalchemy.py`, factory in `factory.py`
-- **Storage**: `rentivo/storage/` — Same pattern. `LocalStorage` writes to `./invoices/`, `S3Storage` uploads to a private bucket with presigned URLs. Configurable via `RENTIVO_STORAGE_BACKEND`
-- **PDF**: `rentivo/pdf/invoice.py` — fpdf2-based invoice with navy/green color palette; `rentivo/pdf/merger.py` — merges receipt attachments into invoices using pypdf
-- **Services**: `rentivo/services/` — Business logic layer wiring repos + storage + PDF
+- **Settings**: `backend/rentivo/settings.py` — Pydantic Settings, env prefix `RENTIVO_`, reads `.env`
+- **Database**: `backend/rentivo/db.py` — SQLAlchemy engine + connection to MariaDB. Schema managed by Alembic. Configured via `RENTIVO_DB_URL`
+- **Repositories**: `backend/rentivo/repositories/` — Abstract base classes in `base.py`, SQLAlchemy Core impl in `sqlalchemy.py`, factory in `factory.py`
+- **Storage**: `backend/rentivo/storage/` — Same pattern. `LocalStorage` writes to `./invoices/`, `S3Storage` uploads to a private bucket with presigned URLs. Configurable via `RENTIVO_STORAGE_BACKEND`
+- **PDF**: `backend/rentivo/pdf/invoice.py` — fpdf2-based invoice with navy/green color palette; `backend/rentivo/pdf/merger.py` — merges receipt attachments into invoices using pypdf
+- **Services**: `backend/rentivo/services/` — Business logic layer wiring repos + storage + PDF
 
 ## Documentation Map
 
-- `docs/configuration.md` — full env var reference (guarded by `tests/test_env_example.py`; update both together with `rentivo/settings.py`)
+- `docs/configuration.md` — full env var reference (guarded by `backend/tests/test_env_example.py`; update both together with `backend/rentivo/settings.py`)
 - `docs/development.md` — dev setup (local + compose-only), worker, troubleshooting
 - `CONTRIBUTING.md` — contributor workflow; `SECURITY.md` — vulnerability reporting
 - When adding/renaming a Settings field: update `.env.example` AND `docs/configuration.md`, or the test suite fails.
@@ -87,7 +87,7 @@ make build-worker / up-worker / down-worker / logs-worker / shell-worker
 
 ## FastAPI Web App
 
-The `web/` directory contains a FastAPI web application that provides a browser-based UI for managing billings, bills, and invoices.
+The `backend/legacy_web/` directory contains a FastAPI web application that provides a browser-based UI for managing billings, bills, and invoices.
 
 ### Running
 
@@ -99,15 +99,15 @@ make web-run             # start uvicorn at http://localhost:8000
 
 ### Architecture
 
-- **App**: `web/app.py` — FastAPI app, SessionMiddleware, Jinja2 templates, static files
-- **Auth**: `web/auth.py` — login/logout routes, session-based auth
-- **Login flow**: `web/login_flow.py` — `complete_login()` / `begin_mfa_challenge()`, the shared post-credential sequence used by password, TOTP/recovery, passkey, and Google logins
-- **Middleware**: `web/deps.py` — AuthMiddleware (redirects to /login), service factories, render helper
-- **Flash**: `web/flash.py` — session-based flash messages
-- **Forms**: `web/forms.py` — `parse_brl()` and `parse_formset()` helpers
-- **Routes**: `web/routes/billing.py`, `web/routes/bill.py` (includes receipt upload/delete)
+- **App**: `backend/legacy_web/app.py` — FastAPI app, SessionMiddleware, Jinja2 templates, static files
+- **Auth**: `backend/legacy_web/auth.py` — login/logout routes, session-based auth
+- **Login flow**: `backend/legacy_web/login_flow.py` — `complete_login()` / `begin_mfa_challenge()`, the shared post-credential sequence used by password, TOTP/recovery, passkey, and Google logins
+- **Middleware**: `backend/legacy_web/deps.py` — AuthMiddleware (redirects to /login), service factories, render helper
+- **Flash**: `backend/legacy_web/flash.py` — session-based flash messages
+- **Forms**: `backend/legacy_web/forms.py` — `parse_brl()` and `parse_formset()` helpers
+- **Routes**: `backend/legacy_web/routes/billing.py`, `backend/legacy_web/routes/bill.py` (includes receipt upload/delete)
 - **Templates**: Jinja2 with Bootstrap 5 via CDN, all customer-facing text in PT-BR
-- **Static**: `web/static/core/` — CSS and JS (served via Starlette StaticFiles)
+- **Static**: `backend/legacy_web/static/core/` — CSS and JS (served via Starlette StaticFiles)
 
 ### Key URLs
 
@@ -136,29 +136,29 @@ make web-run             # start uvicorn at http://localhost:8000
 - Bills can have attached receipt files (PDF, JPEG, PNG, max 10 MB)
 - Receipt storage key pattern: `{billing_uuid}/{bill_uuid}/receipts/{receipt_uuid}{ext}`
 - Receipts are merged into the generated PDF invoice using pypdf (appended after invoice pages, in order of addition)
-- Model: `rentivo/models/receipt.py`, Repository: `ReceiptRepository`, Service: integrated into `BillService`
+- Model: `backend/rentivo/models/receipt.py`, Repository: `ReceiptRepository`, Service: integrated into `BillService`
 - Upload/delete via separate forms on the bill edit page
 
 ## Payment Receipt (Recibo de Pagamento)
 
-- A **recibo** is a quittance PDF (`rentivo/pdf/recibo.py:ReciboPDF`) issued for a **PAID** bill — distinct from both the invoice and the bill-level `receipt` attachments. Naming is deliberately kept apart (`recibo` ≠ `receipt`).
-- **Lifecycle is driven by `BillService.change_status`** (the single status-change path, called from `web/routes/bill.py`):
+- A **recibo** is a quittance PDF (`backend/rentivo/pdf/recibo.py:ReciboPDF`) issued for a **PAID** bill — distinct from both the invoice and the bill-level `receipt` attachments. Naming is deliberately kept apart (`recibo` ≠ `receipt`).
+- **Lifecycle is driven by `BillService.change_status`** (the single status-change path, called from `backend/legacy_web/routes/bill.py`):
   - entering PAID (from any non-PAID status) enqueues a `recibo.render` job (web) or renders synchronously (CLI, no JobService);
   - leaving PAID enqueues an `s3.delete` for the stored key and NULLs `bills.recibo_pdf_path` — the quittance must not outlive the payment it certifies. Re-saving PAID is a no-op.
 - **`BillService.regenerate_pdf` also (re)generates the recibo when the bill is already PAID** — "Regenerar PDF" rebuilds both the invoice and the recibo through the same enqueue/sync path (the recibo embeds the same issuer/PIX info, so re-rendering only the invoice would leave a stale quittance). Same idempotency guard via the `recibo.render` PAID re-check.
-- `recibo.render` handler (`rentivo/jobs/handlers/recibo.py`) re-checks `status == PAID` before rendering (status may revert before the job runs) → no orphan recibo for an unpaid bill.
+- `recibo.render` handler (`backend/rentivo/jobs/handlers/recibo.py`) re-checks `status == PAID` before rendering (status may revert before the job runs) → no orphan recibo for an unpaid bill.
 - Storage key pattern: `{billing_uuid}/{bill_uuid}.recibo.pdf`; the key is stored in the `bills.recibo_pdf_path` column (Alembic `08c21e96caa6`). `BillService.store_recibo` renders + persists + records the key; `_remove_recibo` tears it down. `StorageCleanupService.enqueue_bill_delete_cascade` also deletes the recibo key.
 - Download: `GET …/recibo` (PAID-only). Serves the stored object when present; falls back to on-the-fly rendering during the brief render window or if the worker is behind, so the download never breaks. Audit `bill.recibo_download`; GTM `rentivo_recibo_downloaded` (hashed uuid).
-- Backfill: bills already PAID before stored recibos existed have `recibo_pdf_path = NULL` (the migration is schema-only). `make regenerate-recibos` (`rentivo/scripts/regenerate_recibos.py`, `--dry-run` supported, mirrors `regenerate_pdfs`) enqueues one `recibo.render` per PAID bill so they get a stored recibo — required before they can be e-mailed as a `payment_receipt` communication (download already works via the on-the-fly fallback). No PIX pre-flight: the issuer falls back to the billing name, so a paid bill always renders. Idempotent (the handler re-checks PAID; re-runs overwrite the same key).
+- Backfill: bills already PAID before stored recibos existed have `recibo_pdf_path = NULL` (the migration is schema-only). `make regenerate-recibos` (`backend/rentivo/scripts/regenerate_recibos.py`, `--dry-run` supported, mirrors `regenerate_pdfs`) enqueues one `recibo.render` per PAID bill so they get a stored recibo — required before they can be e-mailed as a `payment_receipt` communication (download already works via the on-the-fly fallback). No PIX pre-flight: the issuer falls back to the billing name, so a paid bill always renders. Idempotent (the handler re-checks PAID; re-runs overwrite the same key).
 - Send: the recibo can be e-mailed to billing recipients as a communication of type `payment_receipt` (see Tenant Communications).
 
 ## Billing Attachments
 
 - Billings can carry named documents (e.g. a lease contract) — separate from bill-level receipts and **never merged into a bill PDF**.
-- Model: `rentivo/models/billing_attachment.py` (`BillingAttachment`, with a user-given `name` plus the original `filename`; both KMS-encrypted). Allowed types PDF/JPEG/PNG, max 10 MB. A blank `name` defaults to the filename.
+- Model: `backend/rentivo/models/billing_attachment.py` (`BillingAttachment`, with a user-given `name` plus the original `filename`; both KMS-encrypted). Allowed types PDF/JPEG/PNG, max 10 MB. A blank `name` defaults to the filename.
 - Storage key pattern: `{billing_uuid}/attachments/{attachment_uuid}{ext}`.
-- Repository: `BillingAttachmentRepository` / `SQLAlchemyBillingAttachmentRepository`. Service: `BillingAttachmentService` (repo + storage). Wired in `web/services_container.py` as `billing_attachment`.
-- Routes on the billing router (`web/routes/billing.py`): `POST /billings/<id>/attachments/upload` (single file + name), `GET /billings/<id>/attachments/<att_id>` (download), `POST /billings/<id>/attachments/<att_id>/delete`. Upload/delete need `edit`; download needs `view`.
+- Repository: `BillingAttachmentRepository` / `SQLAlchemyBillingAttachmentRepository`. Service: `BillingAttachmentService` (repo + storage). Wired in `backend/legacy_web/services_container.py` as `billing_attachment`.
+- Routes on the billing router (`backend/legacy_web/routes/billing.py`): `POST /billings/<id>/attachments/upload` (single file + name), `GET /billings/<id>/attachments/<att_id>` (download), `POST /billings/<id>/attachments/<att_id>/delete`. Upload/delete need `edit`; download needs `view`.
 - UI: upload + list + delete panel on the billing edit page; read-only download list on the billing detail page.
 - Audit events: `attachment.upload`, `attachment.delete` (serializer omits `storage_key`). GTM: `rentivo_billing_attachment_uploaded/deleted`. Deleting a billing cascades attachment-file cleanup via `StorageCleanupService.enqueue_billing_delete_cascade` (which requires an `attachment_repo`).
 
@@ -167,20 +167,20 @@ make web-run             # start uvicorn at http://localhost:8000
 - A billing's bills can be exported as **CSV or Excel (XLSX)** for accounting. Export runs in the background and is **emailed to the account that requested it** — NOT a synchronous download, and **NOT** sent to the billing's tenant recipients. Recipients (`billing_recipients`) are tenants; they are never the export audience.
 - Trigger: `POST /billings/<id>/bills/export` (form `format=csv|xlsx`, default/fallback csv; needs `view`). Buttons live on the billing detail page (labelled "Exportar CSV" / "Exportar Excel"). The route enqueues one `export.generate` job carrying `{billing_id, format, requested_by_user_id}` and flashes "exportação iniciada … para o seu e-mail". No recipient is required.
 - **Job chain (storage-backed):**
-  1. `export.generate` (`rentivo/jobs/handlers/export.py:handle_export_generate`): loads the billing + bills, builds rows via `ExportService`, serializes via `rentivo/export/serializers.py:serialize_rows` (returns `(body, content_type, ext)`; csv fallback), uploads the file to storage under `{billing_uuid}/exports/{token}.{ext}`, and enqueues `export.send`. No PII (billing name, recipient data) rides in the payload — only ids/keys.
+  1. `export.generate` (`backend/rentivo/jobs/handlers/export.py:handle_export_generate`): loads the billing + bills, builds rows via `ExportService`, serializes via `backend/rentivo/export/serializers.py:serialize_rows` (returns `(body, content_type, ext)`; csv fallback), uploads the file to storage under `{billing_uuid}/exports/{token}.{ext}`, and enqueues `export.send`. No PII (billing name, recipient data) rides in the payload — only ids/keys.
   2. `export.send` (`handle_export_send`): resolves the requesting user's e-mail fresh from the encrypted `users` row (by `requested_by_user_id`), downloads the file from storage, sends **one** email to that account (event `export_ready`, attachment named via `export_filename`), then enqueues `s3.delete` for the temp object.
   3. `s3.delete`: removes the temp export object.
   - Chained enqueues use `source="worker"`. At-least-once: a retried `export.send` re-downloads and re-sends (a duplicate accounting export is benign) and re-enqueues the delete. A crash between upload and the `export.generate` enqueue commit can orphan a temp object (harmless; a fresh run uses a new token).
-- `ExportService` (`rentivo/services/export_service.py`) is FastAPI-free row building: PT-BR headers, a numeric `Valor (R$)` column (centavos/100) plus a formatted `R$` column. Serializers neutralize spreadsheet **formula injection** (cells starting with `= + - @ \t \r` get a leading `'`). `export_filename`/`export_slug` build an accent-folded slug filename (`São João` → `faturas_sao-joao.csv`). `format_label(ext)` maps the internal token to the human label (`xlsx` → "Excel", else uppercased) for the flash and the email body.
-- `EmailService.send(..., attachments=...)` carries the generated file; templates `web/templates/emails/export_ready.{html,txt}` (PT-BR). The `From` uses the SES default (transactional), not the communications override.
+- `ExportService` (`backend/rentivo/services/export_service.py`) is FastAPI-free row building: PT-BR headers, a numeric `Valor (R$)` column (centavos/100) plus a formatted `R$` column. Serializers neutralize spreadsheet **formula injection** (cells starting with `= + - @ \t \r` get a leading `'`). `export_filename`/`export_slug` build an accent-folded slug filename (`São João` → `faturas_sao-joao.csv`). `format_label(ext)` maps the internal token to the human label (`xlsx` → "Excel", else uppercased) for the flash and the email body.
+- `EmailService.send(..., attachments=...)` carries the generated file; templates `backend/legacy_web/templates/emails/export_ready.{html,txt}` (PT-BR). The `From` uses the SES default (transactional), not the communications override.
 - Audit event: `billing.export` (`new_state={format}`). GTM: `rentivo_data_exported` (`export_format`, `billing_uuid_hash`). Temporal: `ExportGenerateWorkflow` + `ExportSendWorkflow` (and the existing `S3DeleteWorkflow`) wrap the same registry handlers.
 - Dependency: **openpyxl** (XLSX).
 
 ## Audit Logging
 
 - **AuditService** logs all state-changing operations across the web app and maintenance scripts
-- Event types defined in `rentivo/models/audit_log.py` (`AuditEventType`)
-- Serializers in `rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`) and partial-mask redact PII via `rentivo/pii_redaction.py:redact()`. PIX fields (`pix_key`, `pix_merchant_name`, `pix_merchant_city`) and `to_email` in `email.send` job payloads are stored under their original field names with masked values: PIX fields show first 3 chars + `...` + last 2 (e.g. `123...01`); emails show first 2 chars of local + `...@` + full domain (e.g. `jo...@gmail.com`). Short values collapse to `***`. The mask is one-way, key-less, and deterministic — no `secret_key` dependency, no per-environment correlation key. Reviewers can recognize "same value across rows" via equal masked strings without seeing the plaintext.
+- Event types defined in `backend/rentivo/models/audit_log.py` (`AuditEventType`)
+- Serializers in `backend/rentivo/services/audit_serializers.py` strip sensitive fields (`password_hash`) and partial-mask redact PII via `backend/rentivo/pii_redaction.py:redact()`. PIX fields (`pix_key`, `pix_merchant_name`, `pix_merchant_city`) and `to_email` in `email.send` job payloads are stored under their original field names with masked values: PIX fields show first 3 chars + `...` + last 2 (e.g. `123...01`); emails show first 2 chars of local + `...@` + full domain (e.g. `jo...@gmail.com`). Short values collapse to `***`. The mask is one-way, key-less, and deterministic — no `secret_key` dependency, no per-environment correlation key. Reviewers can recognize "same value across rows" via equal masked strings without seeing the plaintext.
 - Backfill: `make redact-audit-logs-dry` previews; `make redact-audit-logs` rewrites legacy `audit_logs` rows whose JSON still contains plaintext PII. Idempotent (the redaction function is its own fixed point on typical inputs). Run once after deploying the redacted serializers.
 - `safe_log()` swallows exceptions — audit failures never block business operations
 - Web routes: actor context comes from session (`user_id`, `username`)
@@ -198,11 +198,11 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 
 ### How it works
 
-- `web/analytics.py` owns the server-side helpers: `analytics_hash()` (HMAC-SHA256 of identifiers, keyed by `secret_key`), `build_page_context()` (initial dataLayer push), `push_event()` / `pop_events()` (flash-style queue for post-redirect business events).
-- `web/deps.py:render()` injects `gtm_initial_push` and drains `gtm_pending_events` on every rendered page.
-- `web/templates/base.html` renders the GTM loader + noscript iframe + inline `dataLayer.push(...)` calls only when `gtm_container_id` is set.
-- `web/static/core/js/tracking.js` installs automatic listeners for forms, clicks, uploads, performance, errors, and engagement. No-ops without `window.dataLayer`.
-- `web/static/core/vendor/web-vitals.iife.js` is vendored from `web-vitals@4.2.4` and reports Core Web Vitals.
+- `backend/legacy_web/analytics.py` owns the server-side helpers: `analytics_hash()` (HMAC-SHA256 of identifiers, keyed by `secret_key`), `build_page_context()` (initial dataLayer push), `push_event()` / `pop_events()` (flash-style queue for post-redirect business events).
+- `backend/legacy_web/deps.py:render()` injects `gtm_initial_push` and drains `gtm_pending_events` on every rendered page.
+- `backend/legacy_web/templates/base.html` renders the GTM loader + noscript iframe + inline `dataLayer.push(...)` calls only when `gtm_container_id` is set.
+- `backend/legacy_web/static/core/js/tracking.js` installs automatic listeners for forms, clicks, uploads, performance, errors, and engagement. No-ops without `window.dataLayer`.
+- `backend/legacy_web/static/core/vendor/web-vitals.iife.js` is vendored from `web-vitals@4.2.4` and reports Core Web Vitals.
 
 ### Event taxonomy
 
@@ -221,9 +221,9 @@ Rentivo integrates with Google Tag Manager gated by a single env var.
 
 ### Testing
 
-- `tests/web/test_analytics.py` — unit tests for hashing, page context, event queue.
-- `tests/web/test_gtm_integration.py` — integration tests for template rendering (disabled and enabled modes).
-- `tests/web/test_gtm_events.py` — integration tests verifying business events fire on successful state-changing POSTs.
+- `backend/tests/web/test_analytics.py` — unit tests for hashing, page context, event queue.
+- `backend/tests/web/test_gtm_integration.py` — integration tests for template rendering (disabled and enabled modes).
+- `backend/tests/web/test_gtm_events.py` — integration tests verifying business events fire on successful state-changing POSTs.
 - Tests use `TestClient` (no JS execution), so there is no risk of hitting `googletagmanager.com` during tests.
 
 ## Alembic Migrations
@@ -259,7 +259,7 @@ When the user asks you to open a PR, you are responsible for filling out the PR 
 - Backend selected via `RENTIVO_EMAIL_BACKEND` (`local` | `ses`).
 - Local backend writes `.eml` files to `RENTIVO_EMAIL_LOCAL_PATH` (default `./outbox`) so dev runs never call AWS.
 - SES backend uses `RENTIVO_SES_*` env vars (mirror of S3 credentials). Optional `RENTIVO_SES_ENDPOINT_URL` for LocalStack and `RENTIVO_SES_CONFIGURATION_SET` for SES configuration sets.
-- Templates live in `web/templates/emails/*.html` + `*.txt`. PT-BR copy.
+- Templates live in `backend/legacy_web/templates/emails/*.html` + `*.txt`. PT-BR copy.
 - `EmailService.send_password_recovery(to_email, reset_url)` is the only consumer for now.
 
 ## Password Recovery
@@ -278,28 +278,28 @@ All dispatched via `EmailService.safe_send_*` (swallow failures, never block the
 
 - `welcome` — on signup. Links to PIX setup (`/security/pix`).
 - `password_changed` — fires from `/security/change-password` and from successful `/reset-password`. Body shows time + `request.client.host` + a "redefinir senha" CTA pointing at `/forgot-password`.
-- `mfa_changed` — fires from TOTP enable/disable and passkey register/delete in `web/routes/security.py`. Distinct `change_label` per kind (TOTP ativado / desativado, Passkey registrado / removido).
+- `mfa_changed` — fires from TOTP enable/disable and passkey register/delete in `backend/legacy_web/routes/security.py`. Distinct `change_label` per kind (TOTP ativado / desativado, Passkey registrado / removido).
 - `new_device_login` — fires on the first login from an unseen `(user_agent, IPv4 /24)` pair. Backed by `known_devices` (Alembic `9a1c5b3f7e62`) and `KnownDeviceService.fingerprint(user_agent, remote_ip)` which SHA-256s `"<UA>|<subnet>"`.
 
 ### Organization & collaboration emails
 
-- `invite_received` — to the invitee when an org admin sends an invite (`web/routes/organization.py`). Links to `/invites/`.
-- `invite_responded` — to the original inviter when the invitee accepts or declines (`web/routes/invite.py`). `response_label` is `"aceitou"` or `"recusou"`.
-- `member_changed` — to the affected user when their role changes in an org (`web/routes/organization.py:member_change_role`).
-- `billing_transferred` — fires from `web/routes/billing.py` transfer handler. Notifies the previous user-owner (if any) and every `admin`/`owner` member of the destination organization.
+- `invite_received` — to the invitee when an org admin sends an invite (`backend/legacy_web/routes/organization.py`). Links to `/invites/`.
+- `invite_responded` — to the original inviter when the invitee accepts or declines (`backend/legacy_web/routes/invite.py`). `response_label` is `"aceitou"` or `"recusou"`.
+- `member_changed` — to the affected user when their role changes in an org (`backend/legacy_web/routes/organization.py:member_change_role`).
+- `billing_transferred` — fires from `backend/legacy_web/routes/billing.py` transfer handler. Notifies the previous user-owner (if any) and every `admin`/`owner` member of the destination organization.
 
 ## Tenant Communications
 
 - Billings carry **recipients** (`billing_recipients`, encrypted `name` + `email`). Multiple per billing; each send goes to one recipient — never CC. Managed via a formset on the billing edit page (`RecipientService.replace_for_billing`).
 - **Reply-To**: billings also carry an optional **reply-to** contact list (`billing_reply_to`, encrypted `name` + `email`) managed by a second formset on the billing create/edit forms (`RecipientService` reused over `SQLAlchemyReplyToRecipientRepository`). At send time the `communication.send` handler formats each as `Name <email>` (`email.utils.formataddr`) and sets the email `Reply-To` header — resolved fresh from the billing at send time, NOT snapshotted onto the communication row. Audit event: `billing.reply_to_updated`.
 - **From override**: `RENTIVO_COMMUNICATIONS_FROM_EMAIL` (optional) overrides the `From` for communication emails only; empty falls back to `RENTIVO_SES_FROM_EMAIL` then `noreply@localhost`. Account/security/transactional emails always use `RENTIVO_SES_FROM_EMAIL`.
-- **Templates** (`communication_templates`) are polymorphic-owned (`owner_type` ∈ `user` | `organization` | `billing`) per `comm_type`, unique on `(owner_type, owner_id, comm_type)` (`uq_comm_template_owner`). `CommunicationService.resolve_template` resolves most-specific-first: billing → billing owner (user/org) → system default (`rentivo/communications/defaults.py`, seeded from the landlord's PT-BR copy; the synthetic fallback uses `owner_type='system'` / `owner_id=0` and is never persisted). Encrypted `subject` + `body_markdown`.
-- **Bodies are Markdown**, rendered by `rentivo/communications/render.py:render_markdown` with `markdown-it-py` and raw HTML disabled (`MarkdownIt("commonmark", {"html": False})`) — `<tag>` in the source is escaped to inert text, so user input can never inject live HTML. Placeholders (PT-BR): `{{nome_inquilino}}` (recipient name), `{{unidade}}` (billing name), `{{mes}}` (e.g. "maio de 2026", via `month_long`), `{{vencimento}}` (due date), `{{total}}` (BRL). Substituted at send time and snapshotted onto the communication row; unknown tokens are left verbatim.
-- **Comm types** are the `CommType` enum (`rentivo/models/communication.py`): `bill_ready` (attaches the invoice PDF) and `payment_receipt` (attaches the stored **recibo** PDF, PAID bills only). Each has its own system-default template. The compose/send routes take the type **explicitly** (`?type=…` on compose, hidden `comm_type` field on send) and validate it strictly via `CommType(...)` — an unknown value is rejected (flash redirect), never silently defaulted, so a bad value can't send the wrong document. The `communication.send` handler branches on `comm.comm_type` to pick invoice-vs-recibo (`fatura-…pdf` / `recibo-…pdf`) and fails permanently if the chosen document is absent.
-- **Sends** are manual: compose/preview on the bill page (`web/routes/communication.py`, router prefix `/billings/{billing_uuid}/bills/{bill_uuid}/communications`: `GET /compose`, `POST /preview`, `POST /send`), then one `communication.send` job per recipient. The handler (`rentivo/jobs/handlers/communication.py`) renders the stored row, attaches the bill/recibo PDF, sends one email, and marks the row `sent`; the registered `register_on_fail` dead-letter hook marks it `failed`.
+- **Templates** (`communication_templates`) are polymorphic-owned (`owner_type` ∈ `user` | `organization` | `billing`) per `comm_type`, unique on `(owner_type, owner_id, comm_type)` (`uq_comm_template_owner`). `CommunicationService.resolve_template` resolves most-specific-first: billing → billing owner (user/org) → system default (`backend/rentivo/communications/defaults.py`, seeded from the landlord's PT-BR copy; the synthetic fallback uses `owner_type='system'` / `owner_id=0` and is never persisted). Encrypted `subject` + `body_markdown`.
+- **Bodies are Markdown**, rendered by `backend/rentivo/communications/render.py:render_markdown` with `markdown-it-py` and raw HTML disabled (`MarkdownIt("commonmark", {"html": False})`) — `<tag>` in the source is escaped to inert text, so user input can never inject live HTML. Placeholders (PT-BR): `{{nome_inquilino}}` (recipient name), `{{unidade}}` (billing name), `{{mes}}` (e.g. "maio de 2026", via `month_long`), `{{vencimento}}` (due date), `{{total}}` (BRL). Substituted at send time and snapshotted onto the communication row; unknown tokens are left verbatim.
+- **Comm types** are the `CommType` enum (`backend/rentivo/models/communication.py`): `bill_ready` (attaches the invoice PDF) and `payment_receipt` (attaches the stored **recibo** PDF, PAID bills only). Each has its own system-default template. The compose/send routes take the type **explicitly** (`?type=…` on compose, hidden `comm_type` field on send) and validate it strictly via `CommType(...)` — an unknown value is rejected (flash redirect), never silently defaulted, so a bad value can't send the wrong document. The `communication.send` handler branches on `comm.comm_type` to pick invoice-vs-recibo (`fatura-…pdf` / `recibo-…pdf`) and fails permanently if the chosen document is absent.
+- **Sends** are manual: compose/preview on the bill page (`backend/legacy_web/routes/communication.py`, router prefix `/billings/{billing_uuid}/bills/{bill_uuid}/communications`: `GET /compose`, `POST /preview`, `POST /send`), then one `communication.send` job per recipient. The handler (`backend/rentivo/jobs/handlers/communication.py`) renders the stored row, attaches the bill/recibo PDF, sends one email, and marks the row `sent`; the registered `register_on_fail` dead-letter hook marks it `failed`.
 - **Communications** (`communications`, the sent log; encrypted `recipient_name` / `recipient_email` / `subject` / `body_markdown`) are listed on the bill page with status (`queued` / `sent` / `failed`). Audit events: `communication.sent`, `communication.template_saved`, `billing.recipients_updated`. GTM: `rentivo_communication_sent`.
-- Email attachments: `EmailAttachment` on `EmailMessage`; `rentivo/email/mime.py:build_mime` is shared by the local backend and SES. SES switches to `send_raw_email` only when attachments are present, preserving `ConfigurationSetName`.
-- **Content guardrails**: `rentivo/communications/moderation.py:scan(text)` does a tiered, in-process PT-BR lexicon scan (no external API/LLM, deterministic; `_normalize` handles accents/leetspeak/repeated-chars/whitespace, word-token matching for the word lists and normalized-substring matching for phrases). `POST /send` is the authoritative gate: SEVERE (slurs/hate/threats) is blocked (no communication row, no job; audit `communication.blocked`); MILD (profanity) requires an explicit `acknowledge_warning` checkbox (audit `communication.flagged_override`). `POST /preview` returns `{html, severe, mild}` to drive the compose-page moderation panel. Audit `new_state` stores counts (`severe_count`/`mild_count`), never the flagged words.
+- Email attachments: `EmailAttachment` on `EmailMessage`; `backend/rentivo/email/mime.py:build_mime` is shared by the local backend and SES. SES switches to `send_raw_email` only when attachments are present, preserving `ConfigurationSetName`.
+- **Content guardrails**: `backend/rentivo/communications/moderation.py:scan(text)` does a tiered, in-process PT-BR lexicon scan (no external API/LLM, deterministic; `_normalize` handles accents/leetspeak/repeated-chars/whitespace, word-token matching for the word lists and normalized-substring matching for phrases). `POST /send` is the authoritative gate: SEVERE (slurs/hate/threats) is blocked (no communication row, no job; audit `communication.blocked`); MILD (profanity) requires an explicit `acknowledge_warning` checkbox (audit `communication.flagged_override`). `POST /preview` returns `{html, severe, mild}` to drive the compose-page moderation panel. Audit `new_state` stores counts (`severe_count`/`mild_count`), never the flagged words.
 - **Sender attribution**: a non-editable system block after the body in `communication.html`/`.txt` — "Enviado por {remetente} através do Rentivo." followed by "O conteúdo desta mensagem é de responsabilidade do remetente, não do Rentivo." The sender name is resolved fresh in the `communication.send` handler (`_resolve_sender_name`): organization name for org-owned billings, account email for user-owned, generic "o responsável" fallback. Threaded via `EmailService.send_communication(..., sender_name=...)`; autoescaped (only `body_html` is `| safe`).
 - Dependency: `markdown-it-py` (core).
 
@@ -348,10 +348,10 @@ Rotating `RENTIVO_SECRET_KEY` invalidates every existing `users.email_hash`. Aft
 
 ### Architecture
 
-- `rentivo/encryption/base.py:EncryptionBackend` — abstract `encrypt` / `decrypt` / `is_encrypted` interface. All three are idempotent: `encrypt` is a no-op on already-encrypted values, `decrypt` is a no-op on plaintext (or any value not produced by this backend).
-- `rentivo/encryption/base64.py:Base64Backend` — local-only obfuscation. NOT encryption. Ciphertext format: `b64:v1:<base64(plaintext)>`.
-- `rentivo/encryption/kms.py:KMSBackend` — calls `kms.Encrypt` / `kms.Decrypt` directly (no envelope DEK). Ciphertext format: `enc:v1:<base64-of-CiphertextBlob>`.
-- `rentivo/encryption/factory.py:get_encryption` — dispatches by `RENTIVO_ENCRYPTION_BACKEND`.
+- `backend/rentivo/encryption/base.py:EncryptionBackend` — abstract `encrypt` / `decrypt` / `is_encrypted` interface. All three are idempotent: `encrypt` is a no-op on already-encrypted values, `decrypt` is a no-op on plaintext (or any value not produced by this backend).
+- `backend/rentivo/encryption/base64.py:Base64Backend` — local-only obfuscation. NOT encryption. Ciphertext format: `b64:v1:<base64(plaintext)>`.
+- `backend/rentivo/encryption/kms.py:KMSBackend` — calls `kms.Encrypt` / `kms.Decrypt` directly (no envelope DEK). Ciphertext format: `enc:v1:<base64-of-CiphertextBlob>`.
+- `backend/rentivo/encryption/factory.py:get_encryption` — dispatches by `RENTIVO_ENCRYPTION_BACKEND`.
 - Wired into `SQLAlchemyBillingRepository`, `SQLAlchemyBillRepository`, `SQLAlchemyReceiptRepository`, `SQLAlchemyUserRepository`, `SQLAlchemyOrganizationRepository`, `SQLAlchemyMFATOTPRepository`, `SQLAlchemyInviteRepository`. Encryption happens on writes; decryption on reads.
 - `EncryptionBackend.decrypt_many(values)` — batches a list of ciphertexts. The base-class default loops sequentially; `KMSBackend` overrides with a `ThreadPoolExecutor` (max 16 workers) so a list page with N×M encrypted columns finishes in ~max RTT instead of N×M × RTT. The Billing / Bill / Receipt repositories collect every ciphertext for a list/detail query into one `decrypt_many` call before assembling the Pydantic models.
 
@@ -400,11 +400,11 @@ Dependencies: `cachetools` is core; `redis` is in the `cache` extras group (`uv 
 ### Operational notes
 
 - Set `cache_backend=none` to revert to the pre-cache code path; no migrations or KMS impact.
-- The encryption test conftest (`tests/encryption/conftest.py`) calls `cache.close()` on the active `CachingEncryptionBackend` before invoking `factory._reset_for_tests()`, so the daemon cleanup thread is joined and the Redis client is closed between tests.
+- The encryption test conftest (`backend/tests/encryption/conftest.py`) calls `cache.close()` on the active `CachingEncryptionBackend` before invoking `factory._reset_for_tests()`, so the daemon cleanup thread is joined and the Redis client is closed between tests.
 
 ## Cache
 
-A generic, reusable key→value cache (`rentivo/cache/`), pluggable across the same three backends as the decryption cache but configured by **its own env vars** — the two caches are independent toggles. Values must be JSON-serialisable (dict / list / str / int / float / bool / None) so any backend can store them; consumers serialize their own domain objects at the boundary.
+A generic, reusable key→value cache (`backend/rentivo/cache/`), pluggable across the same three backends as the decryption cache but configured by **its own env vars** — the two caches are independent toggles. Values must be JSON-serialisable (dict / list / str / int / float / bool / None) so any backend can store them; consumers serialize their own domain objects at the boundary.
 
 | Env var | Default | Notes |
 |---|---|---|
@@ -417,47 +417,47 @@ A generic, reusable key→value cache (`rentivo/cache/`), pluggable across the s
 - `Cache` protocol (`get`/`set`/`clear`/`close`) with `NullCache`, `MemoryCache` (`cachetools.TTLCache` + `RLock` + daemon cleanup thread, stores values as-is), and `RedisCache` (JSON-encoded values, keys `rentivo:cache:v1:<sha256(key)>`, fail-open). `rentivo.cache.factory.get_cache()` returns the process-global singleton; `_reset_for_tests()` closes + drops it.
 - Every backend is fail-open: a backend error degrades to a cache miss / dropped write, never a raised exception.
 - Callers namespace their own keys (e.g. `billing_stats:...`) so multiple consumers can share one cache instance without collisions.
-- `tests/web/conftest.py` and `tests/cache/conftest.py` call `factory._reset_for_tests()` between tests so a fresh-DB id reuse or a settings-patching test never leaks a cached value or a redis singleton.
+- `backend/tests/web/conftest.py` and `backend/tests/cache/conftest.py` call `factory._reset_for_tests()` between tests so a fresh-DB id reuse or a settings-patching test never leaks a cached value or a redis singleton.
 
 ### Consumer: billing KPI rollups
 
-`BillingStatsService` is the first consumer. `BillingStats` (in `rentivo/services/billing_stats.py`, separate from the service) provides `to_dict`/`from_dict`; the service stores `stats.to_dict()` under key `billing_stats:{year}|{month}|{sorted billing ids}` (the YTD window + exact billing set, so entries are correct across month rollovers and shared across users since bill ids are globally unique) and rebuilds via `from_dict` on a hit.
+`BillingStatsService` is the first consumer. `BillingStats` (in `backend/rentivo/services/billing_stats.py`, separate from the service) provides `to_dict`/`from_dict`; the service stores `stats.to_dict()` under key `billing_stats:{year}|{month}|{sorted billing ids}` (the YTD window + exact billing set, so entries are correct across month rollovers and shared across users since bill ids are globally unique) and rebuilds via `from_dict` on a hit.
 
 ## Observability (OpenTelemetry Tracing)
 
-Optional distributed tracing, off by default. One module — `rentivo/observability/tracing.py` — owns every `opentelemetry` import behind a `try/except ImportError`; when the `otel` extra is absent or `RENTIVO_OTEL_ENABLED=false`, the global tracer is `None` and `traced` / `span` / `set_attributes` / `inject_context` / `extract_context` all no-op.
+Optional distributed tracing, off by default. One module — `backend/rentivo/observability/tracing.py` — owns every `opentelemetry` import behind a `try/except ImportError`; when the `otel` extra is absent or `RENTIVO_OTEL_ENABLED=false`, the global tracer is `None` and `traced` / `span` / `set_attributes` / `inject_context` / `extract_context` all no-op.
 
 - **Enable:** the runtime Docker images already bundle the `otel` extra; for host runs `uv sync --extra otel`. Set `RENTIVO_OTEL_ENABLED=true` + `RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP/HTTP, the SDK appends `/v1/traces`). Four settings: `RENTIVO_OTEL_ENABLED`, `RENTIVO_OTEL_SERVICE_NAME`, `RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT`, `RENTIVO_OTEL_SAMPLE_RATIO`.
 - **Instrument anything** with `@traced("name")` (sync or async; defaults to the bare function name). Sub-spans via `with span("name"):`. Dynamic non-PII attributes via `set_attributes(...)`.
-- **Root spans:** the outermost pure-ASGI `TracingMiddleware` (`rentivo/observability/middleware.py`) opens `HTTP <method>`; the worker opens `job <type>`. Decorated calls + SQL spans nest automatically through OpenTelemetry's active-span contextvar.
+- **Root spans:** the outermost pure-ASGI `TracingMiddleware` (`backend/rentivo/observability/middleware.py`) opens `HTTP <method>`; the worker opens `job <type>`. Decorated calls + SQL spans nest automatically through OpenTelemetry's active-span contextvar.
 - **Cross-process nesting:** `JobService.enqueue` injects a W3C `traceparent` into the payload's `_otel` key; `Worker._run_one` extracts it so worker spans re-parent onto the enqueuing request.
 - **DB spans:** `instrument_sqlalchemy(engine)` (wired into `db.get_engine()`) emits a span per SQL statement via `SQLAlchemyInstrumentor`, handed our provider explicitly (no global provider is installed). Bound params are omitted (PII-safe).
 - **Instrumented (comprehensive):** every SQL statement; every public **service** method (`<entity>.<method>`) and **repository** method (`<entity>_repo.<method>`); auth incl. `auth.verify_password` (bcrypt) and `login.*`; encryption (`base64.*`, `kms.*`, `cache.*`), storage (`local.*`, `s3.*`), email (`ses.send`, `email.*`), and PDF (`pdf.*`). Adding `@traced` is coverage-neutral (decorator internals are tested in `tracing.py`; bodies still run via the disabled path).
 - **Span volume:** deep instrumentation = many spans/request (e.g. `base64.decrypt` per encrypted field). Tune with `RENTIVO_OTEL_SAMPLE_RATIO` (parent-based head sampling).
 - **Privacy:** never put PII in span attributes — non-PII only (method/path, job type/ulid, counts, sizes, backend names). Span names are static; SQL spans omit bound params.
 - **Local Jaeger:** `make jaeger-up` (compose profile `observability`, opt-in), UI at http://localhost:16686, endpoint `http://jaeger:4318` on the compose network. Full guide: `docs/observability.md`.
-- Tests assert spans with `InMemorySpanExporter`; `tests/observability/conftest.py` provides `reset_tracing` (autouse) + `span_exporter`. Other test packages re-export those fixtures via a one-line conftest. The coverage env runs `uv sync --all-extras`, so the otel branches execute (only the `except ImportError` guard carries `# pragma: no cover`).
+- Tests assert spans with `InMemorySpanExporter`; `backend/tests/observability/conftest.py` provides `reset_tracing` (autouse) + `span_exporter`. Other test packages re-export those fixtures via a one-line conftest. The coverage env runs `uv sync --all-extras`, so the otel branches execute (only the `except ImportError` guard carries `# pragma: no cover`).
 
 ## Job Drivers
 
-Background jobs run through a pluggable driver selected by `RENTIVO_JOB_BACKEND` (`database` default | `temporal`). The producer seam is `rentivo/jobs/backend.py:JobBackend.enqueue`; `JobService` depends on it. `rentivo/jobs/factory.py:get_job_backend(conn)` dispatches.
+Background jobs run through a pluggable driver selected by `RENTIVO_JOB_BACKEND` (`database` default | `temporal`). The producer seam is `backend/rentivo/jobs/backend.py:JobBackend.enqueue`; `JobService` depends on it. `backend/rentivo/jobs/factory.py:get_job_backend(conn)` dispatches.
 
-- **database** — `DatabaseJobBackend` over `SQLAlchemyJobRepository`; the polling `Worker` (`rentivo/jobs/worker.py`) drains the `jobs` table. Zero extra deps; the supported production default.
-- **temporal** (optional, `temporal` extra; NOT required even in production) — `TemporalJobBackend` starts one workflow per enqueue. Per-job-type workflows/activities in `rentivo/jobs/temporal/` wrap the **unchanged** registry handlers. The workflow retry loop mirrors the DB backoff (`rentivo/jobs/backoff.py`, 60s/5m/15m/1h/6h, max 5), maps `PermanentJobError` → non-retryable, and fires the same fail-hooks + `JOB_*` audit events via the `rentivo.finalize_job` activity. OTel `_otel` carrier propagates identically.
-- Worker entrypoint `python -m rentivo.workers` dispatches on the backend. Local Temporal: `make temporal-up` (opt-in compose profile). Shared backoff lives in `rentivo/jobs/backoff.py`. Full guide: `docs/jobs.md`.
+- **database** — `DatabaseJobBackend` over `SQLAlchemyJobRepository`; the polling `Worker` (`backend/rentivo/jobs/worker.py`) drains the `jobs` table. Zero extra deps; the supported production default.
+- **temporal** (optional, `temporal` extra; NOT required even in production) — `TemporalJobBackend` starts one workflow per enqueue. Per-job-type workflows/activities in `backend/rentivo/jobs/temporal/` wrap the **unchanged** registry handlers. The workflow retry loop mirrors the DB backoff (`backend/rentivo/jobs/backoff.py`, 60s/5m/15m/1h/6h, max 5), maps `PermanentJobError` → non-retryable, and fires the same fail-hooks + `JOB_*` audit events via the `rentivo.finalize_job` activity. OTel `_otel` carrier propagates identically.
+- Worker entrypoint `python -m rentivo.workers` dispatches on the backend. Local Temporal: `make temporal-up` (opt-in compose profile). Shared backoff lives in `backend/rentivo/jobs/backoff.py`. Full guide: `docs/jobs.md`.
 
 ## Bot Protection (Cloudflare Turnstile)
 
 - Gate the public auth forms with Cloudflare Turnstile when `RENTIVO_TURNSTILE_SITE_KEY` and `RENTIVO_TURNSTILE_SECRET_KEY` are both set. If either is empty the feature is fully disabled — the loader script and widget div are not rendered, and the backend skips verification (`TurnstileService.verify` short-circuits to True).
 - Verify endpoint defaults to Cloudflare's public URL; override with `RENTIVO_TURNSTILE_VERIFY_URL` if you need a self-hosted gateway.
-- Service: `rentivo/services/turnstile_service.py:TurnstileService` exposes `is_enabled` and `async verify(token, remote_ip)`.
+- Service: `backend/rentivo/services/turnstile_service.py:TurnstileService` exposes `is_enabled` and `async verify(token, remote_ip)`.
 - Wired on: `/login`, `/signup`, `/forgot-password`. The form field name set by Cloudflare's widget is `cf-turnstile-response`.
 
 ## Google Authentication
 
 - OAuth 2.0 authorization-code flow, gated by `RENTIVO_GOOGLE_AUTH_ENABLED` (default `false` — routes 404 and no button renders when off, so local dev needs no Google setup).
 - `RENTIVO_GOOGLE_CLIENT_ID` and `RENTIVO_GOOGLE_CLIENT_SECRET` are required when enabled (Settings validator enforces at startup). Register `{RENTIVO_PUBLIC_APP_URL}/auth/google/callback` as the authorized redirect URI in the Google Cloud console.
-- Service: `rentivo/services/google_auth_service.py:GoogleAuthService` — builds the consent URL, exchanges the code, fetches OIDC userinfo via httpx (no JWT parsing; userinfo comes over direct TLS). Routes: `web/routes/google_auth.py` (`GET /auth/google/login`, `GET /auth/google/callback`), public in `web/deps.py:PUBLIC_PREFIX_PATHS`.
+- Service: `backend/rentivo/services/google_auth_service.py:GoogleAuthService` — builds the consent URL, exchanges the code, fetches OIDC userinfo via httpx (no JWT parsing; userinfo comes over direct TLS). Routes: `backend/legacy_web/routes/google_auth.py` (`GET /auth/google/login`, `GET /auth/google/callback`), public in `backend/legacy_web/deps.py:PUBLIC_PREFIX_PATHS`.
 - Account linking is by **verified Google email** (`email_verified` required) through the existing `users.email_hash` blind index. First Google login auto-creates a passwordless user (`password_hash=""`); `UserService.authenticate` rejects passwordless users so they can't password-login until they set one via `/forgot-password`. A duplicate-signup race is caught and falls back to logging in the existing account.
 - **MFA is preserved**: the callback runs the same gate as `POST /login` — users with TOTP/passkeys get `mfa_pending_user_id` in the session and are sent to `/mfa-verify`; org MFA enforcement (`mfa_setup_required`) also applies.
 - CSRF for the OAuth flow is handled with a session-bound single-use `state` parameter (compared with `secrets.compare_digest`). Audit events reuse `user.signup` / `user.login` / `mfa.challenge_issued` with `metadata.method = "google"`.

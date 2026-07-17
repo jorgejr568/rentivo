@@ -46,7 +46,7 @@ Open the UI at http://localhost:16686, pick service `rentivo`, and find a trace.
 
 ## How it works
 
-- One module, `rentivo/observability/tracing.py`, owns every `opentelemetry`
+- One module, `backend/rentivo/observability/tracing.py`, owns every `opentelemetry`
   import behind a `try/except ImportError`. If the `otel` extra is absent or
   `RENTIVO_OTEL_ENABLED=false`, the tracer is `None` and every helper is a
   no-op — zero network calls, zero cost beyond a `None` check.

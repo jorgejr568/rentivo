@@ -16,18 +16,18 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 - Money is stored as **centavos (int)** — never floats. Format with `rentivo.models.format_brl()`.
 - Currency is **BRL (R$)**.
 - Keep the repository / storage / encryption / cache abstractions intact — backends must stay swappable.
-- Dependencies are managed with **uv**: edit `pyproject.toml`, run `uv lock`, commit `uv.lock`. Never bare `pip`/`python`/`pytest` — use `uv run ...`.
+- Dependencies are managed with **uv**: edit `backend/pyproject.toml`, run `uv lock`, commit `uv.lock`. Never bare `pip`/`python`/`pytest` — use `uv run --project backend ...`.
 - Lint and formatting are enforced by ruff (`make fmt` to fix).
 
 ## Tests
 
 - `make test` runs the suite in parallel; it must pass with **100% coverage** (`fail_under = 100`). New code needs tests or an explicit `# pragma: no cover` with justification.
 - Tests run against in-memory SQLite — no services required.
-- Web POST tests need a CSRF token (see the `csrf_token` fixture in `tests/web/conftest.py`).
+- Web POST tests need a CSRF token (see the `csrf_token` fixture in `backend/tests/web/conftest.py`).
 
 ## Database migrations
 
-- Generate revisions with `uv run alembic revision -m "description"` — **never hand-write revision IDs**.
+- Generate revisions with `uv run --project backend alembic -c backend/alembic.ini revision -m "description"` — **never hand-write revision IDs**.
 - Migrations that drop or rename columns are breaking changes (see Versioning below).
 
 ## Commits & pull requests
