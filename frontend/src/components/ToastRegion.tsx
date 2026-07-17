@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 export interface Toast {
-  category: "success" | "error" | "warning" | "danger";
+  category: "success" | "error" | "warning" | "danger" | "info";
   id: string;
   message: string;
 }

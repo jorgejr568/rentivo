@@ -1,5 +1,6 @@
 import { CircleUserRound, Menu } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 export interface TopbarProps {
   currentPath?: string;
@@ -43,12 +44,12 @@ export function Topbar({ currentPath = window.location.pathname, currentUser, on
   return (
     <nav className="topbar">
       <div className="wrapper">
-        <a className="topbar-brand" href="/">
+        <Link className="topbar-brand" to="/">
           <span className="brand__mark">R</span>
           <span>
             rent<em>ivo</em>
           </span>
-        </a>
+        </Link>
         <button
           aria-expanded={isMobileMenuOpen}
           aria-label="Menu"
@@ -59,16 +60,16 @@ export function Topbar({ currentPath = window.location.pathname, currentUser, on
           <Menu aria-hidden="true" size={20} />
         </button>
         <div className={`topbar-menu${isMobileMenuOpen ? " open" : ""}`}>
-          <a className={`topbar-link${currentPath.startsWith("/billings") ? " is-active" : ""}`} href="/billings/">
+          <Link className={`topbar-link${currentPath.startsWith("/billings") ? " is-active" : ""}`} to="/billings/">
             Minhas Cobranças
-          </a>
-          <a
+          </Link>
+          <Link
             className={`topbar-link${currentPath.startsWith("/organizations") ? " is-active" : ""}`}
-            href="/organizations/"
+            to="/organizations/"
           >
             Organizações
-          </a>
-          <div className="topbar-dropdown" ref={accountMenuRef}>
+          </Link>
+          <div className={`topbar-dropdown${isAccountMenuOpen ? " open" : ""}`} ref={accountMenuRef}>
             <button
               aria-expanded={isAccountMenuOpen}
               className="topbar-link topbar-dropdown-toggle"
@@ -81,12 +82,12 @@ export function Topbar({ currentPath = window.location.pathname, currentUser, on
             </button>
             {isAccountMenuOpen ? (
               <div className="topbar-dropdown-menu">
-                <a className="topbar-dropdown-item" href="/invites/">
+                <Link className="topbar-dropdown-item" to="/invites/">
                   Convites
                   {pendingInviteCount > 0 ? <span className="topbar-badge">{pendingInviteCount}</span> : null}
-                </a>
-                <a className="topbar-dropdown-item" href="/themes/user">Tema</a>
-                <a className="topbar-dropdown-item" href="/security">Segurança</a>
+                </Link>
+                <Link className="topbar-dropdown-item" to="/themes/user">Tema</Link>
+                <Link className="topbar-dropdown-item" to="/security">Segurança</Link>
                 <div className="topbar-dropdown-divider" />
                 <button className="topbar-dropdown-item topbar-dropdown-item--danger" onClick={onLogout} type="button">
                   Sair

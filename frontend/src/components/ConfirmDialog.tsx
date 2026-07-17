@@ -29,6 +29,7 @@ export function ConfirmDialog({
     }
 
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    const previousBodyOverflow = document.body.style.overflow;
     const restoreFocus = () => previouslyFocused?.focus();
     const closeDialog = () => {
       onClose();
@@ -54,10 +55,12 @@ export function ConfirmDialog({
     };
 
     document.addEventListener("keydown", handleKeyDown, true);
+    document.body.style.overflow = "hidden";
     cancelRef.current?.focus();
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown, true);
+      document.body.style.overflow = previousBodyOverflow;
       restoreFocus();
     };
   }, [onClose, open]);

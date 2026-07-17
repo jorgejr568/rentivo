@@ -1,10 +1,9 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, type RouteObject } from "react-router-dom";
 
 import { AppShell } from "../components/AppShell";
 
-export const appRouter = createBrowserRouter([
-  {
-    element: <AppShell />,
-    path: "*"
-  }
-]);
+export function createAppRouter(children: RouteObject[] = [{ element: null, path: "*" }]) {
+  return createBrowserRouter([{ children, element: <AppShell /> }]);
+}
+
+export const appRouter = createAppRouter();

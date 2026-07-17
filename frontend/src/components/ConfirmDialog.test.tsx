@@ -86,4 +86,18 @@ describe("ConfirmDialog", () => {
 
     expect(onClose).toHaveBeenCalledOnce();
   });
+
+  it("locks background scrolling only while open", () => {
+    document.body.style.overflow = "clip";
+    const { rerender } = render(
+      <ConfirmDialog open title="Revogar chave" onConfirm={vi.fn()} onClose={vi.fn()} />
+    );
+
+    expect(document.body.style.overflow).toBe("hidden");
+
+    rerender(<ConfirmDialog open={false} title="Revogar chave" onConfirm={vi.fn()} onClose={vi.fn()} />);
+
+    expect(document.body.style.overflow).toBe("clip");
+    document.body.style.overflow = "";
+  });
 });

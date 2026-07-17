@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Outlet } from "react-router-dom";
 
 import { ToastRegion, type Toast } from "./ToastRegion";
 import { Topbar } from "./Topbar";
@@ -32,7 +33,7 @@ export function AppShell({
       ) : null}
       <main className="wrapper main-content">
         <ToastRegion toasts={toasts} />
-        {children}
+        {children ?? <Outlet />}
       </main>
     </>
   );
