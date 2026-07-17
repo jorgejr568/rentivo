@@ -11,11 +11,10 @@ import structlog
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
-from ulid import ULID
+
+from rentivo.context import accept_inbound_request_id, new_request_id
 
 logger = structlog.get_logger("legacy_web.request")
-
-MAX_REQUEST_ID_LEN = 128
 
 # Paths whose successful (200) responses are not logged. Keeps liveness-probe
 # traffic from flooding access logs; non-200 responses still log so real
@@ -23,20 +22,7 @@ MAX_REQUEST_ID_LEN = 128
 SILENT_SUCCESS_PATHS = frozenset({"/health"})
 
 
-def new_request_id() -> str:
-    return str(ULID())
-
-
-def _accept_inbound_id(value: str | None) -> str | None:
-    if not value:
-        return None
-    v = value.strip()
-    if not v or len(v) > MAX_REQUEST_ID_LEN:
-        return None
-    # Constrain to printable ASCII to avoid header injection surprises downstream.
-    if not all(32 <= ord(c) < 127 for c in v):
-        return None
-    return v
+_accept_inbound_id = accept_inbound_request_id
 
 
 class RequestContextMiddleware:

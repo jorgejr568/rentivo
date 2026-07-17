@@ -6,11 +6,13 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from ulid import ULID
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from rentivo.api.errors import ProblemException, problem, problem_response
 from rentivo.api.routes.health import router as health_router
+from rentivo.context import accept_inbound_request_id, new_request_id
 from rentivo.db import get_engine, initialize_db
 from rentivo.encryption.factory import get_encryption
 from rentivo.logging import configure_logging, reconfigure
@@ -35,6 +37,56 @@ class _LazyServices:
                 encryption=get_encryption(),
             )
         return self._services
+
+
+class _RequestServicesMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        request = Request(scope, receive)
+        request.state.db_conn = None
+        request.state.services = _LazyServices(request)
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            if request.state.db_conn is not None:
+                request.state.db_conn.close()
+
+
+class _RequestContextMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        structlog.contextvars.clear_contextvars()
+        request = Request(scope, receive)
+        request_id = accept_inbound_request_id(request.headers.get("X-Request-ID")) or new_request_id()
+        request.state.request_id = request_id
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+            client_ip=request.client.host if request.client else None,
+        )
+
+        async def send_with_request_id(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                MutableHeaders(scope=message)["X-Request-ID"] = request_id
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_with_request_id)
+        finally:
+            structlog.contextvars.clear_contextvars()
 
 
 @asynccontextmanager
@@ -68,28 +120,8 @@ def create_app() -> FastAPI:
     api.include_router(health_router)
     app.include_router(api)
 
-    @app.middleware("http")
-    async def request_services(request: Request, call_next):
-        request.state.db_conn = None
-        request.state.services = _LazyServices(request)
-        try:
-            return await call_next(request)
-        finally:
-            if request.state.db_conn is not None:
-                request.state.db_conn.close()
-
-    @app.middleware("http")
-    async def request_context(request: Request, call_next):
-        structlog.contextvars.clear_contextvars()
-        request_id = request.headers.get("X-Request-ID") or str(ULID())
-        structlog.contextvars.bind_contextvars(request_id=request_id, method=request.method, path=request.url.path)
-        try:
-            response = await call_next(request)
-            response.headers["X-Request-ID"] = request_id
-            return response
-        finally:
-            structlog.contextvars.clear_contextvars()
-
+    app.add_middleware(_RequestServicesMiddleware)
+    app.add_middleware(_RequestContextMiddleware)
     app.add_middleware(TracingMiddleware)
 
     @app.exception_handler(ProblemException)
