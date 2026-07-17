@@ -1,24 +1,19 @@
-"""Per-request context objects for the web app.
-
-WebActor collapses the (actor_id, actor_username, source) trio that every
-web call site to AuditService / JobService used to derive by hand. Built
-once per request by AuthMiddleware, attached to request.state.actor.
-"""
+"""Legacy web compatibility helpers for shared request actors."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Mapping
 
+from rentivo.context import Actor
+
 
 @dataclass(frozen=True, slots=True)
-class WebActor:
-    user_id: int | None
-    email: str
+class WebActor(Actor):
     source: str = "web"
 
 
-ANON_ACTOR: WebActor = WebActor(user_id=None, email="", source="web")
+ANON_ACTOR = WebActor(user_id=None, email="")
 
 
 def actor_from_session(session: Mapping) -> WebActor:
