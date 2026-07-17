@@ -96,6 +96,20 @@ def test_traced_records_and_reraises_error(span_exporter):
     assert any(e.name == "exception" for e in finished[0].events)
 
 
+def test_traced_can_redact_exception_details(span_exporter):
+    @traced("secret.failure", record_exception_details=False)
+    def f():
+        raise ValueError("sensitive-secret-marker")
+
+    with pytest.raises(ValueError, match="sensitive-secret-marker"):
+        f()
+
+    finished = span_exporter.get_finished_spans()[0]
+    assert finished.status.status_code.name == "ERROR"
+    assert finished.status.description is None
+    assert finished.events == ()
+
+
 @pytest.mark.asyncio
 async def test_traced_async_noop_when_disabled():
     @traced("async.disabled")
@@ -126,6 +140,21 @@ async def test_traced_async_records_error(span_exporter):
     with pytest.raises(RuntimeError, match="async fail"):
         await f()
     assert span_exporter.get_finished_spans()[0].status.status_code.name == "ERROR"
+
+
+@pytest.mark.asyncio
+async def test_traced_async_can_redact_exception_details(span_exporter):
+    @traced("async.secret.failure", record_exception_details=False)
+    async def f():
+        raise RuntimeError("async-sensitive-secret-marker")
+
+    with pytest.raises(RuntimeError, match="async-sensitive-secret-marker"):
+        await f()
+
+    finished = span_exporter.get_finished_spans()[0]
+    assert finished.status.status_code.name == "ERROR"
+    assert finished.status.description is None
+    assert finished.events == ()
 
 
 def test_span_contextmanager_nests(span_exporter):

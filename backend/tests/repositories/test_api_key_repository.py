@@ -3,11 +3,15 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from sqlalchemy import Connection, text
 from sqlalchemy.exc import IntegrityError
 
 from rentivo.models import APIKey, APIKeyGrant
 from rentivo.models.user import User
+from rentivo.observability import tracing
 from rentivo.repositories.sqlalchemy import SQLAlchemyAPIKeyRepository, SQLAlchemyUserRepository
 
 
@@ -189,6 +193,46 @@ def test_create_rolls_back_entire_aggregate_on_child_failure(
         api_key_repo.create(key, scopes=frozenset(), grants=(duplicate_grant, duplicate_grant))
 
     assert api_key_repo.get_by_secret_hash(key.secret_hash) is None
+
+
+def test_duplicate_hash_never_reaches_trace_details(
+    api_key_repo: SQLAlchemyAPIKeyRepository,
+    key_owner: User,
+) -> None:
+    secret_hash = b"S" * 32
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracing._reset_for_tests()
+    tracing.configure_tracing(provider=provider)
+    try:
+        api_key_repo.create(
+            make_key(key_owner.id, secret_hash=secret_hash),
+            scopes=frozenset(),
+            grants=(),
+        )
+
+        with pytest.raises(IntegrityError):
+            api_key_repo.create(
+                make_key(
+                    key_owner.id,
+                    uuid="01K0DUPLICATE0000000000000",
+                    secret_hash=secret_hash,
+                ),
+                scopes=frozenset(),
+                grants=(),
+            )
+
+        serialized_spans = repr(
+            [
+                (span.status.description, [(event.name, dict(event.attributes)) for event in span.events])
+                for span in exporter.get_finished_spans()
+            ]
+        )
+        assert "S" * 32 not in serialized_spans
+        assert secret_hash.hex() not in serialized_spans
+    finally:
+        tracing._reset_for_tests()
 
 
 def test_update_rolls_back_entire_aggregate_on_child_failure(

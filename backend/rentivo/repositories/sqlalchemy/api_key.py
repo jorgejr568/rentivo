@@ -89,7 +89,7 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
                 },
             )
 
-    @traced("api_key_repo.create")
+    @traced("api_key_repo.create", record_exception_details=False)
     def create(
         self,
         api_key: APIKey,
@@ -128,7 +128,7 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
             raise
         return cast(APIKey, self.get_by_secret_hash(api_key.secret_hash))
 
-    @traced("api_key_repo.get_by_secret_hash")
+    @traced("api_key_repo.get_by_secret_hash", record_exception_details=False)
     def get_by_secret_hash(self, secret_hash: bytes) -> APIKey | None:
         row = (
             self.conn.execute(

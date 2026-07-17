@@ -161,17 +161,27 @@ def _apply_attributes(active_span: Any, attributes: dict[str, Any] | None) -> No
             active_span.set_attribute(key, value)
 
 
-def _record_error(active_span: Any, exc: Exception) -> None:
-    active_span.record_exception(exc)
-    active_span.set_status(Status(StatusCode.ERROR, str(exc)))
+def _record_error(active_span: Any, exc: Exception, *, include_details: bool = True) -> None:
+    if include_details:
+        active_span.record_exception(exc)
+        active_span.set_status(Status(StatusCode.ERROR, str(exc)))
+        return
+    active_span.set_status(Status(StatusCode.ERROR))
 
 
-def traced(name: str | None = None, *, attributes: dict[str, Any] | None = None) -> Callable[[F], F]:
+def traced(
+    name: str | None = None,
+    *,
+    attributes: dict[str, Any] | None = None,
+    record_exception_details: bool = True,
+) -> Callable[[F], F]:
     """Wrap a sync or async function in a span. No-op while tracing is disabled.
 
     Span name defaults to the function's ``__name__``. ``attributes`` are
     static (evaluated once at decoration). For dynamic, non-PII attributes call
-    :func:`set_attributes` inside the function body.
+    :func:`set_attributes` inside the function body. Set
+    ``record_exception_details=False`` around secret-bearing operations so a
+    failure marks the span without exporting exception messages or stack traces.
     """
 
     def decorator(fn: F) -> F:
@@ -184,12 +194,16 @@ def traced(name: str | None = None, *, attributes: dict[str, Any] | None = None)
                 tracer = _tracer
                 if tracer is None:
                     return await fn(*args, **kwargs)
-                with tracer.start_as_current_span(span_name) as active_span:
+                with tracer.start_as_current_span(
+                    span_name,
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ) as active_span:
                     _apply_attributes(active_span, attributes)
                     try:
                         return await fn(*args, **kwargs)
                     except Exception as exc:
-                        _record_error(active_span, exc)
+                        _record_error(active_span, exc, include_details=record_exception_details)
                         raise
 
             return async_wrapper  # type: ignore[return-value]
@@ -199,12 +213,16 @@ def traced(name: str | None = None, *, attributes: dict[str, Any] | None = None)
             tracer = _tracer
             if tracer is None:
                 return fn(*args, **kwargs)
-            with tracer.start_as_current_span(span_name) as active_span:
+            with tracer.start_as_current_span(
+                span_name,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as active_span:
                 _apply_attributes(active_span, attributes)
                 try:
                     return fn(*args, **kwargs)
                 except Exception as exc:
-                    _record_error(active_span, exc)
+                    _record_error(active_span, exc, include_details=record_exception_details)
                     raise
 
         return wrapper  # type: ignore[return-value]
