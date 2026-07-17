@@ -33,6 +33,12 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
     def __init__(self, conn: Connection) -> None:
         self.conn = conn
 
+    def _rollback_safely(self) -> None:
+        try:
+            self.conn.rollback()
+        except Exception:
+            pass
+
     def _hydrate(self, row: RowMapping) -> APIKey:
         scopes = self.conn.execute(
             text("SELECT scope FROM api_key_scopes WHERE api_key_id = :id ORDER BY scope"),
@@ -127,7 +133,7 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
             self._insert_children(cast(int, result.lastrowid), scopes, grants)
             self.conn.commit()
         except SQLAlchemyError:
-            self.conn.rollback()
+            self._rollback_safely()
             persistence_error = APIKeyPersistenceError("API-key persistence failed")
         except BaseException:
             self.conn.rollback()
@@ -151,7 +157,7 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
                     .one_or_none()
                 )
         except SQLAlchemyError:
-            self.conn.rollback()
+            self._rollback_safely()
             persistence_error = APIKeyPersistenceError("API-key lookup failed")
         if persistence_error is not None:
             raise persistence_error
@@ -214,7 +220,7 @@ class SQLAlchemyAPIKeyRepository(APIKeyRepository):
             self._insert_children(api_key_id, scopes, grants)
             self.conn.commit()
         except SQLAlchemyError:
-            self.conn.rollback()
+            self._rollback_safely()
             persistence_error = APIKeyPersistenceError("API-key update failed")
         except BaseException:
             self.conn.rollback()

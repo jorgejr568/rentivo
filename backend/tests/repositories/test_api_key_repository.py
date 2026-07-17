@@ -216,12 +216,14 @@ def test_create_rolls_back_and_reraises_non_database_failure(
 def test_hash_lookup_sanitizes_database_failures() -> None:
     connection = MagicMock()
     connection.execute.side_effect = SQLAlchemyError("S" * 32)
+    connection.rollback.side_effect = SQLAlchemyError("R" * 32)
     repository = SQLAlchemyAPIKeyRepository(connection)
 
     with pytest.raises(APIKeyPersistenceError) as exc_info:
         repository.get_by_secret_hash(b"S" * 32)
 
     assert "S" * 32 not in "".join(traceback.format_exception(exc_info.value))
+    assert "R" * 32 not in "".join(traceback.format_exception(exc_info.value))
     assert exc_info.value.__context__ is None
     connection.rollback.assert_called_once_with()
 
