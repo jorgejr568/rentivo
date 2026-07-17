@@ -1,20 +1,22 @@
 IMAGE_NAME     := rentivo-web
 CONTAINER      := rentivo
 
-PYTHON  := uv run python
-UVICORN := uv run uvicorn
-RUFF    := uv run ruff
+PYTHON  := uv run --project backend python
+PYTEST  := uv run --project backend pytest
+RUFF    := uv run --project backend ruff
+UVICORN := uv run --project backend uvicorn
+ALEMBIC := uv run --project backend alembic -c backend/alembic.ini
 
 # --- Local development ---
 
 .PHONY: install
 install:
 	uv sync --all-extras
-	uv run pre-commit install
+	uv run --project backend pre-commit install
 
 .PHONY: migrate
 migrate:
-	$(PYTHON) -c "from rentivo.db import initialize_db; initialize_db()"
+	$(ALEMBIC) upgrade head
 
 .PHONY: migrate-fresh
 migrate-fresh:
@@ -88,17 +90,17 @@ lint:
 
 .PHONY: test
 test:
-	$(PYTHON) -m pytest -n auto
+	$(PYTEST) -c backend/pyproject.toml -n auto
 
 .PHONY: test-cov
 test-cov:
-	$(PYTHON) -m pytest -n auto --cov --cov-report=term-missing
+	$(PYTEST) -c backend/pyproject.toml -n auto --cov --cov-config=backend/pyproject.toml --cov-report=term-missing
 
 # --- Web (local) ---
 
 .PHONY: web-run
 web-run:
-	$(UVICORN) web.app:app --reload --port 8000
+	$(UVICORN) legacy_web.app:app --reload --port 8000
 
 .PHONY: web-createuser
 web-createuser:
@@ -114,7 +116,7 @@ worker:
 
 .PHONY: build
 build:
-	docker build -t $(IMAGE_NAME) .
+	docker build -f backend/Dockerfile.legacy -t $(IMAGE_NAME) .
 
 .PHONY: up
 up:
@@ -181,7 +183,7 @@ CONTAINER_WORKER  := rentivo-worker
 
 .PHONY: build-worker
 build-worker:
-	docker build -f Dockerfile.worker -t $(IMAGE_NAME_WORKER) .
+	docker build -f backend/Dockerfile.worker -t $(IMAGE_NAME_WORKER) .
 
 .PHONY: up-worker
 up-worker:

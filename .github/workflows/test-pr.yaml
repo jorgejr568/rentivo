@@ -37,10 +37,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: web
-            dockerfile: Dockerfile
-            image: rentivo-web
-            scope: web
+          - name: legacy
+            dockerfile: backend/Dockerfile.legacy
+            image: rentivo-legacy
+            scope: legacy
+          - name: worker
+            dockerfile: backend/Dockerfile.worker
+            image: rentivo-worker
+            scope: worker
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/docker-build

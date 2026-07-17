@@ -6,7 +6,7 @@
 #   make compose-dev-down   # down
 #
 # Notes:
-# - Only ./rentivo and ./web are mounted (NOT the repo root) so the
+# - Only ./backend/rentivo and ./backend/legacy_web are mounted (NOT the repo root) so the
 #   image's /app/.venv is not shadowed by a host directory.
 # - The worker has no auto-reload; after editing job/handler code run:
 #   docker compose restart worker
@@ -15,12 +15,12 @@
 #   Linux hosts): docker compose exec worker ls outbox
 services:
   rentivo:
-    command: uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
+    command: uvicorn legacy_web.app:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
     volumes:
-      - ./rentivo:/app/rentivo
-      - ./web:/app/web
+      - ./backend/rentivo:/app/backend/rentivo
+      - ./backend/legacy_web:/app/backend/legacy_web
 
   worker:
     volumes:
-      - ./rentivo:/app/rentivo
-      - ./web:/app/web
+      - ./backend/rentivo:/app/backend/rentivo
+      - ./backend/legacy_web:/app/backend/legacy_web

@@ -16,7 +16,7 @@ services:
   rentivo:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: backend/Dockerfile.legacy
     restart: unless-stopped
     env_file: .env
     environment:
@@ -35,7 +35,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: backend/Dockerfile.worker
     restart: unless-stopped
     env_file: .env
     environment:

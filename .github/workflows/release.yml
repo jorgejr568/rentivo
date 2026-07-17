@@ -53,13 +53,13 @@ jobs:
           cat release-notes.md
           echo "---------------------"
 
-      - name: Verify pyproject.toml version matches tag
+      - name: Verify backend/pyproject.toml version matches tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          pyproject_version=$(grep -E '^version = ' pyproject.toml | head -1 | cut -d'"' -f2)
+          pyproject_version=$(grep -E '^version = ' backend/pyproject.toml | head -1 | cut -d'"' -f2)
           if [ "$pyproject_version" != "$VERSION" ]; then
-            echo "::error::pyproject.toml version ($pyproject_version) does not match tag ($VERSION)"
+            echo "::error::backend/pyproject.toml version ($pyproject_version) does not match tag ($VERSION)"
             exit 1
           fi
 

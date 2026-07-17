@@ -38,7 +38,7 @@ make compose-createuser   # create a login user
 open http://localhost:8000
 ```
 
-`make compose-dev` layers `docker-compose.dev.yml` on top of the base file: it bind-mounts `./rentivo` and `./web` into the containers and runs uvicorn with `--reload`, so web/code changes apply without rebuilding. Two caveats:
+`make compose-dev` layers `docker-compose.dev.yml` on top of the base file: it bind-mounts `./backend/rentivo` and `./backend/legacy_web` into the containers and runs uvicorn with `--reload`, so web/code changes apply without rebuilding. Two caveats:
 
 - The **worker** has no auto-reload — after editing job handlers run `docker compose restart worker`.
 
@@ -55,13 +55,13 @@ make lint                 # ruff check + format check
 make fmt                  # auto-format
 ```
 
-- **Coverage is enforced at 100%** (`fail_under = 100` in pyproject.toml). Every new line must be tested or carry `# pragma: no cover` with a good reason.
+- **Coverage is enforced at 100%** (`fail_under = 100` in `backend/pyproject.toml`). Every new line must be tested or carry `# pragma: no cover` with a good reason.
 - Tests use in-memory SQLite; no database or network needed.
 - `make install` registers pre-commit hooks that run ruff check, ruff format, and the **full test suite** on every commit. Bypass in an emergency with `git commit -n` (CI will still enforce everything).
 
 ## Background worker & jobs
 
-State-changing web flows enqueue rows into the `jobs` table; the worker (`python -m rentivo.workers`, `Dockerfile.worker` in production) polls and dispatches registered handlers:
+State-changing web flows enqueue rows into the `jobs` table; the worker (`python -m rentivo.workers`, `backend/Dockerfile.worker` in production) polls and dispatches registered handlers:
 
 | Job type | Handler | Purpose |
 |----------|---------|---------|
@@ -82,12 +82,12 @@ Distributed tracing is off by default. To try it locally: `uv sync --extra otel`
 
 ## Database migrations
 
-Schema is managed by Alembic (`alembic/versions/`).
+Schema is managed by Alembic (`backend/alembic/versions/`).
 
 ```bash
 make migrate              # upgrade to head
 make migrate-fresh        # DROP ALL TABLES and re-migrate — destructive, dev only
-uv run alembic revision -m "add foo column"   # new migration
+uv run --project backend alembic -c backend/alembic.ini revision -m "add foo column"   # new migration
 ```
 
 Never invent revision IDs by hand — always let `alembic revision` generate them.

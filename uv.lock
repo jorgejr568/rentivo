@@ -2,6 +2,11 @@ version = 1
 revision = 3
 requires-python = ">=3.14"
 
+[manifest]
+members = [
+    "rentivo",
+]
+
 [[package]]
 name = "alembic"
 version = "1.18.4"
@@ -1285,7 +1290,7 @@ wheels = [
 [[package]]
 name = "rentivo"
 version = "4.0.0"
-source = { editable = "." }
+source = { editable = "backend" }
 dependencies = [
     { name = "alembic" },
     { name = "bcrypt" },

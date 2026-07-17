@@ -64,7 +64,7 @@ make compose-migrate      # run database migrations
 make compose-createuser   # create a login user
 ```
 
-Open http://localhost:8000. Source edits under `rentivo/` and `web/` reload automatically; after editing job handlers run `docker compose restart worker`. Use `make compose-up` instead for an immutable (non-dev) stack.
+Open http://localhost:8000. Source edits under `backend/rentivo/` and `backend/legacy_web/` reload automatically; after editing job handlers run `docker compose restart worker`. Use `make compose-up` instead for an immutable (non-dev) stack.
 
 See [docs/development.md](docs/development.md) for the full developer guide.
 
@@ -143,29 +143,31 @@ Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The 
 
 ## Architecture
 
-Two deployables built from one codebase: the **web app** (`Dockerfile`) and the **job worker** (`Dockerfile.worker`).
+The repository is a uv workspace. Its Python backend is independently packaged under `backend/` and produces two deployables: the **legacy web app** (`backend/Dockerfile.legacy`) and the **job worker** (`backend/Dockerfile.worker`).
 
 ```
-rentivo/
-  settings.py          # Pydantic Settings (env prefix RENTIVO_)
-  db.py                # SQLAlchemy engine; schema managed by Alembic
-  models/              # Pydantic domain models (Billing, Bill, User, Organization, ...)
-  repositories/        # Abstract bases + SQLAlchemy Core implementations
-  services/            # Business logic (billing, bills, users, orgs, audit, email, ...)
-  storage/             # Local / S3 invoice storage
-  encryption/          # base64 / KMS field encryption + decryption cache
-  cache/               # Generic key-value cache (memory / redis)
-  jobs/                # Job queue: registry, worker loop, handlers (email, pdf, s3)
-  workers/             # Worker entrypoint (python -m rentivo.workers)
-  pdf/                 # fpdf2 invoice generator + pypdf receipt merger
-  scripts/             # seed, regenerate_pdfs, backfill_encryption, redact_audit_logs
-web/
-  app.py               # FastAPI app, middleware stack, templates
-  auth.py              # Login / logout / signup / password recovery
-  routes/              # Billing, bills, security (MFA/passkeys), organizations, invites
-  templates/           # Jinja2 (PT-BR) + emails
-  static/              # CSS + JS
-alembic/               # Migrations
+backend/
+  pyproject.toml       # Python project and dependency metadata
+  rentivo/
+    settings.py        # Pydantic Settings (env prefix RENTIVO_)
+    db.py              # SQLAlchemy engine; schema managed by Alembic
+    models/            # Pydantic domain models (Billing, Bill, User, Organization, ...)
+    repositories/      # Abstract bases + SQLAlchemy Core implementations
+    services/          # Business logic (billing, bills, users, orgs, audit, email, ...)
+    storage/           # Local / S3 invoice storage
+    encryption/        # base64 / KMS field encryption + decryption cache
+    cache/             # Generic key-value cache (memory / redis)
+    jobs/              # Job queue: registry, worker loop, handlers (email, pdf, s3)
+    workers/           # Worker entrypoint (python -m rentivo.workers)
+    pdf/               # fpdf2 invoice generator + pypdf receipt merger
+    scripts/           # seed, regenerate_pdfs, backfill_encryption, redact_audit_logs
+  legacy_web/
+    app.py             # FastAPI app, middleware stack, templates
+    auth.py            # Login / logout / signup / password recovery
+    routes/            # Billing, bills, security (MFA/passkeys), organizations, invites
+    templates/         # Jinja2 (PT-BR) + emails
+    static/            # CSS + JS
+  alembic/             # Migrations
 ```
 
 ## Documentation
