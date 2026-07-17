@@ -70,7 +70,9 @@ def _issued_challenge(methods: tuple[str, ...]) -> IssuedAuthChallenge:
 def dependencies() -> dict[str, MagicMock]:
     user_service = MagicMock()
     user_service.authenticate.return_value = _user()
+    user_service.get_by_email.return_value = _user()
     user_service.register_user.return_value = _user()
+    user_service.register_google_user.return_value = _user()
 
     api_key_service = MagicMock()
     api_key_service.issue_login.return_value = _issued_key()
@@ -112,6 +114,14 @@ def _password_login(service: LoginService) -> LoginResult | None:
     return service.login_with_password(
         email="user@example.com",
         password="correct horse battery staple",
+        client_ip=CLIENT_IP,
+        user_agent=USER_AGENT,
+    )
+
+
+def _google_login(service: LoginService) -> LoginResult:
+    return service.login_with_google(
+        email="user@example.com",
         client_ip=CLIENT_IP,
         user_agent=USER_AGENT,
     )
@@ -300,6 +310,140 @@ def test_signup_uses_the_same_authenticated_result_without_relabeling_signup_eve
         },
     }
     dependencies["known_device_service"].notify_if_new.assert_not_called()
+
+
+def test_existing_google_user_preserves_login_audit_and_analytics(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    result = _google_login(service)
+
+    assert result.status == "authenticated"
+    assert result.analytics_event == {"event": "rentivo_login_success", "via": "google"}
+    dependencies["user_service"].get_by_email.assert_called_once_with("user@example.com")
+    dependencies["user_service"].register_google_user.assert_not_called()
+    assert [entry.args[1] for entry in dependencies["audit_service"].safe_log_for.call_args_list] == [
+        AuditEventType.USER_LOGIN
+    ]
+    assert dependencies["audit_service"].safe_log_for.call_args.kwargs["metadata"] == {
+        "ip": CLIENT_IP,
+        "method": "google",
+    }
+
+
+def test_new_google_user_preserves_signup_and_login_side_effects(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    dependencies["user_service"].get_by_email.return_value = None
+
+    result = _google_login(service)
+
+    assert result.status == "authenticated"
+    assert result.analytics_event == {"event": "rentivo_signup_completed", "via": "google"}
+    dependencies["user_service"].register_google_user.assert_called_once_with("user@example.com")
+    signup_call, login_call = dependencies["audit_service"].safe_log_for.call_args_list
+    signup_actor, signup_event = signup_call.args
+    assert (signup_actor.user_id, signup_actor.email, signup_actor.api_key_uuid) == (
+        7,
+        "user@example.com",
+        None,
+    )
+    assert signup_event == AuditEventType.USER_SIGNUP
+    assert signup_call.kwargs == {
+        "entity_type": "user",
+        "entity_id": 7,
+        "new_state": serialize_user(_user()),
+        "metadata": {"method": "google"},
+    }
+    assert login_call.args[1] == AuditEventType.USER_LOGIN
+    assert login_call.kwargs["metadata"] == {"ip": CLIENT_IP, "method": "google"}
+    enqueue_actor, job_type, payload = dependencies["job_service"].enqueue_for.call_args.args
+    assert (enqueue_actor.user_id, enqueue_actor.email, enqueue_actor.api_key_uuid) == (
+        7,
+        "user@example.com",
+        None,
+    )
+    assert job_type == "email.send"
+    assert payload == {
+        "event": "welcome",
+        "to_email": "user@example.com",
+        "ctx": {
+            "email": "user@example.com",
+            "pix_setup_url": "https://rentivo.example/security/pix",
+        },
+    }
+
+
+def test_google_signup_race_reloads_existing_user_without_signup_side_effects(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    dependencies["user_service"].get_by_email.side_effect = [None, _user()]
+    dependencies["user_service"].register_google_user.side_effect = ValueError("duplicate")
+
+    result = _google_login(service)
+
+    assert result.status == "authenticated"
+    assert result.analytics_event == {"event": "rentivo_login_success", "via": "google"}
+    assert dependencies["user_service"].get_by_email.call_args_list == [
+        call("user@example.com"),
+        call("user@example.com"),
+    ]
+    assert [entry.args[1] for entry in dependencies["audit_service"].safe_log_for.call_args_list] == [
+        AuditEventType.USER_LOGIN
+    ]
+    dependencies["job_service"].enqueue_for.assert_not_called()
+
+
+def test_google_signup_race_reraises_when_existing_user_cannot_be_reloaded(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    dependencies["user_service"].get_by_email.return_value = None
+    dependencies["user_service"].register_google_user.side_effect = ValueError("duplicate")
+
+    with pytest.raises(ValueError, match="duplicate"):
+        _google_login(service)
+
+    dependencies["audit_service"].safe_log_for.assert_not_called()
+    dependencies["job_service"].enqueue_for.assert_not_called()
+    dependencies["challenge_service"].issue.assert_not_called()
+    dependencies["api_key_service"].issue_login.assert_not_called()
+
+
+def test_google_login_with_mfa_issues_challenge_with_google_audit_metadata(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    dependencies["mfa_service"].has_confirmed_totp.return_value = True
+    dependencies["challenge_service"].issue.return_value = _issued_challenge(("totp", "recovery"))
+
+    result = _google_login(service)
+
+    assert result.status == "mfa_required"
+    assert result.analytics_event is None
+    dependencies["api_key_service"].issue_login.assert_not_called()
+    assert [entry.args[1] for entry in dependencies["audit_service"].safe_log_for.call_args_list] == [
+        AuditEventType.MFA_CHALLENGE_ISSUED
+    ]
+    assert dependencies["audit_service"].safe_log_for.call_args.kwargs["metadata"] == {
+        "ip": CLIENT_IP,
+        "method": "google",
+    }
+
+
+def test_google_welcome_dispatch_failure_does_not_fail_new_user_login(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    dependencies["user_service"].get_by_email.return_value = None
+    dependencies["job_service"].enqueue_for.side_effect = RuntimeError("welcome failed")
+
+    result = _google_login(service)
+
+    assert result.status == "authenticated"
+    dependencies["api_key_service"].issue_login.assert_called_once_with(user_id=7, name="Web login")
 
 
 def test_complete_login_supports_post_mfa_callers_with_the_same_stable_payload(

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -71,6 +71,20 @@ class PasswordResetRequest(_AuthRequest):
         if self.password != self.confirm_password:
             raise ValueError("As senhas não coincidem.")
         return self
+
+
+class MFACodeVerifyRequest(_AuthRequest):
+    challenge_id: str = Field(min_length=1)
+    code: str = Field(min_length=1)
+
+
+class PasskeyAuthBeginRequest(_AuthRequest):
+    challenge_id: str = Field(min_length=1)
+
+
+class PasskeyAuthCompleteRequest(_AuthRequest):
+    challenge_id: str = Field(min_length=1)
+    credential: dict[str, Any]
 
 
 class AnalyticsEvent(_StrictModel):

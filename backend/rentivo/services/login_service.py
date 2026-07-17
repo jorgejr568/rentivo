@@ -221,6 +221,81 @@ class LoginService:
             user_agent=user_agent,
         )
 
+    @traced("login.google", record_exception_details=False)
+    def login_with_google(
+        self,
+        *,
+        email: str,
+        client_ip: str,
+        user_agent: str,
+    ) -> LoginResult:
+        user = self.user_service.get_by_email(email)
+        is_new = False
+        if user is None:
+            try:
+                user = self.user_service.register_google_user(email)
+            except ValueError:
+                user = self.user_service.get_by_email(email)
+                if user is None:
+                    raise
+            else:
+                is_new = True
+
+        if is_new:
+            actor = self._actor(user)
+            self.audit_service.safe_log_for(
+                actor,
+                AuditEventType.USER_SIGNUP,
+                entity_type="user",
+                entity_id=user.id,
+                new_state=serialize_user(user),
+                metadata={"method": "google"},
+            )
+            try:
+                self.job_service.enqueue_for(
+                    actor,
+                    "email.send",
+                    {
+                        "event": "welcome",
+                        "to_email": user.email,
+                        "ctx": {
+                            "email": user.email,
+                            "pix_setup_url": f"{self.public_app_url}/security/pix",
+                        },
+                    },
+                )
+            except Exception:
+                logger.exception("google_signup_welcome_dispatch_failed", user_id=user.id)
+
+        methods = self._mfa_methods(user.id)
+        if methods:
+            issued = self.challenge_service.issue(
+                user_id=user.id,
+                phase="login",
+                allowed_methods=methods,
+            )
+            self.audit_service.safe_log_for(
+                self._actor(user),
+                AuditEventType.MFA_CHALLENGE_ISSUED,
+                entity_type="user",
+                entity_id=user.id,
+                metadata={"ip": client_ip, "method": "google"},
+            )
+            return LoginResult.mfa_required(
+                challenge_id=issued.challenge.uuid,
+                methods=methods,
+                challenge_nonce=issued.nonce,
+            )
+
+        return self.complete_login(
+            user=user,
+            via="google",
+            client_ip=client_ip,
+            user_agent=user_agent,
+            audit_metadata={"method": "google"},
+            analytics_event=({"event": "rentivo_signup_completed", "via": "google"} if is_new else None),
+        )
+
     def login(self, **kwargs: Any) -> LoginResult | None:
         return self.login_with_password(**kwargs)
 
