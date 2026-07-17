@@ -10,4 +10,5 @@ outbox/
 .coverage
 .pytest_cache/
 docs/superpowers/
+.superpowers/
 .worktrees/
