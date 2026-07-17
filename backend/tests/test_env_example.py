@@ -16,14 +16,21 @@ CURRENT_GUIDES = (
     REPO_ROOT / ".env.example",
     REPO_ROOT / "CLAUDE.md",
     REPO_ROOT / "CONTRIBUTING.md",
+    REPO_ROOT / "README.md",
     REPO_ROOT / "docs" / "configuration.md",
+    REPO_ROOT / "docs" / "development.md",
+    REPO_ROOT / "docs" / "jobs.md",
 )
-STALE_RELOCATION_REFERENCES = (
+STALE_RELOCATION_PATTERNS = (
     "see rentivo/settings.py",
-    "`rentivo/settings.py`",
-    "`tests/test_env_example.py`",
-    "`tests/web/conftest.py`",
+    r"`rentivo/settings[.]py`",
+    r"`tests/test_env_example[.]py`",
+    r"`tests/web/conftest[.]py`",
     "uv run alembic revision",
+    r"`Dockerfile(?:[.]worker)?`",
+    r"docker build -f Dockerfile(?:[.]worker)?(?:\s|$)",
+    r"(?m)^(?!.*uv run --project backend).*python -m rentivo[.]workers",
+    "uv sync --extra temporal",
 )
 
 # Consumed by docker-compose.yml to provision the MariaDB container,
@@ -63,7 +70,7 @@ def test_env_example_has_no_unknown_keys():
 def test_current_guides_use_relocated_backend_paths():
     stale_matches = {
         str(path.relative_to(REPO_ROOT)): [
-            reference for reference in STALE_RELOCATION_REFERENCES if reference in path.read_text()
+            pattern for pattern in STALE_RELOCATION_PATTERNS if re.search(pattern, path.read_text())
         ]
         for path in CURRENT_GUIDES
     }

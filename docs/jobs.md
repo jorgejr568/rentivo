@@ -22,10 +22,10 @@ Run the worker:
 
 ```bash
 make worker            # local
-python -m rentivo.workers
+uv run --project backend python -m rentivo.workers
 ```
 
-In production this is the `Dockerfile.worker` image.
+In production this is the `backend/Dockerfile.worker` image.
 
 ## Temporal driver (`temporal`, optional)
 
@@ -34,7 +34,7 @@ In production this is the `Dockerfile.worker` image.
 The Temporal driver offloads job execution to a Temporal cluster instead of the `jobs` table. It requires the optional `temporal` extra and a reachable cluster:
 
 ```bash
-uv sync --extra temporal
+uv sync --project backend --extra temporal
 ```
 
 - Enqueue starts one workflow per job — `TemporalJobBackend.enqueue()` (`backend/rentivo/jobs/temporal/backend.py`) calls the Temporal client's `start_workflow(...)`.
@@ -94,8 +94,8 @@ RENTIVO_TEMPORAL_HOST=localhost:7233   # use temporal:7233 from inside the compo
 Then run the worker — the same entrypoint dispatches on the backend:
 
 ```bash
-uv sync --extra temporal
-python -m rentivo.workers     # logs `temporal_worker_boot` and serves the task queue
+uv sync --project backend --extra temporal
+uv run --project backend python -m rentivo.workers  # logs `temporal_worker_boot` and serves the task queue
 ```
 
 Trigger an enqueue from the app (for example, request a password reset) and watch the workflow appear and complete in the Temporal UI. Stop the cluster when done:
@@ -106,21 +106,21 @@ make temporal-down
 
 ## Docker
 
-Both project images — web (`Dockerfile`) and worker (`Dockerfile.worker`) — **bundle the `temporal` extra by default**, so you can switch `RENTIVO_JOB_BACKEND` between `database` and `temporal` at runtime without rebuilding. This is just a packaging convenience: the database driver is still the default and Temporal is still optional — the bundled `temporalio` is dormant until you point the app at a Temporal cluster.
+Both backend images — legacy web (`backend/Dockerfile.legacy`) and worker (`backend/Dockerfile.worker`) — **bundle the `temporal` extra by default**, so you can switch `RENTIVO_JOB_BACKEND` between `database` and `temporal` at runtime without rebuilding. This is just a packaging convenience: the database driver is still the default and Temporal is still optional — the bundled `temporalio` is dormant until you point the app at a Temporal cluster.
 
 Each image exposes a build arg to override the extras (e.g. to slim a database-only deployment by dropping `temporal`):
 
 | Image | Build arg | Default |
 |---|---|---|
-| `Dockerfile` (web) | `APP_EXTRAS` | `cache otel temporal` |
-| `Dockerfile.worker` | `WORKER_EXTRAS` | `cache otel temporal` |
+| `backend/Dockerfile.legacy` | `APP_EXTRAS` | `cache otel temporal` |
+| `backend/Dockerfile.worker` | `WORKER_EXTRAS` | `cache otel temporal` |
 
 ```bash
 # Default build — Temporal-capable out of the box:
-docker build -f Dockerfile -t rentivo-web .
+docker build -f backend/Dockerfile.legacy -t rentivo-legacy .
 
 # Slim, database-only build (drop temporal):
-docker build -f Dockerfile --build-arg APP_EXTRAS="cache otel" -t rentivo-web .
+docker build -f backend/Dockerfile.legacy --build-arg APP_EXTRAS="cache otel" -t rentivo-legacy .
 ```
 
 ## Known limitations

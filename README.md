@@ -158,7 +158,7 @@ backend/
     encryption/        # base64 / KMS field encryption + decryption cache
     cache/             # Generic key-value cache (memory / redis)
     jobs/              # Job queue: registry, worker loop, handlers (email, pdf, s3)
-    workers/           # Worker entrypoint (python -m rentivo.workers)
+    workers/           # Worker entrypoint (run locally with make worker)
     pdf/               # fpdf2 invoice generator + pypdf receipt merger
     scripts/           # seed, regenerate_pdfs, backfill_encryption, redact_audit_logs
   legacy_web/

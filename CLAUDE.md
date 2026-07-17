@@ -31,8 +31,8 @@ make docker-regenerate-recibos
 ## Docker
 
 Two Dockerfiles:
-- **`Dockerfile`** — Web app (FastAPI + uvicorn on port 8000)
-- **`Dockerfile.worker`** — Background job worker (`python -m rentivo.workers`; handlers: `email.send`, `pdf.render`, `recibo.render`, `s3.delete`, `communication.send`, `export.generate`, `export.send`)
+- **`backend/Dockerfile.legacy`** — Legacy web app (FastAPI + uvicorn on port 8000)
+- **`backend/Dockerfile.worker`** — Background job worker (`make worker` locally; handlers: `email.send`, `pdf.render`, `recibo.render`, `s3.delete`, `communication.send`, `export.generate`, `export.send`)
 
 ```bash
 # Web container (default)
@@ -444,7 +444,7 @@ Background jobs run through a pluggable driver selected by `RENTIVO_JOB_BACKEND`
 
 - **database** — `DatabaseJobBackend` over `SQLAlchemyJobRepository`; the polling `Worker` (`backend/rentivo/jobs/worker.py`) drains the `jobs` table. Zero extra deps; the supported production default.
 - **temporal** (optional, `temporal` extra; NOT required even in production) — `TemporalJobBackend` starts one workflow per enqueue. Per-job-type workflows/activities in `backend/rentivo/jobs/temporal/` wrap the **unchanged** registry handlers. The workflow retry loop mirrors the DB backoff (`backend/rentivo/jobs/backoff.py`, 60s/5m/15m/1h/6h, max 5), maps `PermanentJobError` → non-retryable, and fires the same fail-hooks + `JOB_*` audit events via the `rentivo.finalize_job` activity. OTel `_otel` carrier propagates identically.
-- Worker entrypoint `python -m rentivo.workers` dispatches on the backend. Local Temporal: `make temporal-up` (opt-in compose profile). Shared backoff lives in `backend/rentivo/jobs/backoff.py`. Full guide: `docs/jobs.md`.
+- Worker entrypoint `uv run --project backend python -m rentivo.workers` dispatches on the backend. Local Temporal: `make temporal-up` (opt-in compose profile). Shared backoff lives in `backend/rentivo/jobs/backoff.py`. Full guide: `docs/jobs.md`.
 
 ## Bot Protection (Cloudflare Turnstile)
 

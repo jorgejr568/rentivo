@@ -61,7 +61,7 @@ make fmt                  # auto-format
 
 ## Background worker & jobs
 
-State-changing web flows enqueue rows into the `jobs` table; the worker (`python -m rentivo.workers`, `backend/Dockerfile.worker` in production) polls and dispatches registered handlers:
+State-changing web flows enqueue rows into the `jobs` table; the worker (`make worker` locally, `backend/Dockerfile.worker` in production) polls and dispatches registered handlers:
 
 | Job type | Handler | Purpose |
 |----------|---------|---------|
