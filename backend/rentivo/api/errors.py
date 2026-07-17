@@ -54,5 +54,13 @@ class ProblemException(Exception):
         return cls(problem(status=403, code=code, title="Acesso negado", detail=detail))
 
     @classmethod
+    def bad_request(cls, code: str, detail: str) -> "ProblemException":
+        return cls(problem(status=400, code=code, title="Requisição inválida", detail=detail))
+
+    @classmethod
+    def unauthorized(cls, code: str, detail: str) -> "ProblemException":
+        return cls(problem(status=401, code=code, title="Não autenticado", detail=detail))
+
+    @classmethod
     def not_found(cls) -> "ProblemException":
         return cls(problem(status=404, code="not_found", title="Não encontrado", detail="Recurso não encontrado."))

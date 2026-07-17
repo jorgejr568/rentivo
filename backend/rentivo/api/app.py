@@ -126,7 +126,27 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ProblemException)
     async def problem_exception_handler(request: Request, exc: ProblemException):
-        return problem_response(exc.problem)
+        response = problem_response(exc.problem)
+        if exc.problem.status == 401 and getattr(request.state, "clear_auth_cookies", False):
+            from rentivo.api.authentication import ACCESS_COOKIE_NAME
+            from rentivo.api.csrf import CSRF_COOKIE_NAME
+            from rentivo.settings import settings
+
+            response.delete_cookie(
+                settings.access_cookie_name or ACCESS_COOKIE_NAME,
+                path="/",
+                secure=settings.cookie_secure,
+                httponly=True,
+                samesite="lax",
+            )
+            response.delete_cookie(
+                settings.csrf_cookie_name or CSRF_COOKIE_NAME,
+                path="/",
+                secure=settings.cookie_secure,
+                httponly=False,
+                samesite="lax",
+            )
+        return response
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
