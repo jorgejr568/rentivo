@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from functools import cached_property
 from typing import TYPE_CHECKING
 
@@ -9,6 +10,7 @@ from rentivo.encryption.factory import get_encryption  # noqa: F401
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyAPIKeyRepository,
     SQLAlchemyAuditLogRepository,
+    SQLAlchemyAuthChallengeRepository,
     SQLAlchemyBillingAttachmentRepository,
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
@@ -30,6 +32,7 @@ from rentivo.repositories.sqlalchemy import (
 )
 from rentivo.services.api_key_service import APIKeyService
 from rentivo.services.audit_service import AuditService
+from rentivo.services.auth_challenge_service import AuthChallengeService
 from rentivo.services.authorization_service import AuthorizationService
 from rentivo.services.bill_service import BillService
 from rentivo.services.billing_attachment_service import BillingAttachmentService
@@ -77,6 +80,13 @@ class RequestServices:
             repository=SQLAlchemyAPIKeyRepository(self._conn),
             user_repository=SQLAlchemyUserRepository(self._conn, self._encryption),
             organization_repository=SQLAlchemyOrganizationRepository(self._conn, self._encryption),
+        )
+
+    @cached_property
+    def auth_challenge(self) -> AuthChallengeService:
+        return AuthChallengeService(
+            repository=SQLAlchemyAuthChallengeRepository(self._conn),
+            ttl=timedelta(seconds=settings.auth_challenge_ttl_seconds),
         )
 
     @cached_property

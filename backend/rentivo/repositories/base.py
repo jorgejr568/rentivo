@@ -3,6 +3,7 @@ from datetime import datetime
 
 from rentivo.models.api_key import APIKey, APIKeyGrant
 from rentivo.models.audit_log import AuditLog
+from rentivo.models.auth_challenge import AuthChallenge
 from rentivo.models.bill import Bill, BillSummary
 from rentivo.models.billing import Billing
 from rentivo.models.billing_attachment import BillingAttachment
@@ -20,6 +21,10 @@ from rentivo.models.user import User
 
 
 class APIKeyPersistenceError(RuntimeError):
+    """Sanitized failure that is safe to propagate through request telemetry."""
+
+
+class AuthChallengePersistenceError(RuntimeError):
     """Sanitized failure that is safe to propagate through request telemetry."""
 
 
@@ -386,6 +391,29 @@ class APIKeyRepository(ABC):
 
     @abstractmethod
     def touch_last_used(self, api_key_id: int, used_at: datetime, cutoff: datetime) -> bool: ...
+
+
+class AuthChallengeRepository(ABC):
+    @abstractmethod
+    def create(self, challenge: AuthChallenge) -> AuthChallenge: ...
+
+    @abstractmethod
+    def get_by_uuid(self, uuid: str) -> AuthChallenge | None: ...
+
+    @abstractmethod
+    def increment_failures(self, uuid: str, phase: str, failed_at: datetime) -> bool: ...
+
+    @abstractmethod
+    def set_webauthn_challenge(
+        self,
+        uuid: str,
+        phase: str,
+        webauthn_challenge: bytes,
+        updated_at: datetime,
+    ) -> bool: ...
+
+    @abstractmethod
+    def consume(self, uuid: str, phase: str, consumed_at: datetime) -> bool: ...
 
 
 class CommunicationTemplateRepository(ABC):

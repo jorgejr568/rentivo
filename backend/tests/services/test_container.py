@@ -20,3 +20,13 @@ def test_api_key_service_is_lazily_cached(db_connection, fake_encryption):
 
     assert isinstance(services.api_key, APIKeyService)
     assert services.api_key is services.api_key
+
+
+def test_auth_challenge_service_is_lazily_cached(db_connection, fake_encryption):
+    from rentivo.services.auth_challenge_service import AuthChallengeService
+    from rentivo.services.container import RequestServices
+
+    services = RequestServices(conn=db_connection, encryption=fake_encryption)
+
+    assert isinstance(services.auth_challenge, AuthChallengeService)
+    assert services.auth_challenge is services.auth_challenge
