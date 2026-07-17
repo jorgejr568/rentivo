@@ -40,6 +40,16 @@ class Settings(BaseSettings):
 
     secret_key: str = _INSECURE_DEFAULT_KEY
 
+    access_cookie_name: str = "__Host-rentivo_access"
+    challenge_cookie_name: str = "__Host-rentivo_challenge"
+    csrf_cookie_name: str = "__Host-rentivo_csrf"
+    cookie_secure: bool = True
+    api_key_login_ttl_seconds: int = 24 * 60 * 60
+    auth_challenge_ttl_seconds: int = 5 * 60
+    api_key_integration_default_ttl_days: int = 90
+    api_key_integration_max_ttl_days: int = 365
+    api_key_last_used_throttle_seconds: int = 5 * 60
+
     gtm_container_id: str = ""
     environment: str = "production"
 
@@ -205,6 +215,19 @@ class Settings(BaseSettings):
             raise ValueError("RENTIVO_CACHE_MAX_ENTRIES must be >= 1")
         return v
 
+    @field_validator(
+        "api_key_login_ttl_seconds",
+        "auth_challenge_ttl_seconds",
+        "api_key_integration_default_ttl_days",
+        "api_key_integration_max_ttl_days",
+        "api_key_last_used_throttle_seconds",
+    )
+    @classmethod
+    def _validate_auth_duration(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("Authentication durations must be positive")
+        return v
+
     @field_validator("otel_sample_ratio")
     @classmethod
     def _validate_otel_sample_ratio(cls, v: float) -> float:
@@ -275,6 +298,19 @@ class Settings(BaseSettings):
     def _validate_log_cloudwatch(self) -> "Settings":
         if self.log_cloudwatch_enabled and not self.log_cloudwatch_region:
             raise ValueError("RENTIVO_LOG_CLOUDWATCH_REGION is required when RENTIVO_LOG_CLOUDWATCH_ENABLED=true")
+        return self
+
+    @model_validator(mode="after")
+    def _validate_auth_cookies(self) -> "Settings":
+        if self.api_key_integration_default_ttl_days > self.api_key_integration_max_ttl_days:
+            raise ValueError("Integration API-key default TTL cannot exceed its maximum TTL")
+        if self.environment not in {"staging", "production"}:
+            return self
+        if not self.cookie_secure:
+            raise ValueError("RENTIVO_COOKIE_SECURE must be true in staging and production")
+        for name in (self.access_cookie_name, self.challenge_cookie_name, self.csrf_cookie_name):
+            if not name.startswith("__Host-"):
+                raise ValueError("Authentication cookie names must use the __Host- prefix")
         return self
 
     def get_secret_key(self) -> str:

@@ -77,11 +77,16 @@ class AuditService:
         Use this from web routes instead of hand-deriving
         ``actor_id=request.session["user_id"]`` etc. on every call.
         """
+        metadata = dict(kwargs.pop("metadata", None) or {})
+        if getattr(actor, "api_key_uuid", None):
+            metadata["api_key_uuid"] = actor.api_key_uuid
+            metadata["api_key_class"] = "login" if actor.is_login_token else "integration"
         return self.safe_log(
             event_type,
             actor_id=actor.user_id,
             actor_username=actor.email,
             source=actor.source,
+            metadata=metadata,
             **kwargs,
         )
 

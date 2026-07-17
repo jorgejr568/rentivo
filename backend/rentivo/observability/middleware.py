@@ -44,3 +44,11 @@ class TracingMiddleware:
         with span(f"HTTP {method}", parent=parent, attributes=attributes) as active_span:
             await self.app(scope, receive, send_wrapper)
             active_span.set_attribute("http.response.status_code", status["code"])
+            actor = scope.get("state", {}).get("actor")
+            if actor is not None and actor.api_key_uuid:
+                active_span.set_attribute("actor.api_key_uuid", actor.api_key_uuid)
+                active_span.set_attribute(
+                    "actor.api_key_class",
+                    "login" if actor.is_login_token else "integration",
+                )
+                active_span.set_attribute("actor.source", actor.source)

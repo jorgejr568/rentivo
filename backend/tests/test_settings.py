@@ -407,3 +407,77 @@ def test_temporal_backend_requires_namespace():
 def test_temporal_backend_requires_task_queue():
     with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_TASK_QUEUE"):
         Settings(_env_file=None, job_backend="temporal", temporal_task_queue="")
+
+
+def test_api_key_and_auth_cookie_defaults():
+    settings = Settings(_env_file=None)
+
+    assert settings.access_cookie_name == "__Host-rentivo_access"
+    assert settings.challenge_cookie_name == "__Host-rentivo_challenge"
+    assert settings.csrf_cookie_name == "__Host-rentivo_csrf"
+    assert settings.cookie_secure is True
+    assert settings.api_key_login_ttl_seconds == 24 * 60 * 60
+    assert settings.auth_challenge_ttl_seconds == 5 * 60
+    assert settings.api_key_integration_default_ttl_days == 90
+    assert settings.api_key_integration_max_ttl_days == 365
+    assert settings.api_key_last_used_throttle_seconds == 5 * 60
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+def test_deployed_environments_reject_insecure_auth_cookies(environment):
+    with pytest.raises(ValidationError, match="RENTIVO_COOKIE_SECURE"):
+        Settings(_env_file=None, environment=environment, cookie_secure=False)
+
+
+@pytest.mark.parametrize("environment", ["staging", "production"])
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"access_cookie_name": "rentivo_access"},
+        {"challenge_cookie_name": "rentivo_challenge"},
+        {"csrf_cookie_name": "rentivo_csrf"},
+    ],
+)
+def test_deployed_environments_require_host_prefixed_auth_cookie_names(environment, override):
+    with pytest.raises(ValidationError, match="__Host-"):
+        Settings(_env_file=None, environment=environment, **override)
+
+
+def test_dev_allows_plain_http_auth_cookie_settings():
+    settings = Settings(
+        _env_file=None,
+        environment="dev",
+        cookie_secure=False,
+        access_cookie_name="rentivo_access",
+        challenge_cookie_name="rentivo_challenge",
+        csrf_cookie_name="rentivo_csrf",
+    )
+
+    assert settings.cookie_secure is False
+    assert settings.access_cookie_name == "rentivo_access"
+    assert settings.challenge_cookie_name == "rentivo_challenge"
+    assert settings.csrf_cookie_name == "rentivo_csrf"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "api_key_login_ttl_seconds",
+        "auth_challenge_ttl_seconds",
+        "api_key_integration_default_ttl_days",
+        "api_key_integration_max_ttl_days",
+        "api_key_last_used_throttle_seconds",
+    ],
+)
+def test_auth_durations_must_be_positive(field):
+    with pytest.raises(ValidationError, match="positive"):
+        Settings(_env_file=None, **{field: 0})
+
+
+def test_integration_default_ttl_cannot_exceed_maximum():
+    with pytest.raises(ValidationError, match="default TTL"):
+        Settings(
+            _env_file=None,
+            api_key_integration_default_ttl_days=366,
+            api_key_integration_max_ttl_days=365,
+        )

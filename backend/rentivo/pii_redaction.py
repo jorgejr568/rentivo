@@ -10,6 +10,7 @@ value is a no-op for typical inputs), and requires no key material.
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any, overload
 
 _PIX_PREFIX = 3
 _PIX_SUFFIX = 2
@@ -25,12 +26,26 @@ class PIIKind(str, Enum):
     EMAIL = "email"
 
 
-def redact(value: str, kind: PIIKind) -> str:
+_CREDENTIAL_FIELDS = frozenset({"authorization", "cookie", "secret", "secret_hash"})
+_REDACTED = "[REDACTED]"
+
+
+@overload
+def redact(value: str, kind: PIIKind) -> str: ...
+
+
+@overload
+def redact(value: Any, kind: None = None) -> Any: ...
+
+
+def redact(value: Any, kind: PIIKind | None = None) -> Any:
     """Return a partially-masked view of ``value`` suitable for audit logs.
 
     Empty / falsy input returns ``""`` so audit consumers can distinguish
     "value not set" from "value present but masked".
     """
+    if kind is None:
+        return _redact_credentials(value)
     if not value:
         return ""
     if kind is PIIKind.PIX:
@@ -38,6 +53,21 @@ def redact(value: str, kind: PIIKind) -> str:
     if kind is PIIKind.EMAIL:
         return _mask_email(value)
     raise ValueError(f"Unknown PII kind: {kind}")
+
+
+def _redact_credentials(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _REDACTED if str(key).lower() in _CREDENTIAL_FIELDS else _redact_credentials(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_credentials(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_credentials(item) for item in value)
+    if isinstance(value, str) and "rntv-v1-" in value:
+        return _REDACTED
+    return value
 
 
 def _mask_pix(value: str) -> str:
