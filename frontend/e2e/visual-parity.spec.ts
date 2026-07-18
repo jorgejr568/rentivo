@@ -27,8 +27,5 @@ test("API-key form visual parity", async ({ page }) => {
   await expect(page.getByRole("group", { name: "Espaços de trabalho" })).toBeVisible();
   await settleVisualPage(page);
 
-  const apiKeyPanel = page.locator(".panel").filter({
-    has: page.getByRole("heading", { name: "Chaves de Integração" })
-  });
-  await expect(apiKeyPanel).toHaveScreenshot("api-key-form.png");
+  await expect(page).toHaveScreenshot("api-key-form.png", { fullPage: true });
 });

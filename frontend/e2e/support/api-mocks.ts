@@ -384,6 +384,7 @@ export async function installApiMocks(
 }
 
 export async function settleVisualPage(page: Page) {
+  await page.mouse.move(-1, -1);
   await page.addStyleTag({
     content: `
       *, *::before, *::after {
