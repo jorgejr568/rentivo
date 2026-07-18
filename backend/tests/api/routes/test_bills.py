@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from importlib import import_module
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
+from legacy_web.analytics import analytics_hash
 from rentivo.api.app import create_app
 from rentivo.api.authentication import get_principal
 from rentivo.api.dependencies import get_services
@@ -23,6 +25,7 @@ from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.communication import Communication
 from rentivo.models.receipt import MAX_RECEIPT_SIZE, Receipt
 from rentivo.models.user import User
+from rentivo.services.bill_service import BillService
 from rentivo.storage.base import FileRef
 
 NOW = datetime(2026, 7, 18, 12, tzinfo=UTC)
@@ -59,7 +62,7 @@ BILL = Bill(
 OTHER_BILL = BILL.model_copy(update={"id": 42, "uuid": "01JOTHERBILL000000000000000", "billing_id": OTHER_BILLING.id})
 RECEIPT = Receipt(
     id=51,
-    uuid="01JRECEIPT00000000000000000",
+    uuid="01J00000000000000000000000",
     bill_id=BILL.id,
     filename="comprovante.pdf",
     storage_key="private/receipt.pdf",
@@ -68,7 +71,7 @@ RECEIPT = Receipt(
     sort_order=0,
     created_at=NOW,
 )
-OTHER_RECEIPT = RECEIPT.model_copy(update={"id": 52, "uuid": "01JOTHERRECEIPT000000000000", "bill_id": OTHER_BILL.id})
+OTHER_RECEIPT = RECEIPT.model_copy(update={"id": 52, "uuid": "01J00000000000000000000001", "bill_id": OTHER_BILL.id})
 COMMUNICATION = Communication(
     id=61,
     uuid="01JCOMM00000000000000000000",
@@ -272,6 +275,14 @@ def _create_payload() -> dict[str, object]:
     }
 
 
+def _analytics_headers(response) -> dict[str, str]:
+    return {
+        name.lower(): value
+        for name, value in response.headers.items()
+        if name.lower().startswith("x-rentivo-analytics-")
+    }
+
+
 def test_list_bills_returns_public_invoice_data_without_storage_paths(api: BillsAPI) -> None:
     response = api.client.get(f"/api/v1/billings/{BILLING.uuid}/bills", headers=BEARER_HEADERS)
 
@@ -324,7 +335,7 @@ def test_bill_reads_require_scope_grant_and_parent_child_linkage(api: BillsAPI) 
     assert mismatch.status_code == 404
 
 
-def test_bill_detail_returns_transition_capabilities_receipts_and_communication_history(api: BillsAPI) -> None:
+def test_bill_detail_redacts_complete_communication_payload_for_integration_keys(api: BillsAPI) -> None:
     response = api.client.get(_detail_url(), headers=BEARER_HEADERS)
 
     assert response.status_code == 200
@@ -343,8 +354,37 @@ def test_bill_detail_returns_transition_capabilities_receipts_and_communication_
     }
     assert body["capabilities"]["can_delete"] is True
     assert body["receipts"][0]["content_type"] == "application/pdf"
-    assert body["communications"][0]["recipient_email"] == "maria@example.com"
+    assert body["communications"] == [
+        {
+            "uuid": COMMUNICATION.uuid,
+            "comm_type": "bill_ready",
+            "status": "sent",
+            "created_at": NOW.isoformat().replace("+00:00", "Z"),
+            "sent_at": NOW.isoformat().replace("+00:00", "Z"),
+        }
+    ]
+    assert COMMUNICATION.recipient_name not in response.text
+    assert COMMUNICATION.recipient_email not in response.text
+    assert COMMUNICATION.subject not in response.text
     assert "storage_key" not in response.text
+
+
+def test_bill_detail_returns_communication_pii_only_to_login_tokens(api: BillsAPI) -> None:
+    api.set_login_principal()
+
+    response = api.client.get(_detail_url())
+
+    assert response.status_code == 200
+    assert response.json()["communications"][0] == {
+        "uuid": COMMUNICATION.uuid,
+        "comm_type": "bill_ready",
+        "recipient_name": COMMUNICATION.recipient_name,
+        "recipient_email": COMMUNICATION.recipient_email,
+        "subject": COMMUNICATION.subject,
+        "status": "sent",
+        "created_at": NOW.isoformat().replace("+00:00", "Z"),
+        "sent_at": NOW.isoformat().replace("+00:00", "Z"),
+    }
 
 
 def test_detail_omits_scoped_children_and_mutation_capabilities_without_their_scopes(api: BillsAPI) -> None:
@@ -400,6 +440,16 @@ def test_create_bill_accepts_integer_centavos_and_renders_once(api: BillsAPI) ->
         actor=api.state.principal.actor,
     )
     assert api.services.audit.safe_log_for.call_args_list[0].args[1] == AuditEventType.BILL_CREATE
+    bill = api.services.bill.generate_bill.return_value
+    assert _analytics_headers(response) == {
+        "x-rentivo-analytics-event": "rentivo_bill_generated",
+        "x-rentivo-analytics-billing-uuid-hash": analytics_hash(BILLING.uuid),
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(bill.uuid),
+        "x-rentivo-analytics-reference-month": bill.reference_month,
+        "x-rentivo-analytics-line-item-count": str(len(bill.line_items)),
+        "x-rentivo-analytics-total-amount-brl": str(round(bill.total_amount / 100)),
+        "x-rentivo-analytics-receipt-count": "0",
+    }
 
 
 def test_create_bill_with_receipts_audits_create_first_and_still_renders_once(api: BillsAPI) -> None:
@@ -425,6 +475,50 @@ def test_create_bill_with_receipts_audits_create_first_and_still_renders_once(ap
         AuditEventType.RECEIPT_UPLOAD,
         AuditEventType.RECEIPT_UPLOAD,
     ]
+
+
+def test_create_bill_rolls_back_bill_and_partial_receipts_when_later_upload_fails(api: BillsAPI) -> None:
+    first_receipt = RECEIPT.model_copy(update={"id": 71, "bill_id": 43})
+    api.services.bill.add_receipt.side_effect = [(first_receipt, []), RuntimeError("second upload failed")]
+
+    with pytest.raises(RuntimeError, match="second upload failed"):
+        api.client.post(
+            f"/api/v1/billings/{BILLING.uuid}/bills",
+            data={"payload": json.dumps(_create_payload())},
+            files=[
+                ("receipt_files", ("a.pdf", b"%PDF-a", "application/pdf")),
+                ("receipt_files", ("b.pdf", b"%PDF-b", "application/pdf")),
+            ],
+            headers=BEARER_HEADERS,
+        )
+
+    api.services.bill.rollback_receipt_batch.assert_called_once_with((first_receipt,))
+    api.services.bill.rollback_bill_creation.assert_called_once_with(
+        api.services.bill.generate_bill.return_value,
+        BILLING,
+    )
+    api.services.bill.regenerate_pdf.assert_not_called()
+    api.services.audit.safe_log_for.assert_not_called()
+
+
+def test_create_bill_rolls_back_bill_and_receipts_when_render_scheduling_fails(api: BillsAPI) -> None:
+    attached = RECEIPT.model_copy(update={"id": 71, "bill_id": 43})
+    api.services.bill.add_receipt.side_effect = [(attached, [])]
+    api.services.bill.regenerate_pdf.side_effect = RuntimeError("render enqueue failed")
+
+    with pytest.raises(RuntimeError, match="render enqueue failed"):
+        api.client.post(
+            f"/api/v1/billings/{BILLING.uuid}/bills",
+            data={"payload": json.dumps(_create_payload())},
+            files=[("receipt_files", ("a.pdf", b"%PDF-a", "application/pdf"))],
+            headers=BEARER_HEADERS,
+        )
+
+    api.services.bill.rollback_bill_creation.assert_called_once_with(
+        api.services.bill.generate_bill.return_value,
+        BILLING,
+    )
+    api.services.audit.safe_log_for.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -557,6 +651,10 @@ def test_patch_bill_preserves_omitted_values_and_audits(api: BillsAPI) -> None:
     assert audit.args[1] == AuditEventType.BILL_UPDATE
     assert audit.kwargs["previous_state"]["notes"] == BILL.notes
     assert audit.kwargs["new_state"]["notes"] == "Atualizada"
+    assert _analytics_headers(response) == {
+        "x-rentivo-analytics-event": "rentivo_bill_edited",
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(BILL.uuid),
+    }
 
 
 def test_patch_bill_replaces_line_items_and_can_clear_due_date(api: BillsAPI) -> None:
@@ -634,6 +732,11 @@ def test_allowed_transition_uses_policy_and_audits_status_change(api: BillsAPI) 
     assert audit.args[1] == AuditEventType.BILL_STATUS_CHANGE
     assert audit.kwargs["previous_state"] == {"status": "draft"}
     assert audit.kwargs["new_state"] == {"status": "published"}
+    assert _analytics_headers(response) == {
+        "x-rentivo-analytics-event": "rentivo_bill_status_changed",
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(BILL.uuid),
+        "x-rentivo-analytics-new-status": "published",
+    }
 
 
 def test_transition_rejects_stale_disallowed_unknown_and_viewer_requests(api: BillsAPI) -> None:
@@ -681,6 +784,25 @@ def test_transition_maps_service_race_rejection_to_conflict(api: BillsAPI) -> No
     assert response.json()["code"] == "invalid_status_transition"
 
 
+def test_transition_maps_atomic_compare_and_swap_loss_to_stable_conflict(api: BillsAPI) -> None:
+    stale_bill = BILL.model_copy(deep=True)
+    api.services.bill.get_bill_by_uuid.side_effect = lambda uuid: stale_bill if uuid == BILL.uuid else None
+    stale_repo = MagicMock()
+    stale_repo.update_status.return_value = False
+    stale_service = BillService(stale_repo, MagicMock())
+    api.services.bill.change_status.side_effect = stale_service.change_status
+
+    response = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "published", "current_status": "draft"},
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "stale_bill_status"
+    api.services.audit.safe_log_for.assert_not_called()
+
+
 def test_status_transition_does_not_require_pix(api: BillsAPI) -> None:
     api.state.role = "manager"
     api.state.pix_missing = True
@@ -700,6 +822,10 @@ def test_regenerate_requires_manager_and_pix_then_preserves_service_job_behavior
     audit = api.services.audit.safe_log_for.call_args
     assert audit.args[1] == AuditEventType.BILL_REGENERATE_PDF
     assert audit.kwargs["previous_state"] == {"pdf_render_status": "succeeded"}
+    assert _analytics_headers(response) == {
+        "x-rentivo-analytics-event": "rentivo_bill_regenerated",
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(BILL.uuid),
+    }
 
     api.services.bill.reset_mock()
     api.state.pix_missing = True
@@ -715,11 +841,35 @@ def test_delete_bill_is_owner_admin_only_and_not_pix_gated(api: BillsAPI) -> Non
 
     api.state.role = "admin"
     api.state.pix_missing = True
+    mutation_order: list[str] = []
+    api.services.bill.delete_bill.side_effect = lambda _bill_id: mutation_order.append("db")
+    api.services.storage_cleanup.enqueue_bill_delete_cascade.side_effect = lambda _actor, _bill: mutation_order.append(
+        "cleanup"
+    )
     response = api.client.delete(_detail_url(), headers=BEARER_HEADERS)
     assert response.status_code == 204
+    assert mutation_order == ["db", "cleanup"]
     api.services.storage_cleanup.enqueue_bill_delete_cascade.assert_called_once_with(api.state.principal.actor, BILL)
     api.services.bill.delete_bill.assert_called_once_with(BILL.id)
     assert api.services.audit.safe_log_for.call_args.args[1] == AuditEventType.BILL_DELETE
+    assert _analytics_headers(response) == {
+        "x-rentivo-analytics-event": "rentivo_bill_deleted",
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(BILL.uuid),
+    }
+
+
+def test_stale_bill_delete_is_conflict_and_never_enqueues_cleanup(api: BillsAPI) -> None:
+    stale_repo = MagicMock()
+    stale_repo.delete.return_value = False
+    stale_service = BillService(stale_repo, MagicMock())
+    api.services.bill.delete_bill.side_effect = stale_service.delete_bill
+
+    response = api.client.delete(_detail_url(), headers=BEARER_HEADERS)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "stale_bill_delete"
+    api.services.storage_cleanup.enqueue_bill_delete_cascade.assert_not_called()
+    api.services.audit.safe_log_for.assert_not_called()
 
 
 def test_invoice_download_requires_file_scope_and_existing_pdf(api: BillsAPI) -> None:
@@ -763,6 +913,25 @@ def test_recibo_requires_paid_status_and_audits_stored_download(api: BillsAPI) -
     assert stored.status_code == 302
     assert stored.headers["location"] == "https://files.example/recibo.pdf"
     assert api.services.audit.safe_log_for.call_args.args[1] == AuditEventType.BILL_RECIBO_DOWNLOAD
+    assert _analytics_headers(stored) == {
+        "x-rentivo-analytics-event": "rentivo_recibo_downloaded",
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(BILL.uuid),
+    }
+
+
+@pytest.mark.parametrize("stored", [True, False])
+def test_recibo_does_not_audit_when_storage_or_render_resolution_fails(api: BillsAPI, stored: bool) -> None:
+    paid = _updated_bill(BILL, status="paid", recibo_pdf_path="private/recibo.pdf" if stored else None)
+    api.services.bill.get_bill_by_uuid.side_effect = lambda uuid: paid if uuid == BILL.uuid else None
+    if stored:
+        api.services.bill.get_recibo_ref.side_effect = RuntimeError("storage unavailable")
+    else:
+        api.services.bill.render_recibo.side_effect = RuntimeError("render failed")
+
+    with pytest.raises(RuntimeError):
+        api.client.get(f"{_detail_url()}/recibo", headers=BEARER_HEADERS)
+
+    api.services.audit.safe_log_for.assert_not_called()
 
 
 def test_recibo_falls_back_to_inline_render_when_stored_file_is_pending(api: BillsAPI) -> None:
@@ -840,6 +1009,73 @@ def test_receipt_upload_validates_each_file_audits_and_renders_once(api: BillsAP
     assert api.services.bill.add_receipt.call_args.kwargs["render"] is False
     api.services.bill.regenerate_pdf.assert_called_once_with(BILL, BILLING, actor=api.state.principal.actor)
     assert api.services.audit.safe_log_for.call_args.args[1] == AuditEventType.RECEIPT_UPLOAD
+    assert _analytics_headers(response) == {
+        "x-rentivo-analytics-event": "rentivo_receipt_uploaded",
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(BILL.uuid),
+        "x-rentivo-analytics-count": "1",
+        "x-rentivo-analytics-total-bytes": "7",
+    }
+
+
+def test_receipt_batch_reads_and_validates_every_file_before_first_mutation(api: BillsAPI) -> None:
+    events: list[str] = []
+    uploads = [
+        SimpleNamespace(
+            filename="a.pdf",
+            content_type="application/pdf",
+            read=AsyncMock(side_effect=lambda: events.append("read-a") or b"a"),
+        ),
+        SimpleNamespace(
+            filename="b.pdf",
+            content_type="application/pdf",
+            read=AsyncMock(side_effect=lambda: events.append("read-b") or b"b"),
+        ),
+    ]
+    api.services.bill.add_receipt.side_effect = lambda **_kwargs: (
+        events.append("add") or RECEIPT,
+        [],
+    )
+    routes = import_module("rentivo.api.routes.bills")
+    access = routes.BillAccess(bill=BILL, billing=BILLING, role="owner", principal=api.state.principal)
+
+    asyncio.run(routes._upload_receipts(uploads, access, api.services, regenerate=False))
+
+    assert events == ["read-a", "read-b", "add", "add"]
+
+
+def test_receipt_batch_rolls_back_partial_upload_when_later_storage_write_fails(api: BillsAPI) -> None:
+    first_receipt = RECEIPT.model_copy(update={"id": 71})
+    api.services.bill.add_receipt.side_effect = [(first_receipt, []), RuntimeError("storage failed")]
+
+    with pytest.raises(RuntimeError, match="storage failed"):
+        api.client.post(
+            f"{_detail_url()}/receipts",
+            files=[
+                ("receipt_files", ("a.pdf", b"%PDF-a", "application/pdf")),
+                ("receipt_files", ("b.pdf", b"%PDF-b", "application/pdf")),
+            ],
+            headers=BEARER_HEADERS,
+        )
+
+    api.services.bill.rollback_receipt_batch.assert_called_once_with((first_receipt,))
+    api.services.bill.regenerate_pdf.assert_not_called()
+    api.services.audit.safe_log_for.assert_not_called()
+
+
+def test_receipt_batch_rolls_back_all_uploads_when_render_scheduling_fails(api: BillsAPI) -> None:
+    attached = RECEIPT.model_copy(update={"id": 71})
+    api.services.bill.add_receipt.side_effect = [(attached, [])]
+    api.services.bill.regenerate_pdf.side_effect = RuntimeError("render enqueue failed")
+
+    with pytest.raises(RuntimeError, match="render enqueue failed"):
+        api.client.post(
+            f"{_detail_url()}/receipts",
+            files=[("receipt_files", ("a.pdf", b"%PDF-a", "application/pdf"))],
+            headers=BEARER_HEADERS,
+        )
+
+    api.services.bill.rollback_receipt_batch.assert_called_once_with((attached,))
+    api.services.audit.safe_log_for.assert_not_called()
 
 
 def test_receipt_upload_with_no_valid_files_does_not_render(api: BillsAPI) -> None:
@@ -906,6 +1142,10 @@ def test_delete_receipt_checks_linkage_then_cleans_storage_audits_and_rerenders(
     audit = api.services.audit.safe_log_for.call_args
     assert audit.args[1] == AuditEventType.RECEIPT_DELETE
     assert audit.kwargs["previous_state"]["filename"] == RECEIPT.filename
+    assert _analytics_headers(response) == {
+        "x-rentivo-analytics-event": "rentivo_receipt_deleted",
+        "x-rentivo-analytics-bill-uuid-hash": analytics_hash(BILL.uuid),
+    }
 
 
 def test_reorder_receipts_uses_exact_complete_order_and_is_not_pix_gated(api: BillsAPI) -> None:
@@ -942,6 +1182,21 @@ def test_reorder_receipts_rejects_duplicates_and_service_conflicts(api: BillsAPI
     )
     assert incomplete.status_code == 409
     assert incomplete.json()["code"] == "invalid_receipt_order"
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    ["not-a-public-id", "01J0000000000000000000000", "01J0000000000000000000000I", "01j00000000000000000000000"],
+)
+def test_reorder_receipts_rejects_malformed_public_identifiers(api: BillsAPI, identifier: str) -> None:
+    response = api.client.put(
+        f"{_detail_url()}/receipt-order",
+        json={"order": [identifier]},
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 422
+    api.services.bill.reorder_receipts.assert_not_called()
 
 
 def test_file_metadata_never_serializes_internal_ids_or_storage_keys(api: BillsAPI) -> None:

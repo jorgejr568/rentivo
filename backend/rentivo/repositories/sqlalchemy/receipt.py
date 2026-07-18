@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Connection, text
+from sqlalchemy import Connection, bindparam, text
 from sqlalchemy.engine import RowMapping
 from ulid import ULID
 
@@ -113,6 +113,17 @@ class SQLAlchemyReceiptRepository(ReceiptRepository):
             {"id": receipt_id},
         )
         self.conn.commit()
+
+    @traced("receipt_repo.delete_many")
+    def delete_many(self, receipt_ids: list[int]) -> int:
+        if not receipt_ids:
+            return 0
+        statement = text("DELETE FROM receipts WHERE id IN :receipt_ids").bindparams(
+            bindparam("receipt_ids", expanding=True)
+        )
+        result = self.conn.execute(statement, {"receipt_ids": receipt_ids})
+        self.conn.commit()
+        return result.rowcount
 
     @traced("receipt_repo.update_sort_orders")
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None:

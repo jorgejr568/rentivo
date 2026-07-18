@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
+from typing import cast
 
 import structlog
 
@@ -29,6 +31,14 @@ CONTENT_TYPE_EXTENSIONS = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
 }
+
+
+class StaleBillStatusError(RuntimeError):
+    """Raised when another writer changed a bill before a status transition."""
+
+
+class StaleBillDeleteError(RuntimeError):
+    """Raised when a bill was already deleted by another writer."""
 
 
 def _prefixed(path: str) -> str:
@@ -492,7 +502,8 @@ class BillService:
             raise InvalidStatusTransition(bill.status, new_status)
         previous_status = bill.status
         now = datetime.now(SP_TZ)
-        self.bill_repo.update_status(bill.id, new_status, now)
+        if not self.bill_repo.update_status(bill.id, previous_status, new_status, now):
+            raise StaleBillStatusError(f"Bill {bill.id} status changed from {previous_status!r}")
         bill.status = new_status
         bill.status_updated_at = now
         logger.info("bill_status_changed", bill_id=bill.id, new_status=new_status)
@@ -522,8 +533,40 @@ class BillService:
 
     @traced("bill.delete_bill")
     def delete_bill(self, bill_id: int) -> None:
-        self.bill_repo.delete(bill_id)
+        if not self.bill_repo.delete(bill_id):
+            raise StaleBillDeleteError(f"Bill {bill_id} is already deleted")
         logger.info("bill_deleted", bill_id=bill_id)
+
+    @traced("bill.rollback_receipt_batch")
+    def rollback_receipt_batch(self, receipts: Sequence[Receipt]) -> None:
+        if not receipts:
+            return
+        if self.receipt_repo is None:
+            raise RuntimeError("Receipt repository not configured")
+        receipt_ids = [cast(int, receipt.id) for receipt in receipts]
+        deleted = self.receipt_repo.delete_many(receipt_ids)
+        if deleted != len(receipt_ids):
+            raise RuntimeError("Failed to roll back complete receipt batch")
+        for storage_key in dict.fromkeys(receipt.storage_key for receipt in receipts):
+            self.storage.delete(storage_key)
+
+    @traced("bill.rollback_creation")
+    def rollback_bill_creation(self, bill: Bill, billing: Billing) -> None:
+        bill_id = cast(int, bill.id)
+        receipts = self.receipt_repo.list_by_bill(bill_id) if self.receipt_repo is not None else []
+        storage_keys = [receipt.storage_key for receipt in receipts]
+        storage_keys.extend(
+            [
+                bill.pdf_path or "",
+                bill.recibo_pdf_path or "",
+                _storage_key(billing.uuid, bill.uuid),
+                _recibo_storage_key(billing.uuid, bill.uuid),
+            ]
+        )
+        if not self.bill_repo.delete_created(bill_id):
+            raise RuntimeError("Failed to roll back created bill")
+        for storage_key in dict.fromkeys(key for key in storage_keys if key):
+            self.storage.delete(storage_key)
 
     # ---- Receipt methods ----
 

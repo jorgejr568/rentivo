@@ -14,7 +14,7 @@ class _StrictModel(BaseModel):
 
 
 Centavos = Annotated[int, Field(strict=True, ge=0)]
-NonEmptyUUID = Annotated[str, Field(min_length=1)]
+PublicIdentifier = Annotated[str, Field(pattern=r"^[0-9A-HJKMNP-TV-Z]{26}$")]
 
 
 def _normalized_description(value: str) -> str:
@@ -66,7 +66,7 @@ class BillTransitionRequest(_StrictModel):
 
 
 class ReceiptOrderRequest(_StrictModel):
-    order: tuple[NonEmptyUUID, ...]
+    order: tuple[PublicIdentifier, ...]
 
     @model_validator(mode="after")
     def require_unique_receipts(self) -> ReceiptOrderRequest:
@@ -110,15 +110,18 @@ class ReceiptResponse(_StrictModel):
     created_at: datetime | None
 
 
-class CommunicationHistoryResponse(_StrictModel):
+class RedactedCommunicationHistoryResponse(_StrictModel):
     uuid: str
     comm_type: str
-    recipient_name: str
-    recipient_email: str
-    subject: str
     status: str
     created_at: datetime | None
     sent_at: datetime | None
+
+
+class CommunicationHistoryResponse(RedactedCommunicationHistoryResponse):
+    recipient_name: str
+    recipient_email: str
+    subject: str
 
 
 class ReceiptUploadSummary(_StrictModel):
@@ -146,7 +149,7 @@ class BillResponse(_StrictModel):
 
 class BillDetailResponse(BillResponse):
     receipts: tuple[ReceiptResponse, ...] = ()
-    communications: tuple[CommunicationHistoryResponse, ...] = ()
+    communications: tuple[CommunicationHistoryResponse | RedactedCommunicationHistoryResponse, ...] = ()
     receipt_upload: ReceiptUploadSummary = Field(default_factory=ReceiptUploadSummary)
 
 

@@ -103,7 +103,7 @@ class TestBillRepoCRUD:
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
         now = datetime.now(SP_TZ)
-        bill_repo.update_status(created.id, "paid", now)
+        assert bill_repo.update_status(created.id, "draft", "paid", now) is True
 
         fetched = bill_repo.get_by_id(created.id)
         assert fetched.status == "paid"
@@ -113,19 +113,28 @@ class TestBillRepoCRUD:
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
         now = datetime.now(SP_TZ)
-        bill_repo.update_status(created.id, "paid", now)
-        bill_repo.update_status(created.id, "draft", now)
+        assert bill_repo.update_status(created.id, "draft", "paid", now) is True
+        assert bill_repo.update_status(created.id, "paid", "draft", now) is True
 
         fetched = bill_repo.get_by_id(created.id)
         assert fetched.status == "draft"
 
+    def test_update_status_rejects_stale_expected_status(self, bill_repo, billing_repo, sample_billing, sample_bill):
+        billing = self._create_billing(billing_repo, sample_billing)
+        created = bill_repo.create(sample_bill(billing_id=billing.id))
+        now = datetime.now(SP_TZ)
+
+        assert bill_repo.update_status(created.id, "sent", "paid", now) is False
+        assert bill_repo.get_by_id(created.id).status == "draft"
+
     def test_soft_delete(self, bill_repo, billing_repo, sample_billing, sample_bill):
         billing = self._create_billing(billing_repo, sample_billing)
         created = bill_repo.create(sample_bill(billing_id=billing.id))
-        bill_repo.delete(created.id)
+        assert bill_repo.delete(created.id) is True
 
         assert bill_repo.get_by_id(created.id) is None
         assert bill_repo.list_by_billing(billing.id) == []
+        assert bill_repo.delete(created.id) is False
 
     def test_soft_delete_hides_from_uuid(self, bill_repo, billing_repo, sample_billing, sample_bill):
         billing = self._create_billing(billing_repo, sample_billing)

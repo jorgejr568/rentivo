@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Annotated
 
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
+from legacy_web.analytics import analytics_hash
 from legacy_web.bill_transitions import StatusTransition, transitions_for
 from rentivo.api.csrf import require_csrf
 from rentivo.api.dependencies import get_services, require_scope
@@ -36,6 +38,7 @@ from rentivo.api.schemas.bills import (
     ReceiptResponse,
     ReceiptUploadResponse,
     ReceiptUploadSummary,
+    RedactedCommunicationHistoryResponse,
 )
 from rentivo.constants.api_scopes import APIScope
 from rentivo.models.audit_log import AuditEventType
@@ -44,6 +47,7 @@ from rentivo.models.billing import Billing
 from rentivo.models.communication import Communication
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
+from rentivo.services.bill_service import StaleBillDeleteError, StaleBillStatusError
 from rentivo.services.container import RequestServices
 from rentivo.storage.base import FileRef
 
@@ -55,6 +59,13 @@ _files_read = require_scope(APIScope.FILES_READ)
 _files_write = require_scope(APIScope.FILES_WRITE)
 _MANAGE_ROLES = frozenset({"owner", "admin", "manager"})
 _DELETE_ROLES = frozenset({"owner", "admin"})
+
+
+def _analytics(response: Response, event: str, **metadata: str | int) -> None:
+    response.headers["X-Rentivo-Analytics-Event"] = event
+    for name, value in metadata.items():
+        header = "-".join(part.title() for part in name.split("_"))
+        response.headers[f"X-Rentivo-Analytics-{header}"] = str(value)
 
 
 def _conflict(code: str, detail: str) -> ProblemException:
@@ -191,16 +202,25 @@ def _receipt_response(receipt: Receipt) -> ReceiptResponse:
     )
 
 
-def _communication_response(communication: Communication) -> CommunicationHistoryResponse:
+def _communication_response(
+    communication: Communication,
+    *,
+    expose_pii: bool,
+) -> CommunicationHistoryResponse | RedactedCommunicationHistoryResponse:
+    common = {
+        "uuid": communication.uuid,
+        "comm_type": communication.comm_type,
+        "status": communication.status,
+        "created_at": communication.created_at,
+        "sent_at": communication.sent_at,
+    }
+    if not expose_pii:
+        return RedactedCommunicationHistoryResponse(**common)
     return CommunicationHistoryResponse(
-        uuid=communication.uuid,
-        comm_type=communication.comm_type,
+        **common,
         recipient_name=communication.recipient_name,
         recipient_email=communication.recipient_email,
         subject=communication.subject,
-        status=communication.status,
-        created_at=communication.created_at,
-        sent_at=communication.sent_at,
     )
 
 
@@ -225,7 +245,9 @@ def _bill_detail_response(
     return BillDetailResponse(
         **response.model_dump(),
         receipts=tuple(_receipt_response(receipt) for receipt in receipts),
-        communications=tuple(_communication_response(item) for item in communications),
+        communications=tuple(
+            _communication_response(item, expose_pii=access.principal.api_key.is_login_token) for item in communications
+        ),
         receipt_upload=receipt_upload or ReceiptUploadSummary(),
     )
 
@@ -251,33 +273,40 @@ def _file_response(ref: FileRef, *, content_type: str, filename: str) -> Respons
     return RedirectResponse(ref.location, status_code=302)
 
 
-async def _upload_receipts(
+@dataclass(frozen=True, slots=True)
+class _ValidatedReceiptUpload:
+    filename: str
+    file_bytes: bytes
+    content_type: str
+
+
+async def _validate_receipt_uploads(
     uploads: Sequence[UploadFile],
-    access: BillAccess,
-    services: RequestServices,
-    *,
-    regenerate: bool,
-) -> ReceiptUploadResponse:
-    attached: list[Receipt] = []
+) -> tuple[tuple[_ValidatedReceiptUpload, ...], int]:
+    valid: list[_ValidatedReceiptUpload] = []
     skipped = 0
-    total_bytes = 0
     for upload in uploads:
         file_bytes = await upload.read()
         content_type = upload.content_type or ""
         if content_type not in ALLOWED_RECEIPT_TYPES or not file_bytes or len(file_bytes) > MAX_RECEIPT_SIZE:
             skipped += 1
             continue
-        receipt, _failed = services.bill.add_receipt(
-            bill=access.bill,
-            billing=access.billing,
-            filename=upload.filename or "comprovante",
-            file_bytes=file_bytes,
-            content_type=content_type,
-            actor=access.principal.actor,
-            render=False,
+        valid.append(
+            _ValidatedReceiptUpload(
+                filename=upload.filename or "comprovante",
+                file_bytes=file_bytes,
+                content_type=content_type,
+            )
         )
-        attached.append(receipt)
-        total_bytes += len(file_bytes)
+    return tuple(valid), skipped
+
+
+def _audit_receipt_uploads(
+    receipts: Sequence[Receipt],
+    access: BillAccess,
+    services: RequestServices,
+) -> None:
+    for receipt in receipts:
         services.audit.safe_log_for(
             access.principal.actor,
             AuditEventType.RECEIPT_UPLOAD,
@@ -290,14 +319,67 @@ async def _upload_receipts(
                 billing_uuid=access.billing.uuid,
             ),
         )
-    if regenerate and attached:
-        services.bill.regenerate_pdf(access.bill, access.billing, actor=access.principal.actor)
-    return ReceiptUploadResponse(
-        attached=len(attached),
-        skipped=skipped,
-        total_bytes=total_bytes,
-        items=tuple(_receipt_response(receipt) for receipt in attached),
+
+
+def _attach_receipts(
+    uploads: Sequence[_ValidatedReceiptUpload],
+    skipped: int,
+    access: BillAccess,
+    services: RequestServices,
+    *,
+    regenerate: bool,
+    audit: bool,
+) -> tuple[ReceiptUploadResponse, tuple[Receipt, ...]]:
+    attached: list[Receipt] = []
+    try:
+        for upload in uploads:
+            receipt, _failed = services.bill.add_receipt(
+                bill=access.bill,
+                billing=access.billing,
+                filename=upload.filename,
+                file_bytes=upload.file_bytes,
+                content_type=upload.content_type,
+                actor=access.principal.actor,
+                render=False,
+            )
+            attached.append(receipt)
+        if regenerate and attached:
+            services.bill.regenerate_pdf(access.bill, access.billing, actor=access.principal.actor)
+    except Exception:
+        services.bill.rollback_receipt_batch(tuple(attached))
+        raise
+    if audit:
+        _audit_receipt_uploads(attached, access, services)
+    total_bytes = sum(len(upload.file_bytes) for upload in uploads)
+    receipts = tuple(attached)
+    return (
+        ReceiptUploadResponse(
+            attached=len(receipts),
+            skipped=skipped,
+            total_bytes=total_bytes,
+            items=tuple(_receipt_response(receipt) for receipt in receipts),
+        ),
+        receipts,
     )
+
+
+async def _upload_receipts(
+    uploads: Sequence[UploadFile],
+    access: BillAccess,
+    services: RequestServices,
+    *,
+    regenerate: bool,
+) -> ReceiptUploadResponse:
+    valid, skipped = await _validate_receipt_uploads(uploads)
+    response, _receipts = _attach_receipts(
+        valid,
+        skipped,
+        access,
+        services,
+        regenerate=regenerate,
+        audit=True,
+    )
+    return response
 
 
 @router.get("", response_model=BillListResponse, responses={404: {"model": Problem}})
@@ -322,6 +404,7 @@ async def list_bills(
 async def create_bill(
     request: Request,
     billing_uuid: str,
+    response: Response,
     payload: Annotated[str | None, Form()] = None,
     receipt_files: Annotated[list[UploadFile] | None, File()] = None,
     principal: Principal = Depends(_bills_write),
@@ -334,6 +417,7 @@ async def create_bill(
         raise ProblemException.forbidden("missing_scope", "A chave não possui o escopo necessário.")
     _require_pix(access.billing, services)
     create = await _create_request(request, payload)
+    valid_uploads, skipped = await _validate_receipt_uploads(receipt_files or ())
     bill = services.bill.generate_bill(
         billing=access.billing,
         reference_month=create.reference_month,
@@ -344,6 +428,20 @@ async def create_bill(
         actor=principal.actor,
         render=False,
     )
+    bill_access = BillAccess(bill=bill, billing=access.billing, role=access.role, principal=principal)
+    try:
+        upload, attached_receipts = _attach_receipts(
+            valid_uploads,
+            skipped,
+            bill_access,
+            services,
+            regenerate=False,
+            audit=False,
+        )
+        services.bill.regenerate_pdf(bill, access.billing, actor=principal.actor)
+    except Exception:
+        services.bill.rollback_bill_creation(bill, access.billing)
+        raise
     services.audit.safe_log_for(
         principal.actor,
         AuditEventType.BILL_CREATE,
@@ -352,9 +450,17 @@ async def create_bill(
         entity_uuid=bill.uuid,
         new_state=serialize_bill(bill),
     )
-    bill_access = BillAccess(bill=bill, billing=access.billing, role=access.role, principal=principal)
-    upload = await _upload_receipts(receipt_files or (), bill_access, services, regenerate=False)
-    services.bill.regenerate_pdf(bill, access.billing, actor=principal.actor)
+    _audit_receipt_uploads(attached_receipts, bill_access, services)
+    _analytics(
+        response,
+        "rentivo_bill_generated",
+        billing_uuid_hash=analytics_hash(access.billing.uuid) or "",
+        bill_uuid_hash=analytics_hash(bill.uuid) or "",
+        reference_month=bill.reference_month,
+        line_item_count=len(bill.line_items),
+        total_amount_brl=round(bill.total_amount / 100),
+        receipt_count=upload.attached,
+    )
     return _bill_detail_response(
         bill_access,
         services,
@@ -386,6 +492,7 @@ async def update_bill(
     payload: BillUpdateRequest,
     billing_uuid: str,
     bill_uuid: str,
+    response: Response,
     principal: Principal = Depends(_bills_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -430,6 +537,11 @@ async def update_bill(
         previous_state=previous_state,
         new_state=serialize_bill(updated),
     )
+    _analytics(
+        response,
+        "rentivo_bill_edited",
+        bill_uuid_hash=analytics_hash(updated.uuid) or "",
+    )
     return _bill_detail_response(
         BillAccess(bill=updated, billing=access.billing, role=access.role, principal=principal),
         services,
@@ -439,7 +551,7 @@ async def update_bill(
 @router.delete(
     "/{bill_uuid}",
     status_code=204,
-    responses={403: {"model": Problem}, 404: {"model": Problem}},
+    responses={403: {"model": Problem}, 404: {"model": Problem}, 409: {"model": Problem}},
 )
 async def delete_bill(
     billing_uuid: str,
@@ -451,8 +563,13 @@ async def delete_bill(
     access = resolve_bill_access(principal, services, billing_uuid, bill_uuid)
     require_role(access.role, _DELETE_ROLES)
     previous_state = serialize_bill(access.bill)
+    try:
+        services.bill.delete_bill(access.bill.id)
+    except StaleBillDeleteError:
+        raise _conflict("stale_bill_delete", "A fatura já foi excluída por outra operação.") from None
+    # Cleanup jobs are idempotent and are scheduled only after the conditional
+    # soft-delete confirms this request won the race.
     services.storage_cleanup.enqueue_bill_delete_cascade(principal.actor, access.bill)
-    services.bill.delete_bill(access.bill.id)
     services.audit.safe_log_for(
         principal.actor,
         AuditEventType.BILL_DELETE,
@@ -461,7 +578,9 @@ async def delete_bill(
         entity_uuid=access.bill.uuid,
         previous_state=previous_state,
     )
-    return Response(status_code=204)
+    response = Response(status_code=204)
+    _analytics(response, "rentivo_bill_deleted", bill_uuid_hash=analytics_hash(access.bill.uuid) or "")
+    return response
 
 
 @router.post(
@@ -473,6 +592,7 @@ async def transition_bill(
     payload: BillTransitionRequest,
     billing_uuid: str,
     bill_uuid: str,
+    response: Response,
     principal: Principal = Depends(_bills_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -495,6 +615,11 @@ async def transition_bill(
         )
     except InvalidStatusTransition:
         raise _conflict("invalid_status_transition", "Transição de status inválida.") from None
+    except StaleBillStatusError:
+        raise _conflict(
+            "stale_bill_status",
+            "O status da fatura foi alterado. Atualize a página e tente novamente.",
+        ) from None
     services.audit.safe_log_for(
         principal.actor,
         AuditEventType.BILL_STATUS_CHANGE,
@@ -503,6 +628,12 @@ async def transition_bill(
         entity_uuid=updated.uuid,
         previous_state={"status": previous_status},
         new_state={"status": updated.status},
+    )
+    _analytics(
+        response,
+        "rentivo_bill_status_changed",
+        bill_uuid_hash=analytics_hash(updated.uuid) or "",
+        new_status=updated.status,
     )
     return _bill_detail_response(
         BillAccess(bill=updated, billing=access.billing, role=access.role, principal=principal),
@@ -519,6 +650,7 @@ async def transition_bill(
 async def regenerate_bill(
     billing_uuid: str,
     bill_uuid: str,
+    response: Response,
     principal: Principal = Depends(_bills_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -536,6 +668,11 @@ async def regenerate_bill(
         entity_uuid=access.bill.uuid,
         previous_state={"pdf_render_status": previous_status},
         new_state={"pdf_render_status": access.bill.pdf_render_status},
+    )
+    _analytics(
+        response,
+        "rentivo_bill_regenerated",
+        bill_uuid_hash=analytics_hash(access.bill.uuid) or "",
     )
     return _bill_response(access.bill, access.billing, access.role, principal, services)
 
@@ -566,6 +703,20 @@ async def download_recibo(
     access = resolve_bill_access(principal, services, billing_uuid, bill_uuid)
     if access.bill.status != BillStatus.PAID.value:
         raise _conflict("recibo_unavailable", "O recibo só fica disponível quando a fatura está paga.")
+    filename = f"recibo-{access.bill.uuid}.pdf"
+    if access.bill.recibo_pdf_path:
+        response = _file_response(
+            services.bill.get_recibo_ref(access.bill),
+            content_type="application/pdf",
+            filename=filename,
+        )
+    else:
+        pdf_bytes = services.bill.render_recibo(access.bill, access.billing)
+        response = Response(
+            content=bytes(pdf_bytes),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     services.audit.safe_log_for(
         principal.actor,
         AuditEventType.BILL_RECIBO_DOWNLOAD,
@@ -573,19 +724,12 @@ async def download_recibo(
         entity_id=access.bill.id,
         entity_uuid=access.bill.uuid,
     )
-    filename = f"recibo-{access.bill.uuid}.pdf"
-    if access.bill.recibo_pdf_path:
-        return _file_response(
-            services.bill.get_recibo_ref(access.bill),
-            content_type="application/pdf",
-            filename=filename,
-        )
-    pdf_bytes = services.bill.render_recibo(access.bill, access.billing)
-    return Response(
-        content=bytes(pdf_bytes),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    _analytics(
+        response,
+        "rentivo_recibo_downloaded",
+        bill_uuid_hash=analytics_hash(access.bill.uuid) or "",
     )
+    return response
 
 
 @router.get(
@@ -613,6 +757,7 @@ async def list_receipts(
 async def upload_receipts(
     billing_uuid: str,
     bill_uuid: str,
+    response: Response,
     receipt_files: Annotated[list[UploadFile], File()],
     principal: Principal = Depends(_files_write),
     _csrf: None = Depends(require_csrf),
@@ -621,7 +766,16 @@ async def upload_receipts(
     access = resolve_bill_access(principal, services, billing_uuid, bill_uuid)
     require_role(access.role, _MANAGE_ROLES)
     _require_pix(access.billing, services)
-    return await _upload_receipts(receipt_files, access, services, regenerate=True)
+    uploaded = await _upload_receipts(receipt_files, access, services, regenerate=True)
+    if uploaded.attached:
+        _analytics(
+            response,
+            "rentivo_receipt_uploaded",
+            bill_uuid_hash=analytics_hash(access.bill.uuid) or "",
+            count=uploaded.attached,
+            total_bytes=uploaded.total_bytes,
+        )
+    return uploaded
 
 
 @router.get(
@@ -673,7 +827,9 @@ async def delete_receipt(
         entity_uuid=receipt.uuid,
         previous_state=previous_state,
     )
-    return Response(status_code=204)
+    response = Response(status_code=204)
+    _analytics(response, "rentivo_receipt_deleted", bill_uuid_hash=analytics_hash(access.bill.uuid) or "")
+    return response
 
 
 @router.put(

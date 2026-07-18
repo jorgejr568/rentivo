@@ -263,12 +263,27 @@ class SQLAlchemyBillRepository(BillRepository):
         self.conn.commit()
 
     @traced("bill_repo.update_status")
-    def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None:
-        self.conn.execute(
-            text("UPDATE bills SET status = :status, status_updated_at = :status_updated_at WHERE id = :id"),
-            {"status": status, "status_updated_at": status_updated_at, "id": bill_id},
+    def update_status(
+        self,
+        bill_id: int,
+        expected_status: str,
+        status: str,
+        status_updated_at: datetime,
+    ) -> bool:
+        result = self.conn.execute(
+            text(
+                "UPDATE bills SET status = :status, status_updated_at = :status_updated_at "
+                "WHERE id = :id AND status = :expected_status AND deleted_at IS NULL"
+            ),
+            {
+                "status": status,
+                "status_updated_at": status_updated_at,
+                "id": bill_id,
+                "expected_status": expected_status,
+            },
         )
         self.conn.commit()
+        return result.rowcount == 1
 
     @traced("bill_repo.update_pdf_render_status")
     def update_pdf_render_status(self, bill_id: int, status: str | None) -> None:
@@ -279,9 +294,19 @@ class SQLAlchemyBillRepository(BillRepository):
         self.conn.commit()
 
     @traced("bill_repo.delete")
-    def delete(self, bill_id: int) -> None:
-        self.conn.execute(
-            text("UPDATE bills SET deleted_at = :deleted_at WHERE id = :id"),
+    def delete(self, bill_id: int) -> bool:
+        result = self.conn.execute(
+            text("UPDATE bills SET deleted_at = :deleted_at WHERE id = :id AND deleted_at IS NULL"),
             {"deleted_at": _now(), "id": bill_id},
         )
         self.conn.commit()
+        return result.rowcount == 1
+
+    @traced("bill_repo.delete_created")
+    def delete_created(self, bill_id: int) -> bool:
+        result = self.conn.execute(
+            text("DELETE FROM bills WHERE id = :id"),
+            {"id": bill_id},
+        )
+        self.conn.commit()
+        return result.rowcount == 1

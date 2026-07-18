@@ -125,6 +125,25 @@ class TestReceiptRepoCRUD:
         receipt_repo.delete(created.id)
         assert receipt_repo.get_by_id(created.id) is None
 
+    def test_delete_many_is_atomic_batch(self, receipt_repo, billing_with_bill):
+        _, bill = billing_with_bill
+        receipts = [
+            receipt_repo.create(
+                Receipt(
+                    bill_id=bill.id,
+                    filename=f"{index}.pdf",
+                    storage_key=f"{index}.pdf",
+                    content_type="application/pdf",
+                    file_size=1,
+                )
+            )
+            for index in range(2)
+        ]
+
+        assert receipt_repo.delete_many([receipt.id for receipt in receipts]) == 2
+        assert receipt_repo.list_by_bill(bill.id) == []
+        assert receipt_repo.delete_many([]) == 0
+
     def test_create_runtime_error(self, receipt_repo, billing_with_bill):
         _, bill = billing_with_bill
         receipt = Receipt(

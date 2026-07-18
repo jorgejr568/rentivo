@@ -13,9 +13,10 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
     SQLAlchemyOrganizationRepository,
+    SQLAlchemyReceiptRepository,
     SQLAlchemyUserRepository,
 )
-from rentivo.services.bill_service import BillService, _receipt_storage_key, _storage_key
+from rentivo.services.bill_service import BillService, _receipt_storage_key, _recibo_storage_key, _storage_key
 from rentivo.services.pix_service import PixConfig, PixService
 from rentivo.storage.local import LocalStorage
 from tests.web.conftest import test_engine, web_test_db  # noqa: F401
@@ -144,9 +145,21 @@ class TestBillService:
             status="sent",
         )
         result = self.service.change_status(bill, "paid")
-        self.mock_repo.update_status.assert_called_once()
+        status_call = self.mock_repo.update_status.call_args
+        assert status_call.args[:3] == (1, "sent", "paid")
         assert result.status == "paid"
         assert result.status_updated_at is not None
+
+    def test_change_status_rejects_lost_compare_and_swap_without_mutating_bill(self):
+        bill = Bill(id=1, uuid="u", billing_id=1, reference_month="2025-03", status="sent")
+        self.mock_repo.update_status.return_value = False
+
+        with pytest.raises(RuntimeError) as exc_info:
+            self.service.change_status(bill, "paid")
+
+        assert type(exc_info.value).__name__ == "StaleBillStatusError"
+        assert bill.status == "sent"
+        assert bill.status_updated_at is None
 
     def test_change_status_to_draft(self):
         # published → draft (back to rascunho) is an allowed backward transition.
@@ -243,8 +256,156 @@ class TestBillService:
         self.mock_repo.get_by_uuid.assert_called_once_with("uuid")
 
     def test_delete_bill(self):
+        self.mock_repo.delete.return_value = True
         self.service.delete_bill(1)
         self.mock_repo.delete.assert_called_once_with(1)
+
+    def test_delete_bill_rejects_already_deleted_row(self):
+        self.mock_repo.delete.return_value = False
+
+        with pytest.raises(RuntimeError) as exc_info:
+            self.service.delete_bill(1)
+
+        assert type(exc_info.value).__name__ == "StaleBillDeleteError"
+
+
+def test_competing_status_transitions_use_real_service_repository_compare_and_swap(
+    db_connection,
+    fake_encryption,
+    sample_billing,
+    sample_bill,
+):
+    billing_repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+    bill_repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+    billing = billing_repo.create(sample_billing())
+    stored = bill_repo.create(sample_bill(billing_id=billing.id, status="draft"))
+    first_reader = stored.model_copy(deep=True)
+    competing_reader = stored.model_copy(deep=True)
+    service = BillService(bill_repo, MagicMock())
+
+    service.change_status(first_reader, "published")
+    with pytest.raises(RuntimeError) as exc_info:
+        service.change_status(competing_reader, "sent")
+
+    assert type(exc_info.value).__name__ == "StaleBillStatusError"
+    assert competing_reader.status == "draft"
+    assert bill_repo.get_by_id(stored.id).status == "published"
+
+
+def test_rollback_bill_creation_removes_real_bill_receipts_and_storage(
+    db_connection,
+    fake_encryption,
+    sample_billing,
+    tmp_path,
+):
+    billing_repo = SQLAlchemyBillingRepository(db_connection, fake_encryption)
+    bill_repo = SQLAlchemyBillRepository(db_connection, fake_encryption)
+    receipt_repo = SQLAlchemyReceiptRepository(db_connection, fake_encryption)
+    storage = LocalStorage(str(tmp_path))
+    service = BillService(bill_repo, storage, receipt_repo)
+    billing = billing_repo.create(sample_billing())
+    bill = service.generate_bill(billing, "2026-08", {}, [], render=False)
+    receipt, _ = service.add_receipt(
+        bill,
+        billing,
+        "receipt.pdf",
+        b"receipt",
+        "application/pdf",
+        render=False,
+    )
+    invoice_key = _storage_key(billing.uuid, bill.uuid)
+    storage.save(invoice_key, b"%PDF")
+
+    service.rollback_bill_creation(bill, billing)
+
+    assert bill_repo.get_by_id(bill.id) is None
+    assert receipt_repo.get_by_uuid(receipt.uuid) is None
+    with pytest.raises(FileNotFoundError):
+        storage.get(receipt.storage_key)
+    with pytest.raises(FileNotFoundError):
+        storage.get(invoice_key)
+
+
+def test_rollback_receipt_batch_requires_atomic_delete_before_storage_cleanup():
+    receipt_repo = MagicMock()
+    receipt_repo.delete_many.return_value = 2
+    storage = MagicMock()
+    events: list[str] = []
+    receipt_repo.delete_many.side_effect = lambda _ids: events.append("db") or 2
+    storage.delete.side_effect = lambda _key: events.append("storage")
+    service = BillService(MagicMock(), storage, receipt_repo)
+    receipts = (
+        Receipt(id=1, bill_id=1, filename="a.pdf", storage_key="a"),
+        Receipt(id=2, bill_id=1, filename="b.pdf", storage_key="b"),
+    )
+
+    service.rollback_receipt_batch(receipts)
+
+    assert events == ["db", "storage", "storage"]
+    receipt_repo.delete_many.assert_called_once_with([1, 2])
+
+
+def test_rollback_receipt_batch_empty_is_noop():
+    service = BillService(MagicMock(), MagicMock())
+
+    service.rollback_receipt_batch(())
+
+    service.storage.delete.assert_not_called()
+
+
+def test_rollback_receipt_batch_requires_repository():
+    service = BillService(MagicMock(), MagicMock())
+    receipt = Receipt(id=1, bill_id=1, filename="a.pdf", storage_key="a")
+
+    with pytest.raises(RuntimeError, match="Receipt repository not configured"):
+        service.rollback_receipt_batch((receipt,))
+
+
+def test_rollback_receipt_batch_rejects_partial_database_cleanup():
+    receipt_repo = MagicMock()
+    receipt_repo.delete_many.return_value = 1
+    storage = MagicMock()
+    service = BillService(MagicMock(), storage, receipt_repo)
+    receipts = (
+        Receipt(id=1, bill_id=1, filename="a.pdf", storage_key="a"),
+        Receipt(id=2, bill_id=1, filename="b.pdf", storage_key="b"),
+    )
+
+    with pytest.raises(RuntimeError, match="complete receipt batch"):
+        service.rollback_receipt_batch(receipts)
+
+    storage.delete.assert_not_called()
+
+
+def test_rollback_bill_creation_without_receipt_repository_uses_predictable_keys():
+    bill_repo = MagicMock()
+    bill_repo.delete_created.return_value = True
+    storage = MagicMock()
+    service = BillService(bill_repo, storage)
+    bill = Bill(id=1, uuid="bill-uuid", billing_id=1, reference_month="2026-08")
+    billing = Billing(id=1, uuid="billing-uuid", name="Apt")
+
+    service.rollback_bill_creation(bill, billing)
+
+    assert [call.args[0] for call in storage.delete.call_args_list] == [
+        _storage_key(billing.uuid, bill.uuid),
+        _recibo_storage_key(billing.uuid, bill.uuid),
+    ]
+
+
+def test_rollback_bill_creation_requires_confirmed_hard_delete():
+    bill_repo = MagicMock()
+    bill_repo.delete_created.return_value = False
+    storage = MagicMock()
+    service = BillService(bill_repo, storage)
+
+    with pytest.raises(RuntimeError, match="created bill"):
+        service.rollback_bill_creation(
+            Bill(id=1, uuid="bill-uuid", billing_id=1, reference_month="2026-08"),
+            Billing(id=1, uuid="billing-uuid", name="Apt"),
+        )
+
+    storage.delete.assert_not_called()
 
 
 class _StaticPixService:
@@ -1153,10 +1314,26 @@ class TestResolveReciboIssuer:
         billing = Billing(id=1, name="Apt 101", owner_type="user", owner_id=7)
         assert svc._resolve_recibo_issuer(billing) == "Apt 101"
 
+    def test_falls_back_to_billing_name_when_organization_missing(self):
+        svc = self._service(self._Pix(org=None))
+        billing = Billing(id=1, name="Apt 101", owner_type="organization", owner_id=7)
+        assert svc._resolve_recibo_issuer(billing) == "Apt 101"
+
     def test_falls_back_to_billing_name_without_pix_service(self):
         svc = BillService(MagicMock(), MagicMock())  # pix_service=None
         billing = Billing(id=1, name="Apt 101", owner_type="organization", owner_id=5)
         assert svc._resolve_recibo_issuer(billing) == "Apt 101"
+
+    def test_render_recibo_without_status_timestamp_uses_empty_payment_date(self):
+        svc = BillService(MagicMock(), MagicMock())
+        bill = Bill(id=1, uuid="u", billing_id=1, reference_month="2026-08", status_updated_at=None)
+        billing = Billing(id=1, name="Apt 101")
+        with patch.object(svc, "recibo_generator") as generator:
+            generator.generate.return_value = b"%PDF"
+
+            svc.render_recibo(bill, billing)
+
+        assert generator.generate.call_args.kwargs["payment_date"] == ""
 
 
 class TestReciboLifecycle:
