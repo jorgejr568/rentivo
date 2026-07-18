@@ -33,4 +33,4 @@ class RecipientService:
             recipients.append(Recipient(billing_id=billing_id, name=name, email=email))
         self.recipient_repo.replace_for_billing(billing_id, recipients)
         logger.info("recipients_replaced", billing_id=billing_id, count=len(recipients))
-        return recipients
+        return self.recipient_repo.list_by_billing(billing_id)

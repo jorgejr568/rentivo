@@ -40,3 +40,14 @@ def test_replace_skips_blank_rows_and_trims(service):
 def test_replace_requires_email_for_named_row(service):
     service.replace_for_billing(1, [{"name": "NoEmail", "email": ""}])
     assert service.list_for_billing(1) == []
+
+
+def test_replace_returns_persisted_rows_with_public_uuids(service):
+    saved = service.replace_for_billing(
+        1,
+        [{"name": "Joao", "email": "joao@example.com"}],
+    )
+
+    assert saved == service.list_for_billing(1)
+    assert saved[0].id is not None
+    assert saved[0].uuid

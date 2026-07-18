@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+_EMAIL_LOCAL = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+")
+_EMAIL_DOMAIN_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 
 
 class _StrictModel(BaseModel):
@@ -54,14 +58,30 @@ class ContactInput(_StrictModel):
     @field_validator("email")
     @classmethod
     def valid_email(cls, value: str) -> str:
-        local, separator, domain = value.partition("@")
-        if not separator or not local or not domain or any(character.isspace() for character in value):
+        if value.count("@") != 1 or any(character.isspace() for character in value):
+            raise ValueError("E-mail inválido.")
+        local, domain = value.split("@")
+        labels = domain.split(".")
+        if (
+            not local
+            or len(local) > 64
+            or local.startswith(".")
+            or local.endswith(".")
+            or ".." in local
+            or _EMAIL_LOCAL.fullmatch(local) is None
+            or len(domain) > 253
+            or len(labels) < 2
+            or any(_EMAIL_DOMAIN_LABEL.fullmatch(label) is None for label in labels)
+        ):
             raise ValueError("E-mail inválido.")
         return value
 
 
-class ContactResponse(_StrictModel):
+class ContactReferenceResponse(_StrictModel):
     uuid: str
+
+
+class ContactResponse(ContactReferenceResponse):
     name: str
     email: str
 
@@ -71,7 +91,7 @@ class ContactListRequest(_StrictModel):
 
 
 class ContactListResponse(_StrictModel):
-    items: tuple[ContactResponse, ...]
+    items: tuple[ContactReferenceResponse | ContactResponse, ...]
 
 
 class BillingCreateRequest(_StrictModel):
@@ -158,8 +178,8 @@ class BillingResponse(_StrictModel):
     pix_merchant_city: str
     owner: BillingOwnerResponse
     items: tuple[BillingItemResponse, ...]
-    recipients: tuple[ContactResponse, ...]
-    reply_to: tuple[ContactResponse, ...]
+    recipients: tuple[ContactReferenceResponse | ContactResponse, ...]
+    reply_to: tuple[ContactReferenceResponse | ContactResponse, ...]
     communication_templates: tuple[CommunicationTemplateResponse, ...]
     stats: BillingStatsResponse
     pix_needs_setup: bool

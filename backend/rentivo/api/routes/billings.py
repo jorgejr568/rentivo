@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection
+from dataclasses import dataclass
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -35,6 +36,7 @@ from rentivo.api.schemas.billings import (
     ContactInput,
     ContactListRequest,
     ContactListResponse,
+    ContactReferenceResponse,
     ContactResponse,
     CurrentBillResponse,
     ExpenseCreateRequest,
@@ -80,6 +82,48 @@ _exports_create = require_scope(APIScope.EXPORTS_CREATE)
 _EDIT_ROLES = frozenset({"owner", "admin"})
 _MANAGE_ROLES = frozenset({"owner", "admin", "manager"})
 
+_ATTACHMENT_UPLOAD_OPENAPI = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "default": ""},
+                        "file": {"type": "string", "format": "binary"},
+                    },
+                    "required": ["file"],
+                }
+            }
+        },
+    }
+}
+_ATTACHMENT_DOWNLOAD_RESPONSES = {
+    200: {
+        "description": "Attachment content",
+        "content": {
+            content_type: {"schema": {"type": "string", "format": "binary"}}
+            for content_type in ("application/pdf", "image/jpeg", "image/png")
+        },
+    },
+    302: {
+        "description": "Temporary storage redirect",
+        "headers": {
+            "Location": {
+                "description": "Signed attachment URL",
+                "schema": {"type": "string", "format": "uri"},
+            }
+        },
+    },
+}
+
+
+@dataclass(frozen=True, slots=True)
+class AttachmentUploadForm:
+    name: str
+    file: UploadFile
+
 
 def _field_problem(code: str, detail: str, field: str) -> ProblemException:
     return ProblemException(
@@ -99,6 +143,15 @@ def _conflict(code: str, detail: str) -> ProblemException:
 
 def _analytics(response: Response, event: str) -> None:
     response.headers["X-Rentivo-Analytics-Event"] = event
+
+
+async def _attachment_upload_form(request: Request) -> AttachmentUploadForm:
+    """Parse after credential scanning; FastAPI File/Form fields are parsed before dependencies."""
+    form = await request.form()
+    file = form.get("file")
+    if not isinstance(file, UploadFile) or not file.filename:
+        raise _field_problem("invalid_attachment", "Nenhum arquivo selecionado.", "file")
+    return AttachmentUploadForm(name=str(form.get("name", "")).strip(), file=file)
 
 
 def _capabilities(access: BillingAccess) -> BillingCapabilitiesResponse:
@@ -126,7 +179,9 @@ def _item(item: BillingItem) -> BillingItemResponse:
     return BillingItemResponse(description=item.description, amount=item.amount, item_type=item_type)
 
 
-def _contact(recipient: Recipient) -> ContactResponse:
+def _contact(recipient: Recipient, principal: Principal) -> ContactReferenceResponse | ContactResponse:
+    if not principal.api_key.is_login_token:
+        return ContactReferenceResponse(uuid=recipient.uuid)
     return ContactResponse(uuid=recipient.uuid, name=recipient.name, email=recipient.email)
 
 
@@ -249,8 +304,12 @@ def _billing_response(access: BillingAccess, services: RequestServices) -> Billi
         pix_merchant_city=billing.pix_merchant_city,
         owner=_owner(billing, services),
         items=tuple(_item(item) for item in billing.items),
-        recipients=tuple(_contact(recipient) for recipient in services.recipient.list_for_billing(billing_id)),
-        reply_to=tuple(_contact(recipient) for recipient in services.reply_to.list_for_billing(billing_id)),
+        recipients=tuple(
+            _contact(recipient, access.principal) for recipient in services.recipient.list_for_billing(billing_id)
+        ),
+        reply_to=tuple(
+            _contact(recipient, access.principal) for recipient in services.reply_to.list_for_billing(billing_id)
+        ),
         communication_templates=tuple(
             CommunicationTemplateResponse(
                 comm_type=template.comm_type,
@@ -527,6 +586,7 @@ async def _put_contacts(
     *,
     billing_uuid: str,
     payload: ContactListRequest,
+    response: Response,
     principal: Principal,
     services: RequestServices,
     service_name: Literal["recipient", "reply_to"],
@@ -544,13 +604,15 @@ async def _put_contacts(
         count_key=count_key,
         track_previous=True,
     )
-    return ContactListResponse(items=tuple(_contact(recipient) for recipient in saved))
+    _analytics(response, "rentivo_billing_edited")
+    return ContactListResponse(items=tuple(_contact(recipient, principal) for recipient in saved))
 
 
 @router.put("/{billing_uuid}/recipients", response_model=ContactListResponse)
 async def replace_recipients(
     billing_uuid: str,
     payload: ContactListRequest,
+    response: Response,
     principal: Principal = Depends(_billings_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -558,6 +620,7 @@ async def replace_recipients(
     return await _put_contacts(
         billing_uuid=billing_uuid,
         payload=payload,
+        response=response,
         principal=principal,
         services=services,
         service_name="recipient",
@@ -570,6 +633,7 @@ async def replace_recipients(
 async def replace_reply_to(
     billing_uuid: str,
     payload: ContactListRequest,
+    response: Response,
     principal: Principal = Depends(_billings_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -577,6 +641,7 @@ async def replace_reply_to(
     return await _put_contacts(
         billing_uuid=billing_uuid,
         payload=payload,
+        response=response,
         principal=principal,
         services=services,
         service_name="reply_to",
@@ -670,28 +735,29 @@ async def list_attachments(
     )
 
 
-@router.post("/{billing_uuid}/attachments", response_model=AttachmentResponse, status_code=201)
+@router.post(
+    "/{billing_uuid}/attachments",
+    response_model=AttachmentResponse,
+    status_code=201,
+    openapi_extra=_ATTACHMENT_UPLOAD_OPENAPI,
+)
 async def upload_attachment(
     billing_uuid: str,
-    request: Request,
     response: Response,
+    upload: AttachmentUploadForm = Depends(_attachment_upload_form),
     principal: Principal = Depends(_files_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
 ) -> AttachmentResponse:
     access = resolve_billing_access(principal, services, billing_uuid)
     require_role(access.role, _EDIT_ROLES)
-    form = await request.form()
-    file = form.get("file")
-    if not isinstance(file, UploadFile) or not file.filename:
-        raise _field_problem("invalid_attachment", "Nenhum arquivo selecionado.", "file")
     try:
         attachment = services.billing_attachment.add_attachment(
             billing=access.billing,
-            name=str(form.get("name", "")).strip(),
-            filename=file.filename,
-            file_bytes=await file.read(),
-            content_type=file.content_type or "",
+            name=upload.name,
+            filename=upload.file.filename,
+            file_bytes=await upload.file.read(),
+            content_type=upload.file.content_type or "",
         )
     except ValueError as exc:
         raise _field_problem("invalid_attachment", str(exc), "file") from None
@@ -719,13 +785,17 @@ def _billing_attachment(
     return attachment
 
 
-@router.get("/{billing_uuid}/attachments/{attachment_uuid}")
+@router.get(
+    "/{billing_uuid}/attachments/{attachment_uuid}",
+    response_class=Response,
+    responses=_ATTACHMENT_DOWNLOAD_RESPONSES,
+)
 async def download_attachment(
     billing_uuid: str,
     attachment_uuid: str,
     principal: Principal = Depends(_files_read),
     services: RequestServices = Depends(get_services),
-):
+) -> Response:
     access = resolve_billing_access(principal, services, billing_uuid)
     attachment = _billing_attachment(access=access, services=services, attachment_uuid=attachment_uuid)
     reference = services.billing_attachment.get_attachment_ref(attachment)
