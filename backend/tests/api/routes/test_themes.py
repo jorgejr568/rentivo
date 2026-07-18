@@ -233,7 +233,8 @@ class FakeServices:
 def _client() -> tuple[TestClient, FakeServices, object]:
     services = FakeServices()
     app = create_app()
-    if importlib.util.find_spec("rentivo.api.routes.themes") is not None:
+    theme_router_registered = any(getattr(route, "path", "") == "/api/v1/themes/user" for route in app.routes)
+    if not theme_router_registered and importlib.util.find_spec("rentivo.api.routes.themes") is not None:
         themes = importlib.import_module("rentivo.api.routes.themes")
         app.include_router(themes.router, prefix="/api/v1")
     app.dependency_overrides[get_services] = lambda: services
@@ -255,12 +256,14 @@ def _cookie_csrf(client: TestClient) -> dict[str, str]:
 def _assert_theme_response(
     body: dict,
     *,
+    owner_name: str,
     stored: dict | None,
     effective: dict,
     source: str,
     can_edit: bool = True,
 ) -> None:
     assert body == {
+        "owner_name": owner_name,
         "stored": stored,
         "effective": effective,
         "effective_source": source,
@@ -272,13 +275,29 @@ def _assert_theme_response(
     }
 
 
+def _assert_theme_analytics(response: Response, scope: str) -> None:
+    assert response.headers["X-Rentivo-Analytics-Event"] == "rentivo_theme_changed"
+    assert response.headers["X-Rentivo-Analytics-Scope"] == scope
+
+
+def _assert_no_theme_analytics(response: Response) -> None:
+    assert "X-Rentivo-Analytics-Event" not in response.headers
+    assert "X-Rentivo-Analytics-Scope" not in response.headers
+
+
 def test_user_theme_returns_defaults_and_strict_font_options_for_new_account() -> None:
     client, _services, _app = _client()
 
     response = client.get("/api/v1/themes/user", headers=_bearer())
 
     assert response.status_code == 200
-    _assert_theme_response(response.json(), stored=None, effective=DEFAULT_VALUES, source="default")
+    _assert_theme_response(
+        response.json(),
+        owner_name="Meu Tema",
+        stored=None,
+        effective=DEFAULT_VALUES,
+        source="default",
+    )
 
 
 def test_read_only_user_theme_get_disables_edit_and_reset_capabilities() -> None:
@@ -290,6 +309,7 @@ def test_read_only_user_theme_get_disables_edit_and_reset_capabilities() -> None
     assert response.status_code == 200
     _assert_theme_response(
         response.json(),
+        owner_name="Meu Tema",
         stored=THEME_PAYLOAD,
         effective=THEME_PAYLOAD,
         source="user",
@@ -309,6 +329,7 @@ def test_read_only_organization_theme_get_disables_edit_and_reset_capabilities()
     assert response.status_code == 200
     _assert_theme_response(
         response.json(),
+        owner_name=ORGANIZATION.name,
         stored=THEME_PAYLOAD,
         effective=THEME_PAYLOAD,
         source="organization",
@@ -328,11 +349,56 @@ def test_read_only_billing_theme_get_disables_edit_and_reset_capabilities() -> N
     assert response.status_code == 200
     _assert_theme_response(
         response.json(),
+        owner_name=ORGANIZATION_BILLING.name,
         stored=THEME_PAYLOAD,
         effective=THEME_PAYLOAD,
         source="billing",
         can_edit=False,
     )
+
+
+def test_theme_only_organization_key_reads_owner_name_without_organization_detail_scope() -> None:
+    client, _services, _app = _client()
+    assert THEME_SCOPES <= ORGANIZATION_KEY.scopes
+    assert ORGANIZATION_GRANT in ORGANIZATION_KEY.grants
+    assert APIScope.ORGANIZATIONS_READ.value not in ORGANIZATION_KEY.scopes
+
+    response = client.get(
+        f"/api/v1/themes/organizations/{ORGANIZATION.uuid}",
+        headers=_bearer(ORGANIZATION_SECRET),
+    )
+
+    assert response.status_code == 200
+    _assert_theme_response(
+        response.json(),
+        owner_name=ORGANIZATION.name,
+        stored=None,
+        effective=DEFAULT_VALUES,
+        source="default",
+    )
+    assert USER.email not in response.text
+
+
+def test_theme_only_organization_key_reads_billing_name_without_billing_detail_scope() -> None:
+    client, _services, _app = _client()
+    assert THEME_SCOPES <= ORGANIZATION_KEY.scopes
+    assert ORGANIZATION_GRANT in ORGANIZATION_KEY.grants
+    assert APIScope.BILLINGS_READ.value not in ORGANIZATION_KEY.scopes
+
+    response = client.get(
+        f"/api/v1/themes/billings/{ORGANIZATION_BILLING.uuid}",
+        headers=_bearer(ORGANIZATION_SECRET),
+    )
+
+    assert response.status_code == 200
+    _assert_theme_response(
+        response.json(),
+        owner_name=ORGANIZATION_BILLING.name,
+        stored=None,
+        effective=DEFAULT_VALUES,
+        source="default",
+    )
+    assert USER.email not in response.text
 
 
 def test_user_theme_create_records_new_state_and_integration_actor() -> None:
@@ -341,7 +407,14 @@ def test_user_theme_create_records_new_state_and_integration_actor() -> None:
     response = client.put("/api/v1/themes/user", json=THEME_PAYLOAD, headers=_bearer())
 
     assert response.status_code == 200
-    _assert_theme_response(response.json(), stored=THEME_PAYLOAD, effective=THEME_PAYLOAD, source="user")
+    _assert_theme_response(
+        response.json(),
+        owner_name="Meu Tema",
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="user",
+    )
+    _assert_theme_analytics(response, "user")
     actor, event_type, state = services.audit.events[-1]
     assert event_type == AuditEventType.THEME_CREATE
     assert actor.source == "integration"
@@ -359,6 +432,7 @@ def test_user_theme_update_captures_previous_state_before_service_mutation() -> 
     response = client.put("/api/v1/themes/user", json=updated_payload, headers=_bearer())
 
     assert response.status_code == 200
+    _assert_theme_analytics(response, "user")
     _actor, event_type, state = services.audit.events[-1]
     assert event_type == AuditEventType.THEME_UPDATE
     assert state["previous_state"] == previous_state
@@ -373,6 +447,7 @@ def test_user_theme_reset_records_deleted_state_and_returns_no_content() -> None
 
     assert response.status_code == 204
     assert response.content == b""
+    _assert_no_theme_analytics(response)
     _actor, event_type, state = services.audit.events[-1]
     assert event_type == AuditEventType.THEME_DELETE
     assert state["entity_id"] == existing.id
@@ -387,6 +462,7 @@ def test_reset_without_stored_theme_is_idempotent_and_not_audited() -> None:
     response = client.delete("/api/v1/themes/user", headers=_bearer())
 
     assert response.status_code == 204
+    _assert_no_theme_analytics(response)
     assert services.audit.events == []
 
 
@@ -412,8 +488,23 @@ def test_organization_admin_can_save_read_and_reset_theme() -> None:
     reset = client.delete(path, headers=_bearer(ORGANIZATION_SECRET))
 
     assert saved.status_code == 200
-    _assert_theme_response(read.json(), stored=THEME_PAYLOAD, effective=THEME_PAYLOAD, source="organization")
+    _assert_theme_analytics(saved, "organization")
+    _assert_theme_response(
+        saved.json(),
+        owner_name=ORGANIZATION.name,
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="organization",
+    )
+    _assert_theme_response(
+        read.json(),
+        owner_name=ORGANIZATION.name,
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="organization",
+    )
     assert reset.status_code == 204
+    _assert_no_theme_analytics(reset)
     assert [event[1] for event in services.audit.events] == [
         AuditEventType.THEME_CREATE,
         AuditEventType.THEME_DELETE,
@@ -454,8 +545,16 @@ def test_personal_billing_owner_can_save_and_reset_theme() -> None:
     reset = client.delete(path, headers=_bearer())
 
     assert saved.status_code == 200
-    _assert_theme_response(saved.json(), stored=THEME_PAYLOAD, effective=THEME_PAYLOAD, source="billing")
+    _assert_theme_analytics(saved, "billing")
+    _assert_theme_response(
+        saved.json(),
+        owner_name=PERSONAL_BILLING.name,
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="billing",
+    )
     assert reset.status_code == 204
+    _assert_no_theme_analytics(reset)
     assert [event[1] for event in services.audit.events] == [
         AuditEventType.THEME_CREATE,
         AuditEventType.THEME_DELETE,
@@ -469,7 +568,14 @@ def test_organization_billing_admin_can_manage_theme() -> None:
     saved = client.put(path, json=THEME_PAYLOAD, headers=_bearer(ORGANIZATION_SECRET))
 
     assert saved.status_code == 200
-    _assert_theme_response(saved.json(), stored=THEME_PAYLOAD, effective=THEME_PAYLOAD, source="billing")
+    _assert_theme_analytics(saved, "billing")
+    _assert_theme_response(
+        saved.json(),
+        owner_name=ORGANIZATION_BILLING.name,
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="billing",
+    )
 
 
 @pytest.mark.parametrize(
@@ -492,7 +598,13 @@ def test_billing_theme_returns_inherited_owner_values(
     response = client.get(f"/api/v1/themes/billings/{billing.uuid}", headers=_bearer(secret))
 
     assert response.status_code == 200
-    _assert_theme_response(response.json(), stored=None, effective=THEME_PAYLOAD, source=expected_source)
+    _assert_theme_response(
+        response.json(),
+        owner_name=billing.name,
+        stored=None,
+        effective=THEME_PAYLOAD,
+        source=expected_source,
+    )
 
 
 def test_billing_stored_theme_takes_precedence_over_owner_theme() -> None:
@@ -507,7 +619,13 @@ def test_billing_stored_theme_takes_precedence_over_owner_theme() -> None:
     )
 
     assert response.status_code == 200
-    _assert_theme_response(response.json(), stored=billing_payload, effective=billing_payload, source="billing")
+    _assert_theme_response(
+        response.json(),
+        owner_name=PERSONAL_BILLING.name,
+        stored=billing_payload,
+        effective=billing_payload,
+        source="billing",
+    )
 
 
 def test_theme_read_requires_read_scope() -> None:
@@ -677,6 +795,7 @@ def test_theme_contract_is_typed_in_openapi() -> None:
     assert update["properties"]["header_font"]["enum"] == list(AVAILABLE_FONTS)
     assert update["properties"]["primary"]["pattern"] == "^#[0-9A-Fa-f]{6}$"
     assert set(schemas["ThemeResponse"]["properties"]) == {
+        "owner_name",
         "stored",
         "effective",
         "effective_source",

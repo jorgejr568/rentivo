@@ -27,6 +27,8 @@ router = APIRouter(prefix="/themes", tags=["themes"])
 _read_principal = require_scope(APIScope.THEMES_READ)
 _write_principal = require_scope(APIScope.THEMES_WRITE)
 _THEME_ADMIN_ROLES = frozenset({"owner", "admin"})
+_ANALYTICS_EVENT_HEADER = "X-Rentivo-Analytics-Event"
+_ANALYTICS_SCOPE_HEADER = "X-Rentivo-Analytics-Scope"
 
 
 def _values(theme: Theme) -> ThemeValuesResponse:
@@ -43,6 +45,7 @@ def _values(theme: Theme) -> ThemeValuesResponse:
 
 
 def _response(
+    owner_name: str,
     stored: Theme | None,
     effective: Theme,
     source: ThemeSource,
@@ -50,6 +53,7 @@ def _response(
     can_edit: bool,
 ) -> ThemeResponse:
     return ThemeResponse(
+        owner_name=owner_name,
         stored=_values(stored) if stored is not None else None,
         effective=_values(effective),
         effective_source=source,
@@ -65,6 +69,11 @@ def _can_edit(principal: Principal) -> bool:
     return APIScope.THEMES_WRITE.value in principal.api_key.scopes
 
 
+def _set_theme_analytics(response: Response, scope: str) -> None:
+    response.headers[_ANALYTICS_EVENT_HEADER] = "rentivo_theme_changed"
+    response.headers[_ANALYTICS_SCOPE_HEADER] = scope
+
+
 def _require_user_access(principal: Principal, services: RequestServices) -> tuple[str, int]:
     require_resource_grant(principal, services, "user", principal.user.id)
     return "user", principal.user.id
@@ -74,10 +83,10 @@ def _require_organization_admin(
     principal: Principal,
     services: RequestServices,
     org_uuid: str,
-) -> tuple[str, int]:
+) -> tuple[str, int, str]:
     access = resolve_organization_access(principal, services, org_uuid)
     require_role(access.role, {"admin"})
-    return "organization", cast(int, access.organization.id)
+    return "organization", cast(int, access.organization.id), access.organization.name
 
 
 def _require_billing_admin(
@@ -94,12 +103,13 @@ def _direct_theme_response(
     services: RequestServices,
     owner_type: str,
     owner_id: int,
+    owner_name: str,
     *,
     can_edit: bool,
 ) -> ThemeResponse:
     stored = services.theme.get_theme_for_owner(owner_type, owner_id)
     source = cast(ThemeSource, owner_type if stored is not None else "default")
-    return _response(stored, stored or DEFAULT_THEME, source, can_edit=can_edit)
+    return _response(owner_name, stored, stored or DEFAULT_THEME, source, can_edit=can_edit)
 
 
 def _billing_theme_response(
@@ -112,6 +122,7 @@ def _billing_theme_response(
     stored = services.theme.get_theme_for_owner("billing", billing_id)
     resolved = services.theme.resolve_theme_with_source(billing)
     return _response(
+        billing.name,
         stored,
         resolved.theme,
         cast(ThemeSource, resolved.source),
@@ -173,6 +184,7 @@ async def get_user_theme(
         services,
         owner_type,
         owner_id,
+        "Meu Tema",
         can_edit=_can_edit(principal),
     )
 
@@ -180,6 +192,7 @@ async def get_user_theme(
 @router.put("/user", response_model=ThemeResponse)
 async def update_user_theme(
     payload: ThemeUpdateRequest,
+    response: Response,
     principal: Principal = Depends(_write_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -192,7 +205,8 @@ async def update_user_theme(
         owner_id=owner_id,
         payload=payload,
     )
-    return _response(saved, saved, "user", can_edit=_can_edit(principal))
+    _set_theme_analytics(response, "user")
+    return _response("Meu Tema", saved, saved, "user", can_edit=_can_edit(principal))
 
 
 @router.delete("/user", status_code=204)
@@ -212,11 +226,12 @@ async def get_organization_theme(
     principal: Principal = Depends(_read_principal),
     services: RequestServices = Depends(get_services),
 ) -> ThemeResponse:
-    owner_type, owner_id = _require_organization_admin(principal, services, org_uuid)
+    owner_type, owner_id, owner_name = _require_organization_admin(principal, services, org_uuid)
     return _direct_theme_response(
         services,
         owner_type,
         owner_id,
+        owner_name,
         can_edit=_can_edit(principal),
     )
 
@@ -224,12 +239,13 @@ async def get_organization_theme(
 @router.put("/organizations/{org_uuid}", response_model=ThemeResponse)
 async def update_organization_theme(
     payload: ThemeUpdateRequest,
+    response: Response,
     org_uuid: str = Path(min_length=1),
     principal: Principal = Depends(_write_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
 ) -> ThemeResponse:
-    owner_type, owner_id = _require_organization_admin(principal, services, org_uuid)
+    owner_type, owner_id, owner_name = _require_organization_admin(principal, services, org_uuid)
     saved = _save_theme(
         services=services,
         principal=principal,
@@ -237,7 +253,8 @@ async def update_organization_theme(
         owner_id=owner_id,
         payload=payload,
     )
-    return _response(saved, saved, "organization", can_edit=_can_edit(principal))
+    _set_theme_analytics(response, "organization")
+    return _response(owner_name, saved, saved, "organization", can_edit=_can_edit(principal))
 
 
 @router.delete("/organizations/{org_uuid}", status_code=204)
@@ -247,7 +264,7 @@ async def reset_organization_theme(
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
 ) -> Response:
-    owner_type, owner_id = _require_organization_admin(principal, services, org_uuid)
+    owner_type, owner_id, _owner_name = _require_organization_admin(principal, services, org_uuid)
     _reset_theme(services=services, principal=principal, owner_type=owner_type, owner_id=owner_id)
     return Response(status_code=204)
 
@@ -270,12 +287,13 @@ async def get_billing_theme(
 @router.put("/billings/{billing_uuid}", response_model=ThemeResponse)
 async def update_billing_theme(
     payload: ThemeUpdateRequest,
+    response: Response,
     billing_uuid: str = Path(min_length=1),
     principal: Principal = Depends(_write_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
 ) -> ThemeResponse:
-    _billing, owner_type, owner_id = _require_billing_admin(principal, services, billing_uuid)
+    billing, owner_type, owner_id = _require_billing_admin(principal, services, billing_uuid)
     saved = _save_theme(
         services=services,
         principal=principal,
@@ -283,7 +301,8 @@ async def update_billing_theme(
         owner_id=owner_id,
         payload=payload,
     )
-    return _response(saved, saved, "billing", can_edit=_can_edit(principal))
+    _set_theme_analytics(response, "billing")
+    return _response(billing.name, saved, saved, "billing", can_edit=_can_edit(principal))
 
 
 @router.delete("/billings/{billing_uuid}", status_code=204)

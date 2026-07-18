@@ -15,6 +15,37 @@ def test_openapi_contains_auth_and_key_operations() -> None:
     assert "/api/v1/api-keys" in schema["paths"]
 
 
+def test_openapi_contains_authenticated_domain_operations() -> None:
+    paths = create_app().openapi()["paths"]
+
+    assert {
+        "/api/v1/billings",
+        "/api/v1/billings/{billing_uuid}",
+        "/api/v1/billings/{billing_uuid}/bills",
+        "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}",
+        "/api/v1/billings/{billing_uuid}/expenses",
+        "/api/v1/billings/{billing_uuid}/attachments",
+        "/api/v1/organizations",
+        "/api/v1/organizations/{organization_uuid}",
+        "/api/v1/invites",
+        "/api/v1/themes/user",
+        "/api/v1/themes/organizations/{org_uuid}",
+        "/api/v1/themes/billings/{billing_uuid}",
+    }.issubset(paths)
+
+
+def test_openapi_operation_ids_are_unique() -> None:
+    paths = create_app().openapi()["paths"]
+    operation_ids = [
+        operation["operationId"]
+        for path in paths.values()
+        for method, operation in path.items()
+        if method in {"delete", "get", "patch", "post", "put"}
+    ]
+
+    assert len(operation_ids) == len(set(operation_ids))
+
+
 def test_export_is_deterministic_without_starting_database_connections(
     tmp_path: Path,
     monkeypatch,

@@ -49,9 +49,7 @@ INTEGRATION_SCOPES = frozenset(
     }
 )
 
-# The foundation milestone exposes only the non-security profile to integration
-# clients. Later domain API milestones opt their stable scopes in here.
-DEPLOYED_API_SCOPES = frozenset({APIScope.PROFILE_READ.value})
+DEPLOYED_API_SCOPES = INTEGRATION_SCOPES
 
 
 def deployed_integration_scopes(deployed_scopes: Iterable[str]) -> frozenset[str]:

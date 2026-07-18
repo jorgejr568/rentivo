@@ -62,6 +62,7 @@ class ThemeCapabilitiesResponse(_StrictModel):
 
 
 class ThemeResponse(_StrictModel):
+    owner_name: str
     stored: ThemeValuesResponse | None
     effective: ThemeValuesResponse
     effective_source: ThemeSource

@@ -444,6 +444,74 @@
         "title": "AnalyticsSettings",
         "type": "object"
       },
+      "AttachmentListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AttachmentResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AttachmentListResponse",
+        "type": "object"
+      },
+      "AttachmentResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "file_size": {
+            "title": "File Size",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "filename",
+          "content_type",
+          "file_size",
+          "sort_order"
+        ],
+        "title": "AttachmentResponse",
+        "type": "object"
+      },
       "AuthConfigResponse": {
         "additionalProperties": false,
         "properties": {
@@ -478,6 +546,1177 @@
           "bootstrap"
         ],
         "title": "AuthenticatedResponse",
+        "type": "object"
+      },
+      "AvailableTransitionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "requires_confirmation": {
+            "title": "Requires Confirmation",
+            "type": "boolean"
+          },
+          "style": {
+            "title": "Style",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "label",
+          "style",
+          "requires_confirmation"
+        ],
+        "title": "AvailableTransitionResponse",
+        "type": "object"
+      },
+      "BillCapabilitiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_delete_receipts": {
+            "title": "Can Delete Receipts",
+            "type": "boolean"
+          },
+          "can_download_invoice": {
+            "title": "Can Download Invoice",
+            "type": "boolean"
+          },
+          "can_download_recibo": {
+            "title": "Can Download Recibo",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_regenerate": {
+            "title": "Can Regenerate",
+            "type": "boolean"
+          },
+          "can_reorder_receipts": {
+            "title": "Can Reorder Receipts",
+            "type": "boolean"
+          },
+          "can_transition": {
+            "title": "Can Transition",
+            "type": "boolean"
+          },
+          "can_upload_receipts": {
+            "title": "Can Upload Receipts",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "can_edit",
+          "can_delete",
+          "can_transition",
+          "can_regenerate",
+          "can_upload_receipts",
+          "can_delete_receipts",
+          "can_reorder_receipts",
+          "can_download_invoice",
+          "can_download_recibo"
+        ],
+        "title": "BillCapabilitiesResponse",
+        "type": "object"
+      },
+      "BillDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available_transitions": {
+            "items": {
+              "$ref": "#/components/schemas/AvailableTransitionResponse"
+            },
+            "title": "Available Transitions",
+            "type": "array"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/BillCapabilitiesResponse"
+          },
+          "communications": {
+            "default": [],
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CommunicationHistoryResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/RedactedCommunicationHistoryResponse"
+                }
+              ]
+            },
+            "title": "Communications",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "has_invoice": {
+            "title": "Has Invoice",
+            "type": "boolean"
+          },
+          "has_recibo": {
+            "title": "Has Recibo",
+            "type": "boolean"
+          },
+          "line_items": {
+            "items": {
+              "$ref": "#/components/schemas/BillLineItemResponse"
+            },
+            "title": "Line Items",
+            "type": "array"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "pdf_render_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Render Status"
+          },
+          "receipt_upload": {
+            "$ref": "#/components/schemas/ReceiptUploadSummary"
+          },
+          "receipts": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReceiptResponse"
+            },
+            "title": "Receipts",
+            "type": "array"
+          },
+          "reference_month": {
+            "title": "Reference Month",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Updated At"
+          },
+          "total_amount": {
+            "title": "Total Amount",
+            "type": "integer"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "reference_month",
+          "total_amount",
+          "line_items",
+          "notes",
+          "due_date",
+          "status",
+          "status_updated_at",
+          "pdf_render_status",
+          "created_at",
+          "has_invoice",
+          "has_recibo",
+          "available_transitions",
+          "capabilities"
+        ],
+        "title": "BillDetailResponse",
+        "type": "object"
+      },
+      "BillLineItemRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "minimum": 0.0,
+            "title": "Amount",
+            "type": "integer"
+          },
+          "description": {
+            "maxLength": 255,
+            "title": "Description",
+            "type": "string"
+          },
+          "item_type": {
+            "$ref": "#/components/schemas/ItemType"
+          }
+        },
+        "required": [
+          "description",
+          "amount",
+          "item_type"
+        ],
+        "title": "BillLineItemRequest",
+        "type": "object"
+      },
+      "BillLineItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "item_type": {
+            "$ref": "#/components/schemas/ItemType"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "description",
+          "amount",
+          "item_type",
+          "sort_order"
+        ],
+        "title": "BillLineItemResponse",
+        "type": "object"
+      },
+      "BillListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BillResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "BillListResponse",
+        "type": "object"
+      },
+      "BillResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available_transitions": {
+            "items": {
+              "$ref": "#/components/schemas/AvailableTransitionResponse"
+            },
+            "title": "Available Transitions",
+            "type": "array"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/BillCapabilitiesResponse"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "has_invoice": {
+            "title": "Has Invoice",
+            "type": "boolean"
+          },
+          "has_recibo": {
+            "title": "Has Recibo",
+            "type": "boolean"
+          },
+          "line_items": {
+            "items": {
+              "$ref": "#/components/schemas/BillLineItemResponse"
+            },
+            "title": "Line Items",
+            "type": "array"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "pdf_render_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pdf Render Status"
+          },
+          "reference_month": {
+            "title": "Reference Month",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Updated At"
+          },
+          "total_amount": {
+            "title": "Total Amount",
+            "type": "integer"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "reference_month",
+          "total_amount",
+          "line_items",
+          "notes",
+          "due_date",
+          "status",
+          "status_updated_at",
+          "pdf_render_status",
+          "created_at",
+          "has_invoice",
+          "has_recibo",
+          "available_transitions",
+          "capabilities"
+        ],
+        "title": "BillResponse",
+        "type": "object"
+      },
+      "BillStatus": {
+        "enum": [
+          "draft",
+          "published",
+          "sent",
+          "paid",
+          "cancelled",
+          "delayed_payment"
+        ],
+        "title": "BillStatus",
+        "type": "string"
+      },
+      "BillTransitionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "current_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "$ref": "#/components/schemas/BillStatus"
+          }
+        },
+        "required": [
+          "target"
+        ],
+        "title": "BillTransitionRequest",
+        "type": "object"
+      },
+      "BillUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "line_items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BillLineItemRequest"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Line Items"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "title": "BillUpdateRequest",
+        "type": "object"
+      },
+      "BillingCapabilitiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "can_delete": {
+            "title": "Can Delete",
+            "type": "boolean"
+          },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_manage_bills": {
+            "title": "Can Manage Bills",
+            "type": "boolean"
+          },
+          "can_transfer": {
+            "title": "Can Transfer",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "can_edit",
+          "can_manage_bills",
+          "can_delete",
+          "can_transfer"
+        ],
+        "title": "BillingCapabilitiesResponse",
+        "type": "object"
+      },
+      "BillingCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "default": "",
+            "maxLength": 2000,
+            "title": "Description",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BillingItemInput"
+            },
+            "minItems": 1,
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/BillingOwnerRequest"
+          },
+          "pix_key": {
+            "default": "",
+            "title": "Pix Key",
+            "type": "string"
+          },
+          "pix_merchant_city": {
+            "default": "",
+            "maxLength": 15,
+            "title": "Pix Merchant City",
+            "type": "string"
+          },
+          "pix_merchant_name": {
+            "default": "",
+            "maxLength": 25,
+            "title": "Pix Merchant Name",
+            "type": "string"
+          },
+          "recipients": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ContactInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipients"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ContactInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          }
+        },
+        "required": [
+          "name",
+          "items"
+        ],
+        "title": "BillingCreateRequest",
+        "type": "object"
+      },
+      "BillingItemInput": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "minimum": 0.0,
+            "title": "Amount",
+            "type": "integer"
+          },
+          "description": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "fixed",
+              "variable"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "amount",
+          "item_type"
+        ],
+        "title": "BillingItemInput",
+        "type": "object"
+      },
+      "BillingItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "item_type": {
+            "enum": [
+              "fixed",
+              "variable"
+            ],
+            "title": "Item Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "amount",
+          "item_type"
+        ],
+        "title": "BillingItemResponse",
+        "type": "object"
+      },
+      "BillingListItemResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/BillingCapabilitiesResponse"
+          },
+          "current_bill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CurrentBillResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "item_count": {
+            "title": "Item Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/BillingOwnerResponse"
+          },
+          "pix_needs_setup": {
+            "title": "Pix Needs Setup",
+            "type": "boolean"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "description",
+          "owner",
+          "item_count",
+          "pix_needs_setup",
+          "capabilities"
+        ],
+        "title": "BillingListItemResponse",
+        "type": "object"
+      },
+      "BillingListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BillingListItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/BillingStatsResponse"
+          },
+          "user_pix_incomplete": {
+            "title": "User Pix Incomplete",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "user_pix_incomplete",
+          "stats"
+        ],
+        "title": "BillingListResponse",
+        "type": "object"
+      },
+      "BillingOwnerRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "type": {
+            "default": "user",
+            "enum": [
+              "user",
+              "organization"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uuid"
+          }
+        },
+        "title": "BillingOwnerRequest",
+        "type": "object"
+      },
+      "BillingOwnerResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "type": {
+            "enum": [
+              "user",
+              "organization"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uuid"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "BillingOwnerResponse",
+        "type": "object"
+      },
+      "BillingResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/BillingCapabilitiesResponse"
+          },
+          "communication_templates": {
+            "items": {
+              "$ref": "#/components/schemas/CommunicationTemplateResponse"
+            },
+            "title": "Communication Templates",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/BillingItemResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/BillingOwnerResponse"
+          },
+          "pix_key": {
+            "title": "Pix Key",
+            "type": "string"
+          },
+          "pix_merchant_city": {
+            "title": "Pix Merchant City",
+            "type": "string"
+          },
+          "pix_merchant_name": {
+            "title": "Pix Merchant Name",
+            "type": "string"
+          },
+          "pix_needs_setup": {
+            "title": "Pix Needs Setup",
+            "type": "boolean"
+          },
+          "recipients": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ContactReferenceResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/ContactResponse"
+                }
+              ]
+            },
+            "title": "Recipients",
+            "type": "array"
+          },
+          "reply_to": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ContactReferenceResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/ContactResponse"
+                }
+              ]
+            },
+            "title": "Reply To",
+            "type": "array"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/BillingStatsResponse"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "description",
+          "pix_key",
+          "pix_merchant_name",
+          "pix_merchant_city",
+          "owner",
+          "items",
+          "recipients",
+          "reply_to",
+          "communication_templates",
+          "stats",
+          "pix_needs_setup",
+          "capabilities"
+        ],
+        "title": "BillingResponse",
+        "type": "object"
+      },
+      "BillingStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active_count": {
+            "title": "Active Count",
+            "type": "integer"
+          },
+          "billed_count": {
+            "title": "Billed Count",
+            "type": "integer"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "integer"
+          },
+          "net_income": {
+            "title": "Net Income",
+            "type": "integer"
+          },
+          "overdue": {
+            "title": "Overdue",
+            "type": "integer"
+          },
+          "overdue_count": {
+            "title": "Overdue Count",
+            "type": "integer"
+          },
+          "paid_count": {
+            "title": "Paid Count",
+            "type": "integer"
+          },
+          "pending": {
+            "title": "Pending",
+            "type": "integer"
+          },
+          "pending_count": {
+            "title": "Pending Count",
+            "type": "integer"
+          },
+          "received": {
+            "title": "Received",
+            "type": "integer"
+          },
+          "total_expenses": {
+            "title": "Total Expenses",
+            "type": "integer"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "expected",
+          "received",
+          "pending",
+          "overdue",
+          "paid_count",
+          "pending_count",
+          "overdue_count",
+          "active_count",
+          "billed_count",
+          "total_expenses",
+          "net_income"
+        ],
+        "title": "BillingStatsResponse",
+        "type": "object"
+      },
+      "BillingTransferResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "billing_uuid": {
+            "title": "Billing Uuid",
+            "type": "string"
+          },
+          "organization_uuid": {
+            "title": "Organization Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "billing_uuid",
+          "organization_uuid"
+        ],
+        "title": "BillingTransferResponse",
+        "type": "object"
+      },
+      "BillingUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "items": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BillingItemInput"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Items"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pix_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Key"
+          },
+          "pix_merchant_city": {
+            "anyOf": [
+              {
+                "maxLength": 15,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Merchant City"
+          },
+          "pix_merchant_name": {
+            "anyOf": [
+              {
+                "maxLength": 25,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Merchant Name"
+          },
+          "recipients": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ContactInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipients"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ContactInput"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          }
+        },
+        "title": "BillingUpdateRequest",
+        "type": "object"
+      },
+      "Body_create_bill_api_v1_billings__billing_uuid__bills_post": {
+        "properties": {
+          "payload": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "receipt_files": {
+            "anyOf": [
+              {
+                "items": {
+                  "contentMediaType": "application/octet-stream",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Receipt Files"
+          }
+        },
+        "title": "Body_create_bill_api_v1_billings__billing_uuid__bills_post",
+        "type": "object"
+      },
+      "Body_upload_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipts_post": {
+        "properties": {
+          "receipt_files": {
+            "items": {
+              "contentMediaType": "application/octet-stream",
+              "type": "string"
+            },
+            "title": "Receipt Files",
+            "type": "array"
+          }
+        },
+        "required": [
+          "receipt_files"
+        ],
+        "title": "Body_upload_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipts_post",
         "type": "object"
       },
       "BootstrapAnalytics": {
@@ -569,6 +1808,364 @@
         "title": "CSRFResponse",
         "type": "object"
       },
+      "CommunicationHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comm_type": {
+            "title": "Comm Type",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "recipient_email": {
+            "title": "Recipient Email",
+            "type": "string"
+          },
+          "recipient_name": {
+            "title": "Recipient Name",
+            "type": "string"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "comm_type",
+          "status",
+          "created_at",
+          "sent_at",
+          "recipient_name",
+          "recipient_email",
+          "subject"
+        ],
+        "title": "CommunicationHistoryResponse",
+        "type": "object"
+      },
+      "CommunicationPreviewRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "default": "",
+            "title": "Body",
+            "type": "string"
+          },
+          "subject": {
+            "default": "",
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "title": "CommunicationPreviewRequest",
+        "type": "object"
+      },
+      "CommunicationPreviewResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "html": {
+            "title": "Html",
+            "type": "string"
+          },
+          "mild": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mild",
+            "type": "array"
+          },
+          "severe": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Severe",
+            "type": "array"
+          }
+        },
+        "required": [
+          "html",
+          "severe",
+          "mild"
+        ],
+        "title": "CommunicationPreviewResponse",
+        "type": "object"
+      },
+      "CommunicationSendRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_warning": {
+            "default": false,
+            "title": "Acknowledge Warning",
+            "type": "boolean"
+          },
+          "bill_uuid": {
+            "minLength": 1,
+            "title": "Bill Uuid",
+            "type": "string"
+          },
+          "body": {
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "comm_type": {
+            "enum": [
+              "bill_ready",
+              "payment_receipt"
+            ],
+            "title": "Comm Type",
+            "type": "string"
+          },
+          "recipient_uuids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Recipient Uuids",
+            "type": "array"
+          },
+          "save_scope": {
+            "anyOf": [
+              {
+                "enum": [
+                  "billing",
+                  "owner"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Save Scope"
+          },
+          "subject": {
+            "maxLength": 998,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bill_uuid",
+          "comm_type",
+          "subject",
+          "body",
+          "recipient_uuids"
+        ],
+        "title": "CommunicationSendRequest",
+        "type": "object"
+      },
+      "CommunicationSendResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "queued_count": {
+            "minimum": 0.0,
+            "title": "Queued Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "queued_count"
+        ],
+        "title": "CommunicationSendResponse",
+        "type": "object"
+      },
+      "CommunicationTemplateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "comm_type": {
+            "enum": [
+              "bill_ready",
+              "payment_receipt"
+            ],
+            "title": "Comm Type",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "comm_type",
+          "subject",
+          "body"
+        ],
+        "title": "CommunicationTemplateResponse",
+        "type": "object"
+      },
+      "ContactInput": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "email"
+        ],
+        "title": "ContactInput",
+        "type": "object"
+      },
+      "ContactListRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ContactInput"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ContactListRequest",
+        "type": "object"
+      },
+      "ContactListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ContactReferenceResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/ContactResponse"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ContactListResponse",
+        "type": "object"
+      },
+      "ContactReferenceResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid"
+        ],
+        "title": "ContactReferenceResponse",
+        "type": "object"
+      },
+      "ContactResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "email"
+        ],
+        "title": "ContactResponse",
+        "type": "object"
+      },
+      "CurrentBillResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "reference_month": {
+            "title": "Reference Month",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "total_amount": {
+            "title": "Total Amount",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_amount",
+          "status",
+          "reference_month"
+        ],
+        "title": "CurrentBillResponse",
+        "type": "object"
+      },
       "CurrentProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -581,6 +2178,157 @@
           "email"
         ],
         "title": "CurrentProfileResponse",
+        "type": "object"
+      },
+      "ExpenseCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount",
+            "type": "integer"
+          },
+          "category": {
+            "enum": [
+              "iptu",
+              "condominio",
+              "manutencao",
+              "seguro",
+              "outros"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "incurred_on": {
+            "format": "date",
+            "title": "Incurred On",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "amount",
+          "category",
+          "incurred_on"
+        ],
+        "title": "ExpenseCreateRequest",
+        "type": "object"
+      },
+      "ExpenseListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExpenseResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ExpenseListResponse",
+        "type": "object"
+      },
+      "ExpenseResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "integer"
+          },
+          "category": {
+            "enum": [
+              "iptu",
+              "condominio",
+              "manutencao",
+              "seguro",
+              "outros"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "incurred_on": {
+            "format": "date",
+            "title": "Incurred On",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "description",
+          "amount",
+          "category",
+          "incurred_on"
+        ],
+        "title": "ExpenseResponse",
+        "type": "object"
+      },
+      "ExportCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "default": "csv",
+            "enum": [
+              "csv",
+              "xlsx"
+            ],
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "title": "ExportCreateRequest",
+        "type": "object"
+      },
+      "ExportCreateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "enum": [
+              "csv",
+              "xlsx"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "status": {
+            "const": "queued",
+            "default": "queued",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "ExportCreateResponse",
         "type": "object"
       },
       "FeatureFlags": {
@@ -639,6 +2387,60 @@
         },
         "title": "HTTPValidationError",
         "type": "object"
+      },
+      "InviteAcceptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "mfa_setup_required": {
+            "title": "Mfa Setup Required",
+            "type": "boolean"
+          },
+          "organization_uuid": {
+            "title": "Organization Uuid",
+            "type": "string"
+          },
+          "status": {
+            "const": "accepted",
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_uuid",
+          "mfa_setup_required"
+        ],
+        "title": "InviteAcceptResponse",
+        "type": "object"
+      },
+      "InviteDeclineResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "organization_uuid": {
+            "title": "Organization Uuid",
+            "type": "string"
+          },
+          "status": {
+            "const": "declined",
+            "default": "declined",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_uuid"
+        ],
+        "title": "InviteDeclineResponse",
+        "type": "object"
+      },
+      "ItemType": {
+        "enum": [
+          "fixed",
+          "variable",
+          "extra"
+        ],
+        "title": "ItemType",
+        "type": "string"
       },
       "LoginRequest": {
         "additionalProperties": false,
@@ -731,6 +2533,548 @@
           "organization_enforced"
         ],
         "title": "MFAStatusResponse",
+        "type": "object"
+      },
+      "OrganizationCapabilitiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "can_create_billing": {
+            "title": "Can Create Billing",
+            "type": "boolean"
+          },
+          "can_invite": {
+            "title": "Can Invite",
+            "type": "boolean"
+          },
+          "can_manage": {
+            "title": "Can Manage",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "can_manage",
+          "can_invite",
+          "can_create_billing"
+        ],
+        "title": "OrganizationCapabilitiesResponse",
+        "type": "object"
+      },
+      "OrganizationCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 255,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "OrganizationCreateRequest",
+        "type": "object"
+      },
+      "OrganizationIntegrationDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/OrganizationCapabilitiesResponse"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Current Role",
+            "type": "string"
+          },
+          "enforce_mfa": {
+            "title": "Enforce Mfa",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "enforce_mfa",
+          "current_role",
+          "capabilities",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OrganizationIntegrationDetailResponse",
+        "type": "object"
+      },
+      "OrganizationInviteCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "default": "viewer",
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "OrganizationInviteCreateRequest",
+        "type": "object"
+      },
+      "OrganizationInviteResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "invited_email": {
+            "title": "Invited Email",
+            "type": "string"
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "declined"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "invited_email",
+          "role",
+          "status",
+          "created_at",
+          "responded_at"
+        ],
+        "title": "OrganizationInviteResponse",
+        "type": "object"
+      },
+      "OrganizationListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "OrganizationListResponse",
+        "type": "object"
+      },
+      "OrganizationLoginDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/OrganizationCapabilitiesResponse"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Current Role",
+            "type": "string"
+          },
+          "enforce_mfa": {
+            "title": "Enforce Mfa",
+            "type": "boolean"
+          },
+          "invites": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationInviteResponse"
+            },
+            "title": "Invites",
+            "type": "array"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationMemberResponse"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrganizationSettingsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "enforce_mfa",
+          "current_role",
+          "capabilities",
+          "created_at",
+          "updated_at",
+          "settings",
+          "members",
+          "invites"
+        ],
+        "title": "OrganizationLoginDetailResponse",
+        "type": "object"
+      },
+      "OrganizationMFAPolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "enforce_mfa": {
+            "title": "Enforce Mfa",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enforce_mfa"
+        ],
+        "title": "OrganizationMFAPolicyRequest",
+        "type": "object"
+      },
+      "OrganizationMFAPolicyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "enforce_mfa": {
+            "title": "Enforce Mfa",
+            "type": "boolean"
+          },
+          "mfa_setup_required": {
+            "title": "Mfa Setup Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enforce_mfa",
+          "mfa_setup_required"
+        ],
+        "title": "OrganizationMFAPolicyResponse",
+        "type": "object"
+      },
+      "OrganizationMemberResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "is_current_user": {
+            "title": "Is Current User",
+            "type": "boolean"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "role",
+          "is_current_user",
+          "created_at"
+        ],
+        "title": "OrganizationMemberResponse",
+        "type": "object"
+      },
+      "OrganizationMemberUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "OrganizationMemberUpdateRequest",
+        "type": "object"
+      },
+      "OrganizationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/OrganizationCapabilitiesResponse"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "current_role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Current Role",
+            "type": "string"
+          },
+          "enforce_mfa": {
+            "title": "Enforce Mfa",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "enforce_mfa",
+          "current_role",
+          "capabilities",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OrganizationResponse",
+        "type": "object"
+      },
+      "OrganizationSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "pix_key": {
+            "title": "Pix Key",
+            "type": "string"
+          },
+          "pix_merchant_city": {
+            "title": "Pix Merchant City",
+            "type": "string"
+          },
+          "pix_merchant_name": {
+            "title": "Pix Merchant Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pix_key",
+          "pix_merchant_name",
+          "pix_merchant_city"
+        ],
+        "title": "OrganizationSettingsResponse",
+        "type": "object"
+      },
+      "OrganizationUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "pix_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Key"
+          },
+          "pix_merchant_city": {
+            "anyOf": [
+              {
+                "maxLength": 15,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Merchant City"
+          },
+          "pix_merchant_name": {
+            "anyOf": [
+              {
+                "maxLength": 25,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pix Merchant Name"
+          }
+        },
+        "title": "OrganizationUpdateRequest",
         "type": "object"
       },
       "OrganizationWorkspaceOption": {
@@ -963,6 +3307,149 @@
         "title": "PasswordResetRequest",
         "type": "object"
       },
+      "PendingInviteIntegrationListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PendingInviteIntegrationResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PendingInviteIntegrationListResponse",
+        "type": "object"
+      },
+      "PendingInviteIntegrationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "enforce_mfa": {
+            "title": "Enforce Mfa",
+            "type": "boolean"
+          },
+          "organization_name": {
+            "title": "Organization Name",
+            "type": "string"
+          },
+          "organization_uuid": {
+            "title": "Organization Uuid",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "organization_uuid",
+          "organization_name",
+          "role",
+          "enforce_mfa",
+          "created_at"
+        ],
+        "title": "PendingInviteIntegrationResponse",
+        "type": "object"
+      },
+      "PendingInviteLoginListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PendingInviteLoginResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PendingInviteLoginListResponse",
+        "type": "object"
+      },
+      "PendingInviteLoginResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "enforce_mfa": {
+            "title": "Enforce Mfa",
+            "type": "boolean"
+          },
+          "invited_by_email": {
+            "title": "Invited By Email",
+            "type": "string"
+          },
+          "organization_name": {
+            "title": "Organization Name",
+            "type": "string"
+          },
+          "organization_uuid": {
+            "title": "Organization Uuid",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "manager",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "organization_uuid",
+          "organization_name",
+          "role",
+          "enforce_mfa",
+          "created_at",
+          "invited_by_email"
+        ],
+        "title": "PendingInviteLoginResponse",
+        "type": "object"
+      },
       "PersonalWorkspaceOption": {
         "additionalProperties": false,
         "properties": {
@@ -1091,6 +3578,140 @@
         "title": "ProfileResponse",
         "type": "object"
       },
+      "ReceiptListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReceiptResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReceiptListResponse",
+        "type": "object"
+      },
+      "ReceiptOrderRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "order": {
+            "items": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "type": "string"
+            },
+            "title": "Order",
+            "type": "array"
+          }
+        },
+        "required": [
+          "order"
+        ],
+        "title": "ReceiptOrderRequest",
+        "type": "object"
+      },
+      "ReceiptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "file_size": {
+            "title": "File Size",
+            "type": "integer"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "filename",
+          "content_type",
+          "file_size",
+          "sort_order",
+          "created_at"
+        ],
+        "title": "ReceiptResponse",
+        "type": "object"
+      },
+      "ReceiptUploadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attached": {
+            "default": 0,
+            "title": "Attached",
+            "type": "integer"
+          },
+          "items": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ReceiptResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "total_bytes": {
+            "default": 0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "ReceiptUploadResponse",
+        "type": "object"
+      },
+      "ReceiptUploadSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "attached": {
+            "default": 0,
+            "title": "Attached",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "total_bytes": {
+            "default": 0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "ReceiptUploadSummary",
+        "type": "object"
+      },
       "RecoveryCodesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1106,6 +3727,56 @@
           "recovery_codes"
         ],
         "title": "RecoveryCodesResponse",
+        "type": "object"
+      },
+      "RedactedCommunicationHistoryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "comm_type": {
+            "title": "Comm Type",
+            "type": "string"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "comm_type",
+          "status",
+          "created_at",
+          "sent_at"
+        ],
+        "title": "RedactedCommunicationHistoryResponse",
         "type": "object"
       },
       "SecuritySummaryResponse": {
@@ -1240,6 +3911,269 @@
           "recovery_codes_remaining"
         ],
         "title": "TOTPStatusResponse",
+        "type": "object"
+      },
+      "ThemeCapabilitiesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
+          "can_reset": {
+            "title": "Can Reset",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "can_edit",
+          "can_reset"
+        ],
+        "title": "ThemeCapabilitiesResponse",
+        "type": "object"
+      },
+      "ThemeOptionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "fonts": {
+            "default": [
+              "Montserrat",
+              "Roboto",
+              "Lora",
+              "Playfair Display",
+              "Open Sans",
+              "Source Sans 3",
+              "Merriweather",
+              "Raleway",
+              "Oswald",
+              "Nunito"
+            ],
+            "items": {
+              "enum": [
+                "Montserrat",
+                "Roboto",
+                "Lora",
+                "Playfair Display",
+                "Open Sans",
+                "Source Sans 3",
+                "Merriweather",
+                "Raleway",
+                "Oswald",
+                "Nunito"
+              ],
+              "type": "string"
+            },
+            "title": "Fonts",
+            "type": "array"
+          }
+        },
+        "title": "ThemeOptionsResponse",
+        "type": "object"
+      },
+      "ThemeResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capabilities": {
+            "$ref": "#/components/schemas/ThemeCapabilitiesResponse"
+          },
+          "effective": {
+            "$ref": "#/components/schemas/ThemeValuesResponse"
+          },
+          "effective_source": {
+            "enum": [
+              "billing",
+              "organization",
+              "user",
+              "default"
+            ],
+            "title": "Effective Source",
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/ThemeOptionsResponse"
+          },
+          "owner_name": {
+            "title": "Owner Name",
+            "type": "string"
+          },
+          "stored": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ThemeValuesResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "owner_name",
+          "stored",
+          "effective",
+          "effective_source",
+          "options",
+          "capabilities"
+        ],
+        "title": "ThemeResponse",
+        "type": "object"
+      },
+      "ThemeUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "header_font": {
+            "enum": [
+              "Montserrat",
+              "Roboto",
+              "Lora",
+              "Playfair Display",
+              "Open Sans",
+              "Source Sans 3",
+              "Merriweather",
+              "Raleway",
+              "Oswald",
+              "Nunito"
+            ],
+            "title": "Header Font",
+            "type": "string"
+          },
+          "primary": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Primary",
+            "type": "string"
+          },
+          "primary_light": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Primary Light",
+            "type": "string"
+          },
+          "secondary": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Secondary",
+            "type": "string"
+          },
+          "secondary_dark": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Secondary Dark",
+            "type": "string"
+          },
+          "text_color": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Text Color",
+            "type": "string"
+          },
+          "text_contrast": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Text Contrast",
+            "type": "string"
+          },
+          "text_font": {
+            "enum": [
+              "Montserrat",
+              "Roboto",
+              "Lora",
+              "Playfair Display",
+              "Open Sans",
+              "Source Sans 3",
+              "Merriweather",
+              "Raleway",
+              "Oswald",
+              "Nunito"
+            ],
+            "title": "Text Font",
+            "type": "string"
+          }
+        },
+        "required": [
+          "header_font",
+          "text_font",
+          "primary",
+          "primary_light",
+          "secondary",
+          "secondary_dark",
+          "text_color",
+          "text_contrast"
+        ],
+        "title": "ThemeUpdateRequest",
+        "type": "object"
+      },
+      "ThemeValuesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "header_font": {
+            "enum": [
+              "Montserrat",
+              "Roboto",
+              "Lora",
+              "Playfair Display",
+              "Open Sans",
+              "Source Sans 3",
+              "Merriweather",
+              "Raleway",
+              "Oswald",
+              "Nunito"
+            ],
+            "title": "Header Font",
+            "type": "string"
+          },
+          "primary": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Primary",
+            "type": "string"
+          },
+          "primary_light": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Primary Light",
+            "type": "string"
+          },
+          "secondary": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Secondary",
+            "type": "string"
+          },
+          "secondary_dark": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Secondary Dark",
+            "type": "string"
+          },
+          "text_color": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Text Color",
+            "type": "string"
+          },
+          "text_contrast": {
+            "pattern": "^#[0-9A-Fa-f]{6}$",
+            "title": "Text Contrast",
+            "type": "string"
+          },
+          "text_font": {
+            "enum": [
+              "Montserrat",
+              "Roboto",
+              "Lora",
+              "Playfair Display",
+              "Open Sans",
+              "Source Sans 3",
+              "Merriweather",
+              "Raleway",
+              "Oswald",
+              "Nunito"
+            ],
+            "title": "Text Font",
+            "type": "string"
+          }
+        },
+        "required": [
+          "header_font",
+          "text_font",
+          "primary",
+          "primary_light",
+          "secondary",
+          "secondary_dark",
+          "text_color",
+          "text_contrast"
+        ],
+        "title": "ThemeValuesResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -1832,6 +4766,36 @@
           "displayName"
         ],
         "title": "WebAuthnUserEntity",
+        "type": "object"
+      },
+      "rentivo__api__schemas__billings__BillingTransferRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "organization_uuid": {
+            "minLength": 1,
+            "title": "Organization Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "organization_uuid"
+        ],
+        "title": "BillingTransferRequest",
+        "type": "object"
+      },
+      "rentivo__api__schemas__organizations__BillingTransferRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "billing_uuid": {
+            "maxLength": 64,
+            "title": "Billing Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "billing_uuid"
+        ],
+        "title": "BillingTransferRequest",
         "type": "object"
       }
     }
@@ -2612,6 +5576,1928 @@
         ]
       }
     },
+    "/api/v1/billings": {
+      "get": {
+        "operationId": "list_billings_api_v1_billings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Billings",
+        "tags": [
+          "billings"
+        ]
+      },
+      "post": {
+        "operationId": "create_billing_api_v1_billings_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Billing",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}": {
+      "delete": {
+        "operationId": "delete_billing_api_v1_billings__billing_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Billing",
+        "tags": [
+          "billings"
+        ]
+      },
+      "get": {
+        "operationId": "get_billing_api_v1_billings__billing_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Billing",
+        "tags": [
+          "billings"
+        ]
+      },
+      "patch": {
+        "operationId": "update_billing_api_v1_billings__billing_uuid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Billing",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/attachments": {
+      "get": {
+        "operationId": "list_attachments_api_v1_billings__billing_uuid__attachments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Attachments",
+        "tags": [
+          "billings"
+        ]
+      },
+      "post": {
+        "operationId": "upload_attachment_api_v1_billings__billing_uuid__attachments_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "name": {
+                    "default": "",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AttachmentResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Attachment",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/attachments/{attachment_uuid}": {
+      "delete": {
+        "operationId": "delete_attachment_api_v1_billings__billing_uuid__attachments__attachment_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_uuid",
+            "required": true,
+            "schema": {
+              "title": "Attachment Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Attachment",
+        "tags": [
+          "billings"
+        ]
+      },
+      "get": {
+        "operationId": "download_attachment_api_v1_billings__billing_uuid__attachments__attachment_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_uuid",
+            "required": true,
+            "schema": {
+              "title": "Attachment Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Attachment content"
+          },
+          "302": {
+            "description": "Temporary storage redirect",
+            "headers": {
+              "Location": {
+                "description": "Signed attachment URL",
+                "schema": {
+                  "format": "uri",
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Attachment",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills": {
+      "get": {
+        "operationId": "list_bills_api_v1_billings__billing_uuid__bills_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Bills",
+        "tags": [
+          "bills"
+        ]
+      },
+      "post": {
+        "operationId": "create_bill_api_v1_billings__billing_uuid__bills_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_bill_api_v1_billings__billing_uuid__bills_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Create Bill",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}": {
+      "delete": {
+        "operationId": "delete_bill_api_v1_billings__billing_uuid__bills__bill_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Bill",
+        "tags": [
+          "bills"
+        ]
+      },
+      "get": {
+        "operationId": "get_bill_api_v1_billings__billing_uuid__bills__bill_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Bill",
+        "tags": [
+          "bills"
+        ]
+      },
+      "patch": {
+        "operationId": "update_bill_api_v1_billings__billing_uuid__bills__bill_uuid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Bill",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/invoice": {
+      "get": {
+        "operationId": "download_invoice_api_v1_billings__billing_uuid__bills__bill_uuid__invoice_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Invoice",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/receipt-order": {
+      "put": {
+        "operationId": "reorder_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipt_order_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReceiptOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reorder Receipts",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/receipts": {
+      "get": {
+        "operationId": "list_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Receipts",
+        "tags": [
+          "bills"
+        ]
+      },
+      "post": {
+        "operationId": "upload_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipts_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Receipts",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/receipts/{receipt_uuid}": {
+      "delete": {
+        "operationId": "delete_receipt_api_v1_billings__billing_uuid__bills__bill_uuid__receipts__receipt_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "receipt_uuid",
+            "required": true,
+            "schema": {
+              "title": "Receipt Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Receipt",
+        "tags": [
+          "bills"
+        ]
+      },
+      "get": {
+        "operationId": "download_receipt_api_v1_billings__billing_uuid__bills__bill_uuid__receipts__receipt_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "receipt_uuid",
+            "required": true,
+            "schema": {
+              "title": "Receipt Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Receipt",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/recibo": {
+      "get": {
+        "operationId": "download_recibo_api_v1_billings__billing_uuid__bills__bill_uuid__recibo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Recibo",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/regenerate": {
+      "post": {
+        "operationId": "regenerate_bill_api_v1_billings__billing_uuid__bills__bill_uuid__regenerate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Regenerate Bill",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/transitions": {
+      "post": {
+        "operationId": "transition_bill_api_v1_billings__billing_uuid__bills__bill_uuid__transitions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transition Bill",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/communications/preview": {
+      "post": {
+        "operationId": "preview_communication_api_v1_billings__billing_uuid__communications_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommunicationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Communication",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/communications/send": {
+      "post": {
+        "operationId": "send_communication_api_v1_billings__billing_uuid__communications_send_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommunicationSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunicationSendResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send Communication",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/expenses": {
+      "get": {
+        "operationId": "list_expenses_api_v1_billings__billing_uuid__expenses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Expenses",
+        "tags": [
+          "billings"
+        ]
+      },
+      "post": {
+        "operationId": "create_expense_api_v1_billings__billing_uuid__expenses_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpenseCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpenseResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Expense",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/expenses/{expense_uuid}": {
+      "delete": {
+        "operationId": "delete_expense_api_v1_billings__billing_uuid__expenses__expense_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "expense_uuid",
+            "required": true,
+            "schema": {
+              "title": "Expense Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Expense",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/exports": {
+      "post": {
+        "operationId": "create_export_api_v1_billings__billing_uuid__exports_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Export",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/recipients": {
+      "put": {
+        "operationId": "replace_recipients_api_v1_billings__billing_uuid__recipients_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Recipients",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/reply-to": {
+      "put": {
+        "operationId": "replace_reply_to_api_v1_billings__billing_uuid__reply_to_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactListRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace Reply To",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/transfer": {
+      "post": {
+        "operationId": "transfer_billing_api_v1_billings__billing_uuid__transfer_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/rentivo__api__schemas__billings__BillingTransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Billing",
+        "tags": [
+          "billings"
+        ]
+      }
+    },
     "/api/v1/health": {
       "get": {
         "operationId": "health_api_v1_health_get",
@@ -2632,6 +7518,743 @@
           }
         },
         "summary": "Health"
+      }
+    },
+    "/api/v1/invites": {
+      "get": {
+        "operationId": "list_pending_invites_api_v1_invites_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PendingInviteLoginListResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/PendingInviteIntegrationListResponse"
+                    }
+                  ],
+                  "title": "Response List Pending Invites Api V1 Invites Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Pending Invites",
+        "tags": [
+          "invites"
+        ]
+      }
+    },
+    "/api/v1/invites/{invite_uuid}/accept": {
+      "post": {
+        "operationId": "accept_invite_api_v1_invites__invite_uuid__accept_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Invite Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteAcceptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Invite",
+        "tags": [
+          "invites"
+        ]
+      }
+    },
+    "/api/v1/invites/{invite_uuid}/decline": {
+      "post": {
+        "operationId": "decline_invite_api_v1_invites__invite_uuid__decline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "invite_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Invite Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteDeclineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decline Invite",
+        "tags": [
+          "invites"
+        ]
+      }
+    },
+    "/api/v1/organizations": {
+      "get": {
+        "operationId": "list_organizations_api_v1_organizations_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Organizations",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "post": {
+        "operationId": "create_organization_api_v1_organizations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Create Organization",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organization_uuid}": {
+      "delete": {
+        "operationId": "delete_organization_api_v1_organizations__organization_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Organization",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "get": {
+        "operationId": "get_organization_api_v1_organizations__organization_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/OrganizationLoginDetailResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OrganizationIntegrationDetailResponse"
+                    }
+                  ],
+                  "title": "Response Get Organization Api V1 Organizations  Organization Uuid  Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Organization",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "patch": {
+        "operationId": "update_organization_api_v1_organizations__organization_uuid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationLoginDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Organization",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organization_uuid}/billing-transfers": {
+      "post": {
+        "operationId": "transfer_billing_api_v1_organizations__organization_uuid__billing_transfers_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/rentivo__api__schemas__organizations__BillingTransferRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingTransferResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Billing",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organization_uuid}/invites": {
+      "post": {
+        "operationId": "create_invite_api_v1_organizations__organization_uuid__invites_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationInviteCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationInviteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Invite",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organization_uuid}/members/{user_id}": {
+      "delete": {
+        "operationId": "remove_member_api_v1_organizations__organization_uuid__members__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Member",
+        "tags": [
+          "organizations"
+        ]
+      },
+      "patch": {
+        "operationId": "update_member_role_api_v1_organizations__organization_uuid__members__user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "exclusiveMinimum": 0,
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationMemberUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMemberResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Member Role",
+        "tags": [
+          "organizations"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organization_uuid}/mfa-policy": {
+      "put": {
+        "operationId": "update_mfa_policy_api_v1_organizations__organization_uuid__mfa_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "organization_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Organization Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrganizationMFAPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMFAPolicyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Mfa Policy",
+        "tags": [
+          "organizations"
+        ]
       }
     },
     "/api/v1/profile": {
@@ -2983,6 +8606,376 @@
         "summary": "Setup Totp",
         "tags": [
           "security"
+        ]
+      }
+    },
+    "/api/v1/themes/billings/{billing_uuid}": {
+      "delete": {
+        "operationId": "reset_billing_theme_api_v1_themes_billings__billing_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Billing Theme",
+        "tags": [
+          "themes"
+        ]
+      },
+      "get": {
+        "operationId": "get_billing_theme_api_v1_themes_billings__billing_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Billing Theme",
+        "tags": [
+          "themes"
+        ]
+      },
+      "put": {
+        "operationId": "update_billing_theme_api_v1_themes_billings__billing_uuid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThemeUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Billing Theme",
+        "tags": [
+          "themes"
+        ]
+      }
+    },
+    "/api/v1/themes/organizations/{org_uuid}": {
+      "delete": {
+        "operationId": "reset_organization_theme_api_v1_themes_organizations__org_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Org Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Organization Theme",
+        "tags": [
+          "themes"
+        ]
+      },
+      "get": {
+        "operationId": "get_organization_theme_api_v1_themes_organizations__org_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Org Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Organization Theme",
+        "tags": [
+          "themes"
+        ]
+      },
+      "put": {
+        "operationId": "update_organization_theme_api_v1_themes_organizations__org_uuid__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Org Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThemeUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Organization Theme",
+        "tags": [
+          "themes"
+        ]
+      }
+    },
+    "/api/v1/themes/preview": {
+      "post": {
+        "operationId": "preview_theme_api_v1_themes_preview_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThemeUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Preview Theme",
+        "tags": [
+          "themes"
+        ]
+      }
+    },
+    "/api/v1/themes/user": {
+      "delete": {
+        "operationId": "reset_user_theme_api_v1_themes_user_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reset User Theme",
+        "tags": [
+          "themes"
+        ]
+      },
+      "get": {
+        "operationId": "get_user_theme_api_v1_themes_user_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get User Theme",
+        "tags": [
+          "themes"
+        ]
+      },
+      "put": {
+        "operationId": "update_user_theme_api_v1_themes_user_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThemeUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThemeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update User Theme",
+        "tags": [
+          "themes"
         ]
       }
     }
