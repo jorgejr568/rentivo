@@ -70,8 +70,36 @@ class TestBillingService:
 
     def test_transfer_to_organization(self):
         self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="user", owner_id=1)
+        self.mock_repo.transfer_owner_if_current.return_value = True
+        self.service.transfer_to_organization(1, 5, expected_owner_id=1)
+        self.mock_repo.transfer_owner_if_current.assert_called_once_with(1, "user", 1, "organization", 5)
+
+    def test_transfer_uses_loaded_owner_as_default_expected_state(self):
+        self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="user", owner_id=1)
+        self.mock_repo.transfer_owner_if_current.return_value = True
+
         self.service.transfer_to_organization(1, 5)
-        self.mock_repo.transfer_owner.assert_called_once_with(1, "organization", 5)
+
+        self.mock_repo.transfer_owner_if_current.assert_called_once_with(1, "user", 1, "organization", 5)
+
+    def test_transfer_detects_owner_changed_since_authorization(self):
+        self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="user", owner_id=2)
+
+        import pytest
+
+        with pytest.raises(ValueError, match="ownership changed"):
+            self.service.transfer_to_organization(1, 5, expected_owner_id=1)
+
+        self.mock_repo.transfer_owner_if_current.assert_not_called()
+
+    def test_transfer_detects_conditional_update_conflict(self):
+        self.mock_repo.get_by_id.return_value = Billing(id=1, name="A", owner_type="user", owner_id=1)
+        self.mock_repo.transfer_owner_if_current.return_value = False
+
+        import pytest
+
+        with pytest.raises(ValueError, match="ownership changed"):
+            self.service.transfer_to_organization(1, 5, expected_owner_id=1)
 
     def test_transfer_not_found(self):
         self.mock_repo.get_by_id.return_value = None

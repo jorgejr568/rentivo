@@ -111,6 +111,76 @@ class TestInviteRepoCRUD:
         assert fetched.status == "accepted"
         assert fetched.responded_at is not None
 
+    def test_accept_if_pending_is_atomic_and_conditional(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+
+        assert invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer") is True
+        assert invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer") is False
+        assert org_repo.get_member(org.id, user2.id) is not None
+        assert invite_repo.get_by_uuid(inv.uuid).status == "accepted"
+
+    def test_accept_if_pending_rolls_back_when_membership_exists(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        org_repo.add_member(org.id, user2.id, "viewer")
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+
+        assert invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer") is False
+        assert invite_repo.get_by_uuid(inv.uuid).status == "pending"
+
+    def test_decline_if_pending_is_compare_and_set(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+
+        assert invite_repo.decline_if_pending(inv.id, org.id, user2.id) is True
+        assert invite_repo.decline_if_pending(inv.id, org.id, user2.id) is False
+        assert invite_repo.get_by_uuid(inv.uuid).status == "declined"
+
+    @pytest.mark.parametrize("transition", ["accept", "decline"])
+    def test_pending_transition_rejects_deleted_organization(self, invite_repo, user_repo, org_repo, transition):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        org_repo.delete(org.id)
+
+        if transition == "accept":
+            changed = invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer")
+        else:
+            changed = invite_repo.decline_if_pending(inv.id, org.id, user2.id)
+
+        assert changed is False
+
     def test_count_pending_for_user(self, invite_repo, user_repo, org_repo):
         user1, user2, org = _setup(user_repo, org_repo)
         invite_repo.create(

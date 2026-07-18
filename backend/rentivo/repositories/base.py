@@ -57,6 +57,16 @@ class BillingRepository(ABC):
     @abstractmethod
     def transfer_owner(self, billing_id: int, owner_type: str, owner_id: int) -> None: ...
 
+    @abstractmethod
+    def transfer_owner_if_current(
+        self,
+        billing_id: int,
+        expected_owner_type: str,
+        expected_owner_id: int,
+        owner_type: str,
+        owner_id: int,
+    ) -> bool: ...
+
 
 class BillRepository(ABC):
     @abstractmethod
@@ -88,13 +98,19 @@ class BillRepository(ABC):
     def update_recibo_pdf_path(self, bill_id: int, recibo_pdf_path: str | None) -> None: ...
 
     @abstractmethod
-    def update_status(self, bill_id: int, status: str, status_updated_at: datetime) -> None: ...
+    def update_status(
+        self,
+        bill_id: int,
+        expected_status: str,
+        status: str,
+        status_updated_at: datetime,
+    ) -> bool: ...
 
     @abstractmethod
     def update_pdf_render_status(self, bill_id: int, status: str | None) -> None: ...
 
     @abstractmethod
-    def delete(self, bill_id: int) -> None: ...
+    def delete(self, bill_id: int) -> bool: ...
 
 
 class UserRepository(ABC):
@@ -154,6 +170,9 @@ class OrganizationRepository(ABC):
     def remove_member(self, org_id: int, user_id: int) -> None: ...
 
     @abstractmethod
+    def remove_member_if_role(self, org_id: int, user_id: int, expected_role: str) -> bool: ...
+
+    @abstractmethod
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None: ...
 
     @abstractmethod
@@ -181,6 +200,12 @@ class InviteRepository(ABC):
 
     @abstractmethod
     def update_status(self, invite_id: int, status: str) -> None: ...
+
+    @abstractmethod
+    def accept_if_pending(self, invite_id: int, org_id: int, user_id: int, role: str) -> bool: ...
+
+    @abstractmethod
+    def decline_if_pending(self, invite_id: int, org_id: int, user_id: int) -> bool: ...
 
     @abstractmethod
     def count_pending_for_user(self, user_id: int) -> int: ...

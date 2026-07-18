@@ -169,6 +169,8 @@ class FakeOrganizationService:
         self.deleted_ids: list[int] = []
         self.role_updates: list[tuple[int, int, str]] = []
         self.removals: list[tuple[int, int]] = []
+        self.remove_attempts: list[tuple[int, int, str | None]] = []
+        self.remove_result = True
         self.mfa_updates: list[tuple[int, bool]] = []
         self.update_error: ValueError | None = None
 
@@ -224,9 +226,13 @@ class FakeOrganizationService:
         self.role_updates.append((org_id, user_id, role))
         self.members[(org_id, user_id)].role = role
 
-    def remove_member(self, org_id: int, user_id: int) -> None:
+    def remove_member(self, org_id: int, user_id: int, *, expected_role: str | None = None) -> bool:
+        self.remove_attempts.append((org_id, user_id, expected_role))
+        if not self.remove_result:
+            return False
         self.removals.append((org_id, user_id))
         self.members.pop((org_id, user_id), None)
+        return True
 
     def set_enforce_mfa(self, org_id: int, enforce: bool) -> Organization:
         self.mfa_updates.append((org_id, enforce))
@@ -255,12 +261,16 @@ class FakeInviteService:
         ]
         self.send_error: ValueError | None = None
         self.send_calls: list[tuple[int, str, str, int]] = []
+        self.response_conflict = False
 
     def list_pending(self, user_id: int) -> list[Invite]:
         return [invite for invite in self.invites if invite.invited_user_id == user_id and invite.status == "pending"]
 
     def list_org_invites(self, org_id: int) -> list[Invite]:
         return [invite for invite in self.invites if invite.organization_id == org_id]
+
+    def get_pending_invite(self, invite_uuid: str, user_id: int, *, action: str) -> Invite:
+        return self._pending_invite(invite_uuid, user_id, action=action)
 
     def send_invite(self, org_id: int, email: str, role: str, invited_by_user_id: int) -> Invite:
         self.send_calls.append((org_id, email, role, invited_by_user_id))
@@ -282,14 +292,16 @@ class FakeInviteService:
         self.invites.append(invite)
         return invite
 
-    def accept_invite(self, invite_uuid: str, user_id: int) -> Invite:
-        invite = self._pending_invite(invite_uuid, user_id, action="accept")
+    def accept_invite(self, invite: Invite) -> Invite:
+        if self.response_conflict:
+            raise ValueError("Invite is no longer pending")
         invite.status = "accepted"
         invite.responded_at = NOW
         return invite
 
-    def decline_invite(self, invite_uuid: str, user_id: int) -> Invite:
-        invite = self._pending_invite(invite_uuid, user_id, action="decline")
+    def decline_invite(self, invite: Invite) -> Invite:
+        if self.response_conflict:
+            raise ValueError("Invite is no longer pending")
         invite.status = "declined"
         invite.responded_at = NOW
         return invite
@@ -340,15 +352,21 @@ class FakeBillingService:
     def __init__(self) -> None:
         self.billing = PERSONAL_BILLING.model_copy(deep=True)
         self.transfer_error: ValueError | None = None
-        self.transfer_calls: list[tuple[int, int]] = []
+        self.transfer_calls: list[tuple[int, int, int | None]] = []
 
     def get_billing_by_uuid(self, uuid: str) -> Billing | None:
         return self.billing if uuid == self.billing.uuid else None
 
-    def transfer_to_organization(self, billing_id: int, org_id: int) -> None:
+    def transfer_to_organization(
+        self,
+        billing_id: int,
+        org_id: int,
+        *,
+        expected_owner_id: int | None = None,
+    ) -> None:
         if self.transfer_error is not None:
             raise self.transfer_error
-        self.transfer_calls.append((billing_id, org_id))
+        self.transfer_calls.append((billing_id, org_id, expected_owner_id))
         self.billing.owner_type = "organization"
         self.billing.owner_id = org_id
 
@@ -513,14 +531,22 @@ def test_integration_detail_is_read_only_and_omits_settings_and_sent_invites(
     )
 
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["capabilities"] == {
-        "can_manage": False,
-        "can_invite": False,
-        "can_create_billing": False,
+    assert response.json() == {
+        "uuid": ORGANIZATION.uuid,
+        "name": ORGANIZATION.name,
+        "enforce_mfa": False,
+        "current_role": "admin",
+        "capabilities": {
+            "can_manage": False,
+            "can_invite": False,
+            "can_create_billing": False,
+        },
+        "created_at": ORGANIZATION.created_at.isoformat().replace("+00:00", "Z"),
+        "updated_at": ORGANIZATION.updated_at.isoformat().replace("+00:00", "Z"),
     }
-    assert payload["settings"] is None
-    assert payload["invites"] == []
+    assert USER.email not in response.text
+    assert TARGET_USER.email not in response.text
+    assert '"user_id"' not in response.text
 
 
 def test_organization_detail_requires_both_grant_and_live_membership(
@@ -552,6 +578,16 @@ def test_organization_detail_requires_both_grant_and_live_membership(
             "post",
             f"/api/v1/organizations/{ORGANIZATION.uuid}/invites",
             {"email": "invalid", "role": "viewer"},
+        ),
+        (
+            "post",
+            f"/api/v1/organizations/{ORGANIZATION.uuid}/invites",
+            {"email": "member@example.com@attacker.test", "role": "viewer"},
+        ),
+        (
+            "post",
+            f"/api/v1/organizations/{ORGANIZATION.uuid}/invites",
+            {"email": "@example.com", "role": "viewer"},
         ),
         (
             "post",
@@ -687,6 +723,7 @@ def test_create_organization_normalizes_name_and_audits(organization_harness: Or
     assert response.status_code == 201
     assert response.json()["name"] == "Nova Administradora"
     assert response.json()["current_role"] == "admin"
+    assert response.headers["X-Rentivo-Analytics-Event"] == "rentivo_organization_created"
     assert organization_harness.organization.created_names == [("Nova Administradora", USER.id)]
     assert organization_harness.audit.calls[-1][0][1] == "organization.create"
     assert organization_harness.job.calls == []
@@ -799,6 +836,23 @@ def test_remove_missing_member_is_conflict_without_side_effects(organization_har
     assert organization_harness.audit.calls == []
 
 
+def test_remove_member_maps_conditional_delete_race_to_conflict(
+    organization_harness: OrganizationHarness,
+) -> None:
+    organization_harness.organization.remove_result = False
+
+    response = organization_harness.client.delete(
+        f"/api/v1/organizations/{ORGANIZATION.uuid}/members/{TARGET_USER.id}",
+        headers=login_headers(csrf=True),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "membership_conflict"
+    assert organization_harness.organization.remove_attempts == [(ORGANIZATION.id, TARGET_USER.id, "viewer")]
+    assert organization_harness.organization.removals == []
+    assert organization_harness.audit.calls == []
+
+
 def test_invite_creation_normalizes_email_and_preserves_audit_and_email_side_effects(
     organization_harness: OrganizationHarness,
 ) -> None:
@@ -809,6 +863,7 @@ def test_invite_creation_normalizes_email_and_preserves_audit_and_email_side_eff
     )
 
     assert response.status_code == 201
+    assert response.headers["X-Rentivo-Analytics-Event"] == "rentivo_invite_sent"
     assert response.json()["invited_email"] == TARGET_USER.email
     assert organization_harness.invite.send_calls == [(ORGANIZATION.id, TARGET_USER.email, "manager", USER.id)]
     assert organization_harness.audit.calls[-1][0][1] == "invite.send"
@@ -874,7 +929,7 @@ def test_billing_transfer_requires_personal_access_and_preserves_side_effects(
     assert denied.json()["code"] == "not_found"
     assert success.status_code == 200
     assert success.json() == {"billing_uuid": PERSONAL_BILLING.uuid, "organization_uuid": ORGANIZATION.uuid}
-    assert organization_harness.billing.transfer_calls == [(PERSONAL_BILLING.id, ORGANIZATION.id)]
+    assert organization_harness.billing.transfer_calls == [(PERSONAL_BILLING.id, ORGANIZATION.id, USER.id)]
     assert organization_harness.audit.calls[-1][0][1] == "billing.transfer"
     notification = organization_harness.billing_notification.calls[-1]
     assert notification["previous_owner"] == {"owner_type": "user", "owner_id": USER.id}

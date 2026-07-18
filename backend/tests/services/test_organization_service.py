@@ -59,8 +59,19 @@ class TestOrganizationService:
         assert result.role == "viewer"
 
     def test_remove_member(self):
-        self.service.remove_member(1, 2)
+        self.mock_repo.remove_member_if_role.return_value = True
+
+        assert self.service.remove_member(1, 2, expected_role="viewer") is True
+        self.mock_repo.remove_member_if_role.assert_called_once_with(1, 2, "viewer")
+
+    def test_remove_member_preserves_legacy_unconditional_call(self):
+        assert self.service.remove_member(1, 2) is True
         self.mock_repo.remove_member.assert_called_once_with(1, 2)
+
+    def test_remove_member_reports_expected_state_conflict(self):
+        self.mock_repo.remove_member_if_role.return_value = False
+
+        assert self.service.remove_member(1, 2, expected_role="viewer") is False
 
     def test_update_member_role(self):
         self.service.update_member_role(1, 2, "manager")

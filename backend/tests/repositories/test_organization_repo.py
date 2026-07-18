@@ -85,6 +85,16 @@ class TestOrganizationMemberOps:
         org_repo.remove_member(org.id, user.id)
         assert org_repo.get_member(org.id, user.id) is None
 
+    def test_remove_member_if_role_is_compare_and_delete(self, org_repo, user_repo):
+        user = _create_user(user_repo)
+        org = org_repo.create(Organization(name="Test", created_by=user.id))
+        org_repo.add_member(org.id, user.id, "admin")
+
+        assert org_repo.remove_member_if_role(org.id, user.id, "viewer") is False
+        assert org_repo.get_member(org.id, user.id) is not None
+        assert org_repo.remove_member_if_role(org.id, user.id, "admin") is True
+        assert org_repo.get_member(org.id, user.id) is None
+
     def test_list_members(self, org_repo, user_repo):
         user1 = _create_user(user_repo, "user1@example.com")
         user2 = _create_user(user_repo, "user2@example.com")
@@ -103,6 +113,16 @@ class TestOrganizationMemberOps:
         org_repo.update_member_role(org.id, user.id, "admin")
         member = org_repo.get_member(org.id, user.id)
         assert member.role == "admin"
+
+    def test_user_has_enforcing_org(self, org_repo, user_repo):
+        user = _create_user(user_repo)
+        org = org_repo.create(Organization(name="Test", created_by=user.id))
+        org_repo.add_member(org.id, user.id, "admin")
+
+        assert org_repo.user_has_enforcing_org(user.id) is False
+        org.enforce_mfa = True
+        org_repo.update(org)
+        assert org_repo.user_has_enforcing_org(user.id) is True
 
 
 class TestOrganizationRepoEdgeCases:

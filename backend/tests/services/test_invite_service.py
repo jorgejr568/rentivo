@@ -44,50 +44,81 @@ class TestInviteService:
     def test_accept_invite(self):
         invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
         self.mock_invite_repo.get_by_uuid.return_value = invite
-        result = self.service.accept_invite("abc", 2)
+        self.mock_invite_repo.accept_if_pending.return_value = True
+        prepared = self.service.get_pending_invite("abc", 2, action="accept")
+        result = self.service.accept_invite(prepared)
         assert result is invite
-        self.mock_org_repo.add_member.assert_called_once_with(1, 2, "viewer")
-        self.mock_invite_repo.update_status.assert_called_once_with(1, "accepted")
+        self.mock_invite_repo.accept_if_pending.assert_called_once_with(1, 1, 2, "viewer")
+
+    def test_accept_invite_preserves_legacy_uuid_call(self):
+        invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
+        self.mock_invite_repo.get_by_uuid.return_value = invite
+        self.mock_invite_repo.accept_if_pending.return_value = True
+
+        assert self.service.accept_invite("abc", 2) is invite
 
     def test_accept_invite_wrong_user(self):
         self.mock_invite_repo.get_by_uuid.return_value = Invite(
             id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending"
         )
         with pytest.raises(ValueError, match="Not authorized"):
-            self.service.accept_invite("abc", 999)
+            self.service.get_pending_invite("abc", 999, action="accept")
 
     def test_accept_invite_not_pending(self):
         self.mock_invite_repo.get_by_uuid.return_value = Invite(
             id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="accepted"
         )
         with pytest.raises(ValueError, match="no longer pending"):
-            self.service.accept_invite("abc", 2)
+            self.service.get_pending_invite("abc", 2, action="accept")
 
     def test_accept_invite_not_found(self):
         self.mock_invite_repo.get_by_uuid.return_value = None
         with pytest.raises(ValueError, match="not found"):
-            self.service.accept_invite("abc", 2)
+            self.service.get_pending_invite("abc", 2, action="accept")
+
+    def test_accept_invite_detects_atomic_transition_conflict(self):
+        invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
+        self.mock_invite_repo.accept_if_pending.return_value = False
+
+        with pytest.raises(ValueError, match="no longer pending"):
+            self.service.accept_invite(invite)
 
     def test_decline_invite(self):
         invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
         self.mock_invite_repo.get_by_uuid.return_value = invite
-        result = self.service.decline_invite("abc", 2)
+        self.mock_invite_repo.decline_if_pending.return_value = True
+        prepared = self.service.get_pending_invite("abc", 2, action="decline")
+        result = self.service.decline_invite(prepared)
         assert result is invite
-        self.mock_invite_repo.update_status.assert_called_once_with(1, "declined")
+        self.mock_invite_repo.decline_if_pending.assert_called_once_with(1, 1, 2)
+
+    def test_decline_invite_preserves_legacy_uuid_call(self):
+        invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
+        self.mock_invite_repo.get_by_uuid.return_value = invite
+        self.mock_invite_repo.decline_if_pending.return_value = True
+
+        assert self.service.decline_invite("abc", 2) is invite
 
     def test_decline_invite_wrong_user(self):
         self.mock_invite_repo.get_by_uuid.return_value = Invite(
             id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending"
         )
         with pytest.raises(ValueError, match="Not authorized"):
-            self.service.decline_invite("abc", 999)
+            self.service.get_pending_invite("abc", 999, action="decline")
 
     def test_decline_invite_not_pending(self):
         self.mock_invite_repo.get_by_uuid.return_value = Invite(
             id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="declined"
         )
         with pytest.raises(ValueError, match="no longer pending"):
-            self.service.decline_invite("abc", 2)
+            self.service.get_pending_invite("abc", 2, action="decline")
+
+    def test_decline_invite_detects_atomic_transition_conflict(self):
+        invite = Invite(id=1, uuid="abc", organization_id=1, invited_user_id=2, role="viewer", status="pending")
+        self.mock_invite_repo.decline_if_pending.return_value = False
+
+        with pytest.raises(ValueError, match="no longer pending"):
+            self.service.decline_invite(invite)
 
     def test_list_pending(self):
         self.mock_invite_repo.list_pending_for_user.return_value = [Invite(id=1)]

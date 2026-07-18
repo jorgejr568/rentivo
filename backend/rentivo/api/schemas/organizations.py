@@ -62,8 +62,10 @@ class OrganizationInviteCreateRequest(_StrictModel):
     @classmethod
     def normalize_email(cls, value: str) -> str:
         normalized = _nonblank(value, "Informe o e-mail.").lower()
-        local, separator, domain = normalized.partition("@")
-        if not separator or not local or not domain:
+        if normalized.count("@") != 1 or any(character.isspace() for character in normalized):
+            raise ValueError("Informe um e-mail válido.")
+        local, domain = normalized.split("@")
+        if not local or not domain:
             raise ValueError("Informe um e-mail válido.")
         return normalized
 
@@ -120,10 +122,14 @@ class OrganizationResponse(_StrictModel):
     updated_at: datetime | None
 
 
-class OrganizationDetailResponse(OrganizationResponse):
+class OrganizationLoginDetailResponse(OrganizationResponse):
     settings: OrganizationSettingsResponse | None
     members: tuple[OrganizationMemberResponse, ...]
     invites: tuple[OrganizationInviteResponse, ...]
+
+
+class OrganizationIntegrationDetailResponse(OrganizationResponse):
+    pass
 
 
 class OrganizationListResponse(_StrictModel):
@@ -140,18 +146,25 @@ class BillingTransferResponse(_StrictModel):
     organization_uuid: str
 
 
-class PendingInviteResponse(_StrictModel):
+class PendingInviteIntegrationResponse(_StrictModel):
     uuid: str
     organization_uuid: str
     organization_name: str
-    invited_by_email: str
     role: Literal["admin", "manager", "viewer"]
     enforce_mfa: bool
     created_at: datetime | None
 
 
-class PendingInviteListResponse(_StrictModel):
-    items: tuple[PendingInviteResponse, ...]
+class PendingInviteLoginResponse(PendingInviteIntegrationResponse):
+    invited_by_email: str
+
+
+class PendingInviteIntegrationListResponse(_StrictModel):
+    items: tuple[PendingInviteIntegrationResponse, ...]
+
+
+class PendingInviteLoginListResponse(_StrictModel):
+    items: tuple[PendingInviteLoginResponse, ...]
 
 
 class InviteAcceptResponse(_StrictModel):

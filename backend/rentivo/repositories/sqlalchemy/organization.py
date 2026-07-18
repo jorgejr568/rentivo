@@ -162,6 +162,18 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         )
         self.conn.commit()
 
+    @traced("organization_repo.remove_member_if_role")
+    def remove_member_if_role(self, org_id: int, user_id: int, expected_role: str) -> bool:
+        result = self.conn.execute(
+            text(
+                "DELETE FROM organization_members "
+                "WHERE organization_id = :org_id AND user_id = :user_id AND role = :expected_role"
+            ),
+            {"org_id": org_id, "user_id": user_id, "expected_role": expected_role},
+        )
+        self.conn.commit()
+        return result.rowcount == 1
+
     @traced("organization_repo.get_member")
     def get_member(self, org_id: int, user_id: int) -> OrganizationMember | None:
         row = (

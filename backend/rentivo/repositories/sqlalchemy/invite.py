@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import Connection, text
 from sqlalchemy.engine import RowMapping
+from sqlalchemy.exc import IntegrityError
 from ulid import ULID
 
 from rentivo.encryption.base import EncryptionBackend
@@ -119,6 +120,54 @@ class SQLAlchemyInviteRepository(InviteRepository):
             {"status": status, "responded_at": _now(), "id": invite_id},
         )
         self.conn.commit()
+
+    @traced("invite_repo.accept_if_pending")
+    def accept_if_pending(self, invite_id: int, org_id: int, user_id: int, role: str) -> bool:
+        transitioned = self.conn.execute(
+            text(
+                "UPDATE invites SET status = 'accepted', responded_at = :responded_at "
+                "WHERE id = :id AND organization_id = :org_id AND invited_user_id = :user_id "
+                "AND role = :role AND status = 'pending' AND EXISTS ("
+                "SELECT 1 FROM organizations WHERE id = :org_id AND deleted_at IS NULL)"
+            ),
+            {
+                "responded_at": _now(),
+                "id": invite_id,
+                "org_id": org_id,
+                "user_id": user_id,
+                "role": role,
+            },
+        )
+        if transitioned.rowcount != 1:
+            self.conn.commit()
+            return False
+        try:
+            self.conn.execute(
+                text(
+                    "INSERT INTO organization_members (organization_id, user_id, role, created_at) "
+                    "VALUES (:org_id, :user_id, :role, :created_at)"
+                ),
+                {"org_id": org_id, "user_id": user_id, "role": role, "created_at": _now()},
+            )
+        except IntegrityError:
+            self.conn.rollback()
+            return False
+        self.conn.commit()
+        return True
+
+    @traced("invite_repo.decline_if_pending")
+    def decline_if_pending(self, invite_id: int, org_id: int, user_id: int) -> bool:
+        transitioned = self.conn.execute(
+            text(
+                "UPDATE invites SET status = 'declined', responded_at = :responded_at "
+                "WHERE id = :id AND organization_id = :org_id AND invited_user_id = :user_id "
+                "AND status = 'pending' AND EXISTS ("
+                "SELECT 1 FROM organizations WHERE id = :org_id AND deleted_at IS NULL)"
+            ),
+            {"responded_at": _now(), "id": invite_id, "org_id": org_id, "user_id": user_id},
+        )
+        self.conn.commit()
+        return transitioned.rowcount == 1
 
     @traced("invite_repo.count_pending_for_user")
     def count_pending_for_user(self, user_id: int) -> int:

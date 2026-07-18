@@ -69,7 +69,21 @@ def test_pending_invite_list_allows_explicit_personal_grant(organization_harness
     response = organization_harness.client.get("/api/v1/invites", headers=integration_headers())
 
     assert response.status_code == 200
-    assert len(response.json()["items"]) == 1
+    assert response.json() == {
+        "items": [
+            {
+                "uuid": "01JINVITE0000000000000000",
+                "organization_uuid": ORGANIZATION.uuid,
+                "organization_name": ORGANIZATION.name,
+                "role": "viewer",
+                "enforce_mfa": False,
+                "created_at": organization_harness.invite.invites[0].created_at.isoformat().replace("+00:00", "Z"),
+            }
+        ]
+    }
+    assert USER.email not in response.text
+    assert TARGET_USER.email not in response.text
+    assert '"user_id"' not in response.text
 
 
 def test_pending_invite_list_requires_organization_read_scope(organization_harness: OrganizationHarness) -> None:
@@ -126,6 +140,7 @@ def test_accept_invite_audits_notifies_and_reports_mfa_bootstrap(
     )
 
     assert response.status_code == 200
+    assert response.headers["X-Rentivo-Analytics-Event"] == "rentivo_invite_accepted"
     assert response.json() == {
         "status": "accepted",
         "organization_uuid": ORGANIZATION.uuid,
@@ -151,6 +166,7 @@ def test_decline_invite_audits_and_notifies_without_mfa_check(
     )
 
     assert response.status_code == 200
+    assert response.headers["X-Rentivo-Analytics-Event"] == "rentivo_invite_declined"
     assert response.json() == {"status": "declined", "organization_uuid": ORGANIZATION.uuid}
     assert invite.status == "declined"
     assert organization_harness.audit.calls[-1][0][1] == "invite.decline"
@@ -193,3 +209,46 @@ def test_already_answered_invite_is_conflict_without_side_effects(
     assert response.json()["code"] == "invite_response_conflict"
     assert organization_harness.audit.calls == []
     assert organization_harness.job.calls == []
+
+
+@pytest.mark.parametrize("action", ["accept", "decline"])
+def test_invite_response_maps_post_preflight_transition_race_to_conflict(
+    organization_harness: OrganizationHarness,
+    action: str,
+) -> None:
+    invite = organization_harness.invite.invites[0]
+    invite.invited_user_id = USER.id
+    organization_harness.invite.response_conflict = True
+
+    response = organization_harness.client.post(
+        f"/api/v1/invites/{invite.uuid}/{action}",
+        headers=login_headers(csrf=True),
+    )
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "invite_response_conflict"
+    assert invite.status == "pending"
+    assert organization_harness.audit.calls == []
+    assert organization_harness.job.calls == []
+
+
+@pytest.mark.parametrize("action", ["accept", "decline"])
+def test_invite_response_resolves_organization_before_mutation(
+    organization_harness: OrganizationHarness,
+    action: str,
+) -> None:
+    invite = organization_harness.invite.invites[0]
+    invite.invited_user_id = USER.id
+    organization_harness.organization.organizations.pop(ORGANIZATION.uuid)
+
+    response = organization_harness.client.post(
+        f"/api/v1/invites/{invite.uuid}/{action}",
+        headers=login_headers(csrf=True),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "not_found"
+    assert invite.status == "pending"
+    assert organization_harness.audit.calls == []
+    assert organization_harness.job.calls == []
+    assert organization_harness.mfa.requires_setup_calls == []

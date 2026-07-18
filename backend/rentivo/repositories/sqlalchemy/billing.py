@@ -265,3 +265,30 @@ class SQLAlchemyBillingRepository(BillingRepository):
             {"owner_type": owner_type, "owner_id": owner_id, "updated_at": _now(), "id": billing_id},
         )
         self.conn.commit()
+
+    @traced("billing_repo.transfer_owner_if_current")
+    def transfer_owner_if_current(
+        self,
+        billing_id: int,
+        expected_owner_type: str,
+        expected_owner_id: int,
+        owner_type: str,
+        owner_id: int,
+    ) -> bool:
+        result = self.conn.execute(
+            text(
+                "UPDATE billings SET owner_type = :owner_type, owner_id = :owner_id, "
+                "updated_at = :updated_at WHERE id = :id AND deleted_at IS NULL "
+                "AND owner_type = :expected_owner_type AND owner_id = :expected_owner_id"
+            ),
+            {
+                "owner_type": owner_type,
+                "owner_id": owner_id,
+                "updated_at": _now(),
+                "id": billing_id,
+                "expected_owner_type": expected_owner_type,
+                "expected_owner_id": expected_owner_id,
+            },
+        )
+        self.conn.commit()
+        return result.rowcount == 1

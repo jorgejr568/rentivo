@@ -76,9 +76,15 @@ class OrganizationService:
         return self.repo.add_member(org_id, user_id, role)
 
     @traced("organization.remove_member")
-    def remove_member(self, org_id: int, user_id: int) -> None:
-        self.repo.remove_member(org_id, user_id)
-        logger.info("org_member_removed", org_id=org_id, user_id=user_id)
+    def remove_member(self, org_id: int, user_id: int, *, expected_role: str | None = None) -> bool:
+        if expected_role is None:
+            self.repo.remove_member(org_id, user_id)
+            removed = True
+        else:
+            removed = self.repo.remove_member_if_role(org_id, user_id, expected_role)
+        if removed:
+            logger.info("org_member_removed", org_id=org_id, user_id=user_id)
+        return removed
 
     @traced("organization.update_member_role")
     def update_member_role(self, org_id: int, user_id: int, role: str) -> None:

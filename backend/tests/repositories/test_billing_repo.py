@@ -69,6 +69,12 @@ class TestBillingRepoCRUD:
         billings = billing_repo.list_all()
         assert len(billings[0].items) == 2
 
+    def test_list_for_user(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
+        billing_repo.create(sample_billing(owner_type="user", owner_id=7))
+
+        assert len(billing_repo.list_for_user(7)) == 1
+        assert billing_repo.list_for_user(8) == []
+
     def test_update(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
         created = billing_repo.create(sample_billing())
         created.name = "Apt 102 Updated"
@@ -92,6 +98,28 @@ class TestBillingRepoCRUD:
         created = billing_repo.create(sample_billing())
         billing_repo.delete(created.id)
         assert billing_repo.get_by_uuid(created.uuid) is None
+
+    def test_transfer_owner_if_current_is_compare_and_set(
+        self, billing_repo: SQLAlchemyBillingRepository, sample_billing
+    ):
+        created = billing_repo.create(sample_billing(owner_type="user", owner_id=7))
+
+        assert billing_repo.transfer_owner_if_current(created.id, "user", 8, "organization", 31) is False
+        assert billing_repo.transfer_owner_if_current(created.id, "user", 7, "organization", 31) is True
+        transferred = billing_repo.get_by_id(created.id)
+        assert transferred is not None
+        assert (transferred.owner_type, transferred.owner_id) == ("organization", 31)
+
+    def test_transfer_owner_preserves_unconditional_legacy_operation(
+        self, billing_repo: SQLAlchemyBillingRepository, sample_billing
+    ):
+        created = billing_repo.create(sample_billing(owner_type="user", owner_id=7))
+
+        billing_repo.transfer_owner(created.id, "organization", 31)
+
+        transferred = billing_repo.get_by_id(created.id)
+        assert transferred is not None
+        assert (transferred.owner_type, transferred.owner_id) == ("organization", 31)
 
 
 class TestBillingRepoEdgeCases:

@@ -86,7 +86,13 @@ class BillingService:
         logger.info("billing_deleted", billing_id=billing_id)
 
     @traced("billing.transfer_to_organization")
-    def transfer_to_organization(self, billing_id: int, org_id: int) -> None:
+    def transfer_to_organization(
+        self,
+        billing_id: int,
+        org_id: int,
+        *,
+        expected_owner_id: int | None = None,
+    ) -> None:
         billing = self.repo.get_by_id(billing_id)
         if billing is None:
             logger.warning("billing_transfer_failed", billing_id=billing_id, reason="not_found")
@@ -99,5 +105,16 @@ class BillingService:
                 owner_type=billing.owner_type,
             )
             raise ValueError("Only personal billings can be transferred to organizations")
-        self.repo.transfer_owner(billing_id, "organization", org_id)
+        current_owner_id = billing.owner_id if expected_owner_id is None else expected_owner_id
+        if billing.owner_id != current_owner_id:
+            raise ValueError("Billing ownership changed")
+        transferred = self.repo.transfer_owner_if_current(
+            billing_id,
+            "user",
+            current_owner_id,
+            "organization",
+            org_id,
+        )
+        if not transferred:
+            raise ValueError("Billing ownership changed")
         logger.info("billing_transferred", billing_id=billing_id, org_id=org_id)

@@ -67,7 +67,7 @@ class InviteService:
         logger.info("invite_sent", org_id=org_id, email=email, role=role)
         return created
 
-    def _load_pending_invite(self, invite_uuid: str, user_id: int, *, action: str) -> Invite:
+    def get_pending_invite(self, invite_uuid: str, user_id: int, *, action: str) -> Invite:
         """Fetch a pending invite owned by ``user_id``, raising on any mismatch.
 
         ``action`` ("accept" / "decline") only shapes the warning log event so
@@ -87,18 +87,36 @@ class InviteService:
         return invite
 
     @traced("invite.accept_invite")
-    def accept_invite(self, invite_uuid: str, user_id: int) -> Invite:
-        invite = self._load_pending_invite(invite_uuid, user_id, action="accept")
-        self.org_repo.add_member(invite.organization_id, invite.invited_user_id, invite.role)
-        self.invite_repo.update_status(invite.id, InviteStatus.ACCEPTED.value)
-        logger.info("invite_accepted", invite_uuid=invite_uuid, user_id=user_id)
+    def accept_invite(self, invite: Invite | str, user_id: int | None = None) -> Invite:
+        if isinstance(invite, str):
+            assert user_id is not None
+            invite = self.get_pending_invite(invite, user_id, action="accept")
+        assert invite.id is not None
+        accepted = self.invite_repo.accept_if_pending(
+            invite.id,
+            invite.organization_id,
+            invite.invited_user_id,
+            invite.role,
+        )
+        if not accepted:
+            raise ValueError("Invite is no longer pending")
+        logger.info("invite_accepted", invite_uuid=invite.uuid, user_id=invite.invited_user_id)
         return invite
 
     @traced("invite.decline_invite")
-    def decline_invite(self, invite_uuid: str, user_id: int) -> Invite:
-        invite = self._load_pending_invite(invite_uuid, user_id, action="decline")
-        self.invite_repo.update_status(invite.id, InviteStatus.DECLINED.value)
-        logger.info("invite_declined", invite_uuid=invite_uuid, user_id=user_id)
+    def decline_invite(self, invite: Invite | str, user_id: int | None = None) -> Invite:
+        if isinstance(invite, str):
+            assert user_id is not None
+            invite = self.get_pending_invite(invite, user_id, action="decline")
+        assert invite.id is not None
+        declined = self.invite_repo.decline_if_pending(
+            invite.id,
+            invite.organization_id,
+            invite.invited_user_id,
+        )
+        if not declined:
+            raise ValueError("Invite is no longer pending")
+        logger.info("invite_declined", invite_uuid=invite.uuid, user_id=invite.invited_user_id)
         return invite
 
     @traced("invite.list_pending")

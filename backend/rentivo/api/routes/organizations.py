@@ -12,10 +12,11 @@ from rentivo.api.schemas.organizations import (
     BillingTransferResponse,
     OrganizationCapabilitiesResponse,
     OrganizationCreateRequest,
-    OrganizationDetailResponse,
+    OrganizationIntegrationDetailResponse,
     OrganizationInviteCreateRequest,
     OrganizationInviteResponse,
     OrganizationListResponse,
+    OrganizationLoginDetailResponse,
     OrganizationMemberResponse,
     OrganizationMemberUpdateRequest,
     OrganizationMFAPolicyRequest,
@@ -38,6 +39,7 @@ _write_principal = require_login_scope(APIScope.ORGANIZATIONS_WRITE)
 _members_principal = require_login_scope(APIScope.ORGANIZATIONS_MEMBERS)
 _ADMIN_ROLES = frozenset({OrgRole.ADMIN.value})
 _BILLING_ROLES = frozenset({OrgRole.ADMIN.value, OrgRole.MANAGER.value})
+_ANALYTICS_HEADER = "X-Rentivo-Analytics-Event"
 
 
 def _conflict(code: str, detail: str) -> ProblemException:
@@ -116,9 +118,15 @@ def _invite_response(invite: Invite) -> OrganizationInviteResponse:
     )
 
 
-def _detail_response(access: OrganizationAccess, services: RequestServices) -> OrganizationDetailResponse:
+def _detail_response(
+    access: OrganizationAccess,
+    services: RequestServices,
+) -> OrganizationLoginDetailResponse | OrganizationIntegrationDetailResponse:
     organization = access.organization
-    capabilities = _capabilities(access.principal, access.role)
+    summary = _organization_response(organization, access.member, access.principal)
+    if not access.principal.api_key.is_login_token:
+        return OrganizationIntegrationDetailResponse(**summary.model_dump())
+    capabilities = summary.capabilities
     settings_response = None
     if capabilities.can_manage:
         settings_response = OrganizationSettingsResponse(
@@ -127,8 +135,7 @@ def _detail_response(access: OrganizationAccess, services: RequestServices) -> O
             pix_merchant_city=organization.pix_merchant_city,
         )
     invites = services.invite.list_org_invites(organization.id) if capabilities.can_invite else []
-    summary = _organization_response(organization, access.member, access.principal)
-    return OrganizationDetailResponse(
+    return OrganizationLoginDetailResponse(
         **summary.model_dump(),
         settings=settings_response,
         members=tuple(
@@ -175,6 +182,7 @@ async def list_organizations(
 )
 async def create_organization(
     payload: OrganizationCreateRequest,
+    response: Response,
     principal: Principal = Depends(_write_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -189,26 +197,27 @@ async def create_organization(
         new_state=serialize_organization(organization),
     )
     member = services.organization.get_member(organization.id, principal.user.id)
+    response.headers[_ANALYTICS_HEADER] = "rentivo_organization_created"
     return _organization_response(organization, member, principal)
 
 
 @router.get(
     "/{organization_uuid}",
-    response_model=OrganizationDetailResponse,
+    response_model=OrganizationLoginDetailResponse | OrganizationIntegrationDetailResponse,
     responses={404: {"model": Problem}},
 )
 async def get_organization(
     organization_uuid: str = Path(min_length=1),
     principal: Principal = Depends(_read_principal),
     services: RequestServices = Depends(get_services),
-) -> OrganizationDetailResponse:
+) -> OrganizationLoginDetailResponse | OrganizationIntegrationDetailResponse:
     access = resolve_organization_access(principal, services, organization_uuid)
     return _detail_response(access, services)
 
 
 @router.patch(
     "/{organization_uuid}",
-    response_model=OrganizationDetailResponse,
+    response_model=OrganizationLoginDetailResponse,
     responses={404: {"model": Problem}, 422: {"model": Problem}},
 )
 async def update_organization(
@@ -217,7 +226,7 @@ async def update_organization(
     principal: Principal = Depends(_write_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
-) -> OrganizationDetailResponse:
+) -> OrganizationLoginDetailResponse:
     access = _admin_access(principal, services, organization_uuid)
     organization = access.organization
     previous_state = serialize_organization(organization)
@@ -334,7 +343,13 @@ async def remove_member(
     member = services.organization.get_member(access.organization.id, user_id)
     if member is None:
         raise _conflict("membership_conflict", "A associação do membro foi alterada ou removida.")
-    services.organization.remove_member(access.organization.id, user_id)
+    removed = services.organization.remove_member(
+        access.organization.id,
+        user_id,
+        expected_role=member.role,
+    )
+    if not removed:
+        raise _conflict("membership_conflict", "A associação do membro foi alterada ou removida.")
     services.audit.safe_log_for(
         principal.actor,
         AuditEventType.ORGANIZATION_REMOVE_MEMBER,
@@ -358,6 +373,7 @@ async def remove_member(
 )
 async def create_invite(
     payload: OrganizationInviteCreateRequest,
+    response: Response,
     organization_uuid: str = Path(min_length=1),
     principal: Principal = Depends(_members_principal),
     _csrf: None = Depends(require_csrf),
@@ -395,6 +411,7 @@ async def create_invite(
             },
         },
     )
+    response.headers[_ANALYTICS_HEADER] = "rentivo_invite_sent"
     return _invite_response(invite)
 
 
@@ -450,7 +467,11 @@ async def transfer_billing(
         raise ProblemException.not_found()
     previous_owner = {"owner_type": billing.owner_type, "owner_id": billing.owner_id}
     try:
-        services.billing.transfer_to_organization(billing.id, access.organization.id)
+        services.billing.transfer_to_organization(
+            billing.id,
+            access.organization.id,
+            expected_owner_id=principal.user.id,
+        )
     except ValueError:
         raise _conflict(
             "billing_transfer_conflict",
