@@ -26,7 +26,7 @@ export default defineConfig({
   ],
   reporter: process.env.CI ? "github" : "list",
   retries: process.env.CI ? 1 : 0,
-  snapshotPathTemplate: "{testDir}/snapshots/{projectName}/{arg}{ext}",
+  snapshotPathTemplate: "{testDir}/snapshots/{platform}/{projectName}/{arg}{ext}",
   testDir: "./e2e",
   timeout: 30_000,
   use: {

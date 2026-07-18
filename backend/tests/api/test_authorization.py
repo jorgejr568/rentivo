@@ -7,12 +7,12 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
-from rentivo.api.authentication import get_principal
-from rentivo.api.principal import Principal
 
 from rentivo.api.app import create_app
+from rentivo.api.authentication import get_principal
 from rentivo.api.dependencies import require_login_scope, require_resource_grant, require_scope
 from rentivo.api.errors import ProblemException
+from rentivo.api.principal import Principal
 from rentivo.constants.api_scopes import APIScope
 from rentivo.context import Actor
 from rentivo.models.api_key import APIKey, APIKeyGrant
