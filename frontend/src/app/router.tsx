@@ -11,6 +11,7 @@ import { LoginPage } from "../features/auth/LoginPage";
 import { MfaVerifyPage } from "../features/auth/MfaVerifyPage";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { SignupPage } from "../features/auth/SignupPage";
+import { NotFoundPage } from "../features/notFound/NotFoundPage";
 import { RecoveryCodesPage } from "../features/security/RecoveryCodesPage";
 import { SecurityPage } from "../features/security/SecurityPage";
 import { TotpSetupPage } from "../features/security/TotpSetupPage";
@@ -48,17 +49,7 @@ function ProtectedApp() {
   return <AuthenticatedAppShell />;
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-function AuthenticatedNotFound() {
-  return (
-    <section className="empty-state">
-      <h2>Página não encontrada</h2>
-      <p>O endereço acessado não existe ou não está disponível.</p>
-    </section>
-  );
-}
-
-export function createAppRouter(children: RouteObject[] = [{ element: <AuthenticatedNotFound />, path: "*" }]) {
+export function createAppRouter(children: RouteObject[] = [{ element: <NotFoundPage />, path: "*" }]) {
   const authenticatedRoutes: RouteObject[] = [
     { element: <SecurityPage />, path: "/security" },
     { element: <TotpSetupPage />, path: "/security/totp/setup" },
