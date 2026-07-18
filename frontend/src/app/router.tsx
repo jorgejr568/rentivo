@@ -48,7 +48,17 @@ function ProtectedApp() {
   return <AuthenticatedAppShell />;
 }
 
-export function createAppRouter(children: RouteObject[] = [{ element: null, path: "*" }]) {
+// eslint-disable-next-line react-refresh/only-export-components
+function AuthenticatedNotFound() {
+  return (
+    <section className="empty-state">
+      <h2>Página não encontrada</h2>
+      <p>O endereço acessado não existe ou não está disponível.</p>
+    </section>
+  );
+}
+
+export function createAppRouter(children: RouteObject[] = [{ element: <AuthenticatedNotFound />, path: "*" }]) {
   const authenticatedRoutes: RouteObject[] = [
     { element: <SecurityPage />, path: "/security" },
     { element: <TotpSetupPage />, path: "/security/totp/setup" },

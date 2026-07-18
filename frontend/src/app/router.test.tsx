@@ -188,3 +188,23 @@ it.each([
   view.unmount();
   router.dispose();
 });
+
+it("renders a meaningful authenticated page instead of a blank catch-all", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/v1/auth/config") return jsonResponse(AUTH_CONFIG);
+    if (url === "/api/v1/auth/session") return jsonResponse(AUTHENTICATED_RESPONSE);
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  window.history.pushState({}, "", "/billings/");
+  const router = createAppRouter();
+  const view = render(<RouterProvider router={router} />);
+
+  expect(await screen.findByRole("heading", { name: "Página não encontrada" })).toBeVisible();
+  expect(screen.getByRole("main")).toContainElement(
+    screen.getByRole("heading", { name: "Página não encontrada" })
+  );
+
+  view.unmount();
+  router.dispose();
+});
