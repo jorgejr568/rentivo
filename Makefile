@@ -6,6 +6,12 @@ PYTEST  := uv run --project backend pytest
 RUFF    := uv run --project backend ruff
 UVICORN := uv run --project backend uvicorn
 ALEMBIC := uv run --project backend alembic -c backend/alembic.ini
+NPM_FRONTEND := npm --prefix frontend
+
+RENTIVO_DB_ENV_FILE  ?= .env.preview-db
+RENTIVO_APP_ENV_FILE ?= .env.preview-app
+PREVIEW_COMPOSE := RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)" docker compose --env-file "$(RENTIVO_DB_ENV_FILE)" -f docker-compose.next.yml
+PREVIEW_COMPOSE_REMOTE := $(PREVIEW_COMPOSE) -f docker-compose.next.remote.yml
 
 # --- Local development ---
 
@@ -96,6 +102,14 @@ test:
 test-cov:
 	$(PYTEST) -c backend/pyproject.toml -n auto --cov --cov-config=backend/pyproject.toml --cov-report=term-missing
 
+.PHONY: e2e
+e2e:
+	$(NPM_FRONTEND) run e2e
+
+.PHONY: e2e-update
+e2e-update:
+	$(NPM_FRONTEND) run e2e:update
+
 # --- Web (local) ---
 
 .PHONY: web-run
@@ -105,6 +119,36 @@ web-run:
 .PHONY: web-createuser
 web-createuser:
 	$(PYTHON) -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
+
+# --- React frontend & OpenAPI contract ---
+
+.PHONY: frontend-install
+frontend-install:
+	$(NPM_FRONTEND) ci
+
+.PHONY: frontend-dev
+frontend-dev:
+	$(NPM_FRONTEND) run dev
+
+.PHONY: frontend-build
+frontend-build:
+	$(NPM_FRONTEND) run build
+
+.PHONY: frontend-test-cov
+frontend-test-cov:
+	$(NPM_FRONTEND) test -- --run --coverage
+
+.PHONY: openapi-export
+openapi-export:
+	$(NPM_FRONTEND) run api:snapshot
+
+.PHONY: openapi-generate
+openapi-generate:
+	$(NPM_FRONTEND) run api:generate
+
+.PHONY: openapi-check
+openapi-check:
+	$(NPM_FRONTEND) run api:check
 
 # --- Worker (local) ---
 
@@ -273,6 +317,33 @@ compose-regenerate-recibos:
 .PHONY: compose-logs
 compose-logs:
 	docker compose logs -f
+
+# --- Replacement preview (legacy production remains the default) ---
+
+.PHONY: preview-config
+preview-config:
+	$(PREVIEW_COMPOSE) config --quiet
+
+.PHONY: preview-config-remote
+preview-config-remote:
+	$(PREVIEW_COMPOSE_REMOTE) config --quiet
+
+.PHONY: preview-build
+preview-build:
+	$(PREVIEW_COMPOSE) build rentivo worker api frontend
+
+.PHONY: preview-migrate
+preview-migrate:
+	$(PREVIEW_COMPOSE) up -d db
+	$(PREVIEW_COMPOSE) run --rm api alembic -c backend/alembic.ini upgrade head
+
+.PHONY: preview-up
+preview-up: preview-migrate
+	$(PREVIEW_COMPOSE) up -d --build rentivo worker api frontend proxy
+
+.PHONY: preview-stop
+preview-stop:
+	$(PREVIEW_COMPOSE) stop proxy frontend api
 
 .PHONY: jaeger-up
 jaeger-up:

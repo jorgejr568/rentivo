@@ -111,6 +111,40 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  e2e:
+    name: frontend E2E, accessibility, and visual parity
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright suite
+        run: npm run e2e
+
+      - name: Upload Playwright results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-results
+          path: frontend/test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
   migrations:
     name: migration single head and clean upgrade
     runs-on: ubuntu-latest
@@ -221,11 +255,12 @@ jobs:
   all-checks-pass:
     name: all-checks-pass
     runs-on: ubuntu-latest
-    needs: [backend, frontend, migrations, compose-config, preview-images]
+    needs: [backend, frontend, e2e, migrations, compose-config, preview-images]
     if: always()
     env:
       BACKEND_RESULT: ${{ needs.backend.result }}
       FRONTEND_RESULT: ${{ needs.frontend.result }}
+      E2E_RESULT: ${{ needs.e2e.result }}
       MIGRATIONS_RESULT: ${{ needs.migrations.result }}
       COMPOSE_RESULT: ${{ needs.compose-config.result }}
       IMAGES_RESULT: ${{ needs.preview-images.result }}
@@ -234,12 +269,14 @@ jobs:
         run: |
           if [ "$BACKEND_RESULT" != "success" ] \
              || [ "$FRONTEND_RESULT" != "success" ] \
+             || [ "$E2E_RESULT" != "success" ] \
              || [ "$MIGRATIONS_RESULT" != "success" ] \
              || [ "$COMPOSE_RESULT" != "success" ] \
              || [ "$IMAGES_RESULT" != "success" ]; then
             echo "One or more required jobs failed."
             echo "backend=$BACKEND_RESULT"
             echo "frontend=$FRONTEND_RESULT"
+            echo "e2e=$E2E_RESULT"
             echo "migrations=$MIGRATIONS_RESULT"
             echo "compose-config=$COMPOSE_RESULT"
             echo "preview-images=$IMAGES_RESULT"

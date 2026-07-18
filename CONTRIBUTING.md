@@ -7,7 +7,7 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 1. Fork / branch from `main`.
 2. `make install && cp .env.example .env && docker compose up -d db && make migrate`
 3. Write tests first where practical — **coverage must stay at 100%**.
-4. `make lint && make test` (pre-commit hooks run these on every commit anyway).
+4. `make lint && make test`; for frontend changes also run `make openapi-check && make frontend-test-cov && make frontend-build`.
 5. Open a PR with a [Conventional Commit](https://www.conventionalcommits.org/) title and fill out every section of the PR template.
 
 ## Code conventions
@@ -24,6 +24,8 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 - `make test` runs the suite in parallel; it must pass with **100% coverage** (`fail_under = 100`). New code needs tests or an explicit `# pragma: no cover` with justification.
 - Tests run against in-memory SQLite — no services required.
 - Web POST tests need a CSRF token (see the `csrf_token` fixture in `backend/tests/web/conftest.py`).
+- `make frontend-test-cov` enforces 100% coverage for authored React code; `make openapi-check` verifies the committed FastAPI snapshot and generated TypeScript contract.
+- `make e2e` runs Playwright workflows and visual parity. Use `make e2e-update` only after reviewing and approving an intentional UI difference.
 
 ## Database migrations
 
@@ -34,7 +36,7 @@ Thanks for contributing! This guide covers the workflow; for environment setup s
 
 - PR titles and merge commits follow [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `perf:`, `refactor:`, `chore:`, `docs:`, `test:`, `ci:`, `build:`, with optional scope (`feat(web): ...`). Breaking changes carry a `BREAKING CHANGE:` footer.
 - Fill out **every** section of [.github/pull_request_template.md](.github/pull_request_template.md) — summary (lead with the why), what changed, test plan, screenshots for UI changes, config/deployment notes, risk & rollback.
-- CI on PRs (`test-pr.yaml`) runs ruff check, ruff format, pytest, and both Docker image builds; all must pass.
+- CI on PRs (`test-pr.yaml`) runs backend and frontend lint/tests/coverage, OpenAPI freshness, migrations, Playwright parity, Compose validation, and all four preview image builds; all must pass.
 
 ## Merging policy — human-only
 

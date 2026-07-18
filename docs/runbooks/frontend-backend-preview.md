@@ -168,7 +168,7 @@ workflow remain legacy-first, so no production route switch is part of this prev
 
 Run the checks in `.github/workflows/test-pr.yaml` and attach any parity evidence to the pull request. The existing required
 `all-checks-pass` job covers backend lint and coverage, frontend OpenAPI freshness and validation, a clean database upgrade,
-merged Compose validation, and all four preview images. Follow
+Playwright E2E/accessibility/visual parity, merged Compose validation, and all four preview images. Follow
 [Contributing](../../CONTRIBUTING.md), including the 100% backend coverage requirement. Automated agents may create a
 pull request, but they must never merge it, enable auto-merge, push directly to `main`, or otherwise land the change. A
 human reviews and merges every pull request.

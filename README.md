@@ -26,7 +26,7 @@ Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with 
 
 - Recurring billing templates with multiple line items; one-click monthly bill generation
 - Professional PDF invoices with PIX QR codes; receipt attachments (PDF/JPG/PNG) merged into the invoice
-- **Web UI** (FastAPI) over a clean repository + service layer
+- Production **legacy web UI** plus a preview React/Vite frontend backed by the versioned FastAPI API
 - Login with sessions, **TOTP MFA and passkeys (WebAuthn)**, password recovery by email
 - **Organizations** with role-based access (owner / admin / manager / viewer) and email invites
 - Transactional emails (AWS SES, or local `.eml` files in dev)
@@ -68,6 +68,12 @@ Open http://localhost:8000. Source edits under `backend/rentivo/` and `backend/l
 
 See [docs/development.md](docs/development.md) for the full developer guide.
 
+## Replacement preview
+
+The React/FastAPI replacement remains a non-production preview; the default Compose and deployment paths continue to run the legacy app. After preparing the separate application and database environment files, use `make preview-config` and `make preview-up`, then open http://localhost:8080. `make preview-stop` stops only replacement traffic.
+
+See the [developer guide](docs/development.md#reactfrontend-development) for daily commands and the [preview runbook](docs/runbooks/frontend-backend-preview.md) for environment setup, parity fixtures, remote staging, and rollback.
+
 ## Configuration
 
 Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The most important ones:
@@ -98,6 +104,31 @@ Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The 
 | `make seed` | Seed the database with demo data |
 | `make test` / `make test-cov` | Run tests (parallel) / with coverage |
 | `make lint` / `make fmt` | Check / auto-fix lint and formatting |
+
+</details>
+
+<details>
+<summary><strong>React frontend, API contract, and E2E</strong></summary>
+
+| Command | Description |
+|---------|-------------|
+| `make frontend-install` / `frontend-dev` | Install locked frontend dependencies / start Vite |
+| `make frontend-build` / `frontend-test-cov` | Build the frontend / run unit tests with coverage |
+| `make openapi-export` / `openapi-generate` | Refresh the API snapshot / generated TypeScript types |
+| `make openapi-check` | Verify the committed OpenAPI snapshot and generated types are current |
+| `make e2e` / `e2e-update` | Run Playwright E2E/parity checks / update reviewed baselines |
+
+</details>
+
+<details>
+<summary><strong>Replacement preview</strong></summary>
+
+| Command | Description |
+|---------|-------------|
+| `make preview-config` / `preview-config-remote` | Validate local / remote replacement Compose configuration |
+| `make preview-build` | Build the legacy, worker, API, and frontend images used by the preview |
+| `make preview-up` | Migrate, build, and start the replacement preview beside the legacy app |
+| `make preview-stop` | Stop only the proxy, frontend, and API replacement services |
 
 </details>
 
@@ -143,7 +174,7 @@ Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The 
 
 ## Architecture
 
-The repository is a uv workspace. Its Python backend is independently packaged under `backend/` and produces two deployables: the **legacy web app** (`backend/Dockerfile.legacy`) and the **job worker** (`backend/Dockerfile.worker`).
+The repository is a uv workspace. Its Python backend is independently packaged under `backend/`; the React/Vite application is independently packaged under `frontend/`. The preview produces four deployables: the **legacy web app**, versioned **FastAPI API**, **job worker**, and static **frontend**. Production remains legacy-first.
 
 ```
 backend/
@@ -168,6 +199,8 @@ backend/
     templates/         # Jinja2 (PT-BR) + emails
     static/            # CSS + JS
   alembic/             # Migrations
+frontend/              # React/Vite/TypeScript replacement UI
+  e2e/                 # Playwright workflows and visual-parity baselines
 ```
 
 ## Documentation
@@ -176,6 +209,7 @@ backend/
 |-----|----------|
 | [docs/configuration.md](docs/configuration.md) | Every environment variable, defaults, validation rules |
 | [docs/development.md](docs/development.md) | Dev setup (local & compose-only), worker, migrations, troubleshooting |
+| [docs/runbooks/frontend-backend-preview.md](docs/runbooks/frontend-backend-preview.md) | Replacement preview setup, staging, health checks, and rollback |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow, conventions, tests, PR expectations |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting |
 | [CHANGELOG.md](CHANGELOG.md) | Release history (SemVer, Keep a Changelog) |
@@ -185,7 +219,8 @@ backend/
 | Layer | Technology |
 |-------|-----------|
 | Language | Python 3.14+ |
-| Web framework | FastAPI + Uvicorn |
+| Backend API | FastAPI + Uvicorn |
+| Frontend | React + Vite + TypeScript |
 | Templates | Jinja2 + custom CSS |
 | Database | MariaDB 11 (SQLAlchemy Core) |
 | Migrations | Alembic |

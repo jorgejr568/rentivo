@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import runpy
+import sys
 from pathlib import Path
 
 from rentivo.api.app import create_app
@@ -34,3 +36,13 @@ def test_export_is_deterministic_without_starting_database_connections(
     assert first == second
     assert first.endswith("\n")
     assert json.loads(first)["paths"]["/api/v1/auth/login"]["post"]
+
+
+def test_export_module_entrypoint_writes_the_requested_schema(tmp_path: Path, monkeypatch) -> None:
+    output = tmp_path / "entrypoint.json"
+    monkeypatch.setattr(sys, "argv", ["rentivo.api.export_openapi", str(output)])
+    monkeypatch.delitem(sys.modules, "rentivo.api.export_openapi", raising=False)
+
+    runpy.run_module("rentivo.api.export_openapi", run_name="__main__")
+
+    assert "/api/v1/auth/login" in json.loads(output.read_text(encoding="utf-8"))["paths"]

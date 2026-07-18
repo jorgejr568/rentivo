@@ -135,6 +135,7 @@ services:
       frontend:
         condition: service_healthy
     networks:
+      preview-ingress:
       preview-edge:
         ipv4_address: ${RENTIVO_PROXY_IP:-172.30.0.10}
 
@@ -174,6 +175,8 @@ volumes:
   invoices:
 
 networks:
+  preview-ingress:
+    driver: bridge
   preview-edge:
     internal: true
     ipam:

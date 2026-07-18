@@ -122,6 +122,16 @@ def test_preview_ports_are_loopback_only_and_remote_database_has_no_fallbacks():
     }
 
 
+def test_proxy_uses_a_dedicated_non_internal_ingress_network():
+    compose = _yaml(COMPOSE_FILE)
+
+    assert compose["networks"]["preview-edge"]["internal"] is True
+    assert compose["networks"]["preview-ingress"].get("internal", False) is False
+    assert set(compose["services"]["proxy"]["networks"]) == {"preview-edge", "preview-ingress"}
+    for service_name in ("db", "rentivo", "worker", "api", "frontend"):
+        assert "preview-ingress" not in compose["services"][service_name].get("networks", [])
+
+
 def test_database_interpolation_and_application_runtime_env_are_separate():
     compose = _yaml(COMPOSE_FILE)
     remote = _yaml(REMOTE_COMPOSE_FILE)
@@ -178,6 +188,7 @@ def test_preview_ci_is_consolidated_under_existing_required_gate():
 
     required_jobs = {
         "backend",
+        "e2e",
         "frontend",
         "migrations",
         "compose-config",

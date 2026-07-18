@@ -1,0 +1,2990 @@
+{
+  "components": {
+    "schemas": {
+      "APIKeyCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/APIKeyGrantRequest"
+            },
+            "minItems": 1,
+            "title": "Grants",
+            "type": "array"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "scopes",
+          "grants"
+        ],
+        "title": "APIKeyCreateRequest",
+        "type": "object"
+      },
+      "APIKeyCreateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/APIKeyGrantResponse"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "hint",
+          "scopes",
+          "grants",
+          "expires_at",
+          "last_used_at",
+          "created_at",
+          "revoked_at",
+          "secret"
+        ],
+        "title": "APIKeyCreateResponse",
+        "type": "object"
+      },
+      "APIKeyGrantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "minLength": 1,
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "enum": [
+              "user",
+              "organization"
+            ],
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id"
+        ],
+        "title": "APIKeyGrantRequest",
+        "type": "object"
+      },
+      "APIKeyGrantResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "resource_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource Id"
+          },
+          "resource_type": {
+            "enum": [
+              "user",
+              "organization"
+            ],
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_type",
+          "resource_id",
+          "available"
+        ],
+        "title": "APIKeyGrantResponse",
+        "type": "object"
+      },
+      "APIKeyListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/APIKeyResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "APIKeyListResponse",
+        "type": "object"
+      },
+      "APIKeyOptionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "default_expiration_days": {
+            "const": 90,
+            "default": 90,
+            "title": "Default Expiration Days",
+            "type": "integer"
+          },
+          "max_expiration_days": {
+            "const": 365,
+            "default": 365,
+            "title": "Max Expiration Days",
+            "type": "integer"
+          },
+          "organizations": {
+            "items": {
+              "$ref": "#/components/schemas/OrganizationWorkspaceOption"
+            },
+            "title": "Organizations",
+            "type": "array"
+          },
+          "personal_workspace": {
+            "$ref": "#/components/schemas/PersonalWorkspaceOption"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scopes",
+          "personal_workspace",
+          "organizations"
+        ],
+        "title": "APIKeyOptionsResponse",
+        "type": "object"
+      },
+      "APIKeyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/APIKeyGrantResponse"
+            },
+            "title": "Grants",
+            "type": "array"
+          },
+          "hint": {
+            "title": "Hint",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "hint",
+          "scopes",
+          "grants",
+          "expires_at",
+          "last_used_at",
+          "created_at",
+          "revoked_at"
+        ],
+        "title": "APIKeyResponse",
+        "type": "object"
+      },
+      "APIKeyUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "grants": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/APIKeyGrantRequest"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Grants"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scopes"
+          }
+        },
+        "title": "APIKeyUpdateRequest",
+        "type": "object"
+      },
+      "AcceptedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analytics_events": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsEvent"
+            },
+            "title": "Analytics Events",
+            "type": "array"
+          },
+          "status": {
+            "const": "accepted",
+            "default": "accepted",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "AcceptedResponse",
+        "type": "object"
+      },
+      "AnalyticsEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
+          }
+        },
+        "required": [
+          "event"
+        ],
+        "title": "AnalyticsEvent",
+        "type": "object"
+      },
+      "AnalyticsSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "gtm_container_id": {
+            "default": "",
+            "title": "Gtm Container Id",
+            "type": "string"
+          }
+        },
+        "title": "AnalyticsSettings",
+        "type": "object"
+      },
+      "AuthConfigResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analytics": {
+            "$ref": "#/components/schemas/AnalyticsSettings"
+          },
+          "feature_flags": {
+            "$ref": "#/components/schemas/FeatureFlags"
+          }
+        },
+        "required": [
+          "feature_flags",
+          "analytics"
+        ],
+        "title": "AuthConfigResponse",
+        "type": "object"
+      },
+      "AuthenticatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/BootstrapResponse"
+          },
+          "status": {
+            "const": "authenticated",
+            "default": "authenticated",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootstrap"
+        ],
+        "title": "AuthenticatedResponse",
+        "type": "object"
+      },
+      "BootstrapAnalytics": {
+        "additionalProperties": false,
+        "properties": {
+          "events": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AnalyticsEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "gtm_container_id": {
+            "default": "",
+            "title": "Gtm Container Id",
+            "type": "string"
+          }
+        },
+        "title": "BootstrapAnalytics",
+        "type": "object"
+      },
+      "BootstrapResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analytics": {
+            "$ref": "#/components/schemas/BootstrapAnalytics"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/FrontendCapabilities"
+          },
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "feature_flags": {
+            "$ref": "#/components/schemas/FeatureFlags"
+          },
+          "pending_invite_count": {
+            "minimum": 0.0,
+            "title": "Pending Invite Count",
+            "type": "integer"
+          },
+          "user": {
+            "$ref": "#/components/schemas/BootstrapUser"
+          }
+        },
+        "required": [
+          "user",
+          "capabilities",
+          "pending_invite_count",
+          "feature_flags",
+          "analytics",
+          "csrf_token"
+        ],
+        "title": "BootstrapResponse",
+        "type": "object"
+      },
+      "BootstrapUser": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "BootstrapUser",
+        "type": "object"
+      },
+      "CSRFResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "csrf_token": {
+            "title": "Csrf Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrf_token"
+        ],
+        "title": "CSRFResponse",
+        "type": "object"
+      },
+      "CurrentProfileResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "CurrentProfileResponse",
+        "type": "object"
+      },
+      "FeatureFlags": {
+        "additionalProperties": false,
+        "properties": {
+          "google_auth": {
+            "default": false,
+            "title": "Google Auth",
+            "type": "boolean"
+          },
+          "turnstile": {
+            "default": false,
+            "title": "Turnstile",
+            "type": "boolean"
+          },
+          "turnstile_site_key": {
+            "default": "",
+            "title": "Turnstile Site Key",
+            "type": "string"
+          }
+        },
+        "title": "FeatureFlags",
+        "type": "object"
+      },
+      "FrontendCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "mfa_setup_required": {
+            "title": "Mfa Setup Required",
+            "type": "boolean"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scopes",
+          "mfa_setup_required"
+        ],
+        "title": "FrontendCapabilities",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "turnstile_token": {
+            "default": "",
+            "title": "Turnstile Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "MFACodeVerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "code"
+        ],
+        "title": "MFACodeVerifyRequest",
+        "type": "object"
+      },
+      "MFARequiredResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "status": {
+            "const": "mfa_required",
+            "default": "mfa_required",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "methods"
+        ],
+        "title": "MFARequiredResponse",
+        "type": "object"
+      },
+      "MFAStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "organization_enforced": {
+            "title": "Organization Enforced",
+            "type": "boolean"
+          },
+          "setup_required": {
+            "title": "Setup Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "setup_required",
+          "organization_enforced"
+        ],
+        "title": "MFAStatusResponse",
+        "type": "object"
+      },
+      "OrganizationWorkspaceOption": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "resource_id": {
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "const": "organization",
+            "default": "organization",
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "name"
+        ],
+        "title": "OrganizationWorkspaceOption",
+        "type": "object"
+      },
+      "PasskeyAuthBeginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id"
+        ],
+        "title": "PasskeyAuthBeginRequest",
+        "type": "object"
+      },
+      "PasskeyAuthCompleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/WebAuthnAuthenticationCredential"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential"
+        ],
+        "title": "PasskeyAuthCompleteRequest",
+        "type": "object"
+      },
+      "PasskeyListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PasskeyResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PasskeyListResponse",
+        "type": "object"
+      },
+      "PasskeyRegistrationBeginResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "options": {
+            "$ref": "#/components/schemas/WebAuthnRegistrationOptions"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "options"
+        ],
+        "title": "PasskeyRegistrationBeginResponse",
+        "type": "object"
+      },
+      "PasskeyRegistrationCompleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/WebAuthnRegistrationCredential"
+          },
+          "name": {
+            "default": "Minha Passkey",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential"
+        ],
+        "title": "PasskeyRegistrationCompleteRequest",
+        "type": "object"
+      },
+      "PasskeyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "uuid": {
+            "title": "Uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "uuid",
+          "name",
+          "created_at"
+        ],
+        "title": "PasskeyResponse",
+        "type": "object"
+      },
+      "PasswordChangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_password": {
+            "minLength": 1,
+            "title": "Confirm Password",
+            "type": "string"
+          },
+          "current_password": {
+            "minLength": 1,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password",
+          "confirm_password"
+        ],
+        "title": "PasswordChangeRequest",
+        "type": "object"
+      },
+      "PasswordForgotRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "turnstile_token": {
+            "default": "",
+            "title": "Turnstile Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "PasswordForgotRequest",
+        "type": "object"
+      },
+      "PasswordResetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_password": {
+            "minLength": 1,
+            "title": "Confirm Password",
+            "type": "string"
+          },
+          "password": {
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password",
+          "confirm_password"
+        ],
+        "title": "PasswordResetRequest",
+        "type": "object"
+      },
+      "PersonalWorkspaceOption": {
+        "additionalProperties": false,
+        "properties": {
+          "resource_id": {
+            "const": "personal",
+            "default": "personal",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "resource_type": {
+            "const": "user",
+            "default": "user",
+            "title": "Resource Type",
+            "type": "string"
+          }
+        },
+        "title": "PersonalWorkspaceOption",
+        "type": "object"
+      },
+      "PixUpdateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pix_key": {
+            "default": "",
+            "title": "Pix Key",
+            "type": "string"
+          },
+          "pix_merchant_city": {
+            "default": "",
+            "title": "Pix Merchant City",
+            "type": "string"
+          },
+          "pix_merchant_name": {
+            "default": "",
+            "title": "Pix Merchant Name",
+            "type": "string"
+          }
+        },
+        "title": "PixUpdateRequest",
+        "type": "object"
+      },
+      "PixUpdateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "profile": {
+            "$ref": "#/components/schemas/ProfileResponse"
+          }
+        },
+        "required": [
+          "profile"
+        ],
+        "title": "PixUpdateResponse",
+        "type": "object"
+      },
+      "Problem": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "object"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "detail",
+          "request_id"
+        ],
+        "title": "Problem",
+        "type": "object"
+      },
+      "ProfileResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "pix_key": {
+            "default": "",
+            "title": "Pix Key",
+            "type": "string"
+          },
+          "pix_merchant_city": {
+            "default": "",
+            "title": "Pix Merchant City",
+            "type": "string"
+          },
+          "pix_merchant_name": {
+            "default": "",
+            "title": "Pix Merchant Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "ProfileResponse",
+        "type": "object"
+      },
+      "RecoveryCodesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "recovery_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Recovery Codes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "recovery_codes"
+        ],
+        "title": "RecoveryCodesResponse",
+        "type": "object"
+      },
+      "SecuritySummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "mfa": {
+            "$ref": "#/components/schemas/MFAStatusResponse"
+          },
+          "passkeys": {
+            "items": {
+              "$ref": "#/components/schemas/PasskeyResponse"
+            },
+            "title": "Passkeys",
+            "type": "array"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileResponse"
+          },
+          "totp": {
+            "$ref": "#/components/schemas/TOTPStatusResponse"
+          }
+        },
+        "required": [
+          "profile",
+          "totp",
+          "mfa",
+          "passkeys"
+        ],
+        "title": "SecuritySummaryResponse",
+        "type": "object"
+      },
+      "SignupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_password": {
+            "minLength": 1,
+            "title": "Confirm Password",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "turnstile_token": {
+            "default": "",
+            "title": "Turnstile Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "confirm_password"
+        ],
+        "title": "SignupRequest",
+        "type": "object"
+      },
+      "TOTPConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "TOTPConfirmRequest",
+        "type": "object"
+      },
+      "TOTPDisableRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "TOTPDisableRequest",
+        "type": "object"
+      },
+      "TOTPSetupResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "provisioning_uri": {
+            "title": "Provisioning Uri",
+            "type": "string"
+          },
+          "qr_code_base64": {
+            "title": "Qr Code Base64",
+            "type": "string"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "secret",
+          "provisioning_uri",
+          "qr_code_base64"
+        ],
+        "title": "TOTPSetupResponse",
+        "type": "object"
+      },
+      "TOTPStatusResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "recovery_codes_remaining": {
+            "minimum": 0.0,
+            "title": "Recovery Codes Remaining",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "recovery_codes_remaining"
+        ],
+        "title": "TOTPStatusResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "WebAuthnAuthenticationCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticatorAttachment": {
+            "anyOf": [
+              {
+                "enum": [
+                  "cross-platform",
+                  "platform"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authenticatorattachment"
+          },
+          "clientExtensionResults": {
+            "$ref": "#/components/schemas/WebAuthnAuthenticationExtensions"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "rawId": {
+            "minLength": 1,
+            "title": "Rawid",
+            "type": "string"
+          },
+          "response": {
+            "$ref": "#/components/schemas/WebAuthnAuthenticatorAssertionResponse"
+          },
+          "type": {
+            "const": "public-key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "response"
+        ],
+        "title": "WebAuthnAuthenticationCredential",
+        "type": "object"
+      },
+      "WebAuthnAuthenticationExtensions": {
+        "additionalProperties": false,
+        "properties": {
+          "appid": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Appid"
+          }
+        },
+        "title": "WebAuthnAuthenticationExtensions",
+        "type": "object"
+      },
+      "WebAuthnAuthenticationOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "allowCredentials": {
+            "items": {
+              "$ref": "#/components/schemas/WebAuthnCredentialDescriptor"
+            },
+            "title": "Allowcredentials",
+            "type": "array"
+          },
+          "challenge": {
+            "minLength": 1,
+            "title": "Challenge",
+            "type": "string"
+          },
+          "rpId": {
+            "minLength": 1,
+            "title": "Rpid",
+            "type": "string"
+          },
+          "timeout": {
+            "exclusiveMinimum": 0.0,
+            "title": "Timeout",
+            "type": "integer"
+          },
+          "userVerification": {
+            "enum": [
+              "discouraged",
+              "preferred",
+              "required"
+            ],
+            "title": "Userverification",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge",
+          "timeout",
+          "rpId",
+          "allowCredentials",
+          "userVerification"
+        ],
+        "title": "WebAuthnAuthenticationOptions",
+        "type": "object"
+      },
+      "WebAuthnAuthenticatorAssertionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticatorData": {
+            "minLength": 1,
+            "title": "Authenticatordata",
+            "type": "string"
+          },
+          "clientDataJSON": {
+            "minLength": 1,
+            "title": "Clientdatajson",
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          },
+          "userHandle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userhandle"
+          }
+        },
+        "required": [
+          "clientDataJSON",
+          "authenticatorData",
+          "signature"
+        ],
+        "title": "WebAuthnAuthenticatorAssertionResponse",
+        "type": "object"
+      },
+      "WebAuthnAuthenticatorAttestationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attestationObject": {
+            "minLength": 1,
+            "title": "Attestationobject",
+            "type": "string"
+          },
+          "clientDataJSON": {
+            "minLength": 1,
+            "title": "Clientdatajson",
+            "type": "string"
+          },
+          "transports": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "ble",
+                    "cable",
+                    "hybrid",
+                    "internal",
+                    "nfc",
+                    "smart-card",
+                    "usb"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transports"
+          }
+        },
+        "required": [
+          "clientDataJSON",
+          "attestationObject"
+        ],
+        "title": "WebAuthnAuthenticatorAttestationResponse",
+        "type": "object"
+      },
+      "WebAuthnAuthenticatorSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticatorAttachment": {
+            "anyOf": [
+              {
+                "enum": [
+                  "cross-platform",
+                  "platform"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authenticatorattachment"
+          },
+          "requireResidentKey": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requireresidentkey"
+          },
+          "residentKey": {
+            "anyOf": [
+              {
+                "enum": [
+                  "discouraged",
+                  "preferred",
+                  "required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residentkey"
+          },
+          "userVerification": {
+            "anyOf": [
+              {
+                "enum": [
+                  "discouraged",
+                  "preferred",
+                  "required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Userverification"
+          }
+        },
+        "title": "WebAuthnAuthenticatorSelection",
+        "type": "object"
+      },
+      "WebAuthnCredentialDescriptor": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "transports": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "ble",
+                    "cable",
+                    "hybrid",
+                    "internal",
+                    "nfc",
+                    "smart-card",
+                    "usb"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transports"
+          },
+          "type": {
+            "const": "public-key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type"
+        ],
+        "title": "WebAuthnCredentialDescriptor",
+        "type": "object"
+      },
+      "WebAuthnCredentialParameter": {
+        "additionalProperties": false,
+        "properties": {
+          "alg": {
+            "title": "Alg",
+            "type": "integer"
+          },
+          "type": {
+            "const": "public-key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "alg"
+        ],
+        "title": "WebAuthnCredentialParameter",
+        "type": "object"
+      },
+      "WebAuthnCredentialProperties": {
+        "additionalProperties": false,
+        "properties": {
+          "rk": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rk"
+          }
+        },
+        "title": "WebAuthnCredentialProperties",
+        "type": "object"
+      },
+      "WebAuthnRegistrationCredential": {
+        "additionalProperties": false,
+        "properties": {
+          "authenticatorAttachment": {
+            "anyOf": [
+              {
+                "enum": [
+                  "cross-platform",
+                  "platform"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authenticatorattachment"
+          },
+          "clientExtensionResults": {
+            "$ref": "#/components/schemas/WebAuthnRegistrationExtensions"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "rawId": {
+            "minLength": 1,
+            "title": "Rawid",
+            "type": "string"
+          },
+          "response": {
+            "$ref": "#/components/schemas/WebAuthnAuthenticatorAttestationResponse"
+          },
+          "type": {
+            "const": "public-key",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "response"
+        ],
+        "title": "WebAuthnRegistrationCredential",
+        "type": "object"
+      },
+      "WebAuthnRegistrationExtensions": {
+        "additionalProperties": false,
+        "properties": {
+          "credProps": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebAuthnCredentialProperties"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "WebAuthnRegistrationExtensions",
+        "type": "object"
+      },
+      "WebAuthnRegistrationOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "attestation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "direct",
+                  "enterprise",
+                  "indirect",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attestation"
+          },
+          "authenticatorSelection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebAuthnAuthenticatorSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "challenge": {
+            "minLength": 1,
+            "title": "Challenge",
+            "type": "string"
+          },
+          "excludeCredentials": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WebAuthnCredentialDescriptor"
+            },
+            "title": "Excludecredentials",
+            "type": "array"
+          },
+          "hints": {
+            "default": [],
+            "items": {
+              "enum": [
+                "client-device",
+                "hybrid",
+                "security-key"
+              ],
+              "type": "string"
+            },
+            "title": "Hints",
+            "type": "array"
+          },
+          "pubKeyCredParams": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WebAuthnCredentialParameter"
+            },
+            "title": "Pubkeycredparams",
+            "type": "array"
+          },
+          "rp": {
+            "$ref": "#/components/schemas/WebAuthnRelyingPartyEntity"
+          },
+          "timeout": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeout"
+          },
+          "user": {
+            "$ref": "#/components/schemas/WebAuthnUserEntity"
+          }
+        },
+        "required": [
+          "challenge",
+          "rp",
+          "user"
+        ],
+        "title": "WebAuthnRegistrationOptions",
+        "type": "object"
+      },
+      "WebAuthnRelyingPartyEntity": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "WebAuthnRelyingPartyEntity",
+        "type": "object"
+      },
+      "WebAuthnUserEntity": {
+        "additionalProperties": false,
+        "properties": {
+          "displayName": {
+            "minLength": 1,
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "displayName"
+        ],
+        "title": "WebAuthnUserEntity",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/api-keys": {
+      "get": {
+        "operationId": "list_api_keys_api_v1_api_keys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Api Keys",
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "post": {
+        "operationId": "create_api_key_api_v1_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIKeyCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyCreateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Create Api Key",
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/api/v1/api-keys/options": {
+      "get": {
+        "operationId": "api_key_options_api_v1_api_keys_options_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyOptionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Api Key Options",
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/api/v1/api-keys/{key_uuid}": {
+      "delete": {
+        "operationId": "revoke_api_key_api_v1_api_keys__key_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Key Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Api Key",
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "get": {
+        "operationId": "get_api_key_api_v1_api_keys__key_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Key Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Api Key",
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "patch": {
+        "operationId": "update_api_key_api_v1_api_keys__key_uuid__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_uuid",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "title": "Key Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/APIKeyUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/APIKeyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Update Api Key",
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/api/v1/auth/config": {
+      "get": {
+        "operationId": "auth_config_api_v1_auth_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthConfigResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Auth Config",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/csrf": {
+      "get": {
+        "operationId": "csrf_token_api_v1_auth_csrf_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CSRFResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Csrf Token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google/callback": {
+      "get": {
+        "operationId": "google_callback_api_v1_auth_google_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Error",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MFARequiredResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "302": {
+            "description": "Redirecionamento para navegação direta"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Google Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/google/start": {
+      "get": {
+        "operationId": "google_start_api_v1_auth_google_start_get",
+        "responses": {
+          "302": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Google Start",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MFARequiredResponse"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout_api_v1_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Logout",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/passkeys/begin": {
+      "post": {
+        "operationId": "begin_passkey_authentication_api_v1_auth_mfa_passkeys_begin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyAuthBeginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebAuthnAuthenticationOptions"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          }
+        },
+        "summary": "Begin Passkey Authentication",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/passkeys/complete": {
+      "post": {
+        "operationId": "complete_passkey_authentication_api_v1_auth_mfa_passkeys_complete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyAuthCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Complete Passkey Authentication",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/recovery/verify": {
+      "post": {
+        "operationId": "verify_recovery_code_api_v1_auth_mfa_recovery_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MFACodeVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Verify Recovery Code",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mfa/totp/verify": {
+      "post": {
+        "operationId": "verify_totp_api_v1_auth_mfa_totp_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MFACodeVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Unprocessable Content"
+          },
+          "429": {
+            "description": "Too Many Requests"
+          }
+        },
+        "summary": "Verify Totp",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/forgot": {
+      "post": {
+        "operationId": "password_forgot_api_v1_auth_password_forgot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordForgotRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Password Forgot",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password/reset": {
+      "post": {
+        "operationId": "password_reset_api_v1_auth_password_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Password Reset",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/session": {
+      "get": {
+        "operationId": "session_api_v1_auth_session_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/signup": {
+      "post": {
+        "operationId": "signup_api_v1_auth_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signup",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Api V1 Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/api/v1/profile": {
+      "get": {
+        "operationId": "current_profile_api_v1_profile_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurrentProfileResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Current Profile",
+        "tags": [
+          "profile"
+        ]
+      }
+    },
+    "/api/v1/security": {
+      "get": {
+        "operationId": "security_summary_api_v1_security_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecuritySummaryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Security Summary",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/change-password": {
+      "post": {
+        "operationId": "change_password_api_v1_security_change_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordChangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Password",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/passkeys": {
+      "get": {
+        "operationId": "list_passkeys_api_v1_security_passkeys_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Passkeys",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/passkeys/register/begin": {
+      "post": {
+        "operationId": "begin_passkey_registration_api_v1_security_passkeys_register_begin_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyRegistrationBeginResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Begin Passkey Registration",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/passkeys/register/complete": {
+      "post": {
+        "operationId": "complete_passkey_registration_api_v1_security_passkeys_register_complete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasskeyRegistrationCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasskeyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete Passkey Registration",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/passkeys/{passkey_uuid}": {
+      "delete": {
+        "operationId": "delete_passkey_api_v1_security_passkeys__passkey_uuid__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "passkey_uuid",
+            "required": true,
+            "schema": {
+              "title": "Passkey Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Passkey",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/pix": {
+      "post": {
+        "operationId": "update_pix_api_v1_security_pix_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PixUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PixUpdateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Pix",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/recovery-codes/regenerate": {
+      "post": {
+        "operationId": "regenerate_recovery_codes_api_v1_security_recovery_codes_regenerate_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Regenerate Recovery Codes",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/totp/confirm": {
+      "post": {
+        "operationId": "confirm_totp_api_v1_security_totp_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecoveryCodesResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Totp",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/totp/disable": {
+      "post": {
+        "operationId": "disable_totp_api_v1_security_totp_disable_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TOTPDisableRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable Totp",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/totp/setup": {
+      "post": {
+        "operationId": "setup_totp_api_v1_security_totp_setup_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TOTPSetupResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Setup Totp",
+        "tags": [
+          "security"
+        ]
+      }
+    }
+  }
+}

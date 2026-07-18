@@ -46,6 +46,57 @@ Plain `make compose-up` starts the same stack without bind mounts (code baked in
 
 Seeding demo data is host-side only (the images don't ship `faker`): with Path A tooling installed, `make seed` works against the compose DB because `.env` points at `localhost:3306`.
 
+## React/frontend development
+
+The replacement frontend requires Node.js 22 and npm. It remains a preview and does not change the default legacy development or production commands.
+
+```bash
+make frontend-install        # npm ci from frontend/package-lock.json
+make frontend-dev            # Vite development server
+make frontend-build          # typecheck + production bundle
+make frontend-test-cov       # Vitest with 100% coverage thresholds
+```
+
+FastAPI owns the OpenAPI contract. When an API route or schema changes, refresh both committed artifacts, then verify that regeneration is clean:
+
+```bash
+make openapi-export          # write frontend/openapi.json from FastAPI
+make openapi-generate        # regenerate TypeScript API types
+make openapi-check           # non-mutating freshness check used by CI
+```
+
+## End-to-end and visual parity
+
+Playwright exercises the replacement preview and compares deterministic desktop/mobile captures with the reviewed baselines:
+
+```bash
+make e2e                    # E2E, accessibility, and visual-parity checks
+make e2e-update             # update baselines after reviewing an intentional change
+```
+
+Treat baseline updates as UI changes: inspect the images and include the evidence in the pull request.
+
+## Replacement preview
+
+The dedicated `preview-*` targets use `docker-compose.next.yml`; they do not alter the default production or legacy Compose files. Prepare `.env.preview-db` and `.env.preview-app` as described in the [preview runbook](runbooks/frontend-backend-preview.md), then:
+
+```bash
+make preview-config          # validate merged local Compose configuration
+make preview-build           # build legacy, worker, API, and frontend images
+make preview-up              # migrate and start the preview at localhost:8080
+make preview-stop            # stop proxy, frontend, and API only
+```
+
+Remote validation uses the same secret-managed environment paths and exported routing values documented in the runbook:
+
+```bash
+make preview-config-remote \
+  RENTIVO_DB_ENV_FILE=/etc/rentivo/preview-db.env \
+  RENTIVO_APP_ENV_FILE=/etc/rentivo/preview-app.env
+```
+
+The detailed environment split, parity fixture seeding, TLS setup, health checks, and rollback procedure live only in the [frontend/backend preview runbook](runbooks/frontend-backend-preview.md).
+
 ## Tests, lint, hooks
 
 ```bash
