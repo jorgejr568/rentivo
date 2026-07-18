@@ -1,0 +1,954 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from importlib import import_module
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
+import pytest
+from fastapi import Request
+from fastapi.testclient import TestClient
+
+from rentivo.api.app import create_app
+from rentivo.api.authentication import get_principal
+from rentivo.api.dependencies import get_services
+from rentivo.api.principal import Principal
+from rentivo.constants.api_scopes import APIScope
+from rentivo.models.api_key import APIKey, APIKeyGrant
+from rentivo.models.audit_log import AuditEventType
+from rentivo.models.bill import Bill, BillLineItem, InvalidStatusTransition
+from rentivo.models.billing import Billing, BillingItem, ItemType
+from rentivo.models.communication import Communication
+from rentivo.models.receipt import MAX_RECEIPT_SIZE, Receipt
+from rentivo.models.user import User
+from rentivo.storage.base import FileRef
+
+NOW = datetime(2026, 7, 18, 12, tzinfo=UTC)
+USER = User(id=7, email="bills@example.com")
+BILLING = Billing(
+    id=31,
+    uuid="01JBILLING00000000000000000",
+    name="Apartamento 101",
+    owner_type="user",
+    owner_id=USER.id,
+    items=[
+        BillingItem(id=101, description="Aluguel", amount=285_000, item_type=ItemType.FIXED, sort_order=0),
+        BillingItem(id=102, description="Agua", amount=0, item_type=ItemType.VARIABLE, sort_order=1),
+    ],
+)
+OTHER_BILLING = BILLING.model_copy(update={"id": 32, "uuid": "01JOTHERBILLING000000000000", "name": "Apartamento 202"})
+BILL = Bill(
+    id=41,
+    uuid="01JBILL00000000000000000000",
+    billing_id=BILLING.id,
+    reference_month="2026-07",
+    total_amount=292_500,
+    line_items=[
+        BillLineItem(description="Aluguel", amount=285_000, item_type=ItemType.FIXED, sort_order=0),
+        BillLineItem(description="Agua", amount=7_500, item_type=ItemType.VARIABLE, sort_order=1),
+    ],
+    pdf_path="private/invoice.pdf",
+    notes="Sem multa",
+    due_date="2026-08-10",
+    status="draft",
+    pdf_render_status="succeeded",
+    created_at=NOW,
+)
+OTHER_BILL = BILL.model_copy(update={"id": 42, "uuid": "01JOTHERBILL000000000000000", "billing_id": OTHER_BILLING.id})
+RECEIPT = Receipt(
+    id=51,
+    uuid="01JRECEIPT00000000000000000",
+    bill_id=BILL.id,
+    filename="comprovante.pdf",
+    storage_key="private/receipt.pdf",
+    content_type="application/pdf",
+    file_size=1234,
+    sort_order=0,
+    created_at=NOW,
+)
+OTHER_RECEIPT = RECEIPT.model_copy(update={"id": 52, "uuid": "01JOTHERRECEIPT000000000000", "bill_id": OTHER_BILL.id})
+COMMUNICATION = Communication(
+    id=61,
+    uuid="01JCOMM00000000000000000000",
+    bill_id=BILL.id,
+    comm_type="bill_ready",
+    recipient_name="Maria",
+    recipient_email="maria@example.com",
+    subject="Fatura de julho",
+    body_markdown="Ola",
+    status="sent",
+    created_at=NOW,
+    sent_at=NOW,
+)
+
+ALL_SCOPES = frozenset(scope.value for scope in APIScope)
+BEARER_HEADERS = {"Authorization": "Bearer test-secret"}
+
+
+def _api_key(*, scopes: frozenset[str] = ALL_SCOPES, is_login_token: bool = False) -> APIKey:
+    return APIKey(
+        id=1,
+        uuid="01JKEY000000000000000000000",
+        user_id=USER.id,
+        name="Test key",
+        secret_hash=b"x" * 32,
+        key_start="test",
+        key_end="key",
+        is_login_token=is_login_token,
+        scopes=scopes,
+        grants=(APIKeyGrant(resource_type="user", resource_id=USER.id),),
+        expires_at=NOW + timedelta(days=1),
+    )
+
+
+def _principal(*, scopes: frozenset[str] = ALL_SCOPES, is_login_token: bool = False) -> Principal:
+    return Principal(
+        user=USER,
+        api_key=_api_key(scopes=scopes, is_login_token=is_login_token),
+        source="web" if is_login_token else "integration",
+    )
+
+
+def _updated_bill(bill: Bill, **changes: object) -> Bill:
+    return bill.model_copy(update=changes)
+
+
+def _services(state: SimpleNamespace) -> SimpleNamespace:
+    billing_service = MagicMock()
+    billing_service.get_billing_by_uuid.side_effect = lambda uuid: {
+        BILLING.uuid: BILLING,
+        OTHER_BILLING.uuid: OTHER_BILLING,
+    }.get(uuid)
+
+    bill_service = MagicMock()
+    bill_service.get_bill_by_uuid.side_effect = lambda uuid: {
+        BILL.uuid: BILL,
+        OTHER_BILL.uuid: OTHER_BILL,
+    }.get(uuid)
+    bill_service.list_bills.return_value = [BILL]
+    bill_service.list_receipts.return_value = [RECEIPT]
+    bill_service.get_receipt_by_uuid.side_effect = lambda uuid: {
+        RECEIPT.uuid: RECEIPT,
+        OTHER_RECEIPT.uuid: OTHER_RECEIPT,
+    }.get(uuid)
+    bill_service.get_invoice_ref.return_value = FileRef(kind="url", location="https://files.example/invoice.pdf")
+    bill_service.get_recibo_ref.return_value = FileRef(kind="url", location="https://files.example/recibo.pdf")
+    bill_service.get_receipt_ref.return_value = FileRef(kind="url", location="https://files.example/receipt.pdf")
+    bill_service.render_recibo.return_value = b"%PDF-recibo"
+
+    created_bill = _updated_bill(
+        BILL,
+        id=43,
+        uuid="01JCREATEDBILL0000000000000",
+        line_items=[
+            BillLineItem(description="Aluguel", amount=285_000, item_type=ItemType.FIXED, sort_order=0),
+            BillLineItem(description="Agua", amount=8_000, item_type=ItemType.VARIABLE, sort_order=1),
+            BillLineItem(description="Chaveiro", amount=5_000, item_type=ItemType.EXTRA, sort_order=2),
+        ],
+        total_amount=298_000,
+        due_date="2026-08-10",
+        pdf_path=None,
+        pdf_render_status="pending",
+    )
+    bill_service.generate_bill.return_value = created_bill
+
+    def update_bill(*, bill: Bill, line_items: list[BillLineItem], notes: str, due_date: str, **_kwargs):
+        return _updated_bill(
+            bill,
+            line_items=line_items,
+            total_amount=sum(item.amount for item in line_items),
+            notes=notes,
+            due_date=due_date or None,
+            pdf_render_status="pending",
+        )
+
+    bill_service.update_bill.side_effect = update_bill
+
+    def change_status(bill: Bill, target: str, **_kwargs):
+        return _updated_bill(bill, status=target, status_updated_at=NOW)
+
+    bill_service.change_status.side_effect = change_status
+
+    upload_index = 0
+
+    def add_receipt(*, bill: Bill, filename: str, file_bytes: bytes, content_type: str, **_kwargs):
+        nonlocal upload_index
+        upload_index += 1
+        return (
+            Receipt(
+                id=70 + upload_index,
+                uuid=f"01JUPLOADED{upload_index:02d}00000000000000",
+                bill_id=bill.id,
+                filename=filename,
+                storage_key=f"private/upload-{upload_index}",
+                content_type=content_type,
+                file_size=len(file_bytes),
+                sort_order=upload_index - 1,
+                created_at=NOW,
+            ),
+            [],
+        )
+
+    bill_service.add_receipt.side_effect = add_receipt
+
+    authorization = MagicMock()
+    authorization.get_role_for_billing.side_effect = lambda _user_id, _billing: state.role
+    pix = MagicMock()
+    pix.billing_needs_setup.side_effect = lambda _billing: state.pix_missing
+    api_key = MagicMock()
+    api_key.can_access_resource.side_effect = lambda *_args: state.granted
+
+    communication = MagicMock()
+    communication.list_for_bill.return_value = [COMMUNICATION]
+
+    return SimpleNamespace(
+        billing=billing_service,
+        bill=bill_service,
+        authorization=authorization,
+        pix=pix,
+        api_key=api_key,
+        communication=communication,
+        audit=MagicMock(),
+        storage_cleanup=MagicMock(),
+    )
+
+
+@dataclass
+class BillsAPI:
+    client: TestClient
+    state: SimpleNamespace
+    services: SimpleNamespace
+
+    def set_scopes(self, *scopes: APIScope) -> None:
+        self.state.principal = _principal(scopes=frozenset(scope.value for scope in scopes))
+
+    def set_login_principal(self) -> None:
+        self.state.principal = _principal(is_login_token=True)
+
+
+@pytest.fixture
+def api() -> BillsAPI:
+    state = SimpleNamespace(
+        role="owner",
+        granted=True,
+        pix_missing=False,
+        principal=_principal(),
+    )
+    services = _services(state)
+    app = create_app()
+
+    try:
+        bills_router = import_module("rentivo.api.routes.bills").router
+    except ModuleNotFoundError:
+        bills_router = None
+    if bills_router is not None:
+        app.include_router(bills_router, prefix="/api/v1")
+
+    @app.middleware("http")
+    async def set_auth_transport(request: Request, call_next):
+        request.state.auth_transport = "bearer" if request.headers.get("Authorization") else "cookie"
+        return await call_next(request)
+
+    app.dependency_overrides[get_services] = lambda: services
+    app.dependency_overrides[get_principal] = lambda: state.principal
+    client = TestClient(app)
+    yield BillsAPI(client=client, state=state, services=services)
+    client.close()
+
+
+def _detail_url(bill: Bill = BILL, billing: Billing = BILLING) -> str:
+    return f"/api/v1/billings/{billing.uuid}/bills/{bill.uuid}"
+
+
+def _create_payload() -> dict[str, object]:
+    return {
+        "reference_month": "2026-08",
+        "due_date": "2026-08-10",
+        "notes": "Pagar ate o vencimento",
+        "variable_amounts": {"102": 8_000},
+        "extras": [{"description": " Chaveiro ", "amount": 5_000}],
+    }
+
+
+def test_list_bills_returns_public_invoice_data_without_storage_paths(api: BillsAPI) -> None:
+    response = api.client.get(f"/api/v1/billings/{BILLING.uuid}/bills", headers=BEARER_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["items"][0]["uuid"] == BILL.uuid
+    assert body["items"][0]["total_amount"] == 292_500
+    assert body["items"][0]["has_invoice"] is True
+    assert "pdf_path" not in response.text
+    assert "recibo_pdf_path" not in response.text
+    api.services.bill.list_bills.assert_called_once_with(BILLING.id)
+
+
+@pytest.mark.parametrize(
+    ("stored", "expected"),
+    [
+        ("10/08/2026", "2026-08-10"),
+        ("2026-08-10", "2026-08-10"),
+        (None, None),
+        ("nao informado", None),
+    ],
+)
+def test_due_date_is_normalized_to_iso_8601_or_null(
+    api: BillsAPI,
+    stored: str | None,
+    expected: str | None,
+) -> None:
+    legacy_bill = BILL.model_copy(update={"due_date": stored})
+    api.services.bill.list_bills.return_value = [legacy_bill]
+
+    response = api.client.get(f"/api/v1/billings/{BILLING.uuid}/bills", headers=BEARER_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["due_date"] == expected
+
+
+def test_bill_reads_require_scope_grant_and_parent_child_linkage(api: BillsAPI) -> None:
+    api.set_scopes(APIScope.FILES_READ)
+    missing_scope = api.client.get(_detail_url(), headers=BEARER_HEADERS)
+    assert missing_scope.status_code == 403
+    assert missing_scope.json()["code"] == "missing_scope"
+
+    api.set_scopes(APIScope.BILLS_READ)
+    api.state.granted = False
+    outside_grant = api.client.get(_detail_url(), headers=BEARER_HEADERS)
+    assert outside_grant.status_code == 404
+
+    api.state.granted = True
+    mismatch = api.client.get(_detail_url(OTHER_BILL, BILLING), headers=BEARER_HEADERS)
+    assert mismatch.status_code == 404
+
+
+def test_bill_detail_returns_transition_capabilities_receipts_and_communication_history(api: BillsAPI) -> None:
+    response = api.client.get(_detail_url(), headers=BEARER_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert {transition["target"] for transition in body["available_transitions"]} == {
+        "published",
+        "sent",
+        "cancelled",
+    }
+    cancel = next(item for item in body["available_transitions"] if item["target"] == "cancelled")
+    assert cancel == {
+        "target": "cancelled",
+        "label": "Cancelar fatura",
+        "style": "danger",
+        "requires_confirmation": True,
+    }
+    assert body["capabilities"]["can_delete"] is True
+    assert body["receipts"][0]["content_type"] == "application/pdf"
+    assert body["communications"][0]["recipient_email"] == "maria@example.com"
+    assert "storage_key" not in response.text
+
+
+def test_detail_omits_scoped_children_and_mutation_capabilities_without_their_scopes(api: BillsAPI) -> None:
+    api.set_scopes(APIScope.BILLS_READ)
+
+    response = api.client.get(_detail_url(), headers=BEARER_HEADERS)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["receipts"] == []
+    assert body["communications"] == []
+    assert body["available_transitions"] == []
+    assert not any(body["capabilities"].values())
+
+
+def test_viewer_has_read_only_capabilities_even_with_every_scope(api: BillsAPI) -> None:
+    api.state.role = "viewer"
+
+    response = api.client.get(_detail_url(), headers=BEARER_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json()["available_transitions"] == []
+    assert response.json()["capabilities"] == {
+        "can_edit": False,
+        "can_delete": False,
+        "can_transition": False,
+        "can_regenerate": False,
+        "can_upload_receipts": False,
+        "can_delete_receipts": False,
+        "can_reorder_receipts": False,
+        "can_download_invoice": True,
+        "can_download_recibo": False,
+    }
+
+
+def test_create_bill_accepts_integer_centavos_and_renders_once(api: BillsAPI) -> None:
+    response = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=_create_payload(),
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 201
+    call = api.services.bill.generate_bill.call_args
+    assert call.kwargs["reference_month"] == "2026-08"
+    assert call.kwargs["variable_amounts"] == {102: 8_000}
+    assert call.kwargs["extras"] == [("Chaveiro", 5_000)]
+    assert call.kwargs["due_date"] == "10/08/2026"
+    assert call.kwargs["render"] is False
+    api.services.bill.regenerate_pdf.assert_called_once_with(
+        api.services.bill.generate_bill.return_value,
+        BILLING,
+        actor=api.state.principal.actor,
+    )
+    assert api.services.audit.safe_log_for.call_args_list[0].args[1] == AuditEventType.BILL_CREATE
+
+
+def test_create_bill_with_receipts_audits_create_first_and_still_renders_once(api: BillsAPI) -> None:
+    response = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        data={"payload": json.dumps(_create_payload())},
+        files=[
+            ("receipt_files", ("a.pdf", b"%PDF-a", "application/pdf")),
+            ("receipt_files", ("b.png", b"png-data", "image/png")),
+            ("receipt_files", ("bad.gif", b"gif-data", "image/gif")),
+        ],
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["receipt_upload"] == {"attached": 2, "skipped": 1, "total_bytes": 14}
+    assert api.services.bill.add_receipt.call_count == 2
+    assert all(call.kwargs["render"] is False for call in api.services.bill.add_receipt.call_args_list)
+    api.services.bill.regenerate_pdf.assert_called_once()
+    events = [call.args[1] for call in api.services.audit.safe_log_for.call_args_list]
+    assert events == [
+        AuditEventType.BILL_CREATE,
+        AuditEventType.RECEIPT_UPLOAD,
+        AuditEventType.RECEIPT_UPLOAD,
+    ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**_create_payload(), "reference_month": "2026-13"},
+        {**_create_payload(), "due_date": "10/08/2026"},
+        {**_create_payload(), "extras": [{"description": " ", "amount": 100}]},
+        {**_create_payload(), "extras": [{"description": "Taxa", "amount": 0}]},
+        {**_create_payload(), "unexpected": True},
+    ],
+)
+def test_create_bill_rejects_invalid_strict_payloads(api: BillsAPI, payload: dict[str, object]) -> None:
+    response = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=payload,
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    api.services.bill.generate_bill.assert_not_called()
+
+
+def test_create_bill_rejects_malformed_json(api: BillsAPI) -> None:
+    response = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        content=b"{",
+        headers={**BEARER_HEADERS, "Content-Type": "application/json"},
+    )
+    assert response.status_code == 422
+    assert response.json()["fields"] == {}
+
+
+def test_create_resolves_access_before_parsing_body(api: BillsAPI) -> None:
+    api.state.granted = False
+    response = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        content=b"{",
+        headers={**BEARER_HEADERS, "Content-Type": "application/json"},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("role", ["owner", "admin", "manager"])
+def test_bill_managers_can_create(api: BillsAPI, role: str) -> None:
+    api.state.role = role
+    response = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=_create_payload(),
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 201
+
+
+def test_create_requires_manage_role_and_complete_pix(api: BillsAPI) -> None:
+    api.state.role = "viewer"
+    denied = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=_create_payload(),
+        headers=BEARER_HEADERS,
+    )
+    assert denied.status_code == 403
+    assert denied.json()["code"] == "insufficient_role"
+
+    api.state.role = "manager"
+    api.state.pix_missing = True
+    pix = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=_create_payload(),
+        headers=BEARER_HEADERS,
+    )
+    assert pix.status_code == 409
+    assert pix.json()["code"] == "pix_setup_required"
+
+
+def test_create_requires_file_write_scope_only_when_receipts_are_included(api: BillsAPI) -> None:
+    api.set_scopes(APIScope.BILLS_WRITE)
+    without_receipts = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=_create_payload(),
+        headers=BEARER_HEADERS,
+    )
+    assert without_receipts.status_code == 201
+
+    api.services.bill.reset_mock()
+    with_receipt = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        data={"payload": json.dumps(_create_payload())},
+        files=[("receipt_files", ("a.pdf", b"%PDF-a", "application/pdf"))],
+        headers=BEARER_HEADERS,
+    )
+    assert with_receipt.status_code == 403
+    assert with_receipt.json()["code"] == "missing_scope"
+    api.services.bill.generate_bill.assert_not_called()
+
+
+def test_browser_mutations_require_csrf_but_bearer_mutations_do_not(api: BillsAPI) -> None:
+    api.set_login_principal()
+    without_csrf = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=_create_payload(),
+    )
+    assert without_csrf.status_code == 403
+    assert without_csrf.json()["code"] == "csrf_failed"
+
+    api.state.principal = _principal()
+    bearer = api.client.post(
+        f"/api/v1/billings/{BILLING.uuid}/bills",
+        json=_create_payload(),
+        headers=BEARER_HEADERS,
+    )
+    assert bearer.status_code == 201
+
+
+def test_patch_bill_preserves_omitted_values_and_audits(api: BillsAPI) -> None:
+    response = api.client.patch(
+        _detail_url(),
+        json={"notes": "Atualizada"},
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 200
+    call = api.services.bill.update_bill.call_args
+    assert call.kwargs["line_items"] == BILL.line_items
+    assert call.kwargs["notes"] == "Atualizada"
+    assert call.kwargs["due_date"] == BILL.due_date
+    assert call.kwargs["actor"] == api.state.principal.actor
+    audit = api.services.audit.safe_log_for.call_args
+    assert audit.args[1] == AuditEventType.BILL_UPDATE
+    assert audit.kwargs["previous_state"]["notes"] == BILL.notes
+    assert audit.kwargs["new_state"]["notes"] == "Atualizada"
+
+
+def test_patch_bill_replaces_line_items_and_can_clear_due_date(api: BillsAPI) -> None:
+    response = api.client.patch(
+        _detail_url(),
+        json={
+            "line_items": [
+                {"description": " Aluguel atualizado ", "amount": 300_000, "item_type": "fixed"},
+                {"description": "Extra", "amount": 1_000, "item_type": "extra"},
+            ],
+            "due_date": None,
+        },
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 200
+    call = api.services.bill.update_bill.call_args
+    assert [(item.description, item.amount, item.sort_order) for item in call.kwargs["line_items"]] == [
+        ("Aluguel atualizado", 300_000, 0),
+        ("Extra", 1_000, 1),
+    ]
+    assert call.kwargs["due_date"] == ""
+
+
+def test_patch_converts_iso_due_date_for_domain_storage_and_pdf(api: BillsAPI) -> None:
+    response = api.client.patch(
+        _detail_url(),
+        json={"due_date": "2026-12-31"},
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 200
+    assert api.services.bill.update_bill.call_args.kwargs["due_date"] == "31/12/2026"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{}, {"due_date": "31/12/2026"}, {"line_items": [{"description": " ", "amount": 1, "item_type": "fixed"}]}],
+)
+def test_patch_rejects_empty_or_invalid_payload(api: BillsAPI, payload: dict[str, object]) -> None:
+    response = api.client.patch(_detail_url(), json=payload, headers=BEARER_HEADERS)
+    assert response.status_code == 422
+
+
+def test_patch_requires_manage_role_pix_and_write_scope(api: BillsAPI) -> None:
+    api.set_scopes(APIScope.BILLS_READ)
+    missing_scope = api.client.patch(_detail_url(), json={"notes": "x"}, headers=BEARER_HEADERS)
+    assert missing_scope.status_code == 403
+
+    api.set_scopes(APIScope.BILLS_WRITE)
+    api.state.role = "viewer"
+    role = api.client.patch(_detail_url(), json={"notes": "x"}, headers=BEARER_HEADERS)
+    assert role.status_code == 403
+
+    api.state.role = "manager"
+    api.state.pix_missing = True
+    pix = api.client.patch(_detail_url(), json={"notes": "x"}, headers=BEARER_HEADERS)
+    assert pix.status_code == 409
+
+
+def test_allowed_transition_uses_policy_and_audits_status_change(api: BillsAPI) -> None:
+    response = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "published", "current_status": "draft"},
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 200
+    api.services.bill.change_status.assert_called_once_with(
+        BILL,
+        "published",
+        billing=BILLING,
+        actor=api.state.principal.actor,
+    )
+    audit = api.services.audit.safe_log_for.call_args
+    assert audit.args[1] == AuditEventType.BILL_STATUS_CHANGE
+    assert audit.kwargs["previous_state"] == {"status": "draft"}
+    assert audit.kwargs["new_state"] == {"status": "published"}
+
+
+def test_transition_rejects_stale_disallowed_unknown_and_viewer_requests(api: BillsAPI) -> None:
+    stale = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "published", "current_status": "sent"},
+        headers=BEARER_HEADERS,
+    )
+    assert stale.status_code == 409
+    assert stale.json()["code"] == "stale_bill_status"
+
+    disallowed = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "paid", "current_status": "draft"},
+        headers=BEARER_HEADERS,
+    )
+    assert disallowed.status_code == 409
+    assert disallowed.json()["code"] == "invalid_status_transition"
+
+    unknown = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "unknown"},
+        headers=BEARER_HEADERS,
+    )
+    assert unknown.status_code == 422
+
+    api.state.role = "viewer"
+    viewer = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "published"},
+        headers=BEARER_HEADERS,
+    )
+    assert viewer.status_code == 403
+    assert api.services.bill.change_status.call_count == 0
+
+
+def test_transition_maps_service_race_rejection_to_conflict(api: BillsAPI) -> None:
+    api.services.bill.change_status.side_effect = InvalidStatusTransition("draft", "published")
+    response = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "published"},
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "invalid_status_transition"
+
+
+def test_status_transition_does_not_require_pix(api: BillsAPI) -> None:
+    api.state.role = "manager"
+    api.state.pix_missing = True
+    response = api.client.post(
+        f"{_detail_url()}/transitions",
+        json={"target": "published"},
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 200
+
+
+def test_regenerate_requires_manager_and_pix_then_preserves_service_job_behavior(api: BillsAPI) -> None:
+    api.state.role = "manager"
+    response = api.client.post(f"{_detail_url()}/regenerate", headers=BEARER_HEADERS)
+    assert response.status_code == 202
+    api.services.bill.regenerate_pdf.assert_called_once_with(BILL, BILLING, actor=api.state.principal.actor)
+    audit = api.services.audit.safe_log_for.call_args
+    assert audit.args[1] == AuditEventType.BILL_REGENERATE_PDF
+    assert audit.kwargs["previous_state"] == {"pdf_render_status": "succeeded"}
+
+    api.services.bill.reset_mock()
+    api.state.pix_missing = True
+    denied = api.client.post(f"{_detail_url()}/regenerate", headers=BEARER_HEADERS)
+    assert denied.status_code == 409
+    api.services.bill.regenerate_pdf.assert_not_called()
+
+
+def test_delete_bill_is_owner_admin_only_and_not_pix_gated(api: BillsAPI) -> None:
+    api.state.role = "manager"
+    denied = api.client.delete(_detail_url(), headers=BEARER_HEADERS)
+    assert denied.status_code == 403
+
+    api.state.role = "admin"
+    api.state.pix_missing = True
+    response = api.client.delete(_detail_url(), headers=BEARER_HEADERS)
+    assert response.status_code == 204
+    api.services.storage_cleanup.enqueue_bill_delete_cascade.assert_called_once_with(api.state.principal.actor, BILL)
+    api.services.bill.delete_bill.assert_called_once_with(BILL.id)
+    assert api.services.audit.safe_log_for.call_args.args[1] == AuditEventType.BILL_DELETE
+
+
+def test_invoice_download_requires_file_scope_and_existing_pdf(api: BillsAPI) -> None:
+    api.set_scopes(APIScope.BILLS_READ)
+    missing_scope = api.client.get(f"{_detail_url()}/invoice", headers=BEARER_HEADERS)
+    assert missing_scope.status_code == 403
+
+    api.set_scopes(APIScope.FILES_READ)
+    no_pdf = _updated_bill(BILL, pdf_path=None)
+    api.services.bill.get_bill_by_uuid.side_effect = lambda uuid: no_pdf if uuid == BILL.uuid else None
+    missing = api.client.get(f"{_detail_url()}/invoice", headers=BEARER_HEADERS)
+    assert missing.status_code == 404
+    api.services.bill.get_invoice_ref.assert_not_called()
+
+
+def test_invoice_download_resolves_remote_and_local_files_through_storage(api: BillsAPI, tmp_path) -> None:
+    remote = api.client.get(f"{_detail_url()}/invoice", headers=BEARER_HEADERS, follow_redirects=False)
+    assert remote.status_code == 302
+    assert remote.headers["location"] == "https://files.example/invoice.pdf"
+    api.services.bill.get_invoice_ref.assert_called_once_with(BILL)
+
+    invoice = tmp_path / "invoice.pdf"
+    invoice.write_bytes(b"%PDF-local")
+    api.services.bill.get_invoice_ref.return_value = FileRef(kind="local", location=str(invoice))
+    local = api.client.get(f"{_detail_url()}/invoice", headers=BEARER_HEADERS)
+    assert local.status_code == 200
+    assert local.content == b"%PDF-local"
+    assert local.headers["content-type"].startswith("application/pdf")
+    assert "private/invoice.pdf" not in local.headers.get("content-disposition", "")
+
+
+def test_recibo_requires_paid_status_and_audits_stored_download(api: BillsAPI) -> None:
+    unpaid = api.client.get(f"{_detail_url()}/recibo", headers=BEARER_HEADERS)
+    assert unpaid.status_code == 409
+    assert unpaid.json()["code"] == "recibo_unavailable"
+    api.services.audit.safe_log_for.assert_not_called()
+
+    paid = _updated_bill(BILL, status="paid", recibo_pdf_path="private/recibo.pdf")
+    api.services.bill.get_bill_by_uuid.side_effect = lambda uuid: paid if uuid == BILL.uuid else None
+    stored = api.client.get(f"{_detail_url()}/recibo", headers=BEARER_HEADERS, follow_redirects=False)
+    assert stored.status_code == 302
+    assert stored.headers["location"] == "https://files.example/recibo.pdf"
+    assert api.services.audit.safe_log_for.call_args.args[1] == AuditEventType.BILL_RECIBO_DOWNLOAD
+
+
+def test_recibo_falls_back_to_inline_render_when_stored_file_is_pending(api: BillsAPI) -> None:
+    paid = _updated_bill(BILL, status="paid", recibo_pdf_path=None)
+    api.services.bill.get_bill_by_uuid.side_effect = lambda uuid: paid if uuid == BILL.uuid else None
+
+    response = api.client.get(f"{_detail_url()}/recibo", headers=BEARER_HEADERS)
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF-recibo"
+    assert response.headers["content-disposition"] == f'attachment; filename="recibo-{BILL.uuid}.pdf"'
+    api.services.bill.render_recibo.assert_called_once_with(paid, BILLING)
+
+
+def test_receipt_list_and_download_enforce_file_scope_and_full_parent_chain(api: BillsAPI) -> None:
+    list_response = api.client.get(f"{_detail_url()}/receipts", headers=BEARER_HEADERS)
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["uuid"] == RECEIPT.uuid
+    assert "storage_key" not in list_response.text
+
+    mismatch = api.client.get(f"{_detail_url()}/receipts/{OTHER_RECEIPT.uuid}", headers=BEARER_HEADERS)
+    assert mismatch.status_code == 404
+
+    remote = api.client.get(
+        f"{_detail_url()}/receipts/{RECEIPT.uuid}",
+        headers=BEARER_HEADERS,
+        follow_redirects=False,
+    )
+    assert remote.status_code == 302
+    assert remote.headers["location"] == "https://files.example/receipt.pdf"
+    api.services.bill.get_receipt_ref.assert_called_once_with(RECEIPT)
+
+
+def test_receipt_download_streams_local_content_with_recorded_mime(api: BillsAPI, tmp_path) -> None:
+    receipt_file = tmp_path / "proof.png"
+    receipt_file.write_bytes(b"png")
+    png_receipt = RECEIPT.model_copy(
+        update={"filename": "proof.png", "content_type": "image/png", "storage_key": "private/proof.png"}
+    )
+    api.services.bill.get_receipt_by_uuid.side_effect = lambda uuid: png_receipt if uuid == RECEIPT.uuid else None
+    api.services.bill.get_receipt_ref.return_value = FileRef(kind="local", location=str(receipt_file))
+
+    response = api.client.get(f"{_detail_url()}/receipts/{RECEIPT.uuid}", headers=BEARER_HEADERS)
+
+    assert response.status_code == 200
+    assert response.content == b"png"
+    assert response.headers["content-type"].startswith("image/png")
+
+
+def test_receipt_download_rejects_row_without_storage_key(api: BillsAPI) -> None:
+    missing_file = RECEIPT.model_copy(update={"storage_key": ""})
+    api.services.bill.get_receipt_by_uuid.side_effect = lambda uuid: missing_file if uuid == RECEIPT.uuid else None
+    response = api.client.get(f"{_detail_url()}/receipts/{RECEIPT.uuid}", headers=BEARER_HEADERS)
+    assert response.status_code == 404
+    api.services.bill.get_receipt_ref.assert_not_called()
+
+
+def test_receipt_upload_validates_each_file_audits_and_renders_once(api: BillsAPI) -> None:
+    response = api.client.post(
+        f"{_detail_url()}/receipts",
+        files=[
+            ("receipt_files", ("ok.pdf", b"%PDF-ok", "application/pdf")),
+            ("receipt_files", ("bad.gif", b"gif", "image/gif")),
+            ("receipt_files", ("empty.pdf", b"", "application/pdf")),
+            ("receipt_files", ("big.pdf", b"x" * (MAX_RECEIPT_SIZE + 1), "application/pdf")),
+        ],
+        headers=BEARER_HEADERS,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["attached"] == 1
+    assert response.json()["skipped"] == 3
+    assert response.json()["total_bytes"] == 7
+    api.services.bill.add_receipt.assert_called_once()
+    assert api.services.bill.add_receipt.call_args.kwargs["render"] is False
+    api.services.bill.regenerate_pdf.assert_called_once_with(BILL, BILLING, actor=api.state.principal.actor)
+    assert api.services.audit.safe_log_for.call_args.args[1] == AuditEventType.RECEIPT_UPLOAD
+
+
+def test_receipt_upload_with_no_valid_files_does_not_render(api: BillsAPI) -> None:
+    response = api.client.post(
+        f"{_detail_url()}/receipts",
+        files=[("receipt_files", ("bad.gif", b"gif", "image/gif"))],
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 201
+    assert response.json()["attached"] == 0
+    api.services.bill.regenerate_pdf.assert_not_called()
+
+
+def test_receipt_upload_rejects_blank_filename_before_service_call(api: BillsAPI) -> None:
+    response = api.client.post(
+        f"{_detail_url()}/receipts",
+        files=[("receipt_files", ("", b"%PDF-blank", "application/pdf"))],
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 422
+    api.services.bill.add_receipt.assert_not_called()
+    api.services.bill.regenerate_pdf.assert_not_called()
+
+
+def test_receipt_upload_requires_file_write_manager_and_pix(api: BillsAPI) -> None:
+    url = f"{_detail_url()}/receipts"
+    files = [("receipt_files", ("ok.pdf", b"%PDF-ok", "application/pdf"))]
+    api.set_scopes(APIScope.BILLS_WRITE)
+    scope = api.client.post(url, files=files, headers=BEARER_HEADERS)
+    assert scope.status_code == 403
+
+    api.set_scopes(APIScope.FILES_WRITE)
+    api.state.role = "viewer"
+    role = api.client.post(url, files=files, headers=BEARER_HEADERS)
+    assert role.status_code == 403
+
+    api.state.role = "manager"
+    api.state.pix_missing = True
+    pix = api.client.post(url, files=files, headers=BEARER_HEADERS)
+    assert pix.status_code == 409
+
+
+def test_delete_receipt_checks_linkage_then_cleans_storage_audits_and_rerenders(api: BillsAPI) -> None:
+    mismatch = api.client.delete(
+        f"{_detail_url()}/receipts/{OTHER_RECEIPT.uuid}",
+        headers=BEARER_HEADERS,
+    )
+    assert mismatch.status_code == 404
+    api.services.bill.delete_receipt.assert_not_called()
+
+    api.state.pix_missing = True
+    response = api.client.delete(
+        f"{_detail_url()}/receipts/{RECEIPT.uuid}",
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 204
+    api.services.bill.delete_receipt.assert_called_once_with(
+        RECEIPT,
+        BILL,
+        BILLING,
+        actor=api.state.principal.actor,
+    )
+    api.services.storage_cleanup.enqueue_receipt_delete.assert_called_once_with(api.state.principal.actor, RECEIPT)
+    audit = api.services.audit.safe_log_for.call_args
+    assert audit.args[1] == AuditEventType.RECEIPT_DELETE
+    assert audit.kwargs["previous_state"]["filename"] == RECEIPT.filename
+
+
+def test_reorder_receipts_uses_exact_complete_order_and_is_not_pix_gated(api: BillsAPI) -> None:
+    api.state.role = "manager"
+    api.state.pix_missing = True
+    response = api.client.put(
+        f"{_detail_url()}/receipt-order",
+        json={"order": [RECEIPT.uuid]},
+        headers=BEARER_HEADERS,
+    )
+    assert response.status_code == 200
+    api.services.bill.reorder_receipts.assert_called_once_with(
+        BILL,
+        BILLING,
+        [RECEIPT.uuid],
+        actor=api.state.principal.actor,
+    )
+    assert api.services.audit.safe_log_for.call_args.args[1] == AuditEventType.RECEIPT_REORDER
+
+
+def test_reorder_receipts_rejects_duplicates_and_service_conflicts(api: BillsAPI) -> None:
+    duplicate = api.client.put(
+        f"{_detail_url()}/receipt-order",
+        json={"order": [RECEIPT.uuid, RECEIPT.uuid]},
+        headers=BEARER_HEADERS,
+    )
+    assert duplicate.status_code == 422
+
+    api.services.bill.reorder_receipts.side_effect = ValueError("Must include all receipts in the new order")
+    incomplete = api.client.put(
+        f"{_detail_url()}/receipt-order",
+        json={"order": []},
+        headers=BEARER_HEADERS,
+    )
+    assert incomplete.status_code == 409
+    assert incomplete.json()["code"] == "invalid_receipt_order"
+
+
+def test_file_metadata_never_serializes_internal_ids_or_storage_keys(api: BillsAPI) -> None:
+    response = api.client.get(_detail_url(), headers=BEARER_HEADERS)
+    assert response.status_code == 200
+    body = response.json()
+    assert "id" not in body
+    assert "billing_id" not in body
+    assert "bill_id" not in json.dumps(body["receipts"])
+    assert "storage_key" not in json.dumps(body["receipts"])
