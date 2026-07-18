@@ -66,6 +66,7 @@ describe("auth analytics", () => {
       new Response(null, {
         headers: {
           "X-Rentivo-Analytics-Event": "rentivo_login_success",
+          "X-Rentivo-Analytics-Scope": "user",
           "X-Rentivo-Analytics-Via": "google"
         }
       })
@@ -77,6 +78,7 @@ describe("auth analytics", () => {
       reason: "bad_credentials"
     }, {
       event: "rentivo_login_success",
+      scope: "user",
       via: "google"
     }]);
   });

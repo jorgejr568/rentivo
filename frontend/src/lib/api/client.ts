@@ -1,4 +1,4 @@
-import createClient from "openapi-fetch";
+import createClient, { defaultBodySerializer } from "openapi-fetch";
 
 import type { paths } from "./schema";
 
@@ -76,31 +76,57 @@ function asProblemDetails(value: unknown): ProblemDetails | undefined {
 }
 
 class SameOriginRequest extends Request {
+  readonly sourceBody: BodyInit | null | undefined;
   readonly sourceSignal: AbortSignal | null | undefined;
 
   constructor(input: RequestInfo | URL, init?: RequestInit) {
     const { signal, ...compatibleInit } = Object(init) as RequestInit;
     super(input, compatibleInit);
+    this.sourceBody = init?.body;
     this.sourceSignal = signal;
   }
 }
 
 async function sameOriginFetch(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const body = request.method === "GET" || request.method === "HEAD"
+  const canHaveBody = request.method !== "GET" && request.method !== "HEAD";
+  const sourceBody = (request as SameOriginRequest).sourceBody;
+  const body = !canHaveBody
     ? undefined
-    : await request.clone().text();
+    : sourceBody ?? await request.clone().arrayBuffer();
+  const headers = new Headers(request.headers);
+  if (body instanceof FormData) {
+    headers.delete("Content-Type");
+  }
   return globalThis.fetch(`${url.pathname}${url.search}`, {
-    body: body || undefined,
+    body,
     credentials: "same-origin",
-    headers: Object.fromEntries(request.headers.entries()),
+    headers: Object.fromEntries(headers.entries()),
     method: request.method,
     signal: (request as SameOriginRequest).sourceSignal
   });
 }
 
+function hasBinaryValue(body: unknown): body is Record<string, unknown> {
+  return typeof body === "object" && body !== null && Object.values(body).some((value) => value instanceof Blob);
+}
+
+function apiBodySerializer(body: unknown): BodyInit {
+  if (!hasBinaryValue(body)) {
+    return defaultBodySerializer(body);
+  }
+  const form = new FormData();
+  Object.entries(body).forEach(([key, value]) => {
+    if (value !== undefined) {
+      form.append(key, value instanceof Blob ? value : String(value));
+    }
+  });
+  return form;
+}
+
 export const apiClient = createClient<paths>({
   baseUrl: window.location.origin,
+  bodySerializer: apiBodySerializer,
   credentials: "same-origin",
   fetch: sameOriginFetch,
   Request: SameOriginRequest

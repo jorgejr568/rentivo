@@ -118,6 +118,58 @@ describe("typed API client", () => {
     expect(fetchMock.mock.calls[0][1].signal).toBe(controller.signal);
   });
 
+  it("sends generated multipart file bodies without changing binary bytes", async () => {
+    const sourceBytes = Uint8Array.from([0, 255, 128, 13, 10, 65]);
+    const file = new File([sourceBytes], "contrato.pdf", { type: "application/pdf" });
+    expect(file).toBeInstanceOf(Blob);
+    let receivedFile: File | null = null;
+    let receivedName: FormDataEntryValue | null = null;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/v1/billings/billing-uuid/attachments");
+      expect(init?.body).toBeInstanceOf(FormData);
+      const form = init?.body as FormData;
+      receivedFile = form.get("file") as File | null;
+      receivedName = form.get("name");
+      return new Response(JSON.stringify({
+        content_type: "application/pdf",
+        created_at: null,
+        file_size: sourceBytes.byteLength,
+        filename: "contrato.pdf",
+        name: "Contrato",
+        sort_order: 0,
+        uuid: "attachment-uuid"
+      }), { headers: { "Content-Type": "application/json" }, status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    setCsrfToken("csrf-token");
+
+    await apiRequest(apiClient.POST("/api/v1/billings/{billing_uuid}/attachments", {
+      body: { file, name: "Contrato" },
+      params: { path: { billing_uuid: "billing-uuid" } }
+    }));
+
+    expect(receivedName).toBe("Contrato");
+    expect(receivedFile).toMatchObject({ name: "contrato.pdf", type: "application/pdf" });
+    const receivedBytes = await new Promise<Uint8Array>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error);
+      reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+      reader.readAsArrayBuffer(receivedFile!);
+    });
+    expect(receivedBytes).toEqual(sourceBytes);
+    const fetchInit = fetchMock.mock.calls[0]?.[1];
+    expect(fetchInit).toBeDefined();
+    expect(new Headers(fetchInit?.headers).get("Content-Type")).toBeNull();
+    expect(new Headers(fetchInit?.headers).get("X-CSRF-Token")).toBe("csrf-token");
+
+    await apiRequest(apiClient.POST("/api/v1/billings/{billing_uuid}/attachments", {
+      body: { file, name: undefined },
+      params: { path: { billing_uuid: "billing-uuid" } }
+    }));
+    const bodyWithoutName = fetchMock.mock.calls[1]?.[1]?.body as FormData;
+    expect(bodyWithoutName.has("name")).toBe(false);
+  });
+
   it("throws problem details and invokes the global handler for authenticated 401s", async () => {
     const onUnauthorized = vi.fn();
     setUnauthorizedHandler(onUnauthorized);

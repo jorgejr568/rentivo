@@ -48,10 +48,12 @@ export function pushAnalyticsFromResponse(response: Response) {
     return;
   }
   const reason = response.headers.get("X-Rentivo-Analytics-Reason");
+  const scope = response.headers.get("X-Rentivo-Analytics-Scope");
   const via = response.headers.get("X-Rentivo-Analytics-Via");
   pushAnalyticsEvent({
     event,
     ...(reason ? { reason } : {}),
+    ...(scope ? { scope } : {}),
     ...(via ? { via } : {})
   });
 }
