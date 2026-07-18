@@ -57,7 +57,7 @@ class ThemeOptionsResponse(_StrictModel):
 
 
 class ThemeCapabilitiesResponse(_StrictModel):
-    can_edit: bool = True
+    can_edit: bool
     can_reset: bool
 
 

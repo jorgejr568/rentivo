@@ -18,10 +18,8 @@ from rentivo.api.schemas.themes import (
 )
 from rentivo.constants.api_scopes import APIScope
 from rentivo.models.audit_log import AuditEventType
-from rentivo.models.bill import Bill, BillLineItem
-from rentivo.models.billing import Billing, ItemType
+from rentivo.models.billing import Billing
 from rentivo.models.theme import DEFAULT_THEME, Theme
-from rentivo.pdf.invoice import InvoicePDF
 from rentivo.services.audit_serializers import serialize_theme
 from rentivo.services.container import RequestServices
 
@@ -48,14 +46,23 @@ def _response(
     stored: Theme | None,
     effective: Theme,
     source: ThemeSource,
+    *,
+    can_edit: bool,
 ) -> ThemeResponse:
     return ThemeResponse(
         stored=_values(stored) if stored is not None else None,
         effective=_values(effective),
         effective_source=source,
         options=ThemeOptionsResponse(),
-        capabilities=ThemeCapabilitiesResponse(can_reset=stored is not None),
+        capabilities=ThemeCapabilitiesResponse(
+            can_edit=can_edit,
+            can_reset=stored is not None and can_edit,
+        ),
     )
+
+
+def _can_edit(principal: Principal) -> bool:
+    return APIScope.THEMES_WRITE.value in principal.api_key.scopes
 
 
 def _require_user_access(principal: Principal, services: RequestServices) -> tuple[str, int]:
@@ -87,16 +94,29 @@ def _direct_theme_response(
     services: RequestServices,
     owner_type: str,
     owner_id: int,
+    *,
+    can_edit: bool,
 ) -> ThemeResponse:
     stored = services.theme.get_theme_for_owner(owner_type, owner_id)
     source = cast(ThemeSource, owner_type if stored is not None else "default")
-    return _response(stored, stored or DEFAULT_THEME, source)
+    return _response(stored, stored or DEFAULT_THEME, source, can_edit=can_edit)
 
 
-def _billing_theme_response(services: RequestServices, billing: Billing, billing_id: int) -> ThemeResponse:
+def _billing_theme_response(
+    services: RequestServices,
+    billing: Billing,
+    billing_id: int,
+    *,
+    can_edit: bool,
+) -> ThemeResponse:
     stored = services.theme.get_theme_for_owner("billing", billing_id)
     resolved = services.theme.resolve_theme_with_source(billing)
-    return _response(stored, resolved.theme, cast(ThemeSource, resolved.source))
+    return _response(
+        stored,
+        resolved.theme,
+        cast(ThemeSource, resolved.source),
+        can_edit=can_edit,
+    )
 
 
 def _save_theme(
@@ -149,7 +169,12 @@ async def get_user_theme(
     services: RequestServices = Depends(get_services),
 ) -> ThemeResponse:
     owner_type, owner_id = _require_user_access(principal, services)
-    return _direct_theme_response(services, owner_type, owner_id)
+    return _direct_theme_response(
+        services,
+        owner_type,
+        owner_id,
+        can_edit=_can_edit(principal),
+    )
 
 
 @router.put("/user", response_model=ThemeResponse)
@@ -167,7 +192,7 @@ async def update_user_theme(
         owner_id=owner_id,
         payload=payload,
     )
-    return _response(saved, saved, "user")
+    return _response(saved, saved, "user", can_edit=_can_edit(principal))
 
 
 @router.delete("/user", status_code=204)
@@ -188,7 +213,12 @@ async def get_organization_theme(
     services: RequestServices = Depends(get_services),
 ) -> ThemeResponse:
     owner_type, owner_id = _require_organization_admin(principal, services, org_uuid)
-    return _direct_theme_response(services, owner_type, owner_id)
+    return _direct_theme_response(
+        services,
+        owner_type,
+        owner_id,
+        can_edit=_can_edit(principal),
+    )
 
 
 @router.put("/organizations/{org_uuid}", response_model=ThemeResponse)
@@ -207,7 +237,7 @@ async def update_organization_theme(
         owner_id=owner_id,
         payload=payload,
     )
-    return _response(saved, saved, "organization")
+    return _response(saved, saved, "organization", can_edit=_can_edit(principal))
 
 
 @router.delete("/organizations/{org_uuid}", status_code=204)
@@ -229,7 +259,12 @@ async def get_billing_theme(
     services: RequestServices = Depends(get_services),
 ) -> ThemeResponse:
     billing, _owner_type, billing_id = _require_billing_admin(principal, services, billing_uuid)
-    return _billing_theme_response(services, billing, billing_id)
+    return _billing_theme_response(
+        services,
+        billing,
+        billing_id,
+        can_edit=_can_edit(principal),
+    )
 
 
 @router.put("/billings/{billing_uuid}", response_model=ThemeResponse)
@@ -248,7 +283,7 @@ async def update_billing_theme(
         owner_id=owner_id,
         payload=payload,
     )
-    return _response(saved, saved, "billing")
+    return _response(saved, saved, "billing", can_edit=_can_edit(principal))
 
 
 @router.delete("/billings/{billing_uuid}", status_code=204)
@@ -276,25 +311,14 @@ async def reset_billing_theme(
         }
     },
 )
-async def preview_theme(
+def preview_theme(
     payload: ThemeUpdateRequest,
     _principal: Principal = Depends(_read_principal),
     _csrf: None = Depends(require_csrf),
+    services: RequestServices = Depends(get_services),
 ) -> Response:
     theme = Theme(**payload.model_dump())
-    sample_bill = Bill(
-        billing_id=0,
-        reference_month="2026-01",
-        total_amount=150000,
-        line_items=[
-            BillLineItem(description="Aluguel", amount=120000, item_type=ItemType.FIXED, sort_order=0),
-            BillLineItem(description="Água", amount=15000, item_type=ItemType.VARIABLE, sort_order=1),
-            BillLineItem(description="Luz", amount=15000, item_type=ItemType.VARIABLE, sort_order=2),
-        ],
-        notes="Exemplo de fatura para visualização do tema.",
-        due_date="2026-01-15",
-    )
-    pdf_bytes = InvoicePDF().generate(sample_bill, "Exemplo", theme=theme)
+    pdf_bytes = services.theme.render_preview(theme)
     return Response(
         content=bytes(pdf_bytes),
         media_type="application/pdf",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import inspect
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
@@ -104,7 +105,11 @@ LOGIN_KEY = _key(
 PERSONAL_KEY = _key("P", grants=(PERSONAL_GRANT,))
 ORGANIZATION_KEY = _key("O", grants=(ORGANIZATION_GRANT,))
 NO_SCOPE_KEY = _key("S", scopes=frozenset(), grants=(PERSONAL_GRANT, ORGANIZATION_GRANT))
-READ_ONLY_KEY = _key("R", scopes=frozenset({APIScope.THEMES_READ.value}), grants=(PERSONAL_GRANT,))
+READ_ONLY_KEY = _key(
+    "R",
+    scopes=frozenset({APIScope.THEMES_READ.value}),
+    grants=(PERSONAL_GRANT, ORGANIZATION_GRANT),
+)
 NO_GRANT_KEY = _key("G", grants=())
 
 
@@ -130,6 +135,7 @@ class FakeThemeService:
     def __init__(self) -> None:
         self.themes: dict[tuple[str, int], Theme] = {}
         self.next_id = 1
+        self.previewed_themes: list[Theme] = []
 
     def get_theme_for_owner(self, owner_type: str, owner_id: int) -> Theme | None:
         return self.themes.get((owner_type, owner_id))
@@ -162,6 +168,10 @@ class FakeThemeService:
 
     def delete_theme(self, owner_type: str, owner_id: int) -> bool:
         return self.themes.pop((owner_type, owner_id), None) is not None
+
+    def render_preview(self, theme: Theme) -> bytes:
+        self.previewed_themes.append(theme)
+        return b"%PDF-service-preview"
 
 
 class FakeOrganizationService:
@@ -248,13 +258,17 @@ def _assert_theme_response(
     stored: dict | None,
     effective: dict,
     source: str,
+    can_edit: bool = True,
 ) -> None:
     assert body == {
         "stored": stored,
         "effective": effective,
         "effective_source": source,
         "options": {"fonts": list(AVAILABLE_FONTS)},
-        "capabilities": {"can_edit": True, "can_reset": stored is not None},
+        "capabilities": {
+            "can_edit": can_edit,
+            "can_reset": stored is not None and can_edit,
+        },
     }
 
 
@@ -265,6 +279,60 @@ def test_user_theme_returns_defaults_and_strict_font_options_for_new_account() -
 
     assert response.status_code == 200
     _assert_theme_response(response.json(), stored=None, effective=DEFAULT_VALUES, source="default")
+
+
+def test_read_only_user_theme_get_disables_edit_and_reset_capabilities() -> None:
+    client, services, _app = _client()
+    services.theme.create_or_update_theme("user", USER.id, **THEME_PAYLOAD)
+
+    response = client.get("/api/v1/themes/user", headers=_bearer(READ_ONLY_SECRET))
+
+    assert response.status_code == 200
+    _assert_theme_response(
+        response.json(),
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="user",
+        can_edit=False,
+    )
+
+
+def test_read_only_organization_theme_get_disables_edit_and_reset_capabilities() -> None:
+    client, services, _app = _client()
+    services.theme.create_or_update_theme("organization", ORGANIZATION.id, **THEME_PAYLOAD)
+
+    response = client.get(
+        f"/api/v1/themes/organizations/{ORGANIZATION.uuid}",
+        headers=_bearer(READ_ONLY_SECRET),
+    )
+
+    assert response.status_code == 200
+    _assert_theme_response(
+        response.json(),
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="organization",
+        can_edit=False,
+    )
+
+
+def test_read_only_billing_theme_get_disables_edit_and_reset_capabilities() -> None:
+    client, services, _app = _client()
+    services.theme.create_or_update_theme("billing", ORGANIZATION_BILLING.id, **THEME_PAYLOAD)
+
+    response = client.get(
+        f"/api/v1/themes/billings/{ORGANIZATION_BILLING.uuid}",
+        headers=_bearer(READ_ONLY_SECRET),
+    )
+
+    assert response.status_code == 200
+    _assert_theme_response(
+        response.json(),
+        stored=THEME_PAYLOAD,
+        effective=THEME_PAYLOAD,
+        source="billing",
+        can_edit=False,
+    )
 
 
 def test_user_theme_create_records_new_state_and_integration_actor() -> None:
@@ -559,6 +627,12 @@ def test_preview_requires_csrf_for_cookie_authentication() -> None:
     assert services.audit.events == []
 
 
+def test_preview_endpoint_is_sync_for_worker_thread_execution() -> None:
+    themes = importlib.import_module("rentivo.api.routes.themes")
+
+    assert inspect.iscoroutinefunction(themes.preview_theme) is False
+
+
 def test_preview_returns_inline_pdf_without_audit_state() -> None:
     client, services, _app = _client()
 
@@ -569,6 +643,7 @@ def test_preview_returns_inline_pdf_without_audit_state() -> None:
     assert response.headers["content-disposition"] == 'inline; filename="theme-preview.pdf"'
     assert response.headers["cache-control"] == "no-store"
     assert response.content.startswith(b"%PDF")
+    assert services.theme.previewed_themes == [Theme(**THEME_PAYLOAD)]
     assert services.audit.events == []
 
 

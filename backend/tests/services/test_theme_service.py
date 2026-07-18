@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 
+import rentivo.services.theme_service as theme_service_module
 from rentivo.models.billing import Billing
 from rentivo.models.theme import DEFAULT_THEME, Theme
 from rentivo.services.theme_service import ResolvedTheme, ThemeService
@@ -177,3 +178,31 @@ class TestThemeService:
 
         assert resolved.source == "default"
         self.mock_repo.get_by_owner.assert_called_once_with("user", 10)
+
+    def test_render_preview_owns_sample_invoice_and_pdf_generation(self, monkeypatch):
+        captured = {}
+
+        class FakeInvoicePDF:
+            def generate(self, bill, billing_name, *, theme):
+                captured.update(bill=bill, billing_name=billing_name, theme=theme)
+                return bytearray(b"%PDF-service-preview")
+
+        monkeypatch.setattr(theme_service_module, "InvoicePDF", FakeInvoicePDF)
+        theme = Theme(primary="#123456")
+
+        result = self.service.render_preview(theme)
+
+        assert result == b"%PDF-service-preview"
+        assert captured["billing_name"] == "Exemplo"
+        assert captured["theme"] is theme
+        bill = captured["bill"]
+        assert bill.billing_id == 0
+        assert bill.reference_month == "2026-01"
+        assert bill.total_amount == 150000
+        assert bill.due_date == "2026-01-15"
+        assert bill.notes == "Exemplo de fatura para visualização do tema."
+        assert [(item.description, item.amount, item.item_type.value, item.sort_order) for item in bill.line_items] == [
+            ("Aluguel", 120000, "fixed", 0),
+            ("Água", 15000, "variable", 1),
+            ("Luz", 15000, "variable", 2),
+        ]
