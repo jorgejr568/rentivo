@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+import rentivo.api.app as api_app
 import rentivo.db as db_module
+import rentivo.workers.__main__ as worker_main
 
 
 class TestGetEngine:
@@ -44,6 +48,38 @@ class TestInitializeDb:
         mock_config.return_value = mock_cfg
         db_module.initialize_db()
         mock_command.upgrade.assert_called_once_with(mock_cfg, "head")
+
+
+@pytest.mark.asyncio
+async def test_api_lifespan_validates_settings_without_running_migrations(monkeypatch):
+    validate = MagicMock()
+    migrate = MagicMock()
+    monkeypatch.setattr(api_app, "validate_production_settings", validate, raising=False)
+    monkeypatch.setattr(api_app, "initialize_db", migrate, raising=False)
+    monkeypatch.setattr(api_app, "configure_tracing", MagicMock())
+    monkeypatch.setattr(api_app, "reconfigure", MagicMock())
+
+    async with api_app.lifespan(MagicMock()):
+        pass
+
+    validate.assert_called_once_with()
+    migrate.assert_not_called()
+
+
+def test_worker_validates_settings_before_starting_driver(monkeypatch):
+    calls = []
+    monkeypatch.setattr(worker_main, "validate_production_settings", lambda: calls.append("validate"), raising=False)
+    monkeypatch.setattr(worker_main, "configure_logging", MagicMock())
+    monkeypatch.setattr(worker_main, "configure_tracing", MagicMock())
+    monkeypatch.setattr(worker_main.settings, "job_backend", "temporal")
+    monkeypatch.setattr(
+        "rentivo.jobs.temporal.runner.run_temporal_worker",
+        lambda: calls.append("worker"),
+    )
+
+    worker_main.main()
+
+    assert calls == ["validate", "worker"]
 
 
 class TestGetAlembicConfig:

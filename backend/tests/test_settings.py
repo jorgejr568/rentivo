@@ -1,7 +1,28 @@
 import pytest
 from pydantic import ValidationError
 
+import rentivo.settings as settings_module
 from rentivo.settings import _INSECURE_DEFAULT_KEY, Settings
+
+
+def _secure_production_settings(**overrides):
+    values = {
+        "environment": "production",
+        "db_url": "mysql+pymysql://app:strong-password@db:3306/rentivo",
+        "secret_key": "stable-production-secret",
+        "public_url": "https://rentivo.example.com",
+        "public_app_url": "https://rentivo.example.com",
+        "webauthn_origin": "https://rentivo.example.com",
+        "webauthn_rp_id": "rentivo.example.com",
+        "email_backend": "ses",
+        "storage_backend": "s3",
+        "encryption_backend": "kms",
+        "kms_key_id": "alias/rentivo",
+        "kms_region": "us-east-1",
+        "log_json": True,
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
 
 
 class TestSettings:
@@ -90,6 +111,71 @@ def test_environment_rejects_unknown():
     with pytest.raises(ValidationError) as exc_info:
         Settings(_env_file=None, environment="qa")
     assert "must be one of" in str(exc_info.value)
+
+
+def test_production_settings_accept_hardened_configuration(monkeypatch):
+    monkeypatch.setattr(settings_module, "settings", _secure_production_settings())
+
+    settings_module.validate_production_settings()
+
+
+def test_production_settings_validation_is_disabled_outside_production(monkeypatch):
+    monkeypatch.setattr(settings_module, "settings", Settings(_env_file=None, environment="dev"))
+
+    settings_module.validate_production_settings()
+
+
+def test_production_settings_do_not_report_matching_rp_id_as_mismatched(monkeypatch):
+    insecure = _secure_production_settings(webauthn_origin="http://rentivo.example.com")
+    monkeypatch.setattr(settings_module, "settings", insecure)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    assert "RENTIVO_WEBAUTHN_ORIGIN" in str(exc_info.value)
+    assert "RENTIVO_WEBAUTHN_RP_ID" not in str(exc_info.value)
+
+
+def test_production_settings_report_every_insecure_value_together(monkeypatch):
+    insecure = _secure_production_settings(
+        db_url="mysql+pymysql://rentivo:rentivo@db:3306/rentivo",
+        secret_key=_INSECURE_DEFAULT_KEY,
+        public_url="",
+        public_app_url="http://localhost:8000",
+        webauthn_origin="http://auth.example.com",
+        webauthn_rp_id="wrong.example.com",
+        cookie_secure=False,
+        access_cookie_name="rentivo_access",
+        challenge_cookie_name="rentivo_challenge",
+        csrf_cookie_name="rentivo_csrf",
+        email_backend="local",
+        storage_backend="local",
+        encryption_backend="base64",
+        log_json=False,
+    )
+    monkeypatch.setattr(settings_module, "settings", insecure)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    message = str(exc_info.value)
+    for variable in (
+        "RENTIVO_DB_URL",
+        "RENTIVO_SECRET_KEY",
+        "RENTIVO_PUBLIC_URL",
+        "RENTIVO_PUBLIC_APP_URL",
+        "RENTIVO_WEBAUTHN_ORIGIN",
+        "RENTIVO_WEBAUTHN_RP_ID",
+        "RENTIVO_COOKIE_SECURE",
+        "RENTIVO_ACCESS_COOKIE_NAME",
+        "RENTIVO_CHALLENGE_COOKIE_NAME",
+        "RENTIVO_CSRF_COOKIE_NAME",
+        "RENTIVO_EMAIL_BACKEND",
+        "RENTIVO_STORAGE_BACKEND",
+        "RENTIVO_ENCRYPTION_BACKEND",
+        "RENTIVO_LOG_JSON",
+    ):
+        assert variable in message
 
 
 def test_settings_email_defaults(monkeypatch):
@@ -423,13 +509,11 @@ def test_api_key_and_auth_cookie_defaults():
     assert settings.api_key_last_used_throttle_seconds == 5 * 60
 
 
-@pytest.mark.parametrize("environment", ["staging", "production"])
-def test_deployed_environments_reject_insecure_auth_cookies(environment):
+def test_staging_rejects_insecure_auth_cookies():
     with pytest.raises(ValidationError, match="RENTIVO_COOKIE_SECURE"):
-        Settings(_env_file=None, environment=environment, cookie_secure=False)
+        Settings(_env_file=None, environment="staging", cookie_secure=False)
 
 
-@pytest.mark.parametrize("environment", ["staging", "production"])
 @pytest.mark.parametrize(
     "override",
     [
@@ -438,9 +522,9 @@ def test_deployed_environments_reject_insecure_auth_cookies(environment):
         {"csrf_cookie_name": "rentivo_csrf"},
     ],
 )
-def test_deployed_environments_require_host_prefixed_auth_cookie_names(environment, override):
+def test_staging_requires_host_prefixed_auth_cookie_names(override):
     with pytest.raises(ValidationError, match="__Host-"):
-        Settings(_env_file=None, environment=environment, **override)
+        Settings(_env_file=None, environment="staging", **override)
 
 
 def test_dev_allows_plain_http_auth_cookie_settings():

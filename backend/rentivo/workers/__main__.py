@@ -26,12 +26,13 @@ from rentivo.logging import configure_logging
 from rentivo.observability import configure_tracing
 from rentivo.repositories.sqlalchemy import SQLAlchemyAuditLogRepository
 from rentivo.services.audit_service import AuditService
-from rentivo.settings import settings
+from rentivo.settings import settings, validate_production_settings
 
 logger = structlog.get_logger(__name__)
 
 
 def main() -> None:
+    validate_production_settings()
     configure_logging()
     configure_tracing()
     if settings.job_backend == "temporal":

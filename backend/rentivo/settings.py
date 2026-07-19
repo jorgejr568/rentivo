@@ -1,5 +1,6 @@
 import re
 import secrets
+from urllib.parse import urlsplit
 
 import structlog
 from pydantic import field_validator, model_validator
@@ -304,10 +305,10 @@ class Settings(BaseSettings):
     def _validate_auth_cookies(self) -> "Settings":
         if self.api_key_integration_default_ttl_days > self.api_key_integration_max_ttl_days:
             raise ValueError("Integration API-key default TTL cannot exceed its maximum TTL")
-        if self.environment not in {"staging", "production"}:
+        if self.environment != "staging":
             return self
         if not self.cookie_secure:
-            raise ValueError("RENTIVO_COOKIE_SECURE must be true in staging and production")
+            raise ValueError("RENTIVO_COOKIE_SECURE must be true in staging")
         for name in (self.access_cookie_name, self.challenge_cookie_name, self.csrf_cookie_name):
             if not name.startswith("__Host-"):
                 raise ValueError("Authentication cookie names must use the __Host- prefix")
@@ -324,3 +325,55 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def _https_hostname(value: str) -> str | None:
+    parsed = urlsplit(value)
+    return parsed.hostname if parsed.scheme == "https" else None
+
+
+def validate_production_settings() -> None:
+    if settings.environment != "production":
+        return
+
+    errors: list[str] = []
+    database = urlsplit(settings.db_url)
+    if database.username == "rentivo" and database.password == "rentivo":
+        errors.append("RENTIVO_DB_URL must not use the default rentivo credentials")
+    if not settings.secret_key or settings.secret_key == _INSECURE_DEFAULT_KEY:
+        errors.append("RENTIVO_SECRET_KEY must be a stable non-default secret")
+
+    public_hostname = _https_hostname(settings.public_url)
+    app_hostname = _https_hostname(settings.public_app_url)
+    webauthn_hostname = _https_hostname(settings.webauthn_origin)
+    configured_webauthn_hostname = urlsplit(settings.webauthn_origin).hostname
+    if public_hostname is None:
+        errors.append("RENTIVO_PUBLIC_URL must be an HTTPS origin")
+    if app_hostname is None:
+        errors.append("RENTIVO_PUBLIC_APP_URL must be an HTTPS origin")
+    if webauthn_hostname is None:
+        errors.append("RENTIVO_WEBAUTHN_ORIGIN must be an HTTPS origin")
+    if settings.webauthn_rp_id != configured_webauthn_hostname:
+        errors.append("RENTIVO_WEBAUTHN_RP_ID must match the WebAuthn origin hostname")
+
+    if not settings.cookie_secure:
+        errors.append("RENTIVO_COOKIE_SECURE must be true")
+    for variable, name in (
+        ("RENTIVO_ACCESS_COOKIE_NAME", settings.access_cookie_name),
+        ("RENTIVO_CHALLENGE_COOKIE_NAME", settings.challenge_cookie_name),
+        ("RENTIVO_CSRF_COOKIE_NAME", settings.csrf_cookie_name),
+    ):
+        if not name.startswith("__Host-"):
+            errors.append(f"{variable} must use the __Host- prefix")
+
+    if settings.email_backend == "local":
+        errors.append("RENTIVO_EMAIL_BACKEND must not be local")
+    if settings.storage_backend == "local":
+        errors.append("RENTIVO_STORAGE_BACKEND must not be local")
+    if settings.encryption_backend == "base64":
+        errors.append("RENTIVO_ENCRYPTION_BACKEND must not be base64")
+    if not settings.log_json:
+        errors.append("RENTIVO_LOG_JSON must be true")
+
+    if errors:
+        raise ValueError("Insecure production settings:\n- " + "\n- ".join(errors))

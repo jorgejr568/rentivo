@@ -53,10 +53,10 @@ def test_export_is_deterministic_without_starting_database_connections(
     from rentivo.api import app as app_module
     from rentivo.api.export_openapi import export_openapi, main
 
-    def fail_if_initialized() -> None:
+    def fail_if_connected() -> None:
         raise AssertionError("OpenAPI export started the application lifespan")
 
-    monkeypatch.setattr(app_module, "initialize_db", fail_if_initialized)
+    monkeypatch.setattr(app_module, "get_engine", fail_if_connected)
     output = tmp_path / "openapi.json"
 
     export_openapi(output)

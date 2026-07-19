@@ -8,10 +8,7 @@ UVICORN := uv run --project backend uvicorn
 ALEMBIC := uv run --project backend alembic -c backend/alembic.ini
 NPM_FRONTEND := npm --prefix frontend
 
-RENTIVO_DB_ENV_FILE  ?= .env.preview-db
-RENTIVO_APP_ENV_FILE ?= .env.preview-app
-PREVIEW_COMPOSE := RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)" docker compose --env-file "$(RENTIVO_DB_ENV_FILE)" -f docker-compose.next.yml
-PREVIEW_COMPOSE_REMOTE := $(PREVIEW_COMPOSE) -f docker-compose.next.remote.yml
+STACK_COMPOSE := docker compose
 
 # --- Local development ---
 
@@ -272,7 +269,7 @@ compose-dev-down:
 
 .PHONY: compose-shell
 compose-shell:
-	docker compose exec rentivo bash
+	docker compose exec api bash
 
 .PHONY: compose-worker
 compose-worker:
@@ -284,11 +281,11 @@ compose-logs-worker:
 
 .PHONY: compose-migrate
 compose-migrate:
-	docker compose exec rentivo python -c "from rentivo.db import initialize_db; initialize_db()"
+	docker compose run --rm migrate
 
 .PHONY: compose-migrate-fresh
 compose-migrate-fresh:
-	docker compose exec rentivo python -c "\
+	docker compose exec api python -c "\
 from rentivo.db import get_engine; \
 from sqlalchemy import text; \
 e = get_engine(); \
@@ -298,52 +295,62 @@ tables = [r[0] for r in conn.execute(text('SHOW TABLES')).fetchall()]; \
 [conn.execute(text(f'DROP TABLE \`{t}\`')) for t in tables]; \
 conn.execute(text('SET FOREIGN_KEY_CHECKS = 1')); \
 conn.commit(); conn.close(); \
-print(f'Dropped {len(tables)} tables.'); \
-from rentivo.db import initialize_db; initialize_db(); \
-print('Migrations applied.')"
+print(f'Dropped {len(tables)} tables.')"
+	docker compose run --rm migrate
 
 .PHONY: compose-createuser
 compose-createuser:
-	docker compose exec -it rentivo python -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
+	docker compose exec -it api python -c "from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
 
 .PHONY: compose-regenerate
 compose-regenerate:
-	docker compose exec rentivo python -m rentivo.scripts.regenerate_pdfs
+	docker compose exec api python -m rentivo.scripts.regenerate_pdfs
 
 .PHONY: compose-regenerate-recibos
 compose-regenerate-recibos:
-	docker compose exec rentivo python -m rentivo.scripts.regenerate_recibos
+	docker compose exec api python -m rentivo.scripts.regenerate_recibos
 
 .PHONY: compose-logs
 compose-logs:
 	docker compose logs -f
 
-# --- Replacement preview (legacy production remains the default) ---
+# --- Production stack ---
 
+.PHONY: stack-config
+stack-config:
+	$(STACK_COMPOSE) config --quiet
+
+.PHONY: stack-build
+stack-build:
+	$(STACK_COMPOSE) build migrate api worker frontend
+
+.PHONY: stack-migrate
+stack-migrate:
+	$(STACK_COMPOSE) up --build migrate
+
+.PHONY: stack-up
+stack-up:
+	$(STACK_COMPOSE) up -d --build
+
+.PHONY: stack-stop
+stack-stop:
+	$(STACK_COMPOSE) stop proxy frontend api worker
+
+# Compatibility aliases for one release. All execute the production stack.
 .PHONY: preview-config
-preview-config:
-	$(PREVIEW_COMPOSE) config --quiet
-
-.PHONY: preview-config-remote
-preview-config-remote:
-	$(PREVIEW_COMPOSE_REMOTE) config --quiet
+preview-config: stack-config
 
 .PHONY: preview-build
-preview-build:
-	$(PREVIEW_COMPOSE) build rentivo worker api frontend
+preview-build: stack-build
 
 .PHONY: preview-migrate
-preview-migrate:
-	$(PREVIEW_COMPOSE) up -d db
-	$(PREVIEW_COMPOSE) run --rm api alembic -c backend/alembic.ini upgrade head
+preview-migrate: stack-migrate
 
 .PHONY: preview-up
-preview-up: preview-migrate
-	$(PREVIEW_COMPOSE) up -d --build rentivo worker api frontend proxy
+preview-up: stack-up
 
 .PHONY: preview-stop
-preview-stop:
-	$(PREVIEW_COMPOSE) stop proxy frontend api
+preview-stop: stack-stop
 
 .PHONY: jaeger-up
 jaeger-up:

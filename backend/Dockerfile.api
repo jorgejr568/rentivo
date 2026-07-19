@@ -14,7 +14,7 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
 COPY backend/pyproject.toml backend/pyproject.toml
-RUN mkdir -p backend/rentivo backend/legacy_web && touch backend/rentivo/__init__.py backend/legacy_web/__init__.py
+RUN mkdir -p backend/rentivo && touch backend/rentivo/__init__.py
 RUN uv sync --project backend --frozen --no-install-project $(for e in $API_EXTRAS; do echo --extra $e; done)
 
 COPY . .

@@ -26,12 +26,13 @@ from rentivo.api.routes.public import router as public_router
 from rentivo.api.routes.security import router as security_router
 from rentivo.api.routes.themes import router as themes_router
 from rentivo.context import accept_inbound_request_id, new_request_id
-from rentivo.db import get_engine, initialize_db
+from rentivo.db import get_engine
 from rentivo.encryption.factory import get_encryption
 from rentivo.logging import configure_logging, reconfigure
 from rentivo.observability import configure_tracing
 from rentivo.observability.middleware import TracingMiddleware
 from rentivo.services.container import RequestServices
+from rentivo.settings import validate_production_settings
 
 configure_logging()
 logger = structlog.get_logger(__name__)
@@ -104,8 +105,8 @@ class _RequestContextMiddleware:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    validate_production_settings()
     configure_tracing()
-    initialize_db()
     reconfigure()
     logger.info("api_application_started")
     yield
