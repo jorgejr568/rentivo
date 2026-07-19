@@ -27,8 +27,8 @@ class StorageCleanupService:
     PDF render previously failed.
 
     Every method takes the acting principal first — a duck-typed object with
-    ``.source`` / ``.user_id`` / ``.email`` (typically ``legacy_web.context.WebActor``,
-    i.e. ``request.state.actor``) — mirroring ``JobService.enqueue_for``.
+    ``.source`` / ``.user_id`` / ``.email`` — mirroring
+    ``JobService.enqueue_for``.
     """
 
     def __init__(

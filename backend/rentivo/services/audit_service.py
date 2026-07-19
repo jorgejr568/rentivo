@@ -70,8 +70,8 @@ class AuditService:
 
     @traced("audit.safe_log_for")
     def safe_log_for(self, actor, event_type, **kwargs) -> AuditLog | None:
-        """Convenience wrapper that unpacks an actor object (typically a
-        ``legacy_web.context.WebActor``) into ``safe_log`` kwargs. Duck-typed: any
+        """Convenience wrapper that unpacks an actor object into ``safe_log``
+        kwargs. Duck-typed: any
         object exposing ``user_id`` / ``email`` / ``source`` attrs works.
 
         Use this from web routes instead of hand-deriving

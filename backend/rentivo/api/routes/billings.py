@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
-from legacy_web.analytics import analytics_hash
+from rentivo.analytics import analytics_hash
 from rentivo.api.authentication import reject_out_of_band_credentials
 from rentivo.api.csrf import require_csrf
 from rentivo.api.dependencies import get_services, require_resource_grant, require_scope

@@ -10,8 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from legacy_web.analytics import analytics_hash
-from legacy_web.bill_transitions import StatusTransition, transitions_for
+from rentivo.analytics import analytics_hash
 from rentivo.api.csrf import require_csrf
 from rentivo.api.dependencies import get_services, require_scope
 from rentivo.api.domain_access import (
@@ -41,6 +40,7 @@ from rentivo.api.schemas.bills import (
     ReciboDownloadResponse,
     RedactedCommunicationHistoryResponse,
 )
+from rentivo.bill_transitions import StatusTransition, transitions_for
 from rentivo.constants.api_scopes import APIScope
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import Bill, BillLineItem, BillStatus, InvalidStatusTransition

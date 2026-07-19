@@ -63,8 +63,8 @@ class JobService:
         run_after: datetime | None = None,
         max_attempts: int = 5,
     ) -> Job:
-        """Convenience wrapper that unpacks an actor object (typically a
-        ``legacy_web.context.WebActor``) into ``enqueue`` kwargs. Duck-typed.
+        """Convenience wrapper that unpacks an actor object into ``enqueue``
+        kwargs. Duck-typed.
         """
         return self.enqueue(
             job_type,

@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.responses import Response
 
-from legacy_web.analytics import analytics_hash
+from rentivo.analytics import analytics_hash
 from rentivo.api.app import create_app
 from rentivo.api.csrf import CSRF_HEADER_NAME, issue_csrf_token
 from rentivo.api.dependencies import get_services

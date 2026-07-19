@@ -1,0 +1,14 @@
+RENTIVO — NOVO ACESSO DETECTADO
+================================
+
+A conta {{ email }} foi acessada por um dispositivo que nunca tínhamos visto:
+
+  Quando: {{ logged_in_at }}
+  Origem: {{ source_ip }}
+  Navegador: {{ user_agent[:120] }}
+
+Se foi você, nada a fazer. Se NÃO foi você, redefina sua senha agora:
+
+  {{ reset_url }}
+
+{% include "_email_footer.txt" %}

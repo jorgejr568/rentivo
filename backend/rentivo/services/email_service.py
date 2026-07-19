@@ -23,7 +23,7 @@ def _jinja_env() -> Environment:
     global _env
     if _env is None:
         _env = Environment(
-            loader=PackageLoader("legacy_web", "templates/emails"),
+            loader=PackageLoader("rentivo.email", "templates"),
             autoescape=select_autoescape(["html"]),
         )
     return _env

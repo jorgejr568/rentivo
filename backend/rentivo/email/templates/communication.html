@@ -1,0 +1,16 @@
+{% extends "_email_layout.html" %}
+{# body_html MUST be pre-sanitized HTML from rentivo.communications.render.render_markdown (raw HTML disabled) — never pass raw user input here #}
+{% block content %}{{ body_html | safe }}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-top:28px;border-top:1px solid #e0dccc;">
+    <tr>
+        <td style="padding-top:16px;">
+            <p style="margin:0;font-size:13px;line-height:1.5;color:#5c6670;">
+                Enviado por <strong style="color:#1a1a2e;">{{ sender_name or "o responsável" }}</strong> através do Rentivo.
+            </p>
+            <p style="margin:6px 0 0;font-size:12px;line-height:1.5;color:#7f8c8d;">
+                O conteúdo desta mensagem é de responsabilidade do remetente, não do Rentivo.
+            </p>
+        </td>
+    </tr>
+</table>
+{% endblock %}

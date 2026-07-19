@@ -1,0 +1,8 @@
+{% extends "_email_layout.html" %}
+{% import "_email_macros.html" as m %}
+{% block title %}Alteração em "{{ org_name }}" — Rentivo{% endblock %}
+{% block content %}
+{{ m.heading("Alteração na organização") }}
+<p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1a1a2e;">{{ change_message }}</p>
+{{ m.metadata_box([("Organização", org_name), ("Quem fez", actor_email)]) }}
+{% endblock %}

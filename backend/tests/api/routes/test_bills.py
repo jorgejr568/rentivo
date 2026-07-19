@@ -12,7 +12,7 @@ import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
 
-from legacy_web.analytics import analytics_hash
+from rentivo.analytics import analytics_hash
 from rentivo.api.app import create_app
 from rentivo.api.authentication import get_principal
 from rentivo.api.dependencies import get_services
