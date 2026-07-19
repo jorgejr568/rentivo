@@ -7,6 +7,7 @@ async function expectPath(page: Page, path: string) {
 }
 
 async function navigatePrimary(page: Page, isMobile: boolean, name: string, path: string) {
+  const navigation = page.getByRole("navigation");
   const menu = page.getByRole("button", { name: "Menu" });
   if (isMobile) {
     await expect(menu).toBeVisible();
@@ -17,7 +18,7 @@ async function navigatePrimary(page: Page, isMobile: boolean, name: string, path
     await expect(menu).toBeHidden();
   }
 
-  await page.getByRole("link", { exact: true, name }).click();
+  await navigation.getByRole("link", { exact: true, name }).click();
   await expectPath(page, path);
   if (isMobile) await expect(menu).toHaveAttribute("aria-expanded", "false");
 }
@@ -30,6 +31,17 @@ async function navigateAccount(page: Page, name: string, path: string) {
   await expectPath(page, path);
   await expect(account).toHaveAttribute("aria-expanded", "false");
 }
+
+test("primary navigation stays unambiguous when page content repeats a destination", async ({ isMobile, page }) => {
+  const api = await installApiMocks(page, { apiKeys: [], pendingInviteCount: 0 });
+
+  await page.goto("/");
+  await expect(page.getByRole("main").getByRole("link", { exact: true, name: "Organizações" })).toBeVisible();
+  await navigatePrimary(page, isMobile, "Organizações", "/organizations/");
+
+  await expect(page.getByRole("heading", { level: 1, name: "Organizações" })).toBeVisible();
+  expect(api.unexpectedRequests).toEqual([]);
+});
 
 test("a fresh account has complete authenticated destination pages", async ({ isMobile, page }) => {
   const api = await installApiMocks(page, { apiKeys: [], pendingInviteCount: 0 });
