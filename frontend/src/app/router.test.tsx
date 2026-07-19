@@ -219,6 +219,21 @@ it("redirects the authenticated home URL to billings", async () => {
   router.dispose();
 });
 
+it("renders the public landing page at the anonymous home URL without the authenticated shell", async () => {
+  window.history.pushState({}, "", "/");
+  const router = createAppRouter();
+  const view = render(<RouterProvider router={router} />);
+
+  expect(
+    await screen.findByRole("heading", { level: 1, name: /cobranças de aluguel.*pix em segundos/i })
+  ).toBeVisible();
+  expect(screen.getByRole("link", { name: "Criar conta gratuita" })).toHaveAttribute("href", "/signup");
+  expect(screen.queryByRole("button", { name: "Sair" })).not.toBeInTheDocument();
+
+  view.unmount();
+  router.dispose();
+});
+
 it("renders the fresh-account billing state instead of an authenticated catch-all", async () => {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);

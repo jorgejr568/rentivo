@@ -30,6 +30,7 @@ import { RecoveryCodesPage } from "../features/security/RecoveryCodesPage";
 import { SecurityPage } from "../features/security/SecurityPage";
 import { TotpSetupPage } from "../features/security/TotpSetupPage";
 import { ThemePage } from "../features/themes/ThemePage";
+import { LandingPage } from "../features/landing/LandingPage";
 
 // eslint-disable-next-line react-refresh/only-export-components
 function PublicAuthLayout() {
@@ -68,9 +69,17 @@ function ProtectedApp() {
   return <AuthenticatedAppShell />;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
+function HomeRoute() {
+  const { status } = useAuth();
+  if (status === "authenticated") {
+    return <Navigate replace to="/billings/" />;
+  }
+  return <LandingPage />;
+}
+
 export function createAppRouter(children: RouteObject[] = []) {
   const authenticatedRoutes: RouteObject[] = [
-    { element: <Navigate replace to="/billings/" />, path: "/" },
     ...children,
     { element: <BillingListPage />, path: "/billings/" },
     { element: <BillingCreatePage />, path: "/billings/create" },
@@ -110,6 +119,7 @@ export function createAppRouter(children: RouteObject[] = []) {
           ],
           element: <PublicAuthLayout />
         },
+        { element: <HomeRoute />, path: "/" },
         { children: authenticatedRoutes, element: <ProtectedApp /> }
       ],
       element: (

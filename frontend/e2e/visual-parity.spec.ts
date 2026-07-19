@@ -2,6 +2,17 @@ import { expect, test } from "@playwright/test";
 
 import { installApiMocks, settleVisualPage } from "./support/api-mocks";
 
+test("landing visual parity", async ({ page }) => {
+  await installApiMocks(page, { session: "anonymous" });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { level: 1, name: /cobranças de aluguel.*pix em segundos/i })
+  ).toBeVisible();
+  await settleVisualPage(page);
+
+  await expect(page).toHaveScreenshot("landing.png", { fullPage: true });
+});
+
 test("login visual parity", async ({ page }) => {
   await installApiMocks(page, { session: "anonymous" });
   await page.goto("/login");

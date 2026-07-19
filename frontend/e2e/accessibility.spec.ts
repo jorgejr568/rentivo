@@ -63,6 +63,21 @@ test("public authentication has a main landmark, labels, and a logical keyboard 
   await expectAccessibleFundamentals(page);
 });
 
+test("public landing has a main landmark and no inaccessible controls", async ({ page }) => {
+  await installApiMocks(page, { session: "anonymous" });
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { level: 1, name: /cobranças de aluguel.*pix em segundos/i })
+  ).toBeVisible();
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Criar conta gratuita" })).toHaveAttribute(
+    "href",
+    "/signup"
+  );
+  await expectAccessibleFundamentals(page);
+});
+
 test("security exposes navigation and main landmarks without unlabeled controls", async ({ page }) => {
   await installApiMocks(page);
   await page.goto("/security");
