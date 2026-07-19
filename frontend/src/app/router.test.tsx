@@ -100,6 +100,7 @@ it("does not render or request private content until session authentication succ
   const view = render(<RouterProvider router={router} />);
 
   await waitFor(() => expect(resolveSession).toBeTypeOf("function"));
+  expect(screen.getByRole("status")).toHaveTextContent("Carregando sessão...");
   expect(screen.queryByText("private-screen")).not.toBeInTheDocument();
   expect(fetchMock.mock.calls.some(([url]) => String(url) === "/api/v1/profile")).toBe(false);
 
@@ -189,20 +190,68 @@ it.each([
   router.dispose();
 });
 
-it("renders a meaningful authenticated page instead of a blank catch-all", async () => {
+it("redirects the authenticated home URL to billings", async () => {
+  const NativeRequest = globalThis.Request;
+  class CompatibleNavigationRequest extends NativeRequest {
+    constructor(input: RequestInfo | URL, init?: RequestInit) {
+      const compatibleInit = { ...init };
+      delete compatibleInit.signal;
+      super(input, compatibleInit);
+    }
+  }
+  vi.stubGlobal("Request", CompatibleNavigationRequest);
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url === "/api/v1/auth/config") return jsonResponse(AUTH_CONFIG);
     if (url === "/api/v1/auth/session") return jsonResponse(AUTHENTICATED_RESPONSE);
     throw new Error(`Unexpected request: ${url}`);
   }));
+  window.history.pushState({}, "", "/");
+  const router = createAppRouter([
+    { element: <h1>Minhas Cobranças</h1>, path: "/billings/" }
+  ]);
+  const view = render(<RouterProvider router={router} />);
+
+  expect(await screen.findByRole("heading", { name: "Minhas Cobranças" })).toBeVisible();
+  expect(router.state.location.pathname).toBe("/billings/");
+
+  view.unmount();
+  router.dispose();
+});
+
+it("renders the fresh-account billing state instead of an authenticated catch-all", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/v1/auth/config") return jsonResponse(AUTH_CONFIG);
+    if (url === "/api/v1/auth/session") return jsonResponse(AUTHENTICATED_RESPONSE);
+    if (url === "/api/v1/billings") return jsonResponse({
+      items: [],
+      stats: {
+        active_count: 0,
+        billed_count: 0,
+        expected: 0,
+        net_income: 0,
+        overdue: 0,
+        overdue_count: 0,
+        paid_count: 0,
+        pending: 0,
+        pending_count: 0,
+        received: 0,
+        total_expenses: 0,
+        year: 2026
+      },
+      user_pix_incomplete: true
+    });
+    throw new Error(`Unexpected request: ${url}`);
+  }));
   window.history.pushState({}, "", "/billings/");
   const router = createAppRouter();
   const view = render(<RouterProvider router={router} />);
 
-  expect(await screen.findByRole("heading", { name: "Página não encontrada" })).toBeVisible();
+  expect(await screen.findByRole("heading", { name: "Minhas Cobranças" })).toBeVisible();
+  expect(screen.getByText("Nenhuma cobrança cadastrada.")).toBeVisible();
   expect(screen.getByRole("main")).toContainElement(
-    screen.getByRole("heading", { name: "Página não encontrada" })
+    screen.getByRole("heading", { name: "Minhas Cobranças" })
   );
 
   view.unmount();

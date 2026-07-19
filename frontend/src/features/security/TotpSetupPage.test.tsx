@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -23,7 +23,7 @@ it("starts setup with POST and routes confirmed codes to the one-time screen", a
   expect(await screen.findByAltText("QR Code TOTP")).toBeVisible();
   await user.type(screen.getByLabelText("Código de verificação"), "123456");
   await user.click(screen.getByRole("button", { name: "Confirmar e Ativar" }));
-  expect(await screen.findByTestId("location")).toHaveTextContent("/security/recovery-codes");
+  await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/security/recovery-codes"));
   expect(fetchMock).toHaveBeenCalledWith(
     "/api/v1/security/totp/setup",
     expect.objectContaining({ headers: expect.objectContaining({ "x-csrf-token": "csrf-token" }), method: "POST" })

@@ -88,6 +88,12 @@ const INITIAL_VALUES: ThemeValues = {
   text_font: "Montserrat"
 };
 
+const SECTION_HEADING_STYLE = {
+  fontSize: "0.98rem",
+  margin: 0,
+  whiteSpace: "nowrap"
+} as const;
+
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
@@ -118,34 +124,43 @@ async function getTheme(target: ThemeTarget, uuid: string, signal: AbortSignal) 
   return apiRequest(apiClient.GET("/api/v1/themes/user", { signal }));
 }
 
-async function putTheme(target: ThemeTarget, uuid: string, body: ThemeValues) {
+async function putTheme(
+  target: ThemeTarget,
+  uuid: string,
+  body: ThemeValues,
+  signal: AbortSignal
+) {
   if (target === "organization") {
     return apiRequest(apiClient.PUT("/api/v1/themes/organizations/{org_uuid}", {
       body,
-      params: { path: { org_uuid: uuid } }
+      params: { path: { org_uuid: uuid } },
+      signal
     }));
   }
   if (target === "billing") {
     return apiRequest(apiClient.PUT("/api/v1/themes/billings/{billing_uuid}", {
       body,
-      params: { path: { billing_uuid: uuid } }
+      params: { path: { billing_uuid: uuid } },
+      signal
     }));
   }
-  return apiRequest(apiClient.PUT("/api/v1/themes/user", { body }));
+  return apiRequest(apiClient.PUT("/api/v1/themes/user", { body, signal }));
 }
 
-async function deleteTheme(target: ThemeTarget, uuid: string) {
+async function deleteTheme(target: ThemeTarget, uuid: string, signal: AbortSignal) {
   if (target === "organization") {
     return apiRequest(apiClient.DELETE("/api/v1/themes/organizations/{org_uuid}", {
-      params: { path: { org_uuid: uuid } }
+      params: { path: { org_uuid: uuid } },
+      signal
     }));
   }
   if (target === "billing") {
     return apiRequest(apiClient.DELETE("/api/v1/themes/billings/{billing_uuid}", {
-      params: { path: { billing_uuid: uuid } }
+      params: { path: { billing_uuid: uuid } },
+      signal
     }));
   }
-  return apiRequest(apiClient.DELETE("/api/v1/themes/user"));
+  return apiRequest(apiClient.DELETE("/api/v1/themes/user", { signal }));
 }
 
 export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePageProps) {
@@ -177,6 +192,22 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
   const currentPreviewUrl = useRef("");
   const previewController = useRef<AbortController | null>(null);
   const loadController = useRef<AbortController | null>(null);
+  const saveController = useRef<AbortController | null>(null);
+  const resetController = useRef<AbortController | null>(null);
+  const targetGeneration = useRef(0);
+  const targetKey = `${target}:${uuid}`;
+  const renderedTargetKey = useRef(targetKey);
+  if (renderedTargetKey.current !== targetKey) {
+    renderedTargetKey.current = targetKey;
+    targetGeneration.current += 1;
+  }
+
+  const cancelMutationWork = useCallback(() => {
+    saveController.current?.abort();
+    saveController.current = null;
+    resetController.current?.abort();
+    resetController.current = null;
+  }, []);
 
   const cancelPreviewWork = useCallback(() => {
     previewController.current?.abort();
@@ -263,12 +294,19 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
   }, [cancelPreviewWork, meta.missing, requestPreview, target, uuid]);
 
   useEffect(() => {
+    cancelMutationWork();
+    setSaving(false);
+    setResetting(false);
+    setResetOpen(false);
+    setSuccess("");
     void load();
     return () => {
+      targetGeneration.current += 1;
+      cancelMutationWork();
       loadController.current?.abort();
       cancelPreviewWork();
     };
-  }, [cancelPreviewWork, load]);
+  }, [cancelMutationWork, cancelPreviewWork, load]);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -313,36 +351,70 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
 
   async function saveTheme(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const controller = new AbortController();
+    const generation = targetGeneration.current;
+    saveController.current = controller;
+    const ownsRequest = () => (
+      !controller.signal.aborted
+      && saveController.current === controller
+      && targetGeneration.current === generation
+    );
     setSaving(true);
     setSuccess("");
     setActionError("");
     setFieldErrors({});
     try {
-      const { data, response } = await putTheme(target, uuid, values);
+      const { data, response } = await putTheme(target, uuid, values, controller.signal);
+      if (!ownsRequest()) {
+        return;
+      }
       setTheme(data);
       setValues(data.effective);
       setSuccess(meta.saveSuccess);
       pushAnalyticsFromResponse(response);
     } catch (error) {
+      if (!ownsRequest()) {
+        return;
+      }
       setActionError(errorMessage(error, "Não foi possível salvar o tema."));
       setFieldErrors(error instanceof ApiError ? normalizeFieldErrors(error.fields) : {});
     } finally {
-      setSaving(false);
+      if (ownsRequest()) {
+        saveController.current = null;
+        setSaving(false);
+      }
     }
   }
 
   async function resetTheme() {
+    const controller = new AbortController();
+    const generation = targetGeneration.current;
+    resetController.current = controller;
+    const ownsRequest = () => (
+      !controller.signal.aborted
+      && resetController.current === controller
+      && targetGeneration.current === generation
+    );
     setResetting(true);
     setSuccess("");
     setActionError("");
     try {
-      await deleteTheme(target, uuid);
+      await deleteTheme(target, uuid, controller.signal);
+      if (!ownsRequest()) {
+        return;
+      }
       setSuccess(meta.resetSuccess);
       await load();
     } catch (error) {
+      if (!ownsRequest()) {
+        return;
+      }
       setActionError(errorMessage(error, "Não foi possível restaurar o tema padrão."));
     } finally {
-      setResetting(false);
+      if (ownsRequest()) {
+        resetController.current = null;
+        setResetting(false);
+      }
     }
   }
 
@@ -359,7 +431,7 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
     <>
       <div className="page-header">
         <div className="page-header-info">
-          <h2 className="page-title">{resolvedOwnerLabel}</h2>
+          <h1 className="page-title">{resolvedOwnerLabel}</h1>
         </div>
         <div className="page-actions">
           <Link className="btn btn--ghost" to={resolvedBackUrl}>
@@ -386,7 +458,7 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
         <div className="theme-editor-form">
           <form id="theme-form" onSubmit={(event) => void saveTheme(event)}>
             <div className="panel">
-              <div className="panel-head"><h5>Fontes</h5></div>
+              <div className="panel-head"><h2 style={SECTION_HEADING_STYLE}>Fontes</h2></div>
               <div className="panel-body">
                 <div className="dates-grid">
                   <div className="field mb-0">
@@ -430,7 +502,7 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
             </div>
 
             <div className="panel">
-              <div className="panel-head"><h5>Cores</h5></div>
+              <div className="panel-head"><h2 style={SECTION_HEADING_STYLE}>Cores</h2></div>
               <div className="panel-body">
                 <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(3, 1fr)" }}>
                   {COLOR_FIELDS.map(({ key, label }) => (
@@ -480,7 +552,7 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
 
         <div className="theme-editor-preview">
           <div className="panel" style={{ height: "100%" }}>
-            <div className="panel-head"><h5>Pré-visualização</h5></div>
+            <div className="panel-head"><h2 style={SECTION_HEADING_STYLE}>Pré-visualização</h2></div>
             <div className="panel-body" style={{ display: "flex", flex: 1, padding: 0 }}>
               <iframe
                 src={previewUrl || undefined}

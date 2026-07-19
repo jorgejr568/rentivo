@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -111,6 +112,24 @@ function NavigateButton({ to }: { to: string }) {
   return <button onClick={() => navigate(to)} type="button">Navegar</button>;
 }
 
+function renderStrictThemeRoutes(initialPath: string, navigateTo: string) {
+  return render(
+    <StrictMode>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <NavigateButton to={navigateTo} />
+        <Routes>
+          <Route element={<ThemePage target="billing" />} path="/themes/billing/:billingUuid" />
+          <Route
+            element={<ThemePage target="organization" />}
+            path="/themes/organization/:orgUuid"
+          />
+          <Route element={<ThemePage target="user" />} path="/themes/user" />
+        </Routes>
+      </MemoryRouter>
+    </StrictMode>
+  );
+}
+
 it("populates a new-account user theme from effective defaults and previews it", async () => {
   installFetch({
     "GET /api/v1/themes/user": () => jsonResponse(defaultTheme),
@@ -120,7 +139,16 @@ it("populates a new-account user theme from effective defaults and previews it",
   const { unmount } = renderPage(<ThemePage target="user" />);
 
   expect(screen.getByText("Carregando tema...")).toBeVisible();
-  expect(await screen.findByRole("heading", { name: "Meu Tema" })).toBeVisible();
+  expect(await screen.findByRole("heading", { level: 1, name: "Meu Tema" })).toHaveClass(
+    "page-title"
+  );
+  for (const name of ["Fontes", "Cores", "Pré-visualização"]) {
+    expect(screen.getByRole("heading", { level: 2, name })).toHaveStyle({
+      fontSize: "0.98rem",
+      margin: "0",
+      whiteSpace: "nowrap"
+    });
+  }
   expect(screen.getByLabelText("Fonte do Cabeçalho")).toHaveValue("Montserrat");
   expect(screen.getByLabelText("Fonte do Texto")).toHaveValue("Montserrat");
   expect(screen.getByLabelText("Primária")).toHaveValue("#8a4c94");
@@ -456,7 +484,7 @@ it.each([
   );
 
   await screen.findByRole("heading", {
-    level: 2,
+    level: 1,
     name: target === "user" ? "Meu Tema" : target === "organization" ? "Acme — Tema" : "Aluguel — Tema"
   });
   expect(document.title).toBe(expected);
@@ -560,6 +588,212 @@ it("cancels pending preview and debounce work when the target changes", async ()
   await new Promise((resolve) => setTimeout(resolve, 350));
   expect(previewCalls).toBe(2);
   expect(screen.getByLabelText("Primária")).toHaveValue("#112233");
+});
+
+it("aborts a stale save success and keeps the new organization target usable", async () => {
+  const user = userEvent.setup();
+  const oldSave = deferred<Response>();
+  const saveSignals: AbortSignal[] = [];
+  installFetch({
+    "GET /api/v1/themes/organizations/org-a": () => jsonResponse({
+      ...defaultTheme,
+      owner_name: "Organização A"
+    }),
+    "GET /api/v1/themes/organizations/org-b": () => jsonResponse({
+      ...defaultTheme,
+      effective: { ...defaultTheme.effective, primary: "#112233" },
+      owner_name: "Organização B"
+    }),
+    "POST /api/v1/themes/preview": () => pdfResponse(),
+    "PUT /api/v1/themes/organizations/org-a": (init) => {
+      saveSignals.push(init?.signal as AbortSignal);
+      return oldSave.promise;
+    },
+    "PUT /api/v1/themes/organizations/org-b": () => jsonResponse({
+      ...customTheme,
+      effective_source: "organization",
+      owner_name: "Organização B"
+    }, 200, {
+      "X-Rentivo-Analytics-Event": "rentivo_theme_changed"
+    })
+  });
+  renderStrictThemeRoutes(
+    "/themes/organization/org-a",
+    "/themes/organization/org-b"
+  );
+  await screen.findByRole("heading", { name: "Organização A — Tema" });
+
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  await waitFor(() => expect(saveSignals).toHaveLength(1));
+  expect(screen.getByRole("button", { name: "Salvar" })).toBeDisabled();
+  await user.click(screen.getByRole("button", { name: "Navegar" }));
+
+  expect(saveSignals[0].aborted).toBe(true);
+  expect(await screen.findByRole("heading", { name: "Organização B — Tema" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
+  await act(async () => {
+    oldSave.resolve(jsonResponse({
+      ...customTheme,
+      effective_source: "organization",
+      owner_name: "Organização A salva"
+    }, 200, {
+      "X-Rentivo-Analytics-Event": "stale_theme_changed"
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.getByRole("heading", { name: "Organização B — Tema" })).toBeVisible();
+  expect(screen.getByLabelText("Primária")).toHaveValue("#112233");
+  expect(screen.queryByText("Tema da organização salvo com sucesso!")).not.toBeInTheDocument();
+  expect(analytics.pushAnalyticsFromResponse).not.toHaveBeenCalled();
+
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  expect(await screen.findByText("Tema da organização salvo com sucesso!")).toBeVisible();
+  expect(analytics.pushAnalyticsFromResponse).toHaveBeenCalledOnce();
+});
+
+it("aborts and suppresses a stale save failure after changing target types", async () => {
+  const user = userEvent.setup();
+  const oldSave = deferred<Response>();
+  let saveSignal: AbortSignal | undefined;
+  installFetch({
+    "GET /api/v1/themes/billings/billing-a": () => jsonResponse({
+      ...defaultTheme,
+      owner_name: "Cobrança A"
+    }),
+    "GET /api/v1/themes/user": () => jsonResponse(defaultTheme),
+    "POST /api/v1/themes/preview": () => pdfResponse(),
+    "PUT /api/v1/themes/billings/billing-a": (init) => {
+      saveSignal = init?.signal as AbortSignal;
+      return oldSave.promise;
+    }
+  });
+  renderStrictThemeRoutes("/themes/billing/billing-a", "/themes/user");
+  await screen.findByRole("heading", { name: "Cobrança A — Tema" });
+  await user.click(screen.getByRole("button", { name: "Salvar" }));
+  await waitFor(() => expect(saveSignal).toBeDefined());
+
+  await user.click(screen.getByRole("button", { name: "Navegar" }));
+
+  expect(saveSignal?.aborted).toBe(true);
+  expect(await screen.findByRole("heading", { name: "Meu Tema" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Salvar" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Navegar" })).toHaveFocus();
+  await act(async () => {
+    oldSave.resolve(problemResponse({
+      code: "validation_error",
+      detail: "Falha antiga.",
+      fields: { "body.primary": "Cor antiga inválida." },
+      request_id: "old-request",
+      status: 422,
+      title: "Tema antigo inválido",
+      type: "problem"
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByText("Falha antiga.")).not.toBeInTheDocument();
+  expect(screen.queryByText("Cor antiga inválida.")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Meu Tema" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Navegar" })).toHaveFocus();
+  expect(analytics.pushAnalyticsFromResponse).not.toHaveBeenCalled();
+});
+
+it("aborts a stale reset success without reloading the previous target", async () => {
+  const user = userEvent.setup();
+  const oldReset = deferred<Response>();
+  let oldGetCalls = 0;
+  let resetSignal: AbortSignal | undefined;
+  installFetch({
+    "DELETE /api/v1/themes/organizations/org-a": (init) => {
+      resetSignal = init?.signal as AbortSignal;
+      return oldReset.promise;
+    },
+    "GET /api/v1/themes/billings/billing-b": () => jsonResponse({
+      ...customTheme,
+      effective_source: "billing",
+      owner_name: "Cobrança B"
+    }),
+    "GET /api/v1/themes/organizations/org-a": () => {
+      oldGetCalls += 1;
+      return jsonResponse({ ...customTheme, owner_name: "Organização A" });
+    },
+    "POST /api/v1/themes/preview": () => pdfResponse()
+  });
+  renderStrictThemeRoutes(
+    "/themes/organization/org-a",
+    "/themes/billing/billing-b"
+  );
+  await user.click(await screen.findByRole("button", { name: "Usar Padrão" }));
+  await user.click(screen.getByRole("button", { name: "Usar padrão" }));
+  await waitFor(() => expect(resetSignal).toBeDefined());
+  expect(screen.getByRole("button", { name: "Usar Padrão" })).toBeDisabled();
+
+  await user.click(screen.getByRole("button", { name: "Navegar" }));
+
+  expect(resetSignal?.aborted).toBe(true);
+  expect(await screen.findByRole("heading", { name: "Cobrança B — Tema" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Usar Padrão" })).toBeEnabled();
+  const settledOldGetCalls = oldGetCalls;
+  await act(async () => {
+    oldReset.resolve(new Response(null, { status: 204 }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(oldGetCalls).toBe(settledOldGetCalls);
+  expect(screen.getByRole("heading", { name: "Cobrança B — Tema" })).toBeVisible();
+  expect(screen.queryByText("Tema da organização redefinido para o padrão.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Navegar" })).toHaveFocus();
+});
+
+it("aborts and suppresses a stale reset failure after changing targets", async () => {
+  const user = userEvent.setup();
+  const oldReset = deferred<Response>();
+  let resetSignal: AbortSignal | undefined;
+  installFetch({
+    "DELETE /api/v1/themes/billings/billing-a": (init) => {
+      resetSignal = init?.signal as AbortSignal;
+      return oldReset.promise;
+    },
+    "GET /api/v1/themes/billings/billing-a": () => jsonResponse({
+      ...customTheme,
+      effective_source: "billing",
+      owner_name: "Cobrança A"
+    }),
+    "GET /api/v1/themes/organizations/org-b": () => jsonResponse({
+      ...customTheme,
+      effective_source: "organization",
+      owner_name: "Organização B"
+    }),
+    "POST /api/v1/themes/preview": () => pdfResponse()
+  });
+  renderStrictThemeRoutes(
+    "/themes/billing/billing-a",
+    "/themes/organization/org-b"
+  );
+  await user.click(await screen.findByRole("button", { name: "Usar Padrão" }));
+  await user.click(screen.getByRole("button", { name: "Usar padrão" }));
+  await waitFor(() => expect(resetSignal).toBeDefined());
+
+  await user.click(screen.getByRole("button", { name: "Navegar" }));
+
+  expect(resetSignal?.aborted).toBe(true);
+  expect(await screen.findByRole("heading", { name: "Organização B — Tema" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Usar Padrão" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Navegar" })).toHaveFocus();
+  await act(async () => {
+    oldReset.resolve(problemResponse({
+      code: "reset_failed",
+      detail: "Falha antiga ao restaurar.",
+      fields: {},
+      request_id: "old-reset",
+      status: 409,
+      title: "Falha antiga",
+      type: "problem"
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(screen.queryByText("Falha antiga ao restaurar.")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Organização B — Tema" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Navegar" })).toHaveFocus();
+  expect(analytics.pushAnalyticsFromResponse).not.toHaveBeenCalled();
 });
 
 it("clears a stale custom theme when the reset refresh fails", async () => {

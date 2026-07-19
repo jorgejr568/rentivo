@@ -49,6 +49,7 @@ interface ApiKeyRecord {
 
 export interface ApiMockOptions {
   apiKeys?: ApiKeyRecord[];
+  pendingInviteCount?: number;
   security?: SecuritySummary;
   session?: SessionMode;
 }
@@ -63,7 +64,28 @@ export interface ApiMockState {
 export const authenticatedResponse = {
   bootstrap: {
     analytics: { events: [], gtm_container_id: "" },
-    capabilities: { mfa_setup_required: false, scopes: ["profile:read"] },
+    capabilities: {
+      mfa_setup_required: false,
+      scopes: [
+        "profile:read",
+        "organizations:read",
+        "organizations:write",
+        "organizations:members",
+        "billings:read",
+        "billings:write",
+        "bills:read",
+        "bills:write",
+        "expenses:read",
+        "expenses:write",
+        "files:read",
+        "files:write",
+        "communications:read",
+        "communications:send",
+        "themes:read",
+        "themes:write",
+        "exports:create"
+      ]
+    },
     csrf_token: "csrf-e2e-token",
     feature_flags: {
       google_auth: false,
@@ -150,6 +172,56 @@ export const defaultApiKeys: ApiKeyRecord[] = [
   }
 ];
 
+export const emptyBillingList = {
+  items: [],
+  stats: {
+    active_count: 0,
+    billed_count: 0,
+    expected: 0,
+    net_income: 0,
+    overdue: 0,
+    overdue_count: 0,
+    paid_count: 0,
+    pending: 0,
+    pending_count: 0,
+    received: 0,
+    total_expenses: 0,
+    year: 2026
+  },
+  user_pix_incomplete: true
+} as const;
+
+export const defaultUserTheme = {
+  capabilities: { can_edit: true, can_reset: false },
+  effective: {
+    header_font: "Montserrat",
+    primary: "#8A4C94",
+    primary_light: "#EEE4F1",
+    secondary: "#6EAFAE",
+    secondary_dark: "#357B7C",
+    text_color: "#282830",
+    text_contrast: "#FFFFFF",
+    text_font: "Montserrat"
+  },
+  effective_source: "default",
+  owner_name: "Meu Tema",
+  options: {
+    fonts: [
+      "Montserrat",
+      "Roboto",
+      "Lora",
+      "Playfair Display",
+      "Open Sans",
+      "Source Sans 3",
+      "Merriweather",
+      "Raleway",
+      "Oswald",
+      "Nunito"
+    ]
+  },
+  stored: null
+} as const;
+
 function clone<T>(value: T): T {
   return structuredClone(value);
 }
@@ -217,6 +289,13 @@ export async function installApiMocks(
   });
 
   let sessionMode: SessionMode = options.session ?? "authenticated";
+  const sessionResponse = {
+    ...authenticatedResponse,
+    bootstrap: {
+      ...authenticatedResponse.bootstrap,
+      pending_invite_count: options.pendingInviteCount ?? authenticatedResponse.bootstrap.pending_invite_count
+    }
+  };
   let releasePendingSession: (() => void) | undefined;
   const pendingSession = new Promise<void>((resolve) => {
     releasePendingSession = resolve;
@@ -247,15 +326,35 @@ export async function installApiMocks(
     if (path === "/auth/session" && method === "GET") {
       if (sessionMode === "pending") await pendingSession;
       if (sessionMode === "anonymous") await fulfillAnonymous(route);
-      else await fulfillJson(route, authenticatedResponse);
+      else await fulfillJson(route, sessionResponse);
       return;
     }
     if (path === "/auth/login" && method === "POST") {
-      await fulfillJson(route, authenticatedResponse);
+      await fulfillJson(route, sessionResponse);
       return;
     }
     if (path === "/auth/logout" && method === "POST") {
       await route.fulfill({ status: 204 });
+      return;
+    }
+    if (path === "/billings" && method === "GET") {
+      await fulfillJson(route, emptyBillingList);
+      return;
+    }
+    if (path === "/organizations" && method === "GET") {
+      await fulfillJson(route, { items: [] });
+      return;
+    }
+    if (path === "/invites" && method === "GET") {
+      await fulfillJson(route, { items: [] });
+      return;
+    }
+    if (path === "/themes/user" && method === "GET") {
+      await fulfillJson(route, defaultUserTheme);
+      return;
+    }
+    if (path === "/themes/preview" && method === "POST") {
+      await route.fulfill({ body: "%PDF-1.4\n%%EOF", contentType: "application/pdf" });
       return;
     }
     if (path === "/security" && method === "GET") {

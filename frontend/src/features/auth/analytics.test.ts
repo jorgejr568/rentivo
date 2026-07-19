@@ -50,7 +50,7 @@ describe("auth analytics", () => {
     expect(window.dataLayer).toEqual([{ event: "rentivo_login_success" }]);
   });
 
-  it("forwards analytics response headers without empty dimensions", async () => {
+  it("forwards every approved analytics response header without empty or unapproved dimensions", async () => {
     const { configureAnalytics, pushAnalyticsFromResponse } = await import("./analytics");
     configureAnalytics("GTM-TEST");
 
@@ -66,20 +66,51 @@ describe("auth analytics", () => {
       new Response(null, {
         headers: {
           "X-Rentivo-Analytics-Event": "rentivo_login_success",
+          "X-Rentivo-Analytics-Bill-Uuid-Hash": "bill-hash",
+          "X-Rentivo-Analytics-Billing-Uuid-Hash": "billing-hash",
+          "X-Rentivo-Analytics-Comm-Type": "payment_receipt",
+          "X-Rentivo-Analytics-Count": "3",
+          "X-Rentivo-Analytics-Line-Item-Count": "4",
+          "X-Rentivo-Analytics-Method": "password",
+          "X-Rentivo-Analytics-New-Status": "paid",
+          "X-Rentivo-Analytics-Receipt-Count": "2",
+          "X-Rentivo-Analytics-Recipient-Count": "5",
+          "X-Rentivo-Analytics-Reference-Month": "2026-07",
           "X-Rentivo-Analytics-Scope": "user",
+          "X-Rentivo-Analytics-Secret": "must-not-leak",
+          "X-Rentivo-Analytics-Total-Amount-Brl": "2513",
+          "X-Rentivo-Analytics-Total-Bytes": "2048",
           "X-Rentivo-Analytics-Via": "google"
         }
       })
     );
+    pushAnalyticsFromResponse(new Response(null, { headers: {
+      "X-Rentivo-Analytics-Count": "not-a-number",
+      "X-Rentivo-Analytics-Event": "rentivo_invalid_numeric_dimension"
+    } }));
     pushAnalyticsFromResponse(new Response(null));
 
-    expect(window.dataLayer?.slice(-2)).toEqual([{
+    expect(window.dataLayer?.slice(-3)).toEqual([{
       event: "rentivo_login_failed",
       reason: "bad_credentials"
     }, {
       event: "rentivo_login_success",
+      bill_uuid_hash: "bill-hash",
+      billing_uuid_hash: "billing-hash",
+      comm_type: "payment_receipt",
+      count: 3,
+      line_item_count: 4,
+      method: "password",
+      new_status: "paid",
+      receipt_count: 2,
+      recipient_count: 5,
+      reference_month: "2026-07",
       scope: "user",
+      total_amount_brl: 2513,
+      total_bytes: 2048,
       via: "google"
+    }, {
+      event: "rentivo_invalid_numeric_dimension"
     }]);
   });
 });
