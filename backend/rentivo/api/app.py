@@ -15,12 +15,14 @@ from rentivo.api.routes.api_keys import router as api_keys_router
 from rentivo.api.routes.auth import router as auth_router
 from rentivo.api.routes.billings import router as billings_router
 from rentivo.api.routes.bills import router as bills_router
+from rentivo.api.routes.compatibility import router as compatibility_router
 from rentivo.api.routes.google_auth import router as google_auth_router
 from rentivo.api.routes.health import router as health_router
 from rentivo.api.routes.invites import router as invites_router
 from rentivo.api.routes.mfa_auth import router as mfa_auth_router
 from rentivo.api.routes.organizations import router as organizations_router
 from rentivo.api.routes.profile import router as profile_router
+from rentivo.api.routes.public import router as public_router
 from rentivo.api.routes.security import router as security_router
 from rentivo.api.routes.themes import router as themes_router
 from rentivo.context import accept_inbound_request_id, new_request_id
@@ -141,6 +143,8 @@ def create_app() -> FastAPI:
     api.include_router(bills_router)
     api.include_router(themes_router)
     app.include_router(api)
+    app.include_router(public_router)
+    app.include_router(compatibility_router)
 
     app.add_middleware(_RequestServicesMiddleware)
     app.add_middleware(_RequestContextMiddleware)
