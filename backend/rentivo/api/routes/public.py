@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 from xml.sax.saxutils import escape
 
 from fastapi import APIRouter, Request
@@ -47,12 +48,51 @@ AI_CRAWLERS: tuple[str, ...] = (
 )
 
 
+def _parse_public_origin(value: str) -> str | None:
+    try:
+        parsed = urlsplit(value)
+        parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
 def _public_origin(request: Request) -> str:
     if settings.public_url:
-        return settings.public_url.rstrip("/")
-    if request.url.scheme not in {"http", "https"} or request.url.hostname is None:
+        configured_origin = _parse_public_origin(settings.public_url)
+        if configured_origin is None:
+            raise ProblemException(
+                problem(
+                    status=500,
+                    code="invalid_public_origin",
+                    title="Configuração inválida",
+                    detail="A origem pública configurada é inválida.",
+                )
+            )
+        return configured_origin
+    if settings.environment == "production":
+        raise ProblemException(
+            problem(
+                status=500,
+                code="public_origin_not_configured",
+                title="Configuração inválida",
+                detail="A origem pública precisa ser configurada em produção.",
+            )
+        )
+    request_origin = _parse_public_origin(f"{request.url.scheme}://{request.url.netloc}")
+    if request_origin is None:
         raise ProblemException.bad_request("invalid_public_origin", "A origem pública da requisição é inválida.")
-    return f"{request.url.scheme}://{request.url.netloc}"
+    return request_origin
 
 
 def _rules_block(user_agent: str) -> list[str]:

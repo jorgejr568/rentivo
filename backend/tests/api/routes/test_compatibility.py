@@ -98,12 +98,22 @@ def test_stale_legacy_form_posts_return_gone_problem(
     }
 
 
-def test_unknown_root_post_remains_not_found_problem(client: TestClient) -> None:
-    response = client.post("/not-a-legacy-form")
+@pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "CONNECT"])
+def test_unknown_spa_mutations_return_request_id_problem(
+    client: TestClient,
+    method: str,
+) -> None:
+    response = client.request(
+        method,
+        "/not-a-legacy-form",
+        headers={"X-Request-ID": "spa-mutation"},
+    )
 
     assert response.status_code == 404
     assert response.headers["content-type"] == "application/problem+json"
+    assert response.headers["X-Request-ID"] == "spa-mutation"
     assert response.json()["code"] == "not_found"
+    assert response.json()["request_id"] == "spa-mutation"
 
 
 def test_proxy_routes_machine_and_compatibility_requests_without_spa_fallback() -> None:
@@ -115,7 +125,21 @@ def test_proxy_routes_machine_and_compatibility_requests_without_spa_fallback() 
     assert "location = /auth/google/login" in nginx
     assert "location ~ ^/billings/[^/]+/bills/[^/]+/(invoice|recibo|receipts/[^/]+)$" in nginx
     assert "location ~ ^/billings/[^/]+/attachments/[^/]+$" in nginx
-    assert "error_page 418 = @rentivo_legacy_post;" in nginx
-    assert "location @rentivo_legacy_post" in nginx
-    assert "if ($request_method = POST)" in nginx
-    assert "limit_except GET HEAD" in nginx
+    assert "error_page 418 = @rentivo_api_fallback;" in nginx
+    assert (
+        """location @rentivo_api_fallback {
+            proxy_pass http://rentivo_api;
+        }"""
+        in nginx
+    )
+    assert (
+        """location / {
+            if ($request_method !~ ^(GET|HEAD)$) {
+                return 418;
+            }
+
+            proxy_pass http://rentivo_frontend;
+        }"""
+        in nginx
+    )
+    assert "limit_except" not in nginx
