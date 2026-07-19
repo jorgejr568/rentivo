@@ -17,6 +17,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import BillLineItem, BillStatus, InvalidStatusTransition
 from rentivo.models.billing import ItemType
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
+from rentivo.services.bill_service import StaleReceiptDeleteError
 
 logger = structlog.get_logger(__name__)
 
@@ -43,12 +44,23 @@ async def bill_generate(request: Request, ctx: BillingContext = Depends(require_
         return flash_redirect(request, "Mês de referência é obrigatório.", f"/billings/{billing.uuid}/bills/generate")
 
     # Parse variable amounts
-    variable_amounts: dict[int, int] = {}
+    variable_amounts: dict[str, int] = {}
     for item in billing.items:
         if item.item_type == ItemType.VARIABLE:
-            val = str(form.get(f"variable_{item.id}", ""))
-            if item.id is not None:
-                variable_amounts[item.id] = parse_brl(val) or 0
+            public_key = f"variable_{item.uuid}"
+            legacy_key = f"variable_{item.id}" if item.id is not None else None
+            if public_key in form:
+                val = str(form[public_key])
+            elif legacy_key is not None and legacy_key in form:
+                val = str(form[legacy_key])
+            else:
+                logger.warning("bill_generate_rejected", reason="missing_variable_amount", item_uuid=item.uuid)
+                return flash_redirect(
+                    request,
+                    "Informe o valor de todos os itens variáveis.",
+                    f"/billings/{billing.uuid}/bills/generate",
+                )
+            variable_amounts[item.uuid] = parse_brl(val) or 0
 
     extras = parse_extras(dict(form))
 
@@ -467,10 +479,14 @@ async def receipt_delete(request: Request, receipt_uuid: str, ctx: BillContext =
         return flash_redirect(request, "Comprovante não encontrado.", redirect_url)
 
     previous_state = serialize_receipt(receipt, bill_uuid=bill.uuid, billing_uuid=billing.uuid)
-    bill_service.delete_receipt(receipt, bill, billing, actor=request.state.actor)
-
-    cleanup = request.state.services.storage_cleanup
-    cleanup.enqueue_receipt_delete(request.state.actor, receipt)
+    try:
+        bill_service.delete_receipt(receipt, bill, billing, actor=request.state.actor)
+    except StaleReceiptDeleteError:
+        return flash_redirect(
+            request,
+            "O comprovante foi alterado por outra operação. Atualize a página e tente novamente.",
+            redirect_url,
+        )
 
     audit = request.state.services.audit
     audit.safe_log_for(

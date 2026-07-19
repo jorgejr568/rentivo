@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.responses import Response
 
+from legacy_web.analytics import analytics_hash
 from rentivo.api.app import create_app
 from rentivo.api.csrf import CSRF_HEADER_NAME, issue_csrf_token
 from rentivo.api.dependencies import get_services
@@ -48,7 +49,11 @@ PERSONAL_BILLING = Billing(
     description="Inquilino atual",
     owner_type="user",
     owner_id=USER.id,
-    items=[BillingItem(id=101, description="Aluguel", amount=285_000, item_type=ItemType.FIXED)],
+    items=[
+        BillingItem(
+            id=101, uuid="01J00000000000000000000010", description="Aluguel", amount=285_000, item_type=ItemType.FIXED
+        )
+    ],
     created_at=NOW,
     updated_at=NOW,
 )
@@ -692,7 +697,17 @@ def test_list_intersects_personal_and_organization_billings_with_grants_and_live
                 },
                 "capabilities": {
                     "can_edit": True,
+                    "can_read_bills": True,
+                    "can_create_bills": True,
                     "can_manage_bills": True,
+                    "can_read_expenses": True,
+                    "can_write_expenses": True,
+                    "can_create_exports": True,
+                    "can_read_attachments": True,
+                    "can_write_attachments": True,
+                    "can_read_theme": True,
+                    "can_manage_theme": True,
+                    "can_upload_bill_receipts": True,
                     "can_delete": True,
                     "can_transfer": True,
                 },
@@ -744,12 +759,24 @@ def test_billing_detail_returns_forms_and_server_capabilities(billing_harness: B
     payload = response.json()
     assert payload["uuid"] == PERSONAL_BILLING.uuid
     assert payload["owner"] == {"type": "user", "uuid": None, "name": None}
-    assert payload["items"] == [{"description": "Aluguel", "amount": 285000, "item_type": "fixed"}]
+    assert payload["items"] == [
+        {"uuid": "01J00000000000000000000010", "description": "Aluguel", "amount": 285000, "item_type": "fixed"}
+    ]
     assert payload["recipients"] == [{"uuid": "recipient-existing", "name": "Joao", "email": "joao@example.com"}]
     assert payload["reply_to"] == [{"uuid": "reply-existing", "name": "Joao", "email": "joao@example.com"}]
     assert payload["capabilities"] == {
         "can_edit": True,
+        "can_read_bills": True,
+        "can_create_bills": True,
         "can_manage_bills": True,
+        "can_read_expenses": True,
+        "can_write_expenses": True,
+        "can_create_exports": True,
+        "can_read_attachments": True,
+        "can_write_attachments": True,
+        "can_read_theme": True,
+        "can_manage_theme": True,
+        "can_upload_bill_receipts": True,
         "can_delete": True,
         "can_transfer": True,
     }
@@ -759,6 +786,87 @@ def test_billing_detail_returns_forms_and_server_capabilities(billing_harness: B
     }
     assert "id" not in payload
     assert "owner_id" not in payload
+
+
+@pytest.mark.parametrize(
+    ("scopes", "expected"),
+    [
+        (
+            {
+                APIScope.BILLINGS_READ,
+                APIScope.BILLS_READ,
+                APIScope.EXPENSES_WRITE,
+                APIScope.FILES_READ,
+                APIScope.EXPORTS_CREATE,
+                APIScope.THEMES_READ,
+            },
+            {
+                "can_edit": False,
+                "can_read_bills": True,
+                "can_create_bills": False,
+                "can_manage_bills": False,
+                "can_read_expenses": False,
+                "can_write_expenses": True,
+                "can_create_exports": True,
+                "can_read_attachments": True,
+                "can_write_attachments": False,
+                "can_read_theme": True,
+                "can_manage_theme": False,
+                "can_upload_bill_receipts": False,
+                "can_delete": False,
+                "can_transfer": False,
+            },
+        ),
+        (
+            {
+                APIScope.BILLINGS_READ,
+                APIScope.BILLINGS_WRITE,
+                APIScope.BILLS_WRITE,
+                APIScope.EXPENSES_READ,
+                APIScope.FILES_WRITE,
+                APIScope.ORGANIZATIONS_READ,
+                APIScope.THEMES_WRITE,
+            },
+            {
+                "can_edit": True,
+                "can_read_bills": False,
+                "can_create_bills": True,
+                "can_manage_bills": True,
+                "can_read_expenses": True,
+                "can_write_expenses": False,
+                "can_create_exports": False,
+                "can_read_attachments": False,
+                "can_write_attachments": True,
+                "can_read_theme": False,
+                "can_manage_theme": True,
+                "can_upload_bill_receipts": True,
+                "can_delete": True,
+                "can_transfer": True,
+            },
+        ),
+    ],
+)
+def test_billing_capabilities_combine_live_role_with_independent_api_key_scopes(
+    billing_harness: BillingHarness,
+    scopes: set[APIScope],
+    expected: dict[str, bool],
+) -> None:
+    secret = f"rntv-v1-{'S' * 42}{len(scopes)}"
+    billing_harness.services.api_key.credentials[secret] = _key(
+        20 + len(scopes),
+        login=False,
+        scopes=frozenset(scope.value for scope in scopes),
+        grants=INTEGRATION_KEY.grants,
+    )
+
+    response = billing_harness.request(
+        "GET",
+        f"/api/v1/billings/{PERSONAL_BILLING.uuid}",
+        credential=secret,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["capabilities"] == expected
 
 
 def test_integration_billing_detail_redacts_contact_pii_from_complete_payload(
@@ -779,7 +887,9 @@ def test_integration_billing_detail_redacts_contact_pii_from_complete_payload(
         "pix_merchant_name": "",
         "pix_merchant_city": "",
         "owner": {"type": "user", "uuid": None, "name": None},
-        "items": [{"description": "Aluguel", "amount": 285000, "item_type": "fixed"}],
+        "items": [
+            {"uuid": "01J00000000000000000000010", "description": "Aluguel", "amount": 285000, "item_type": "fixed"}
+        ],
         "recipients": [{"uuid": "recipient-existing"}],
         "reply_to": [{"uuid": "reply-existing"}],
         "communication_templates": [
@@ -811,7 +921,17 @@ def test_integration_billing_detail_redacts_contact_pii_from_complete_payload(
         "pix_needs_setup": True,
         "capabilities": {
             "can_edit": True,
+            "can_read_bills": True,
+            "can_create_bills": True,
             "can_manage_bills": True,
+            "can_read_expenses": True,
+            "can_write_expenses": True,
+            "can_create_exports": True,
+            "can_read_attachments": True,
+            "can_write_attachments": True,
+            "can_read_theme": True,
+            "can_manage_theme": True,
+            "can_upload_bill_receipts": True,
             "can_delete": True,
             "can_transfer": True,
         },
@@ -941,6 +1061,28 @@ def test_create_rejects_invalid_billing_contract(payload: dict[str, Any], billin
     assert billing_harness.services.billing.create_calls == []
 
 
+def test_create_rejects_client_supplied_item_uuid(billing_harness: BillingHarness) -> None:
+    response = billing_harness.request(
+        "POST",
+        "/api/v1/billings",
+        json=_billing_payload(
+            items=[
+                {
+                    "uuid": "01HXCREA7E0000000000000000",
+                    "description": "Aluguel",
+                    "amount": 100_00,
+                    "item_type": "fixed",
+                }
+            ]
+        ),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_billing_item"
+    assert response.json()["fields"] == {"items.0.uuid": "O item não pertence a esta cobrança."}
+    assert billing_harness.services.billing.create_calls == []
+
+
 @pytest.mark.parametrize(
     "email",
     [
@@ -1064,6 +1206,50 @@ def test_patch_explicit_items_replaces_template_lines(billing_harness: BillingHa
     assert [(item.description, item.amount) for item in billing_harness.services.billing.update_calls[0].items] == [
         ("Novo aluguel", 310000)
     ]
+
+
+def test_patch_preserves_valid_existing_billing_item_uuid(billing_harness: BillingHarness) -> None:
+    response = billing_harness.request(
+        "PATCH",
+        f"/api/v1/billings/{PERSONAL_BILLING.uuid}",
+        json={
+            "items": [
+                {
+                    "uuid": PERSONAL_BILLING.items[0].uuid,
+                    "description": "Aluguel reajustado",
+                    "amount": 310000,
+                    "item_type": "fixed",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert billing_harness.services.billing.update_calls[0].items[0].uuid == PERSONAL_BILLING.items[0].uuid
+
+
+def test_patch_rejects_foreign_or_duplicate_billing_item_uuid(billing_harness: BillingHarness) -> None:
+    foreign = "01J00000000000000000000099"
+    foreign_response = billing_harness.request(
+        "PATCH",
+        f"/api/v1/billings/{PERSONAL_BILLING.uuid}",
+        json={"items": [{"uuid": foreign, "description": "X", "amount": 100, "item_type": "fixed"}]},
+    )
+    duplicate_response = billing_harness.request(
+        "PATCH",
+        f"/api/v1/billings/{PERSONAL_BILLING.uuid}",
+        json={
+            "items": [
+                {"uuid": PERSONAL_BILLING.items[0].uuid, "description": "X", "amount": 100, "item_type": "fixed"},
+                {"uuid": PERSONAL_BILLING.items[0].uuid, "description": "Y", "amount": 200, "item_type": "fixed"},
+            ]
+        },
+    )
+
+    assert foreign_response.status_code == 422
+    assert foreign_response.json()["fields"] == {"items.0.uuid": "O item não pertence a esta cobrança."}
+    assert duplicate_response.status_code == 422
+    assert duplicate_response.json()["fields"] == {"items": "Os itens da cobrança devem ser distintos."}
 
 
 def test_patch_rejects_manager_and_preserves_billing(billing_harness: BillingHarness) -> None:
@@ -1460,6 +1646,10 @@ def test_communication_send_is_parent_scoped_fans_out_and_audits(billing_harness
 
     assert response.status_code == 202
     assert response.json() == {"queued_count": 1}
+    assert response.headers["x-rentivo-analytics-event"] == "rentivo_communication_sent"
+    assert response.headers["x-rentivo-analytics-bill-uuid-hash"] == analytics_hash(PERSONAL_BILL.uuid)
+    assert response.headers["x-rentivo-analytics-recipient-count"] == "1"
+    assert response.headers["x-rentivo-analytics-comm-type"] == "bill_ready"
     call = billing_harness.services.communication.send_calls[0]
     assert call["bill"].uuid == PERSONAL_BILL.uuid
     assert call["recipients"][0].uuid == "recipient-existing"

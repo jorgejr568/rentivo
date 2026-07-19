@@ -188,6 +188,7 @@
             <div id="items-container">
                 {% for item in billing.items %}
                 <div class="formset-row" id="items-row-{{ loop.index0 }}">
+                    <input type="hidden" name="items-{{ loop.index0 }}-uuid" value="{{ item.uuid }}">
                     <div class="item-grid">
                         <div class="field mb-0">
                             <label class="field__label">Descrição</label>

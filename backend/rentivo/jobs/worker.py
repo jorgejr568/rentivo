@@ -21,6 +21,7 @@ logger = structlog.get_logger(__name__)
 __all__ = ["Worker", "next_run_after"]
 
 _MAX_ERROR_LEN = 4096
+_OWNED_RENDER_JOB_TYPES = frozenset({"pdf.render", "recibo.render"})
 
 
 def _truncate(s: str, n: int) -> str:
@@ -92,7 +93,10 @@ class Worker:
         attributes = {"job.type": job.job_type, "job.ulid": job.ulid, "job.attempts": job.attempts}
         try:
             with span(f"job {job.job_type}", parent=parent, attributes=attributes):
-                handler(job.payload)
+                payload = job.payload
+                if job.job_type in _OWNED_RENDER_JOB_TYPES:
+                    payload = {**payload, "_job_ulid": job.ulid}
+                handler(payload)
         except PermanentJobError as exc:
             self._fail(job, str(exc))
         except Exception as exc:

@@ -113,5 +113,6 @@ class Bill(BaseModel):
     status: str = BillStatus.DRAFT.value
     status_updated_at: datetime | None = None
     pdf_render_status: str | None = None
+    mutation_revision: int = 0
     created_at: datetime | None = None
     deleted_at: datetime | None = None

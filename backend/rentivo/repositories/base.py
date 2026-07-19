@@ -102,12 +102,91 @@ class BillRepository(ABC):
         self,
         bill_id: int,
         expected_status: str,
+        expected_status_updated_at: datetime | None,
         status: str,
-        status_updated_at: datetime,
+        status_updated_at: datetime | None,
     ) -> bool: ...
 
     @abstractmethod
+    def update_status_and_clear_recibo(
+        self,
+        bill_id: int,
+        expected_status: str,
+        expected_status_updated_at: datetime | None,
+        status: str,
+        status_updated_at: datetime | None,
+    ) -> tuple[bool, str | None]: ...
+
+    @abstractmethod
+    def restore_status_and_recibo(
+        self,
+        bill_id: int,
+        expected_status: str,
+        expected_status_updated_at: datetime | None,
+        status: str,
+        status_updated_at: datetime | None,
+        recibo_pdf_path: str | None,
+    ) -> bool: ...
+
+    @abstractmethod
+    def replace_recibo_pdf_path_if_paid_version(
+        self,
+        bill_id: int,
+        expected_status_updated_at: datetime | None,
+        expected_recibo_pdf_path: str | None,
+        recibo_pdf_path: str,
+    ) -> tuple[bool, str | None]:
+        """Return publication success and the replaced or currently referenced path."""
+        ...
+
+    @abstractmethod
+    def get_recibo_render_state(
+        self,
+        bill_id: int,
+        expected_status_updated_at: datetime | None,
+    ) -> tuple[bool, str | None]:
+        """Return whether the paid status version is current and its receipt path."""
+        ...
+
+    @abstractmethod
     def update_pdf_render_status(self, bill_id: int, status: str | None) -> None: ...
+
+    @abstractmethod
+    def begin_pdf_render(self, bill_id: int, operation_id: str) -> None: ...
+
+    @abstractmethod
+    def claim_pending_pdf_render(self, bill_id: int, operation_id: str) -> bool: ...
+
+    @abstractmethod
+    def finish_pdf_render(self, bill_id: int, operation_id: str, status: str | None) -> bool: ...
+
+    @abstractmethod
+    def restore_after_failed_render(
+        self,
+        previous: Bill,
+        expected_candidate: Bill,
+        operation_id: str,
+    ) -> bool:
+        """Restore ``previous`` while the token and persisted candidate are still owned."""
+        ...
+
+    @abstractmethod
+    def get_pdf_render_state(self, bill_id: int) -> tuple[str | None, str | None, str | None]:
+        """Return the current operation id, render status, and PDF path."""
+        ...
+
+    @abstractmethod
+    def publish_pdf_render(
+        self,
+        bill_id: int,
+        operation_id: str,
+        pdf_path: str,
+    ) -> tuple[bool, str | None]:
+        """Return success and the replaced path, or the current path on CAS loss."""
+        ...
+
+    @abstractmethod
+    def fail_pending_pdf_render_without_operation(self, bill_id: int) -> bool: ...
 
     @abstractmethod
     def delete(self, bill_id: int) -> bool: ...
@@ -248,7 +327,23 @@ class ReceiptRepository(ABC):
     def delete(self, receipt_id: int) -> None: ...
 
     @abstractmethod
+    def delete_for_render_operation(self, receipt_id: int, bill_id: int, operation_id: str) -> bool:
+        """Delete only while the bill still owns the expected render operation."""
+        ...
+
+    @abstractmethod
     def delete_many(self, receipt_ids: list[int]) -> int: ...
+
+    @abstractmethod
+    def restore_after_failed_render(
+        self,
+        receipt: Receipt,
+        operation_id: str,
+        pdf_path: str | None,
+        pdf_render_status: str | None,
+    ) -> bool:
+        """Restore a deleted receipt and bill render state in one transaction."""
+        ...
 
     @abstractmethod
     def update_sort_orders(self, updates: list[tuple[int, int]]) -> None: ...

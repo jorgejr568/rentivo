@@ -94,6 +94,7 @@ class TestParseLineItems:
             "items-0-description": "Aluguel",
             "items-0-amount": "1000,00",
             "items-0-item_type": "fixed",
+            "items-0-uuid": "01KXVSS41BJH1DXB2WJ6S7CP1A",
             "items-1-description": "Taxa",
             "items-1-amount": "50,00",
             "items-1-item_type": "extra",
@@ -104,6 +105,7 @@ class TestParseLineItems:
         assert items[0].amount == 100000
         assert items[0].item_type == ItemType.FIXED
         assert items[0].index == 0
+        assert items[0].uuid == "01KXVSS41BJH1DXB2WJ6S7CP1A"
         assert items[1].item_type == ItemType.EXTRA
         assert items[1].index == 1
 

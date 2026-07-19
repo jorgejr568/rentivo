@@ -76,3 +76,8 @@ class S3Storage(StorageBackend):
             logger.debug("storage_deleted", backend="s3", bucket=self.bucket, key=key)
         except Exception:
             logger.exception("storage_delete_failed", backend="s3", bucket=self.bucket, key=key)
+
+    @traced("s3.delete_strict")
+    def delete_strict(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=key)
+        logger.debug("storage_deleted", backend="s3", bucket=self.bucket, key=key)

@@ -65,6 +65,27 @@ class TestWorkerTick:
         assert audit.safe_log.call_args.kwargs["event_type"] == AuditEventType.JOB_SUCCEEDED
         assert audit.safe_log.call_args.kwargs["source"] == "worker"
 
+    @pytest.mark.parametrize("job_type", ["pdf.render", "recibo.render"])
+    def test_render_handlers_receive_stable_persistent_job_identity(self, job_type):
+        received = []
+        registry.register(job_type)(lambda payload: received.append(payload))
+        original_payload = {"bill_id": 42}
+        job = Job(
+            id=1,
+            ulid="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            job_type=job_type,
+            payload=original_payload,
+            attempts=2,
+            max_attempts=5,
+        )
+        repo = MagicMock()
+        repo.claim_batch.return_value = [job]
+
+        Worker(repo, MagicMock(), worker_id="t:1").tick()
+
+        assert received == [{"bill_id": 42, "_job_ulid": job.ulid}]
+        assert original_payload == {"bill_id": 42}
+
     def test_tick_reschedules_on_retryable_exception(self):
         @registry.register("t.test")
         def handler(payload):

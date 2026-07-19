@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from starlette.datastructures import UploadFile
 
+from legacy_web.analytics import analytics_hash
 from rentivo.api.authentication import reject_out_of_band_credentials
 from rentivo.api.csrf import require_csrf
 from rentivo.api.dependencies import get_services, require_resource_grant, require_scope
@@ -141,8 +142,11 @@ def _conflict(code: str, detail: str) -> ProblemException:
     return ProblemException(problem(status=409, code=code, title="Conflito", detail=detail))
 
 
-def _analytics(response: Response, event: str) -> None:
+def _analytics(response: Response, event: str, **metadata: str | int) -> None:
     response.headers["X-Rentivo-Analytics-Event"] = event
+    for name, value in metadata.items():
+        header = "-".join(part.title() for part in name.split("_"))
+        response.headers[f"X-Rentivo-Analytics-{header}"] = str(value)
 
 
 async def _attachment_upload_form(request: Request) -> AttachmentUploadForm:
@@ -155,11 +159,29 @@ async def _attachment_upload_form(request: Request) -> AttachmentUploadForm:
 
 
 def _capabilities(access: BillingAccess) -> BillingCapabilitiesResponse:
+    scopes = access.principal.api_key.scopes
+    can_edit = access.role in _EDIT_ROLES and APIScope.BILLINGS_WRITE.value in scopes
+    can_manage_bills = access.role in _MANAGE_ROLES and APIScope.BILLS_WRITE.value in scopes
     return BillingCapabilitiesResponse(
-        can_edit=access.role in _EDIT_ROLES,
-        can_manage_bills=access.role in _MANAGE_ROLES,
-        can_delete=access.role in _EDIT_ROLES,
-        can_transfer=(access.role == "owner" and access.billing.owner_type == "user"),
+        can_edit=can_edit,
+        can_read_bills=APIScope.BILLS_READ.value in scopes,
+        can_create_bills=can_manage_bills,
+        can_manage_bills=can_manage_bills,
+        can_read_expenses=APIScope.EXPENSES_READ.value in scopes,
+        can_write_expenses=access.role in _MANAGE_ROLES and APIScope.EXPENSES_WRITE.value in scopes,
+        can_create_exports=APIScope.EXPORTS_CREATE.value in scopes,
+        can_read_attachments=APIScope.FILES_READ.value in scopes,
+        can_write_attachments=access.role in _EDIT_ROLES and APIScope.FILES_WRITE.value in scopes,
+        can_read_theme=access.role in _EDIT_ROLES and APIScope.THEMES_READ.value in scopes,
+        can_manage_theme=access.role in _EDIT_ROLES and APIScope.THEMES_WRITE.value in scopes,
+        can_upload_bill_receipts=can_manage_bills and APIScope.FILES_WRITE.value in scopes,
+        can_delete=can_edit,
+        can_transfer=(
+            access.role == "owner"
+            and access.billing.owner_type == "user"
+            and APIScope.BILLINGS_WRITE.value in scopes
+            and APIScope.ORGANIZATIONS_READ.value in scopes
+        ),
     )
 
 
@@ -176,7 +198,7 @@ def _owner(billing: Billing, services: RequestServices) -> BillingOwnerResponse:
 
 def _item(item: BillingItem) -> BillingItemResponse:
     item_type = item.item_type.value if hasattr(item.item_type, "value") else str(item.item_type)
-    return BillingItemResponse(description=item.description, amount=item.amount, item_type=item_type)
+    return BillingItemResponse(uuid=item.uuid, description=item.description, amount=item.amount, item_type=item_type)
 
 
 def _contact(recipient: Recipient, principal: Principal) -> ContactReferenceResponse | ContactResponse:
@@ -326,16 +348,39 @@ def _billing_response(access: BillingAccess, services: RequestServices) -> Billi
     )
 
 
-def _billing_items(items: tuple[BillingItemInput, ...]) -> list[BillingItem]:
-    return [
-        BillingItem(
-            description=item.description,
-            amount=item.amount,
-            item_type=ItemType(item.item_type),
-            sort_order=index,
+class _BillingItemReferenceError(ValueError):
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+
+
+def _billing_items(
+    items: tuple[BillingItemInput, ...],
+    existing: list[BillingItem] | None = None,
+) -> list[BillingItem]:
+    existing_by_uuid = {item.uuid: item for item in existing or []}
+    seen: set[str] = set()
+    result: list[BillingItem] = []
+    for index, item in enumerate(items):
+        if item.uuid is not None:
+            if item.uuid in seen:
+                raise _BillingItemReferenceError("items", "Os itens da cobrança devem ser distintos.")
+            if item.uuid not in existing_by_uuid:
+                raise _BillingItemReferenceError(
+                    f"items.{index}.uuid",
+                    "O item não pertence a esta cobrança.",
+                )
+            seen.add(item.uuid)
+        result.append(
+            BillingItem(
+                uuid=item.uuid or "",
+                description=item.description,
+                amount=item.amount,
+                item_type=ItemType(item.item_type),
+                sort_order=index,
+            )
         )
-        for index, item in enumerate(items)
-    ]
+    return result
 
 
 @router.get("", response_model=BillingListResponse)
@@ -408,6 +453,8 @@ async def create_billing(
             owner_type=owner_type,
             owner_id=owner_id,
         )
+    except _BillingItemReferenceError as exc:
+        raise _field_problem("invalid_billing_item", str(exc), exc.field) from None
     except ValueError as exc:
         raise _field_problem("invalid_billing", str(exc), "pix_key") from None
     assert billing.id is not None
@@ -471,7 +518,10 @@ async def update_billing(
         if value is not None:
             setattr(candidate, field_name, value)
     if payload.items is not None:
-        candidate.items = _billing_items(payload.items)
+        try:
+            candidate.items = _billing_items(payload.items, access.billing.items)
+        except _BillingItemReferenceError as exc:
+            raise _field_problem("invalid_billing_item", str(exc), exc.field) from None
     try:
         updated = services.billing.update_billing(candidate)
     except ValueError as exc:
@@ -1014,5 +1064,11 @@ async def send_communication(
             entity_uuid=bill.uuid,
             new_state={"mild_count": len(moderation.mild)},
         )
-    _analytics(response, "rentivo_communication_sent")
+    _analytics(
+        response,
+        "rentivo_communication_sent",
+        bill_uuid_hash=analytics_hash(bill.uuid) or "",
+        recipient_count=len(communications),
+        comm_type=payload.comm_type,
+    )
     return CommunicationSendResponse(queued_count=len(communications))

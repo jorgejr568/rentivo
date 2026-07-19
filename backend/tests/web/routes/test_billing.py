@@ -4,7 +4,7 @@ from legacy_web.services_container import RequestServices
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.billing import Billing
 from rentivo.models.user import User
-from rentivo.repositories.sqlalchemy import SQLAlchemyUserRepository
+from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
 from tests.web.conftest import create_billing_in_db, create_org_in_db, get_test_user_id
 
 
@@ -132,6 +132,16 @@ class TestBillingEdit:
         response = auth_client.get(f"/billings/{billing.uuid}/edit")
         assert response.status_code == 200
 
+    def test_edit_form_submits_existing_public_item_uuids(self, auth_client, test_engine):
+        billing = create_billing_in_db(test_engine)
+
+        response = auth_client.get(f"/billings/{billing.uuid}/edit")
+
+        assert response.status_code == 200
+        for index, item in enumerate(billing.items):
+            assert f'name="items-{index}-uuid" value="{item.uuid}"' in response.text
+            assert f'name="items-{index}-id"' not in response.text
+
     def test_edit_form_not_found(self, auth_client):
         response = auth_client.get("/billings/nonexistent/edit", follow_redirects=False)
         assert response.status_code == 302
@@ -153,6 +163,65 @@ class TestBillingEdit:
             follow_redirects=False,
         )
         assert response.status_code == 302
+
+    def test_edit_preserves_existing_item_uuids(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        original_uuids = [item.uuid for item in billing.items]
+
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/edit",
+            data={
+                "csrf_token": csrf_token,
+                "name": billing.name,
+                "description": billing.description,
+                "pix_key": billing.pix_key,
+                "items-TOTAL_FORMS": "3",
+                "items-0-uuid": original_uuids[0],
+                "items-0-description": "Rent Updated",
+                "items-0-amount": "2850,00",
+                "items-0-item_type": "fixed",
+                "items-1-uuid": original_uuids[1],
+                "items-1-description": "Water Updated",
+                "items-1-item_type": "variable",
+                "items-2-description": "Condo",
+                "items-2-amount": "250,00",
+                "items-2-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            updated = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_uuid(billing.uuid)
+        assert updated is not None
+        assert [item.uuid for item in updated.items[:2]] == original_uuids
+        assert updated.items[2].uuid not in original_uuids
+
+    def test_edit_rejects_item_uuid_from_another_billing(self, auth_client, test_engine, csrf_token):
+        billing = create_billing_in_db(test_engine)
+        other_billing = create_billing_in_db(test_engine, name="Other")
+        original_uuids = [item.uuid for item in billing.items]
+
+        response = auth_client.post(
+            f"/billings/{billing.uuid}/edit",
+            data={
+                "csrf_token": csrf_token,
+                "name": billing.name,
+                "items-TOTAL_FORMS": "1",
+                "items-0-uuid": other_billing.items[0].uuid,
+                "items-0-description": "Foreign item",
+                "items-0-amount": "1,00",
+                "items-0-item_type": "fixed",
+            },
+            follow_redirects=False,
+        )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == f"/billings/{billing.uuid}/edit"
+        with test_engine.connect() as conn:
+            unchanged = SQLAlchemyBillingRepository(conn, Base64Backend()).get_by_uuid(billing.uuid)
+        assert unchanged is not None
+        assert [item.uuid for item in unchanged.items] == original_uuids
 
     def test_edit_not_found(self, auth_client, csrf_token):
         response = auth_client.post(

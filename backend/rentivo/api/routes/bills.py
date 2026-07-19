@@ -4,7 +4,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response
@@ -38,16 +38,17 @@ from rentivo.api.schemas.bills import (
     ReceiptResponse,
     ReceiptUploadResponse,
     ReceiptUploadSummary,
+    ReciboDownloadResponse,
     RedactedCommunicationHistoryResponse,
 )
 from rentivo.constants.api_scopes import APIScope
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import Bill, BillLineItem, BillStatus, InvalidStatusTransition
-from rentivo.models.billing import Billing
+from rentivo.models.billing import Billing, ItemType
 from rentivo.models.communication import Communication
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
 from rentivo.services.audit_serializers import serialize_bill, serialize_receipt
-from rentivo.services.bill_service import StaleBillDeleteError, StaleBillStatusError
+from rentivo.services.bill_service import StaleBillDeleteError, StaleBillStatusError, StaleReceiptDeleteError
 from rentivo.services.container import RequestServices
 from rentivo.storage.base import FileRef
 
@@ -59,6 +60,36 @@ _files_read = require_scope(APIScope.FILES_READ)
 _files_write = require_scope(APIScope.FILES_WRITE)
 _MANAGE_ROLES = frozenset({"owner", "admin", "manager"})
 _DELETE_ROLES = frozenset({"owner", "admin"})
+_BILL_CREATE_OPENAPI = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            "application/json": {
+                "schema": {"$ref": "#/components/schemas/BillCreateRequest"},
+            },
+            "multipart/form-data": {
+                "schema": {
+                    "type": "object",
+                    "required": ["payload"],
+                    "properties": {
+                        "payload": {"$ref": "#/components/schemas/BillCreateRequest"},
+                        "receipt_files": {
+                            "type": "array",
+                            "items": {"type": "string", "format": "binary"},
+                        },
+                    },
+                },
+                "encoding": {"payload": {"contentType": "application/json"}},
+            },
+        },
+    },
+}
+
+
+class BrowserUploadFile(UploadFile):
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        return {"type": "string", "format": "binary"}
 
 
 def _analytics(response: Response, event: str, **metadata: str | int) -> None:
@@ -87,11 +118,38 @@ def _validation_error(exc: ValidationError | json.JSONDecodeError) -> ProblemExc
     )
 
 
+class _DuplicateVariableAmount(ValueError):
+    pass
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result and len(key) == 26:
+            raise _DuplicateVariableAmount
+        result[key] = value
+    return result
+
+
+def _duplicate_variable_amount_error() -> ProblemException:
+    return ProblemException(
+        problem(
+            status=422,
+            code="validation_error",
+            title="Dados inválidos",
+            detail="Os dados da fatura são inválidos.",
+            fields={"variable_amounts": "Cada item variável deve aparecer uma única vez."},
+        )
+    )
+
+
 async def _create_request(request: Request, form_payload: str | None) -> BillCreateRequest:
     try:
-        if form_payload is not None:
-            return BillCreateRequest.model_validate_json(form_payload)
-        return BillCreateRequest.model_validate(await request.json())
+        raw_payload: str | bytes = form_payload if form_payload is not None else await request.body()
+        decoded = json.loads(raw_payload, object_pairs_hook=_unique_json_object)
+        return BillCreateRequest.model_validate(decoded)
+    except _DuplicateVariableAmount:
+        raise _duplicate_variable_amount_error() from None
     except (ValidationError, json.JSONDecodeError) as exc:
         raise _validation_error(exc) from None
 
@@ -143,7 +201,12 @@ def _capabilities(
     bills_write = _has_scope(principal, APIScope.BILLS_WRITE)
     files_read = _has_scope(principal, APIScope.FILES_READ)
     files_write = _has_scope(principal, APIScope.FILES_WRITE)
+    communications_ready = _has_scope(principal, APIScope.COMMUNICATIONS_READ) and _has_scope(
+        principal,
+        APIScope.COMMUNICATIONS_SEND,
+    )
     pix_ready = not services.pix.billing_needs_setup(billing)
+    can_compose = can_manage and communications_ready
     return BillCapabilitiesResponse(
         can_edit=can_manage and bills_write,
         can_delete=can_delete and bills_write,
@@ -153,7 +216,10 @@ def _capabilities(
         can_delete_receipts=can_manage and files_write,
         can_reorder_receipts=can_manage and files_write,
         can_download_invoice=files_read and bool(bill.pdf_path),
-        can_download_recibo=files_read and bill.status == BillStatus.PAID.value,
+        can_download_recibo=(files_read and bill.status == BillStatus.PAID.value and bool(bill.recibo_pdf_path)),
+        can_compose=can_compose,
+        can_send_invoice=can_compose and bool(bill.pdf_path),
+        can_send_recibo=(can_compose and bill.status == BillStatus.PAID.value and bool(bill.recibo_pdf_path)),
     )
 
 
@@ -273,6 +339,16 @@ def _file_response(ref: FileRef, *, content_type: str, filename: str) -> Respons
     return RedirectResponse(ref.location, status_code=302)
 
 
+def _audit_recibo_download(access: BillAccess, services: RequestServices) -> None:
+    services.audit.safe_log_for(
+        access.principal.actor,
+        AuditEventType.BILL_RECIBO_DOWNLOAD,
+        entity_type="bill",
+        entity_id=access.bill.id,
+        entity_uuid=access.bill.uuid,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _ValidatedReceiptUpload:
     filename: str
@@ -343,13 +419,13 @@ def _attach_receipts(
                 render=False,
             )
             attached.append(receipt)
-        if regenerate and attached:
-            services.bill.regenerate_pdf(access.bill, access.billing, actor=access.principal.actor)
     except Exception:
         services.bill.rollback_receipt_batch(tuple(attached))
         raise
     if audit:
         _audit_receipt_uploads(attached, access, services)
+    if regenerate and attached:
+        services.bill.regenerate_pdf(access.bill, access.billing, actor=access.principal.actor)
     total_bytes = sum(len(upload.file_bytes) for upload in uploads)
     receipts = tuple(attached)
     return (
@@ -400,13 +476,14 @@ async def list_bills(
     response_model=BillDetailResponse,
     status_code=201,
     responses={403: {"model": Problem}, 404: {"model": Problem}, 409: {"model": Problem}, 422: {"model": Problem}},
+    openapi_extra=_BILL_CREATE_OPENAPI,
 )
 async def create_bill(
     request: Request,
     billing_uuid: str,
     response: Response,
-    payload: Annotated[str | None, Form()] = None,
-    receipt_files: Annotated[list[UploadFile] | None, File()] = None,
+    payload: Annotated[str | BillCreateRequest | None, Form()] = None,
+    receipt_files: Annotated[list[BrowserUploadFile] | None, File()] = None,
     principal: Principal = Depends(_bills_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -416,18 +493,41 @@ async def create_bill(
     if receipt_files and not _has_scope(principal, APIScope.FILES_WRITE):
         raise ProblemException.forbidden("missing_scope", "A chave não possui o escopo necessário.")
     _require_pix(access.billing, services)
-    create = await _create_request(request, payload)
+    create = await _create_request(request, cast(str | None, payload))
+    required_variable_uuids = {item.uuid for item in access.billing.items if item.item_type == ItemType.VARIABLE}
+    if set(create.variable_amounts) != required_variable_uuids:
+        message = "Informe o valor de todos os itens variáveis."
+        raise ProblemException(
+            problem(
+                status=422,
+                code="invalid_variable_amounts",
+                title="Dados inválidos",
+                detail=message,
+                fields={"variable_amounts": message},
+            )
+        )
     valid_uploads, skipped = await _validate_receipt_uploads(receipt_files or ())
-    bill = services.bill.generate_bill(
-        billing=access.billing,
-        reference_month=create.reference_month,
-        variable_amounts=create.variable_amounts,
-        extras=[(extra.description, extra.amount) for extra in create.extras],
-        notes=create.notes,
-        due_date=_domain_due_date(create.due_date),
-        actor=principal.actor,
-        render=False,
-    )
+    try:
+        bill = services.bill.generate_bill(
+            billing=access.billing,
+            reference_month=create.reference_month,
+            variable_amounts=create.variable_amounts,
+            extras=[(extra.description, extra.amount) for extra in create.extras],
+            notes=create.notes,
+            due_date=_domain_due_date(create.due_date),
+            actor=principal.actor,
+            render=False,
+        )
+    except ValueError as exc:
+        raise ProblemException(
+            problem(
+                status=422,
+                code="invalid_variable_amounts",
+                title="Dados inválidos",
+                detail=str(exc),
+                fields={"variable_amounts": str(exc)},
+            )
+        ) from None
     bill_access = BillAccess(bill=bill, billing=access.billing, role=access.role, principal=principal)
     try:
         upload, attached_receipts = _attach_receipts(
@@ -717,19 +817,77 @@ async def download_recibo(
             media_type="application/pdf",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
-    services.audit.safe_log_for(
-        principal.actor,
-        AuditEventType.BILL_RECIBO_DOWNLOAD,
-        entity_type="bill",
-        entity_id=access.bill.id,
-        entity_uuid=access.bill.uuid,
-    )
+    _audit_recibo_download(access, services)
     _analytics(
         response,
         "rentivo_recibo_downloaded",
         bill_uuid_hash=analytics_hash(access.bill.uuid) or "",
     )
     return response
+
+
+@router.get(
+    "/{bill_uuid}/recibo/download",
+    response_model=ReciboDownloadResponse,
+    responses={403: {"model": Problem}, 404: {"model": Problem}, 409: {"model": Problem}},
+)
+async def get_recibo_download(
+    billing_uuid: str,
+    bill_uuid: str,
+    request: Request,
+    response: Response,
+    principal: Principal = Depends(_files_read),
+    services: RequestServices = Depends(get_services),
+) -> ReciboDownloadResponse:
+    access = resolve_bill_access(principal, services, billing_uuid, bill_uuid)
+    if access.bill.status != BillStatus.PAID.value:
+        raise _conflict("recibo_unavailable", "O recibo só fica disponível quando a fatura está paga.")
+    if not access.bill.recibo_pdf_path:
+        raise _conflict("recibo_not_ready", "O recibo ainda está sendo gerado.")
+
+    ref = services.bill.get_recibo_ref(access.bill)
+    if ref.kind == "local":
+        download_url = str(
+            request.url_for(
+                "download_recibo_content",
+                billing_uuid=access.billing.uuid,
+                bill_uuid=access.bill.uuid,
+            )
+        )
+    else:
+        download_url = ref.location
+        _audit_recibo_download(access, services)
+    filename = f"recibo-{access.bill.uuid}.pdf"
+    _analytics(
+        response,
+        "rentivo_recibo_downloaded",
+        bill_uuid_hash=analytics_hash(access.bill.uuid) or "",
+    )
+    return ReciboDownloadResponse(download_url=download_url, filename=filename)
+
+
+@router.get(
+    "/{bill_uuid}/recibo/content",
+    responses={403: {"model": Problem}, 404: {"model": Problem}, 409: {"model": Problem}},
+)
+async def download_recibo_content(
+    billing_uuid: str,
+    bill_uuid: str,
+    principal: Principal = Depends(_files_read),
+    services: RequestServices = Depends(get_services),
+) -> Response:
+    access = resolve_bill_access(principal, services, billing_uuid, bill_uuid)
+    if access.bill.status != BillStatus.PAID.value:
+        raise _conflict("recibo_unavailable", "O recibo só fica disponível quando a fatura está paga.")
+    if not access.bill.recibo_pdf_path:
+        raise _conflict("recibo_not_ready", "O recibo ainda está sendo gerado.")
+    ref = services.bill.get_recibo_ref(access.bill)
+    _audit_recibo_download(access, services)
+    return _file_response(
+        ref,
+        content_type="application/pdf",
+        filename=f"recibo-{access.bill.uuid}.pdf",
+    )
 
 
 @router.get(
@@ -758,7 +916,7 @@ async def upload_receipts(
     billing_uuid: str,
     bill_uuid: str,
     response: Response,
-    receipt_files: Annotated[list[UploadFile], File()],
+    receipt_files: Annotated[list[BrowserUploadFile], File()],
     principal: Principal = Depends(_files_write),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -803,7 +961,7 @@ async def download_receipt(
 @router.delete(
     "/{bill_uuid}/receipts/{receipt_uuid}",
     status_code=204,
-    responses={403: {"model": Problem}, 404: {"model": Problem}},
+    responses={403: {"model": Problem}, 404: {"model": Problem}, 409: {"model": Problem}},
 )
 async def delete_receipt(
     billing_uuid: str,
@@ -817,8 +975,13 @@ async def delete_receipt(
     require_role(access.role, _MANAGE_ROLES)
     receipt = _receipt_for_bill(access, services, receipt_uuid)
     previous_state = serialize_receipt(receipt, bill_uuid=access.bill.uuid, billing_uuid=access.billing.uuid)
-    services.bill.delete_receipt(receipt, access.bill, access.billing, actor=principal.actor)
-    services.storage_cleanup.enqueue_receipt_delete(principal.actor, receipt)
+    try:
+        services.bill.delete_receipt(receipt, access.bill, access.billing, actor=principal.actor)
+    except StaleReceiptDeleteError:
+        raise _conflict(
+            "stale_receipt_delete",
+            "O comprovante foi alterado por outra operação. Atualize a página e tente novamente.",
+        ) from None
     services.audit.safe_log_for(
         principal.actor,
         AuditEventType.RECEIPT_DELETE,

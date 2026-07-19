@@ -1,12 +1,19 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from legacy_web.analytics import analytics_hash
 from legacy_web.services_container import RequestServices
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.bill import Bill
 from rentivo.models.user import User
-from rentivo.repositories.sqlalchemy import SQLAlchemyBillingRepository, SQLAlchemyUserRepository
+from rentivo.repositories.sqlalchemy import (
+    SQLAlchemyBillingRepository,
+    SQLAlchemyBillRepository,
+    SQLAlchemyUserRepository,
+)
+from rentivo.services.bill_service import StaleReceiptDeleteError
 from rentivo.storage.local import LocalStorage
 from tests.web.conftest import create_billing_in_db, generate_bill_in_db, get_audit_logs, get_test_user_id
 
@@ -20,11 +27,24 @@ def _create_other_user_billing(test_engine):
     return create_billing_in_db(test_engine, owner_type="user", owner_id=other.id)
 
 
+def _variable_amount_fields(billing, value="0"):
+    return {f"variable_{item.uuid}": value for item in billing.items if item.item_type.value == "variable"}
+
+
 class TestBillGenerate:
     def test_generate_form(self, auth_client, test_engine):
         billing = create_billing_in_db(test_engine)
         response = auth_client.get(f"/billings/{billing.uuid}/bills/generate")
         assert response.status_code == 200
+
+    def test_generate_form_uses_public_item_uuid(self, auth_client, test_engine):
+        billing = create_billing_in_db(test_engine)
+        variable_item = next(item for item in billing.items if item.item_type.value == "variable")
+
+        response = auth_client.get(f"/billings/{billing.uuid}/bills/generate")
+
+        assert f'name="variable_{variable_item.uuid}"' in response.text
+        assert f'name="variable_{variable_item.id}"' not in response.text
 
     def test_generate_form_not_found(self, auth_client):
         response = auth_client.get("/billings/nonexistent/bills/generate", follow_redirects=False)
@@ -36,6 +56,7 @@ class TestBillGenerate:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-03",
                     "due_date": "10/04/2025",
@@ -45,6 +66,148 @@ class TestBillGenerate:
                 follow_redirects=False,
             )
         assert response.status_code == 302
+
+    def test_generate_maps_public_item_uuid_to_variable_amount(
+        self,
+        auth_client,
+        test_engine,
+        tmp_path,
+        csrf_token,
+    ):
+        billing = create_billing_in_db(test_engine)
+        variable_item = next(item for item in billing.items if item.item_type.value == "variable")
+        with patch("legacy_web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-03",
+                    "due_date": "10/04/2025",
+                    "notes": "test",
+                    f"variable_{variable_item.uuid}": "50,00",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            bills = SQLAlchemyBillRepository(conn, Base64Backend()).list_by_billing(billing.id)
+        variable_line = next(item for item in bills[0].line_items if item.item_type.value == "variable")
+        assert variable_line.amount == 5000
+
+    def test_generate_maps_stale_numeric_item_id_to_public_uuid(
+        self,
+        auth_client,
+        test_engine,
+        tmp_path,
+        csrf_token,
+    ):
+        billing = create_billing_in_db(test_engine)
+        variable_item = next(item for item in billing.items if item.item_type.value == "variable")
+        with patch("legacy_web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-03",
+                    "due_date": "10/04/2025",
+                    "notes": "test",
+                    f"variable_{variable_item.id}": "50,00",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            bills = SQLAlchemyBillRepository(conn, Base64Backend()).list_by_billing(billing.id)
+        variable_line = next(item for item in bills[0].line_items if item.item_type.value == "variable")
+        assert variable_line.amount == 5000
+
+    def test_generate_rejects_missing_variable_item_value(
+        self,
+        auth_client,
+        test_engine,
+        csrf_token,
+    ):
+        billing = create_billing_in_db(test_engine)
+        mock_bill_service = MagicMock()
+        mock_bill_service.generate_bill.side_effect = AssertionError("bill generation must not be called")
+
+        with patch.object(RequestServices, "bill", new=mock_bill_service):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-03",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == f"/billings/{billing.uuid}/bills/generate"
+        mock_bill_service.generate_bill.assert_not_called()
+        follow_up = auth_client.get(response.headers["location"])
+        assert "Informe o valor de todos os itens variáveis." in follow_up.text
+
+    def test_generate_prefers_public_uuid_when_both_keys_are_present(
+        self,
+        auth_client,
+        test_engine,
+        tmp_path,
+        csrf_token,
+    ):
+        billing = create_billing_in_db(test_engine)
+        variable_item = next(item for item in billing.items if item.item_type.value == "variable")
+        with patch("legacy_web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-03",
+                    f"variable_{variable_item.uuid}": "50,00",
+                    f"variable_{variable_item.id}": "99,00",
+                    "extras-TOTAL_FORMS": "0",
+                },
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            bills = SQLAlchemyBillRepository(conn, Base64Backend()).list_by_billing(billing.id)
+        variable_line = next(item for item in bills[0].line_items if item.item_type.value == "variable")
+        assert variable_line.amount == 5000
+
+    @pytest.mark.parametrize("raw_value", ["", "not-a-number"])
+    def test_generate_present_blank_or_malformed_variable_value_uses_existing_zero_policy(
+        self,
+        auth_client,
+        test_engine,
+        tmp_path,
+        csrf_token,
+        raw_value,
+    ):
+        billing = create_billing_in_db(test_engine)
+        variable_item = next(item for item in billing.items if item.item_type.value == "variable")
+        with patch("legacy_web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            response = auth_client.post(
+                f"/billings/{billing.uuid}/bills/generate",
+                data={
+                    "csrf_token": csrf_token,
+                    "reference_month": "2025-03",
+                    f"variable_{variable_item.uuid}": raw_value,
+                    "extras-TOTAL_FORMS": "0",
+                },
+                follow_redirects=False,
+            )
+
+        assert response.status_code == 302
+        with test_engine.connect() as conn:
+            bills = SQLAlchemyBillRepository(conn, Base64Backend()).list_by_billing(billing.id)
+        variable_line = next(item for item in bills[0].line_items if item.item_type.value == "variable")
+        assert variable_line.amount == 0
 
     def test_generate_no_reference(self, auth_client, test_engine, csrf_token):
         billing = create_billing_in_db(test_engine)
@@ -541,6 +704,7 @@ class TestBillGenerateExtras:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-04",
                     "due_date": "10/05/2025",
@@ -1026,6 +1190,40 @@ class TestReceiptDelete:
             )
         assert response.status_code == 302
 
+    def test_delete_receipt_lost_render_ownership_flashes_conflict(
+        self,
+        auth_client,
+        test_engine,
+        tmp_path,
+        csrf_token,
+    ):
+        billing = create_billing_in_db(test_engine)
+        with patch("legacy_web.deps.get_storage", return_value=LocalStorage(str(tmp_path))):
+            bill = generate_bill_in_db(test_engine, billing, tmp_path)
+            auth_client.post(
+                f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/upload",
+                data={"csrf_token": csrf_token},
+                files={"receipt_files": ("receipt.pdf", b"%PDF-test-data", "application/pdf")},
+                follow_redirects=False,
+            )
+            from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
+
+            with test_engine.connect() as conn:
+                receipt = SQLAlchemyReceiptRepository(conn, Base64Backend()).list_by_bill(bill.id)[0]
+            with patch(
+                "rentivo.services.bill_service.BillService.delete_receipt",
+                side_effect=StaleReceiptDeleteError,
+            ):
+                response = auth_client.post(
+                    f"/billings/{billing.uuid}/bills/{bill.uuid}/receipts/{receipt.uuid}/delete",
+                    data={"csrf_token": csrf_token},
+                    follow_redirects=False,
+                )
+
+        assert response.status_code == 302
+        assert response.headers["location"] == f"/billings/{billing.uuid}/bills/{bill.uuid}/edit"
+        assert get_audit_logs(test_engine, AuditEventType.RECEIPT_DELETE) == []
+
     def test_delete_receipt_bill_not_found(self, auth_client, csrf_token):
         response = auth_client.post(
             "/billings/x/bills/nonexistent/receipts/r-uuid/delete",
@@ -1220,6 +1418,7 @@ class TestBillGenerateWithReceipts:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-05",
                     "due_date": "",
@@ -1260,6 +1459,7 @@ class TestBillGenerateWithReceipts:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-05",
                     "due_date": "",
@@ -1280,6 +1480,7 @@ class TestBillGenerateWithReceipts:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-06",
                     "due_date": "",
@@ -1303,6 +1504,7 @@ class TestBillGenerateWithReceipts:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-07",
                     "due_date": "",
@@ -1321,6 +1523,7 @@ class TestBillGenerateWithReceipts:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-08",
                     "due_date": "",
@@ -1344,6 +1547,7 @@ class TestBillGenerateSkipWarning:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-10",
                     "due_date": "",
@@ -1365,6 +1569,7 @@ class TestBillGenerateSkipWarning:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-11",
                     "due_date": "",
@@ -1446,6 +1651,7 @@ class TestBillGenerateExtrasValidation:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-09",
                     "due_date": "",
@@ -1489,14 +1695,14 @@ class TestBillEditExtrasValidation:
         assert response.status_code == 302
 
 
-class TestBillGenerateVariableIdNone:
-    """Cover branch 74->71: variable item with id=None is skipped."""
+class TestBillGenerateVariableUuid:
+    """Public item UUIDs do not depend on database IDs."""
 
-    def test_generate_variable_item_id_none(self, auth_client, test_engine, tmp_path, csrf_token):
+    def test_generate_variable_item_without_database_id(self, auth_client, test_engine, tmp_path, csrf_token):
         from rentivo.models.billing import Billing, BillingItem, ItemType
 
         billing = create_billing_in_db(test_engine)
-        # Create a billing with a variable item that has id=None
+        variable_item_uuid = "01KXVSS41BJH1DXB2WJ6S7CP1A"
         mock_billing = Billing(
             id=billing.id,
             uuid=billing.uuid,
@@ -1504,7 +1710,13 @@ class TestBillGenerateVariableIdNone:
             owner_type=billing.owner_type,
             owner_id=billing.owner_id,
             items=[
-                BillingItem(id=None, description="NoIdWater", amount=0, item_type=ItemType.VARIABLE),
+                BillingItem(
+                    id=None,
+                    uuid=variable_item_uuid,
+                    description="NoIdWater",
+                    amount=0,
+                    item_type=ItemType.VARIABLE,
+                ),
                 BillingItem(id=1, description="Aluguel", amount=285000, item_type=ItemType.FIXED),
             ],
         )
@@ -1531,12 +1743,13 @@ class TestBillGenerateVariableIdNone:
                         "reference_month": "2025-10",
                         "due_date": "",
                         "notes": "",
-                        "variable_None": "50,00",
+                        f"variable_{variable_item_uuid}": "50,00",
                         "extras-TOTAL_FORMS": "0",
                     },
                     follow_redirects=False,
                 )
         assert response.status_code == 302
+        assert mock_bill_svc.generate_bill.call_args.kwargs["variable_amounts"] == {variable_item_uuid: 5000}
 
 
 class TestBillGenerateNonFileUpload:
@@ -1549,6 +1762,7 @@ class TestBillGenerateNonFileUpload:
             response = auth_client.post(
                 f"/billings/{billing.uuid}/bills/generate",
                 data={
+                    **_variable_amount_fields(billing),
                     "csrf_token": csrf_token,
                     "reference_month": "2025-11",
                     "due_date": "",
@@ -1777,9 +1991,16 @@ class TestBillDeleteCrossBilling:
             assert SQLAlchemyBillRepository(conn, Base64Backend()).get_by_uuid(bill.uuid) is not None
 
 
-class TestReceiptDeleteEnqueuesS3Delete:
-    def test_receipt_delete_enqueues_s3_delete_job(self, auth_client, csrf_token, monkeypatch, test_engine, tmp_path):
-        """Receipt-delete must enqueue exactly one s3.delete job for the receipt's storage_key."""
+class TestReceiptDeleteEnqueuesDurableCleanup:
+    def test_receipt_delete_carries_cleanup_in_the_render_job(
+        self,
+        auth_client,
+        csrf_token,
+        monkeypatch,
+        test_engine,
+        tmp_path,
+    ):
+        """The guarded render job must durably own receipt storage cleanup."""
         from rentivo.jobs.base import Job
         from rentivo.repositories.sqlalchemy import SQLAlchemyReceiptRepository
         from rentivo.services.job_service import JobService
@@ -1820,10 +2041,13 @@ class TestReceiptDeleteEnqueuesS3Delete:
             )
         assert response.status_code in (200, 302)
 
-        s3_jobs = [s for s in sent if s["job_type"] == "s3.delete"]
-        assert len(s3_jobs) == 1
-        assert s3_jobs[0]["payload"]["key"] == receipt.storage_key
-        assert s3_jobs[0]["kwargs"]["source"] == "web"
+        render_jobs = [s for s in sent if s["job_type"] == "pdf.render"]
+        assert len(render_jobs) == 1
+        assert render_jobs[0]["payload"]["receipt_cleanup"] == {
+            "storage_key": receipt.storage_key,
+            "uuid": receipt.uuid,
+        }
+        assert render_jobs[0]["kwargs"]["source"] == "web"
 
 
 class TestBillDeleteEnqueuesS3Delete:

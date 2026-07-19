@@ -488,6 +488,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/recibo/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Recibo Content */
+        get: operations["download_recibo_content_api_v1_billings__billing_uuid__bills__bill_uuid__recibo_content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/recibo/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Recibo Download */
+        get: operations["get_recibo_download_api_v1_billings__billing_uuid__bills__bill_uuid__recibo_download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/regenerate": {
         parameters: {
             query?: never;
@@ -1319,6 +1353,8 @@ export interface components {
         };
         /** BillCapabilitiesResponse */
         BillCapabilitiesResponse: {
+            /** Can Compose */
+            can_compose: boolean;
             /** Can Delete */
             can_delete: boolean;
             /** Can Delete Receipts */
@@ -1333,10 +1369,35 @@ export interface components {
             can_regenerate: boolean;
             /** Can Reorder Receipts */
             can_reorder_receipts: boolean;
+            /** Can Send Invoice */
+            can_send_invoice: boolean;
+            /** Can Send Recibo */
+            can_send_recibo: boolean;
             /** Can Transition */
             can_transition: boolean;
             /** Can Upload Receipts */
             can_upload_receipts: boolean;
+        };
+        /** BillCreateRequest */
+        BillCreateRequest: {
+            /** Due Date */
+            due_date?: string | null;
+            /**
+             * Extras
+             * @default []
+             */
+            extras: components["schemas"]["BillExtraRequest"][];
+            /**
+             * Notes
+             * @default
+             */
+            notes: string;
+            /** Reference Month */
+            reference_month: string;
+            /** Variable Amounts */
+            variable_amounts?: {
+                [key: string]: number;
+            };
         };
         /** BillDetailResponse */
         BillDetailResponse: {
@@ -1379,16 +1440,43 @@ export interface components {
             /** Uuid */
             uuid: string;
         };
+        /** BillExtraRequest */
+        BillExtraRequest: {
+            /** Amount */
+            amount: number;
+            /** Description */
+            description: string;
+        };
         /** BillingCapabilitiesResponse */
         BillingCapabilitiesResponse: {
+            /** Can Create Bills */
+            can_create_bills: boolean;
+            /** Can Create Exports */
+            can_create_exports: boolean;
             /** Can Delete */
             can_delete: boolean;
             /** Can Edit */
             can_edit: boolean;
             /** Can Manage Bills */
             can_manage_bills: boolean;
+            /** Can Manage Theme */
+            can_manage_theme: boolean;
+            /** Can Read Attachments */
+            can_read_attachments: boolean;
+            /** Can Read Bills */
+            can_read_bills: boolean;
+            /** Can Read Expenses */
+            can_read_expenses: boolean;
+            /** Can Read Theme */
+            can_read_theme: boolean;
             /** Can Transfer */
             can_transfer: boolean;
+            /** Can Upload Bill Receipts */
+            can_upload_bill_receipts: boolean;
+            /** Can Write Attachments */
+            can_write_attachments: boolean;
+            /** Can Write Expenses */
+            can_write_expenses: boolean;
         };
         /** BillingCreateRequest */
         BillingCreateRequest: {
@@ -1433,6 +1521,8 @@ export interface components {
              * @enum {string}
              */
             item_type: "fixed" | "variable";
+            /** Uuid */
+            uuid?: string | null;
         };
         /** BillingItemResponse */
         BillingItemResponse: {
@@ -1445,6 +1535,8 @@ export interface components {
              * @enum {string}
              */
             item_type: "fixed" | "variable";
+            /** Uuid */
+            uuid: string;
         };
         /** BillingListItemResponse */
         BillingListItemResponse: {
@@ -1653,14 +1745,14 @@ export interface components {
         /** Body_create_bill_api_v1_billings__billing_uuid__bills_post */
         Body_create_bill_api_v1_billings__billing_uuid__bills_post: {
             /** Payload */
-            payload?: string | null;
+            payload?: string | components["schemas"]["BillCreateRequest"] | null;
             /** Receipt Files */
-            receipt_files?: string[] | null;
+            receipt_files?: Blob[] | null;
         };
         /** Body_upload_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipts_post */
         Body_upload_receipts_api_v1_billings__billing_uuid__bills__bill_uuid__receipts_post: {
             /** Receipt Files */
-            receipt_files: string[];
+            receipt_files: Blob[];
         };
         /** BootstrapAnalytics */
         BootstrapAnalytics: {
@@ -1998,6 +2090,8 @@ export interface components {
             can_invite: boolean;
             /** Can Manage */
             can_manage: boolean;
+            /** Can View Billing Stats */
+            can_view_billing_stats: boolean;
         };
         /** OrganizationCreateRequest */
         OrganizationCreateRequest: {
@@ -2018,6 +2112,7 @@ export interface components {
             enforce_mfa: boolean;
             /** Name */
             name: string;
+            stats: components["schemas"]["BillingStatsResponse"] | null;
             /** Updated At */
             updated_at: string | null;
             /** Uuid */
@@ -2079,6 +2174,7 @@ export interface components {
             /** Name */
             name: string;
             settings: components["schemas"]["OrganizationSettingsResponse"] | null;
+            stats: components["schemas"]["BillingStatsResponse"] | null;
             /** Updated At */
             updated_at: string | null;
             /** Uuid */
@@ -2436,6 +2532,16 @@ export interface components {
              * @default 0
              */
             total_bytes: number;
+        };
+        /** ReciboDownloadResponse */
+        ReciboDownloadResponse: {
+            /**
+             * Download Url
+             * Format: uri
+             */
+            download_url: string;
+            /** Filename */
+            filename: string;
         };
         /** RecoveryCodesResponse */
         RecoveryCodesResponse: {
@@ -3812,8 +3918,9 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
+                "application/json": components["schemas"]["BillCreateRequest"];
                 "multipart/form-data": components["schemas"]["Body_create_bill_api_v1_billings__billing_uuid__bills_post"];
             };
         };
@@ -4341,6 +4448,15 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -4371,6 +4487,124 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_recibo_content_api_v1_billings__billing_uuid__bills__bill_uuid__recibo_content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bill_uuid: string;
+                billing_uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_recibo_download_api_v1_billings__billing_uuid__bills__bill_uuid__recibo_download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bill_uuid: string;
+                billing_uuid: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReciboDownloadResponse"];
                 };
             };
             /** @description Forbidden */

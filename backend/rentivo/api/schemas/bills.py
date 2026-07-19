@@ -3,8 +3,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
+from rentivo.api.schemas.billings import BillingItemUUID
 from rentivo.models.bill import BillStatus
 from rentivo.models.billing import ItemType
 
@@ -33,7 +34,7 @@ class BillExtraRequest(_StrictModel):
 
 class BillCreateRequest(_StrictModel):
     reference_month: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
-    variable_amounts: dict[int, Centavos] = Field(default_factory=dict)
+    variable_amounts: dict[BillingItemUUID, Centavos] = Field(default_factory=dict)
     extras: tuple[BillExtraRequest, ...] = ()
     notes: str = ""
     due_date: date | None = None
@@ -99,6 +100,9 @@ class BillCapabilitiesResponse(_StrictModel):
     can_reorder_receipts: bool
     can_download_invoice: bool
     can_download_recibo: bool
+    can_compose: bool
+    can_send_invoice: bool
+    can_send_recibo: bool
 
 
 class ReceiptResponse(_StrictModel):
@@ -108,6 +112,11 @@ class ReceiptResponse(_StrictModel):
     file_size: int
     sort_order: int
     created_at: datetime | None
+
+
+class ReciboDownloadResponse(_StrictModel):
+    download_url: HttpUrl
+    filename: str
 
 
 class RedactedCommunicationHistoryResponse(_StrictModel):

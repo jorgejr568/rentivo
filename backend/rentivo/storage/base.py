@@ -43,3 +43,7 @@ class StorageBackend(ABC):
     def delete(self, key: str) -> None:
         """Delete the object at the given key. No-op if missing."""
         ...
+
+    def delete_strict(self, key: str) -> None:
+        """Delete an object and propagate backend errors so callers can retry."""
+        self.delete(key)

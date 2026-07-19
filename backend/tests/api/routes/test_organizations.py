@@ -20,6 +20,7 @@ from rentivo.models.billing import Billing
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization, OrganizationMember
 from rentivo.models.user import User
+from rentivo.services.billing_stats import BillingStats
 from rentivo.settings import settings
 
 NOW = datetime(2026, 7, 18, 12, tzinfo=UTC)
@@ -54,6 +55,20 @@ PERSONAL_BILLING = Billing(
     name="Apartamento 101",
     owner_type="user",
     owner_id=USER.id,
+)
+ORGANIZATION_BILLING = Billing(
+    id=52,
+    uuid="01JORGBILLING00000000000000",
+    name="Apartamento 201",
+    owner_type="organization",
+    owner_id=ORGANIZATION.id,
+)
+SECOND_ORGANIZATION_BILLING = Billing(
+    id=53,
+    uuid="01JORGBILLING00000000000001",
+    name="Apartamento 301",
+    owner_type="organization",
+    owner_id=SECOND_ORGANIZATION.id,
 )
 
 
@@ -351,8 +366,17 @@ class FakeMFAService:
 class FakeBillingService:
     def __init__(self) -> None:
         self.billing = PERSONAL_BILLING.model_copy(deep=True)
+        self.billings = [
+            self.billing,
+            ORGANIZATION_BILLING.model_copy(deep=True),
+            SECOND_ORGANIZATION_BILLING.model_copy(deep=True),
+        ]
         self.transfer_error: ValueError | None = None
         self.transfer_calls: list[tuple[int, int, int | None]] = []
+
+    def list_billings_for_user(self, user_id: int) -> list[Billing]:
+        assert user_id == USER.id
+        return self.billings
 
     def get_billing_by_uuid(self, uuid: str) -> Billing | None:
         return self.billing if uuid == self.billing.uuid else None
@@ -385,6 +409,26 @@ class FakeBillingNotificationService:
         self.calls.append(kwargs)
 
 
+class FakeBillingStatsService:
+    def __init__(self) -> None:
+        self.calls: list[list[int]] = []
+
+    def stats_for_ids(self, billing_ids: list[int]) -> BillingStats:
+        self.calls.append(billing_ids)
+        return BillingStats(
+            year=2026,
+            expected=460000,
+            received=180000,
+            pending=200000,
+            overdue=80000,
+            paid_count=2,
+            pending_count=2,
+            overdue_count=1,
+            total_expenses=30000,
+            net_income=150000,
+        )
+
+
 @dataclass(slots=True)
 class OrganizationHarness:
     client: TestClient
@@ -396,6 +440,7 @@ class OrganizationHarness:
     job: FakeJobService
     mfa: FakeMFAService
     billing: FakeBillingService
+    billing_stats: FakeBillingStatsService
     billing_notification: FakeBillingNotificationService
 
 
@@ -422,6 +467,7 @@ def build_organization_harness(monkeypatch: pytest.MonkeyPatch) -> OrganizationH
     job = FakeJobService()
     mfa = FakeMFAService()
     billing = FakeBillingService()
+    billing_stats = FakeBillingStatsService()
     billing_notification = FakeBillingNotificationService()
     services = SimpleNamespace(
         api_key=FakeAPIKeyService(organization),
@@ -432,6 +478,7 @@ def build_organization_harness(monkeypatch: pytest.MonkeyPatch) -> OrganizationH
         job=job,
         mfa=mfa,
         billing=billing,
+        billing_stats=billing_stats,
         authorization=FakeAuthorizationService(),
         billing_notification=billing_notification,
     )
@@ -448,6 +495,7 @@ def build_organization_harness(monkeypatch: pytest.MonkeyPatch) -> OrganizationH
         job=job,
         mfa=mfa,
         billing=billing,
+        billing_stats=billing_stats,
         billing_notification=billing_notification,
     )
 
@@ -510,7 +558,23 @@ def test_organization_detail_returns_live_members_and_backend_capabilities(
         "can_manage": True,
         "can_invite": True,
         "can_create_billing": True,
+        "can_view_billing_stats": True,
     }
+    assert payload["stats"] == {
+        "year": 2026,
+        "expected": 460000,
+        "received": 180000,
+        "pending": 200000,
+        "overdue": 80000,
+        "paid_count": 2,
+        "pending_count": 2,
+        "overdue_count": 1,
+        "active_count": 3,
+        "billed_count": 5,
+        "total_expenses": 30000,
+        "net_income": 150000,
+    }
+    assert organization_harness.billing_stats.calls == [[ORGANIZATION_BILLING.id]]
     assert payload["settings"] == {
         "pix_key": ORGANIZATION.pix_key,
         "pix_merchant_name": ORGANIZATION.pix_merchant_name,
@@ -540,13 +604,33 @@ def test_integration_detail_is_read_only_and_omits_settings_and_sent_invites(
             "can_manage": False,
             "can_invite": False,
             "can_create_billing": False,
+            "can_view_billing_stats": False,
         },
+        "stats": None,
         "created_at": ORGANIZATION.created_at.isoformat().replace("+00:00", "Z"),
         "updated_at": ORGANIZATION.updated_at.isoformat().replace("+00:00", "Z"),
     }
     assert USER.email not in response.text
     assert TARGET_USER.email not in response.text
     assert '"user_id"' not in response.text
+    assert organization_harness.billing_stats.calls == []
+
+
+def test_integration_detail_includes_stats_only_with_explicit_billing_read_scope(
+    organization_harness: OrganizationHarness,
+) -> None:
+    key = INTEGRATION_KEY.model_copy(update={"scopes": INTEGRATION_KEY.scopes | {APIScope.BILLINGS_READ.value}})
+    organization_harness.services.api_key.credentials[INTEGRATION_SECRET] = key
+
+    response = organization_harness.client.get(
+        f"/api/v1/organizations/{ORGANIZATION.uuid}",
+        headers=integration_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["capabilities"]["can_view_billing_stats"] is True
+    assert response.json()["stats"]["expected"] == 460000
+    assert organization_harness.billing_stats.calls == [[ORGANIZATION_BILLING.id]]
 
 
 def test_organization_detail_requires_both_grant_and_live_membership(

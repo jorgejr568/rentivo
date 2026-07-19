@@ -303,8 +303,8 @@ class TestBackfillEncryptionExtendedTargets:
         ).scalar_one()
         db_connection.execute(
             text(
-                "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
-                "VALUES (:bid, 'plain item', 100, 'fixed', 0)"
+                "INSERT INTO billing_items (billing_id, uuid, description, amount, item_type, sort_order) "
+                "VALUES (:bid, '01HXBACKITEM000000000000001', 'plain item', 100, 'fixed', 0)"
             ),
             {"bid": billing_id},
         )

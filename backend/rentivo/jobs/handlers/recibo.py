@@ -35,6 +35,9 @@ def handle_recibo_render(payload: dict) -> None:
     bill_id = payload.get("bill_id")
     if not isinstance(bill_id, int):
         raise PermanentJobError(f"recibo.render requires int bill_id, got {bill_id!r}")
+    render_operation_id = payload.get("render_operation_id")
+    if render_operation_id is not None and not isinstance(render_operation_id, str):
+        raise PermanentJobError(f"recibo.render requires string render_operation_id, got {render_operation_id!r}")
 
     engine = get_engine()
     with engine.connect() as conn:
@@ -49,6 +52,10 @@ def handle_recibo_render(payload: dict) -> None:
         billing = billing_repo.get_by_id(bill.billing_id)
         if billing is None:
             raise PermanentJobError(f"billing {bill.billing_id} not found for bill {bill_id}")
+        if render_operation_id is None:
+            render_operation_id = payload.get("_job_ulid")
+            if not isinstance(render_operation_id, str) or len(render_operation_id) != 26:
+                raise PermanentJobError("legacy recibo.render requires persistent job identity")
 
         pix = PixService(
             SQLAlchemyUserRepository(conn, get_encryption()),
@@ -62,5 +69,12 @@ def handle_recibo_render(payload: dict) -> None:
             pix_service=pix,
             # No job_service — the handler is the queue consumer.
         )
-        service.store_recibo(bill, billing)
+        path = service.store_recibo(
+            bill,
+            billing,
+            render_operation_id=render_operation_id,
+        )
+        if path is None:
+            logger.info("recibo_render_discarded_stale", bill_id=bill_id)
+            return
         logger.info("recibo_render_succeeded", bill_id=bill_id)

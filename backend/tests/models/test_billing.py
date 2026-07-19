@@ -16,6 +16,7 @@ class TestBillingItem:
         item = BillingItem(description="Rent", item_type=ItemType.FIXED)
         assert item.id is None
         assert item.billing_id is None
+        assert len(item.uuid) == 26
         assert item.amount == 0
         assert item.sort_order == 0
 

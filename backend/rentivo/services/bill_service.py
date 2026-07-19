@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+import hashlib
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from typing import cast
 
 import structlog
+from ulid import ULID
 
 from rentivo.constants import SP_TZ
 from rentivo.models.bill import Bill, BillLineItem, BillStatus, InvalidStatusTransition, is_transition_allowed
-from rentivo.models.billing import Billing, ItemType
+from rentivo.models.billing import Billing, BillingItem, ItemType
 from rentivo.models.receipt import ALLOWED_RECEIPT_TYPES, MAX_RECEIPT_SIZE, Receipt
 from rentivo.observability import traced
 from rentivo.pdf.invoice import InvoicePDF
@@ -41,18 +43,60 @@ class StaleBillDeleteError(RuntimeError):
     """Raised when a bill was already deleted by another writer."""
 
 
+class StaleReceiptDeleteError(RuntimeError):
+    """Raised when receipt deletion loses its render-operation ownership."""
+
+
 def _prefixed(path: str) -> str:
     """Prepend the configured storage prefix to a relative key, if any."""
     prefix = settings.storage_prefix
     return f"{prefix}/{path}" if prefix else path
 
 
-def _storage_key(billing_uuid: str, bill_uuid: str) -> str:
-    return _prefixed(f"{billing_uuid}/{bill_uuid}.pdf")
+def _storage_key(billing_uuid: str, bill_uuid: str, operation_id: str | None = None) -> str:
+    operation_suffix = f".{operation_id}" if operation_id else ""
+    return _prefixed(f"{billing_uuid}/{bill_uuid}{operation_suffix}.pdf")
 
 
-def _recibo_storage_key(billing_uuid: str, bill_uuid: str) -> str:
-    return _prefixed(f"{billing_uuid}/{bill_uuid}.recibo.pdf")
+def _pdf_candidate_storage_key(
+    billing_uuid: str,
+    bill_uuid: str,
+    operation_id: str,
+    pdf_bytes: bytes,
+) -> str:
+    digest = hashlib.sha256(pdf_bytes).hexdigest()[:16]
+    return _prefixed(f"{billing_uuid}/{bill_uuid}.{operation_id}.{digest}.pdf")
+
+
+def _pdf_path_matches_operation(path: str | None, operation_id: str) -> bool:
+    if path is None:
+        return False
+    filename = path.replace("\\", "/").rsplit("/", 1)[-1]
+    return filename.endswith(f".{operation_id}.pdf") or (f".{operation_id}." in filename and filename.endswith(".pdf"))
+
+
+def _recibo_storage_key(billing_uuid: str, bill_uuid: str, operation_id: str | None = None) -> str:
+    operation_suffix = f".{operation_id}" if operation_id else ""
+    return _prefixed(f"{billing_uuid}/{bill_uuid}{operation_suffix}.recibo.pdf")
+
+
+def _recibo_candidate_storage_key(
+    billing_uuid: str,
+    bill_uuid: str,
+    operation_id: str,
+    pdf_bytes: bytes,
+) -> str:
+    digest = hashlib.sha256(pdf_bytes).hexdigest()[:16]
+    return _prefixed(f"{billing_uuid}/{bill_uuid}.{operation_id}.{digest}.recibo.pdf")
+
+
+def _recibo_path_matches_operation(path: str | None, operation_id: str) -> bool:
+    if path is None:
+        return False
+    filename = path.replace("\\", "/").rsplit("/", 1)[-1]
+    return filename.endswith(f".{operation_id}.recibo.pdf") or (
+        f".{operation_id}." in filename and filename.endswith(".recibo.pdf")
+    )
 
 
 def _receipt_storage_key(billing_uuid: str, bill_uuid: str, receipt_uuid: str, content_type: str) -> str:
@@ -136,7 +180,13 @@ class BillService:
         return data, ordered
 
     @traced("bill.render_pdf_sync")
-    def _render_pdf_sync(self, bill: Bill, billing: Billing) -> tuple[str, list[str]]:
+    def _render_pdf_sync(
+        self,
+        bill: Bill,
+        billing: Billing,
+        *,
+        render_operation_id: str | None = None,
+    ) -> tuple[str | None, list[str]]:
         """Generate PDF, save to storage, and update bill's pdf_path.
 
         Sets pdf_render_status='succeeded' on success. Used by the
@@ -145,6 +195,20 @@ class BillService:
 
         Returns (storage_path, failed_receipt_uuids).
         """
+        if bill.id is None:
+            raise ValueError("Cannot update pdf_path for bill without an id")
+        if render_operation_id is not None:
+            operation_id, render_status, current_path = self.bill_repo.get_pdf_render_state(bill.id)
+            if operation_id != render_operation_id:
+                if render_status == "succeeded" and _pdf_path_matches_operation(
+                    current_path,
+                    render_operation_id,
+                ):
+                    bill.pdf_path = current_path
+                    bill.pdf_render_status = "succeeded"
+                    return current_path, []
+                return None, []
+
         theme = None
         if self.theme_service is not None:
             theme = self.theme_service.resolve_theme_for_billing(billing)
@@ -171,19 +235,72 @@ class BillService:
                     failed_receipt_uuids=failed_uuids,
                 )
 
-        key = _storage_key(billing.uuid, bill.uuid)
+        if render_operation_id is not None:
+            operation_id, render_status, current_path = self.bill_repo.get_pdf_render_state(bill.id)
+            if operation_id != render_operation_id:
+                if render_status == "succeeded" and _pdf_path_matches_operation(
+                    current_path,
+                    render_operation_id,
+                ):
+                    bill.pdf_path = current_path
+                    bill.pdf_render_status = "succeeded"
+                    return current_path, failed_uuids
+                return None, failed_uuids
+            key = _pdf_candidate_storage_key(
+                billing.uuid,
+                bill.uuid,
+                render_operation_id,
+                pdf_bytes,
+            )
+        else:
+            key = _storage_key(billing.uuid, bill.uuid)
         path = self.storage.save(key, pdf_bytes)
         logger.info("bill_pdf_stored", bill_uuid=bill.uuid, storage_key=key)
 
-        if bill.id is None:
-            raise ValueError("Cannot update pdf_path for bill without an id")
-        self.bill_repo.update_pdf_path(bill.id, path)
-        self.bill_repo.update_pdf_render_status(bill.id, "succeeded")
+        if render_operation_id is None:
+            self.bill_repo.update_pdf_path(bill.id, path)
+            self.bill_repo.update_pdf_render_status(bill.id, "succeeded")
+            bill.pdf_render_status = "succeeded"
+        else:
+            published, referenced_path = self.bill_repo.publish_pdf_render(
+                bill.id,
+                render_operation_id,
+                path,
+            )
+            if not published:
+                if referenced_path != path:
+                    self.storage.delete(path)
+                if _pdf_path_matches_operation(referenced_path, render_operation_id):
+                    bill.pdf_path = referenced_path
+                    bill.pdf_render_status = "succeeded"
+                    return referenced_path, failed_uuids
+                logger.info(
+                    "bill_pdf_render_completion_stale",
+                    bill_uuid=bill.uuid,
+                    render_operation_id=render_operation_id,
+                )
+                return None, failed_uuids
+            bill.pdf_render_status = "succeeded"
+            if referenced_path and referenced_path != path:
+                try:
+                    self.storage.delete(referenced_path)
+                except Exception:
+                    logger.exception(
+                        "bill_pdf_previous_file_delete_failed",
+                        bill_uuid=bill.uuid,
+                        storage_key=referenced_path,
+                    )
         bill.pdf_path = path
-        bill.pdf_render_status = "succeeded"
         return path, failed_uuids
 
-    def _render_or_enqueue(self, bill: Bill, billing: Billing, actor=None) -> tuple[str | None, list[str]]:
+    def _render_or_enqueue(
+        self,
+        bill: Bill,
+        billing: Billing,
+        actor=None,
+        *,
+        failure_compensation: Callable[[str], bool] | None = None,
+    ) -> tuple[str | None, list[str]]:
         """Render synchronously when no JobService is configured (CLI),
         or enqueue a pdf.render job when one is (web).
 
@@ -199,26 +316,61 @@ class BillService:
         """
         if bill.id is None:
             raise ValueError("Cannot render or enqueue for bill without an id")
-        if self.job_service is None:
-            return self._render_pdf_sync(bill, billing)
-        self.bill_repo.update_pdf_render_status(bill.id, "pending")
+        render_operation_id = str(ULID())
+        self.bill_repo.begin_pdf_render(bill.id, render_operation_id)
         bill.pdf_render_status = "pending"
-        if actor is not None:
-            self.job_service.enqueue_for(
-                actor,
-                "pdf.render",
-                {"bill_id": bill.id},
-                max_attempts=3,
-            )
-        else:
-            self.job_service.enqueue(
-                "pdf.render",
-                {"bill_id": bill.id},
-                source="",
-                actor_id=None,
-                actor_username="",
-                max_attempts=3,
-            )
+        try:
+            if self.job_service is None:
+                return self._render_pdf_sync(
+                    bill,
+                    billing,
+                    render_operation_id=render_operation_id,
+                )
+            payload = {"bill_id": bill.id, "render_operation_id": render_operation_id}
+            if actor is not None:
+                self.job_service.enqueue_for(
+                    actor,
+                    "pdf.render",
+                    payload,
+                    max_attempts=3,
+                )
+            else:
+                self.job_service.enqueue(
+                    "pdf.render",
+                    payload,
+                    source="",
+                    actor_id=None,
+                    actor_username="",
+                    max_attempts=3,
+                )
+        except Exception:
+            compensated = False
+            if failure_compensation is not None:
+                try:
+                    compensated = failure_compensation(render_operation_id)
+                except Exception:
+                    logger.exception(
+                        "bill_render_failure_compensation_failed",
+                        bill_uuid=bill.uuid,
+                        render_operation_id=render_operation_id,
+                    )
+            if not compensated:
+                try:
+                    failed = self.bill_repo.finish_pdf_render(
+                        bill.id,
+                        render_operation_id,
+                        "failed",
+                    )
+                except Exception:
+                    logger.exception(
+                        "bill_render_failure_status_failed",
+                        bill_uuid=bill.uuid,
+                        render_operation_id=render_operation_id,
+                    )
+                else:
+                    if failed:
+                        bill.pdf_render_status = "failed"
+            raise
         return None, []
 
     @traced("bill.generate")
@@ -226,7 +378,7 @@ class BillService:
         self,
         billing: Billing,
         reference_month: str,
-        variable_amounts: dict[int, int],
+        variable_amounts: dict[str | int, int],
         extras: list[tuple[str, int]],
         notes: str = "",
         due_date: str = "",
@@ -240,6 +392,21 @@ class BillService:
         ``bill_generate`` flow). Defaults to ``True`` — the CLI and any caller
         without follow-up work get the first-render behaviour unchanged.
         """
+        item_by_identifier: dict[str | int, BillingItem] = {item.uuid: item for item in billing.items}
+        item_by_identifier.update({item.id: item for item in billing.items if item.id is not None})
+        for item_identifier in variable_amounts:
+            item = item_by_identifier.get(item_identifier)
+            if item is None:
+                raise ValueError("Item variável desconhecido.")
+            if item.item_type != ItemType.VARIABLE:
+                raise ValueError("Item fixo não aceita valor variável.")
+        variable_items = [item for item in billing.items if item.item_type == ItemType.VARIABLE]
+        valid_identifier_sets: list[set[str | int]] = [{item.uuid for item in variable_items}]
+        if all(item.id is not None for item in variable_items):
+            valid_identifier_sets.append({item.id for item in variable_items})
+        if variable_amounts and set(variable_amounts) not in valid_identifier_sets:
+            raise ValueError("Informe o valor de todos os itens variáveis.")
+
         line_items: list[BillLineItem] = []
         sort = 0
 
@@ -247,9 +414,7 @@ class BillService:
             if item.item_type == ItemType.FIXED:
                 amount = item.amount
             else:
-                if item.id is None:
-                    raise ValueError("Variable billing item must have an id")
-                amount = variable_amounts.get(item.id, 0)
+                amount = variable_amounts.get(item.uuid, variable_amounts.get(item.id, 0))
             line_items.append(
                 BillLineItem(
                     description=item.description,
@@ -308,15 +473,26 @@ class BillService:
         due_date: str = "",
         actor=None,
     ) -> Bill:
-        bill.line_items = line_items
-        bill.total_amount = sum(li.amount for li in line_items)
-        bill.notes = notes
-        bill.due_date = due_date or None
+        previous = bill.model_copy(deep=True)
+        candidate = bill.model_copy(deep=True)
+        candidate.line_items = line_items
+        candidate.total_amount = sum(li.amount for li in line_items)
+        candidate.notes = notes
+        candidate.due_date = due_date or None
 
-        bill = self.bill_repo.update(bill)
+        bill = self.bill_repo.update(candidate)
         logger.info("bill_updated", bill_id=bill.id, total_centavos=bill.total_amount)
 
-        self._render_or_enqueue(bill, billing, actor=actor)
+        self._render_or_enqueue(
+            bill,
+            billing,
+            actor=actor,
+            failure_compensation=lambda operation_id: self.bill_repo.restore_after_failed_render(
+                previous,
+                bill,
+                operation_id,
+            ),
+        )
 
         return bill
 
@@ -387,7 +563,13 @@ class BillService:
         return pdf_bytes
 
     @traced("bill.store_recibo")
-    def store_recibo(self, bill: Bill, billing: Billing) -> str:
+    def store_recibo(
+        self,
+        bill: Bill,
+        billing: Billing,
+        *,
+        render_operation_id: str | None = None,
+    ) -> str | None:
         """Render the recibo and persist it to storage, recording its key.
 
         Used by the ``recibo.render`` background job (web) and the synchronous
@@ -396,11 +578,74 @@ class BillService:
         """
         if bill.id is None:
             raise ValueError("Cannot store recibo for bill without an id")
-        pdf_bytes = self.render_recibo(bill, billing)
-        key = _recibo_storage_key(billing.uuid, bill.uuid)
-        path = self.storage.save(key, bytes(pdf_bytes), content_type="application/pdf")
-        self.bill_repo.update_recibo_pdf_path(bill.id, path)
+        pdf_bytes = bytes(self.render_recibo(bill, billing))
+        previous_path = bill.recibo_pdf_path
+        operation_id = render_operation_id or str(ULID())
+        key = _recibo_candidate_storage_key(billing.uuid, bill.uuid, operation_id, pdf_bytes)
+        owns_status_version, current_path = self.bill_repo.get_recibo_render_state(
+            bill.id,
+            bill.status_updated_at,
+        )
+        if not owns_status_version:
+            logger.info("recibo_store_discarded_stale", bill_uuid=bill.uuid, storage_key=key)
+            return None
+        if _recibo_path_matches_operation(current_path, operation_id):
+            bill.recibo_pdf_path = current_path
+            logger.info("recibo_store_idempotent", bill_uuid=bill.uuid, storage_key=current_path)
+            return current_path
+        if current_path != previous_path:
+            logger.info("recibo_store_discarded_stale", bill_uuid=bill.uuid, storage_key=key)
+            return None
+        path = self.storage.save(key, pdf_bytes, content_type="application/pdf")
+        try:
+            published, referenced_path = self.bill_repo.replace_recibo_pdf_path_if_paid_version(
+                bill.id,
+                bill.status_updated_at,
+                previous_path,
+                path,
+            )
+        except Exception:
+            try:
+                state_is_current, referenced_path = self.bill_repo.get_recibo_render_state(
+                    bill.id,
+                    bill.status_updated_at,
+                )
+            except Exception:
+                logger.exception(
+                    "recibo_candidate_cleanup_state_failed",
+                    bill_uuid=bill.uuid,
+                    storage_key=path,
+                )
+            else:
+                if state_is_current and referenced_path != path:
+                    try:
+                        self.storage.delete_strict(path)
+                    except Exception:
+                        logger.exception(
+                            "recibo_candidate_delete_failed",
+                            bill_uuid=bill.uuid,
+                            storage_key=path,
+                        )
+            raise
+        if not published:
+            if referenced_path != path:
+                self.storage.delete_strict(path)
+            if _recibo_path_matches_operation(referenced_path, operation_id):
+                bill.recibo_pdf_path = referenced_path
+                logger.info("recibo_store_idempotent", bill_uuid=bill.uuid, storage_key=key)
+                return referenced_path
+            logger.info("recibo_store_discarded_stale", bill_uuid=bill.uuid, storage_key=key)
+            return None
         bill.recibo_pdf_path = path
+        if previous_path and previous_path != path:
+            try:
+                self.storage.delete(previous_path)
+            except Exception:
+                logger.exception(
+                    "recibo_previous_file_delete_failed",
+                    bill_uuid=bill.uuid,
+                    storage_key=previous_path,
+                )
         logger.info("recibo_stored", bill_uuid=bill.uuid, storage_key=key)
         return path
 
@@ -408,40 +653,44 @@ class BillService:
         """Render the recibo synchronously (CLI) or enqueue a ``recibo.render``
         job (web). Called from ``change_status``, which has already validated
         ``bill.id`` is set."""
+        render_operation_id = str(ULID())
         if self.job_service is None:
             if billing is not None:
-                self.store_recibo(bill, billing)
+                self.store_recibo(
+                    bill,
+                    billing,
+                    render_operation_id=render_operation_id,
+                )
             return
+        payload = {"bill_id": bill.id, "render_operation_id": render_operation_id}
         if actor is not None:
-            self.job_service.enqueue_for(actor, "recibo.render", {"bill_id": bill.id}, max_attempts=3)
+            self.job_service.enqueue_for(actor, "recibo.render", payload, max_attempts=3)
         else:
             self.job_service.enqueue(
                 "recibo.render",
-                {"bill_id": bill.id},
+                payload,
                 source="",
                 actor_id=None,
                 actor_username="",
                 max_attempts=3,
             )
 
-    def _remove_recibo(self, bill: Bill, actor=None) -> None:
+    def _remove_recibo(self, bill: Bill, key: str | None, actor=None) -> None:
         """Delete a stored recibo and clear its key. Called when a bill leaves
         the PAID status (the quittance no longer reflects reality). Called from
         ``change_status``, which has already validated ``bill.id`` is set."""
-        key = bill.recibo_pdf_path
         if not key:
             return
-        if self.job_service is None:
-            try:
+        try:
+            if self.job_service is None:
                 self.storage.delete(key)
-            except Exception:
-                logger.exception("recibo_delete_failed", bill_uuid=bill.uuid, storage_key=key)
-        elif actor is not None:
-            self.job_service.enqueue_for(actor, "s3.delete", {"key": key})
-        else:
-            self.job_service.enqueue("s3.delete", {"key": key}, source="", actor_id=None, actor_username="")
-        self.bill_repo.update_recibo_pdf_path(bill.id, None)
-        bill.recibo_pdf_path = None
+            elif actor is not None:
+                self.job_service.enqueue_for(actor, "s3.delete", {"key": key})
+            else:
+                self.job_service.enqueue("s3.delete", {"key": key}, source="", actor_id=None, actor_username="")
+        except Exception:
+            logger.exception("recibo_delete_failed", bill_uuid=bill.uuid, storage_key=key)
+            raise
         logger.info("recibo_removed", bill_uuid=bill.uuid, storage_key=key)
 
     @traced("bill.get_recibo_ref")
@@ -501,22 +750,71 @@ class BillService:
             )
             raise InvalidStatusTransition(bill.status, new_status)
         previous_status = bill.status
+        previous_status_updated_at = bill.status_updated_at
         now = datetime.now(SP_TZ)
-        if not self.bill_repo.update_status(bill.id, previous_status, new_status, now):
+        paid = BillStatus.PAID.value
+        leaving_paid = previous_status == paid and new_status != paid
+        if leaving_paid:
+            updated, current_recibo_path = self.bill_repo.update_status_and_clear_recibo(
+                bill.id,
+                previous_status,
+                previous_status_updated_at,
+                new_status,
+                now,
+            )
+        else:
+            updated = self.bill_repo.update_status(
+                bill.id,
+                previous_status,
+                previous_status_updated_at,
+                new_status,
+                now,
+            )
+            current_recibo_path = None
+        if not updated:
             raise StaleBillStatusError(f"Bill {bill.id} status changed from {previous_status!r}")
         bill.status = new_status
         bill.status_updated_at = now
+        if leaving_paid:
+            bill.recibo_pdf_path = None
         logger.info("bill_status_changed", bill_id=bill.id, new_status=new_status)
 
         # Payment-receipt lifecycle: generate the recibo in the background when a
         # bill becomes PAID, and tear it down when it leaves PAID (the quittance
         # would otherwise outlive the payment it certifies). Transitions between
         # two non-PAID statuses — and re-saving PAID — touch nothing extra.
-        paid = BillStatus.PAID.value
-        if new_status == paid and previous_status != paid:
-            self._enqueue_or_render_recibo(bill, billing, actor=actor)
-        elif previous_status == paid and new_status != paid:
-            self._remove_recibo(bill, actor=actor)
+        try:
+            if new_status == paid and previous_status != paid:
+                self._enqueue_or_render_recibo(bill, billing, actor=actor)
+            elif leaving_paid:
+                self._remove_recibo(bill, current_recibo_path, actor=actor)
+        except Exception as side_effect_error:
+            if leaving_paid:
+                compensated = self.bill_repo.restore_status_and_recibo(
+                    bill.id,
+                    new_status,
+                    now,
+                    previous_status,
+                    previous_status_updated_at,
+                    current_recibo_path,
+                )
+            else:
+                compensated = self.bill_repo.update_status(
+                    bill.id,
+                    new_status,
+                    now,
+                    previous_status,
+                    previous_status_updated_at,
+                )
+            if not compensated:
+                raise StaleBillStatusError(
+                    f"Bill {bill.id} transition to {new_status!r} could not be compensated"
+                ) from side_effect_error
+            bill.status = previous_status
+            bill.status_updated_at = previous_status_updated_at
+            if leaving_paid:
+                bill.recibo_pdf_path = current_recibo_path
+            raise
         return bill
 
     @traced("bill.get_bill")
@@ -603,8 +901,6 @@ class BillService:
         if not file_bytes:
             raise ValueError("Empty file")
 
-        from ulid import ULID
-
         receipt_uuid = str(ULID())
         storage_key = _receipt_storage_key(billing.uuid, bill.uuid, receipt_uuid, content_type)
 
@@ -653,11 +949,103 @@ class BillService:
         if receipt.id is None:
             raise ValueError("Cannot delete receipt without an id")
 
+        previous_pdf_path = bill.pdf_path
+        previous_render_status = bill.pdf_render_status
+
+        if self.job_service is not None:
+            render_operation_id = str(ULID())
+            self.bill_repo.begin_pdf_render(bill.id, render_operation_id)
+            bill.pdf_render_status = "pending"
+            payload = {
+                "bill_id": bill.id,
+                "render_operation_id": render_operation_id,
+                "receipt_cleanup": {
+                    "storage_key": receipt.storage_key,
+                    "uuid": receipt.uuid,
+                },
+            }
+            try:
+                if actor is not None:
+                    self.job_service.enqueue_for(
+                        actor,
+                        "pdf.render",
+                        payload,
+                        max_attempts=3,
+                    )
+                else:
+                    self.job_service.enqueue(
+                        "pdf.render",
+                        payload,
+                        source="",
+                        actor_id=None,
+                        actor_username="",
+                        max_attempts=3,
+                    )
+            except Exception:
+                try:
+                    restored = self.bill_repo.finish_pdf_render(
+                        bill.id,
+                        render_operation_id,
+                        previous_render_status,
+                    )
+                except Exception:
+                    logger.exception(
+                        "receipt_delete_render_restore_failed",
+                        receipt_uuid=receipt.uuid,
+                        bill_uuid=bill.uuid,
+                        render_operation_id=render_operation_id,
+                    )
+                else:
+                    if restored:
+                        bill.pdf_render_status = previous_render_status
+                raise
+
+            try:
+                deleted = self.receipt_repo.delete_for_render_operation(
+                    receipt.id,
+                    bill.id,
+                    render_operation_id,
+                )
+                if not deleted:
+                    raise StaleReceiptDeleteError("Receipt deletion lost render ownership")
+            except Exception:
+                try:
+                    restored = self.bill_repo.finish_pdf_render(
+                        bill.id,
+                        render_operation_id,
+                        previous_render_status,
+                    )
+                except Exception:
+                    logger.exception(
+                        "receipt_delete_render_cancel_failed",
+                        receipt_uuid=receipt.uuid,
+                        bill_uuid=bill.uuid,
+                        render_operation_id=render_operation_id,
+                    )
+                else:
+                    if restored:
+                        bill.pdf_render_status = previous_render_status
+                raise
+            logger.info("receipt_deleted", receipt_uuid=receipt.uuid, bill_uuid=bill.uuid)
+            return
+
         self.receipt_repo.delete(receipt.id)
         logger.info("receipt_deleted", receipt_uuid=receipt.uuid, bill_uuid=bill.uuid)
 
         # Regenerate PDF without this receipt
-        self._render_or_enqueue(bill, billing, actor=actor)
+        self._render_or_enqueue(
+            bill,
+            billing,
+            actor=actor,
+            failure_compensation=lambda operation_id: self.receipt_repo.restore_after_failed_render(
+                receipt,
+                operation_id,
+                previous_pdf_path,
+                previous_render_status,
+            ),
+        )
+        if receipt.storage_key:
+            self.storage.delete(receipt.storage_key)
 
     @traced("bill.list_receipts")
     def list_receipts(self, bill_id: int) -> list[Receipt]:

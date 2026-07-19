@@ -107,6 +107,7 @@ class TestBillingEvents:
 class TestBillEvents:
     def test_bill_generate_emits_event(self, enable_gtm, auth_client, csrf_token, test_engine):
         billing = create_billing_in_db(test_engine, name="Test Apt")
+        variable_item = next(item for item in billing.items if item.item_type.value == "variable")
         response = auth_client.post(
             f"/billings/{billing.uuid}/bills/generate",
             data={
@@ -115,6 +116,7 @@ class TestBillEvents:
                 "due_date": "10/05/2025",
                 "extras-TOTAL_FORMS": "0",
                 "extras-INITIAL_FORMS": "0",
+                f"variable_{variable_item.uuid}": "50,00",
             },
             follow_redirects=False,
         )

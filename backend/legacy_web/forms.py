@@ -59,6 +59,7 @@ class ParsedLineItem:
     description: str
     amount: int  # centavos
     item_type: ItemType
+    uuid: str | None = None
 
 
 def parse_line_items(
@@ -88,7 +89,15 @@ def parse_line_items(
             amount = 0
         else:
             amount = parse_brl(row.get("amount", "")) or 0
-        items.append(ParsedLineItem(index=i, description=description, amount=amount, item_type=item_type))
+        items.append(
+            ParsedLineItem(
+                index=i,
+                description=description,
+                amount=amount,
+                item_type=item_type,
+                uuid=row.get("uuid", "").strip() or None,
+            )
+        )
     return items
 
 

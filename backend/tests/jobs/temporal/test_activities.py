@@ -78,6 +78,29 @@ def test_other_activities_run_through_env(clean_registry):
     }
 
 
+@pytest.mark.parametrize(
+    ("activity_fn", "job_type"),
+    [
+        (activities.pdf_render_activity, "pdf.render"),
+        (activities.recibo_render_activity, "recibo.render"),
+    ],
+)
+def test_render_activities_forward_stable_workflow_job_identity(clean_registry, monkeypatch, activity_fn, job_type):
+    received = []
+    registry.register(job_type)(lambda payload: received.append(payload))
+    monkeypatch.setattr(
+        activities.activity,
+        "info",
+        lambda: type("Info", (), {"workflow_id": "job-01ARZ3NDEKTSV4RRFFQ69G5FAV"})(),
+    )
+    original_payload = {"bill_id": 42}
+
+    activity_fn(original_payload)
+
+    assert received == [{"bill_id": 42, "_job_ulid": "01ARZ3NDEKTSV4RRFFQ69G5FAV"}]
+    assert original_payload == {"bill_id": 42}
+
+
 def test_open_audit_returns_audit_and_close(monkeypatch):
     from sqlalchemy import create_engine, text
     from sqlalchemy.pool import StaticPool

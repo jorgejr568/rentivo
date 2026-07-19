@@ -580,6 +580,10 @@
       "BillCapabilitiesResponse": {
         "additionalProperties": false,
         "properties": {
+          "can_compose": {
+            "title": "Can Compose",
+            "type": "boolean"
+          },
           "can_delete": {
             "title": "Can Delete",
             "type": "boolean"
@@ -608,6 +612,14 @@
             "title": "Can Reorder Receipts",
             "type": "boolean"
           },
+          "can_send_invoice": {
+            "title": "Can Send Invoice",
+            "type": "boolean"
+          },
+          "can_send_recibo": {
+            "title": "Can Send Recibo",
+            "type": "boolean"
+          },
           "can_transition": {
             "title": "Can Transition",
             "type": "boolean"
@@ -626,9 +638,62 @@
           "can_delete_receipts",
           "can_reorder_receipts",
           "can_download_invoice",
-          "can_download_recibo"
+          "can_download_recibo",
+          "can_compose",
+          "can_send_invoice",
+          "can_send_recibo"
         ],
         "title": "BillCapabilitiesResponse",
+        "type": "object"
+      },
+      "BillCreateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "due_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Due Date"
+          },
+          "extras": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/BillExtraRequest"
+            },
+            "title": "Extras",
+            "type": "array"
+          },
+          "notes": {
+            "default": "",
+            "title": "Notes",
+            "type": "string"
+          },
+          "reference_month": {
+            "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+            "title": "Reference Month",
+            "type": "string"
+          },
+          "variable_amounts": {
+            "patternProperties": {
+              "^[0-9A-HJKMNP-TV-Z]{26}$": {
+                "minimum": 0.0,
+                "type": "integer"
+              }
+            },
+            "title": "Variable Amounts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "reference_month"
+        ],
+        "title": "BillCreateRequest",
         "type": "object"
       },
       "BillDetailResponse": {
@@ -769,6 +834,27 @@
           "capabilities"
         ],
         "title": "BillDetailResponse",
+        "type": "object"
+      },
+      "BillExtraRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0.0,
+            "title": "Amount",
+            "type": "integer"
+          },
+          "description": {
+            "maxLength": 255,
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "amount"
+        ],
+        "title": "BillExtraRequest",
         "type": "object"
       },
       "BillLineItemRequest": {
@@ -1037,6 +1123,14 @@
       "BillingCapabilitiesResponse": {
         "additionalProperties": false,
         "properties": {
+          "can_create_bills": {
+            "title": "Can Create Bills",
+            "type": "boolean"
+          },
+          "can_create_exports": {
+            "title": "Can Create Exports",
+            "type": "boolean"
+          },
           "can_delete": {
             "title": "Can Delete",
             "type": "boolean"
@@ -1049,14 +1143,56 @@
             "title": "Can Manage Bills",
             "type": "boolean"
           },
+          "can_manage_theme": {
+            "title": "Can Manage Theme",
+            "type": "boolean"
+          },
+          "can_read_attachments": {
+            "title": "Can Read Attachments",
+            "type": "boolean"
+          },
+          "can_read_bills": {
+            "title": "Can Read Bills",
+            "type": "boolean"
+          },
+          "can_read_expenses": {
+            "title": "Can Read Expenses",
+            "type": "boolean"
+          },
+          "can_read_theme": {
+            "title": "Can Read Theme",
+            "type": "boolean"
+          },
           "can_transfer": {
             "title": "Can Transfer",
+            "type": "boolean"
+          },
+          "can_upload_bill_receipts": {
+            "title": "Can Upload Bill Receipts",
+            "type": "boolean"
+          },
+          "can_write_attachments": {
+            "title": "Can Write Attachments",
+            "type": "boolean"
+          },
+          "can_write_expenses": {
+            "title": "Can Write Expenses",
             "type": "boolean"
           }
         },
         "required": [
           "can_edit",
+          "can_read_bills",
+          "can_create_bills",
           "can_manage_bills",
+          "can_read_expenses",
+          "can_write_expenses",
+          "can_create_exports",
+          "can_read_attachments",
+          "can_write_attachments",
+          "can_read_theme",
+          "can_manage_theme",
+          "can_upload_bill_receipts",
           "can_delete",
           "can_transfer"
         ],
@@ -1163,6 +1299,18 @@
             ],
             "title": "Item Type",
             "type": "string"
+          },
+          "uuid": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uuid"
           }
         },
         "required": [
@@ -1191,9 +1339,15 @@
             ],
             "title": "Item Type",
             "type": "string"
+          },
+          "uuid": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Uuid",
+            "type": "string"
           }
         },
         "required": [
+          "uuid",
           "description",
           "amount",
           "item_type"
@@ -1678,6 +1832,9 @@
                 "type": "string"
               },
               {
+                "$ref": "#/components/schemas/BillCreateRequest"
+              },
+              {
                 "type": "null"
               }
             ],
@@ -1687,7 +1844,7 @@
             "anyOf": [
               {
                 "items": {
-                  "contentMediaType": "application/octet-stream",
+                  "format": "binary",
                   "type": "string"
                 },
                 "type": "array"
@@ -1706,7 +1863,7 @@
         "properties": {
           "receipt_files": {
             "items": {
-              "contentMediaType": "application/octet-stream",
+              "format": "binary",
               "type": "string"
             },
             "title": "Receipt Files",
@@ -2549,12 +2706,17 @@
           "can_manage": {
             "title": "Can Manage",
             "type": "boolean"
+          },
+          "can_view_billing_stats": {
+            "title": "Can View Billing Stats",
+            "type": "boolean"
           }
         },
         "required": [
           "can_manage",
           "can_invite",
-          "can_create_billing"
+          "can_create_billing",
+          "can_view_billing_stats"
         ],
         "title": "OrganizationCapabilitiesResponse",
         "type": "object"
@@ -2609,6 +2771,16 @@
             "title": "Name",
             "type": "string"
           },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -2633,7 +2805,8 @@
           "current_role",
           "capabilities",
           "created_at",
-          "updated_at"
+          "updated_at",
+          "stats"
         ],
         "title": "OrganizationIntegrationDetailResponse",
         "type": "object"
@@ -2804,6 +2977,16 @@
               }
             ]
           },
+          "stats": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BillingStatsResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -2829,6 +3012,7 @@
           "capabilities",
           "created_at",
           "updated_at",
+          "stats",
           "settings",
           "members",
           "invites"
@@ -3710,6 +3894,28 @@
           }
         },
         "title": "ReceiptUploadSummary",
+        "type": "object"
+      },
+      "ReciboDownloadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "download_url": {
+            "format": "uri",
+            "maxLength": 2083,
+            "minLength": 1,
+            "title": "Download Url",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "download_url",
+          "filename"
+        ],
+        "title": "ReciboDownloadResponse",
         "type": "object"
       },
       "RecoveryCodesResponse": {
@@ -6050,12 +6256,39 @@
         ],
         "requestBody": {
           "content": {
-            "multipart/form-data": {
+            "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_create_bill_api_v1_billings__billing_uuid__bills_post"
+                "$ref": "#/components/schemas/BillCreateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "encoding": {
+                "payload": {
+                  "contentType": "application/json"
+                }
+              },
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_bill_api_v1_billings__billing_uuid__bills_post",
+                "properties": {
+                  "payload": {
+                    "$ref": "#/components/schemas/BillCreateRequest"
+                  },
+                  "receipt_files": {
+                    "items": {
+                      "format": "binary",
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "payload"
+                ],
+                "type": "object"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -6713,6 +6946,16 @@
             },
             "description": "Not Found"
           },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -6880,6 +7123,166 @@
           }
         },
         "summary": "Download Recibo",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/recibo/content": {
+      "get": {
+        "operationId": "download_recibo_content_api_v1_billings__billing_uuid__bills__bill_uuid__recibo_content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download Recibo Content",
+        "tags": [
+          "bills"
+        ]
+      }
+    },
+    "/api/v1/billings/{billing_uuid}/bills/{bill_uuid}/recibo/download": {
+      "get": {
+        "operationId": "get_recibo_download_api_v1_billings__billing_uuid__bills__bill_uuid__recibo_download_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReciboDownloadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Recibo Download",
         "tags": [
           "bills"
         ]

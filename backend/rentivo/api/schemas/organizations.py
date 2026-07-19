@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from rentivo.api.schemas.billings import BillingStatsResponse
+
 
 class _StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -87,6 +89,7 @@ class OrganizationCapabilitiesResponse(_StrictModel):
     can_manage: bool
     can_invite: bool
     can_create_billing: bool
+    can_view_billing_stats: bool
 
 
 class OrganizationSettingsResponse(_StrictModel):
@@ -123,13 +126,14 @@ class OrganizationResponse(_StrictModel):
 
 
 class OrganizationLoginDetailResponse(OrganizationResponse):
+    stats: BillingStatsResponse | None
     settings: OrganizationSettingsResponse | None
     members: tuple[OrganizationMemberResponse, ...]
     invites: tuple[OrganizationInviteResponse, ...]
 
 
 class OrganizationIntegrationDetailResponse(OrganizationResponse):
-    pass
+    stats: BillingStatsResponse | None
 
 
 class OrganizationListResponse(_StrictModel):

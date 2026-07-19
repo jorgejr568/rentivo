@@ -46,11 +46,12 @@ class SQLAlchemyBillingRepository(BillingRepository):
         for i, item in enumerate(billing.items):
             self.conn.execute(
                 text(
-                    "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
-                    "VALUES (:billing_id, :description, :amount, :item_type, :sort_order)"
+                    "INSERT INTO billing_items (billing_id, uuid, description, amount, item_type, sort_order) "
+                    "VALUES (:billing_id, :uuid, :description, :amount, :item_type, :sort_order)"
                 ),
                 {
                     "billing_id": billing_id,
+                    "uuid": item.uuid,
                     "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,
@@ -80,6 +81,7 @@ class SQLAlchemyBillingRepository(BillingRepository):
             BillingItem(
                 id=item_row["id"],
                 billing_id=item_row["billing_id"],
+                uuid=item_row["uuid"],
                 description=next(plaintexts),
                 amount=item_row["amount"],
                 item_type=ItemType(item_row["item_type"]),
@@ -228,11 +230,12 @@ class SQLAlchemyBillingRepository(BillingRepository):
         for i, item in enumerate(billing.items):
             self.conn.execute(
                 text(
-                    "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
-                    "VALUES (:billing_id, :description, :amount, :item_type, :sort_order)"
+                    "INSERT INTO billing_items (billing_id, uuid, description, amount, item_type, sort_order) "
+                    "VALUES (:billing_id, :uuid, :description, :amount, :item_type, :sort_order)"
                 ),
                 {
                     "billing_id": billing.id,
+                    "uuid": item.uuid,
                     "description": self.encryption.encrypt(item.description),
                     "amount": item.amount,
                     "item_type": item.item_type.value,

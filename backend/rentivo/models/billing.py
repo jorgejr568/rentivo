@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 
 from pydantic import BaseModel
+from ulid import ULID
 
 
 class ItemType(str, Enum):
@@ -15,10 +16,15 @@ class ItemType(str, Enum):
 class BillingItem(BaseModel):
     id: int | None = None
     billing_id: int | None = None
+    uuid: str = ""
     description: str
     amount: int = 0  # centavos
     item_type: ItemType
     sort_order: int = 0
+
+    def model_post_init(self, __context: object) -> None:
+        if not self.uuid:
+            self.uuid = str(ULID())
 
 
 class Billing(BaseModel):

@@ -248,10 +248,28 @@ async def billing_edit(request: Request, ctx: BillingContext = Depends(require_b
     billing.pix_merchant_name = str(form.get("pix_merchant_name", "")).strip()
     billing.pix_merchant_city = str(form.get("pix_merchant_city", "")).strip()
 
-    items: list[BillingItem] = [
-        BillingItem(description=p.description, amount=p.amount, item_type=p.item_type)
-        for p in parse_line_items(dict(form), "items", amount_only_for_fixed=True)
-    ]
+    parsed_items = parse_line_items(dict(form), "items", amount_only_for_fixed=True)
+    existing_item_uuids = {item.uuid for item in billing.items}
+    submitted_item_uuids: set[str] = set()
+    items: list[BillingItem] = []
+    for item in parsed_items:
+        if item.uuid is not None:
+            if item.uuid not in existing_item_uuids or item.uuid in submitted_item_uuids:
+                logger.warning("billing_edit_rejected", billing_uuid=billing.uuid, reason="invalid_item_uuid")
+                return flash_redirect(
+                    request,
+                    "Item da cobrança inválido.",
+                    f"/billings/{billing.uuid}/edit",
+                )
+            submitted_item_uuids.add(item.uuid)
+        items.append(
+            BillingItem(
+                uuid=item.uuid or "",
+                description=item.description,
+                amount=item.amount,
+                item_type=item.item_type,
+            )
+        )
 
     if not items:
         logger.warning("billing_edit_rejected", billing_uuid=billing.uuid, reason="no_items")

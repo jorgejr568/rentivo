@@ -40,6 +40,7 @@ CREATE TABLE billings (
 CREATE TABLE billing_items (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     billing_id INTEGER NOT NULL REFERENCES billings(id) ON DELETE CASCADE,
+    uuid VARCHAR(26) NOT NULL UNIQUE,
     description TEXT NOT NULL,
     amount INTEGER NOT NULL DEFAULT 0,
     item_type TEXT NOT NULL,
@@ -59,6 +60,8 @@ CREATE TABLE bills (
     status TEXT NOT NULL DEFAULT 'draft',
     status_updated_at DATETIME,
     pdf_render_status VARCHAR(16),
+    pdf_render_operation_id VARCHAR(26),
+    mutation_revision INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME NOT NULL,
     deleted_at DATETIME
 );

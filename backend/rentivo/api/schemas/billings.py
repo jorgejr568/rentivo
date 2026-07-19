@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 _EMAIL_LOCAL = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~.-]+")
 _EMAIL_DOMAIN_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+BillingItemUUID = Annotated[str, Field(pattern=r"^[0-9A-HJKMNP-TV-Z]{26}$")]
 
 
 class _StrictModel(BaseModel):
@@ -34,6 +35,7 @@ class BillingOwnerResponse(_StrictModel):
 
 
 class BillingItemInput(_StrictModel):
+    uuid: BillingItemUUID | None = None
     description: str = Field(min_length=1, max_length=255)
     amount: int = Field(ge=0)
     item_type: Literal["fixed", "variable"]
@@ -46,6 +48,7 @@ class BillingItemInput(_StrictModel):
 
 
 class BillingItemResponse(_StrictModel):
+    uuid: BillingItemUUID
     description: str
     amount: int
     item_type: Literal["fixed", "variable"]
@@ -119,7 +122,17 @@ class BillingUpdateRequest(_StrictModel):
 
 class BillingCapabilitiesResponse(_StrictModel):
     can_edit: bool
+    can_read_bills: bool
+    can_create_bills: bool
     can_manage_bills: bool
+    can_read_expenses: bool
+    can_write_expenses: bool
+    can_create_exports: bool
+    can_read_attachments: bool
+    can_write_attachments: bool
+    can_read_theme: bool
+    can_manage_theme: bool
+    can_upload_bill_receipts: bool
     can_delete: bool
     can_transfer: bool
 

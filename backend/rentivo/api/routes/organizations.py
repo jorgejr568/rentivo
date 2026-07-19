@@ -7,6 +7,7 @@ from rentivo.api.dependencies import get_services, require_login_scope, require_
 from rentivo.api.domain_access import OrganizationAccess, require_role, resolve_organization_access
 from rentivo.api.errors import Problem, ProblemException, problem
 from rentivo.api.principal import Principal
+from rentivo.api.schemas.billings import BillingStatsResponse
 from rentivo.api.schemas.organizations import (
     BillingTransferRequest,
     BillingTransferResponse,
@@ -30,6 +31,7 @@ from rentivo.models.audit_log import AuditEventType
 from rentivo.models.invite import Invite
 from rentivo.models.organization import Organization, OrganizationMember, OrgRole
 from rentivo.services.audit_serializers import serialize_invite, serialize_organization
+from rentivo.services.billing_stats import BillingStats
 from rentivo.services.container import RequestServices
 from rentivo.settings import settings
 
@@ -78,6 +80,7 @@ def _capabilities(principal: Principal, role: str) -> OrganizationCapabilitiesRe
             and APIScope.ORGANIZATIONS_MEMBERS.value in scopes
         ),
         can_create_billing=role in _BILLING_ROLES and APIScope.BILLINGS_WRITE.value in scopes,
+        can_view_billing_stats=APIScope.BILLINGS_READ.value in scopes,
     )
 
 
@@ -118,15 +121,50 @@ def _invite_response(invite: Invite) -> OrganizationInviteResponse:
     )
 
 
+def _stats_response(stats: BillingStats) -> BillingStatsResponse:
+    return BillingStatsResponse(
+        year=stats.year,
+        expected=stats.expected,
+        received=stats.received,
+        pending=stats.pending,
+        overdue=stats.overdue,
+        paid_count=stats.paid_count,
+        pending_count=stats.pending_count,
+        overdue_count=stats.overdue_count,
+        active_count=stats.active_count,
+        billed_count=stats.billed_count,
+        total_expenses=stats.total_expenses,
+        net_income=stats.net_income,
+    )
+
+
+def _organization_stats(
+    access: OrganizationAccess,
+    services: RequestServices,
+    capabilities: OrganizationCapabilitiesResponse,
+) -> BillingStatsResponse | None:
+    if not capabilities.can_view_billing_stats:
+        return None
+    billing_ids = [
+        billing.id
+        for billing in services.billing.list_billings_for_user(access.principal.user.id)
+        if billing.id is not None
+        and billing.owner_type == "organization"
+        and billing.owner_id == access.organization.id
+    ]
+    return _stats_response(services.billing_stats.stats_for_ids(billing_ids))
+
+
 def _detail_response(
     access: OrganizationAccess,
     services: RequestServices,
 ) -> OrganizationLoginDetailResponse | OrganizationIntegrationDetailResponse:
     organization = access.organization
     summary = _organization_response(organization, access.member, access.principal)
-    if not access.principal.api_key.is_login_token:
-        return OrganizationIntegrationDetailResponse(**summary.model_dump())
     capabilities = summary.capabilities
+    stats = _organization_stats(access, services, capabilities)
+    if not access.principal.api_key.is_login_token:
+        return OrganizationIntegrationDetailResponse(**summary.model_dump(), stats=stats)
     settings_response = None
     if capabilities.can_manage:
         settings_response = OrganizationSettingsResponse(
@@ -137,6 +175,7 @@ def _detail_response(
     invites = services.invite.list_org_invites(organization.id) if capabilities.can_invite else []
     return OrganizationLoginDetailResponse(
         **summary.model_dump(),
+        stats=stats,
         settings=settings_response,
         members=tuple(
             _member_response(member, access.principal.user.id)

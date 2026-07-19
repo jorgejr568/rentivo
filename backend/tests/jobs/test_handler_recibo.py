@@ -5,6 +5,9 @@ import pytest
 from rentivo.jobs.base import PermanentJobError
 from rentivo.models.bill import BillStatus
 
+LEGACY_JOB_ULID = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+MODERN_OPERATION_ID = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
+
 
 def _patches():
     """All collaborators the handler imports — so we can assert dispatch without DB."""
@@ -61,10 +64,48 @@ def test_handler_renders_and_stores_recibo():
 
         from rentivo.jobs.handlers.recibo import handle_recibo_render
 
-        handle_recibo_render({"bill_id": 42})
+        handle_recibo_render({"bill_id": 42, "render_operation_id": MODERN_OPERATION_ID})
 
         billing_repo.get_by_id.assert_called_once_with(7)
-        service.store_recibo.assert_called_once_with(bill, billing)
+        service.store_recibo.assert_called_once_with(
+            bill,
+            billing,
+            render_operation_id=MODERN_OPERATION_ID,
+        )
+
+
+def test_handler_reports_discarded_render_when_paid_version_changed():
+    p = _patches()
+    with (
+        p["engine"] as engine_mock,
+        p["bill_repo"] as bill_repo_cls,
+        p["billing_repo"] as billing_repo_cls,
+        p["user_repo"],
+        p["org_repo"],
+        p["theme_repo"],
+        p["storage"],
+        p["service_cls"] as svc_cls,
+        patch("rentivo.jobs.handlers.recibo.logger") as logger,
+    ):
+        bill = MagicMock(id=42, billing_id=7, status=BillStatus.PAID.value)
+        billing = MagicMock(id=7)
+        _, _, service = _wire(
+            {
+                "engine_mock": engine_mock,
+                "bill_repo_cls": bill_repo_cls,
+                "billing_repo_cls": billing_repo_cls,
+                "svc_cls": svc_cls,
+            },
+            bill,
+            billing,
+        )
+        service.store_recibo.return_value = None
+
+        from rentivo.jobs.handlers.recibo import handle_recibo_render
+
+        handle_recibo_render({"bill_id": 42, "render_operation_id": MODERN_OPERATION_ID})
+
+        logger.info.assert_called_once_with("recibo_render_discarded_stale", bill_id=42)
 
 
 def test_handler_rejects_non_int_bill_id():
@@ -74,6 +115,80 @@ def test_handler_rejects_non_int_bill_id():
         handle_recibo_render({"bill_id": "42"})
     with pytest.raises(PermanentJobError, match="bill_id"):
         handle_recibo_render({})
+
+
+def test_handler_rejects_non_string_render_operation_id():
+    from rentivo.jobs.handlers.recibo import handle_recibo_render
+
+    with pytest.raises(PermanentJobError, match="render_operation_id"):
+        handle_recibo_render({"bill_id": 42, "render_operation_id": 7})
+
+
+def test_handler_derives_legacy_operation_from_persistent_job_identity():
+    p = _patches()
+    with (
+        p["engine"] as engine_mock,
+        p["bill_repo"] as bill_repo_cls,
+        p["billing_repo"] as billing_repo_cls,
+        p["user_repo"],
+        p["org_repo"],
+        p["theme_repo"],
+        p["storage"],
+        p["service_cls"] as svc_cls,
+    ):
+        bill = MagicMock(id=42, billing_id=7, status=BillStatus.PAID.value)
+        billing = MagicMock(id=7)
+        _, _, service = _wire(
+            {
+                "engine_mock": engine_mock,
+                "bill_repo_cls": bill_repo_cls,
+                "billing_repo_cls": billing_repo_cls,
+                "svc_cls": svc_cls,
+            },
+            bill,
+            billing,
+        )
+
+        from rentivo.jobs.handlers.recibo import handle_recibo_render
+
+        handle_recibo_render({"bill_id": 42, "_job_ulid": LEGACY_JOB_ULID})
+
+        service.store_recibo.assert_called_once_with(
+            bill,
+            billing,
+            render_operation_id=LEGACY_JOB_ULID,
+        )
+
+
+def test_handler_rejects_legacy_payload_without_persistent_job_identity():
+    p = _patches()
+    with (
+        p["engine"] as engine_mock,
+        p["bill_repo"] as bill_repo_cls,
+        p["billing_repo"] as billing_repo_cls,
+        p["user_repo"],
+        p["org_repo"],
+        p["theme_repo"],
+        p["storage"],
+        p["service_cls"] as svc_cls,
+    ):
+        bill = MagicMock(id=42, billing_id=7, status=BillStatus.PAID.value)
+        billing = MagicMock(id=7)
+        _wire(
+            {
+                "engine_mock": engine_mock,
+                "bill_repo_cls": bill_repo_cls,
+                "billing_repo_cls": billing_repo_cls,
+                "svc_cls": svc_cls,
+            },
+            bill,
+            billing,
+        )
+
+        from rentivo.jobs.handlers.recibo import handle_recibo_render
+
+        with pytest.raises(PermanentJobError, match="persistent job identity"):
+            handle_recibo_render({"bill_id": 42})
 
 
 def test_handler_dead_letters_when_bill_missing():

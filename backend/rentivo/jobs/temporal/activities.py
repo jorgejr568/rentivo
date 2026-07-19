@@ -37,6 +37,13 @@ def run_registered_handler(job_type: str, payload: dict) -> None:
         raise ApplicationError(str(exc), type=PERMANENT_ERROR_TYPE, non_retryable=True) from exc
 
 
+def _with_persistent_job_identity(payload: dict) -> dict:
+    workflow_id = activity.info().workflow_id
+    if not workflow_id.startswith("job-"):
+        return payload
+    return {**payload, "_job_ulid": workflow_id.removeprefix("job-")}
+
+
 # ---- Per-job-type activities ----------------------------------------------
 
 
@@ -52,12 +59,12 @@ def communication_send_activity(payload: dict) -> None:
 
 @activity.defn(name="pdf.render")
 def pdf_render_activity(payload: dict) -> None:
-    run_registered_handler("pdf.render", payload)
+    run_registered_handler("pdf.render", _with_persistent_job_identity(payload))
 
 
 @activity.defn(name="recibo.render")
 def recibo_render_activity(payload: dict) -> None:
-    run_registered_handler("recibo.render", payload)
+    run_registered_handler("recibo.render", _with_persistent_job_identity(payload))
 
 
 @activity.defn(name="s3.delete")

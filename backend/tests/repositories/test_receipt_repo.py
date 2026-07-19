@@ -1,12 +1,13 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import Connection
+from sqlalchemy import Connection, text
 
 from rentivo.models.receipt import Receipt
 from rentivo.repositories.sqlalchemy import (
     SQLAlchemyBillingRepository,
     SQLAlchemyBillRepository,
+    SQLAlchemyReceiptRepository,
 )
 from tests.conftest import _sample_bill, _sample_billing
 
@@ -125,6 +126,60 @@ class TestReceiptRepoCRUD:
         receipt_repo.delete(created.id)
         assert receipt_repo.get_by_id(created.id) is None
 
+    def test_delete_for_render_operation_requires_current_bill_ownership(
+        self,
+        receipt_repo,
+        billing_with_bill,
+        db_connection,
+        encryption,
+    ):
+        _, bill = billing_with_bill
+        bill_repo = SQLAlchemyBillRepository(db_connection, encryption)
+        created = receipt_repo.create(
+            Receipt(
+                bill_id=bill.id,
+                filename="guarded.pdf",
+                storage_key="guarded.pdf",
+                content_type="application/pdf",
+                file_size=50,
+            )
+        )
+        operation_a = "01JRENDEROPERATION000000001"
+        operation_b = "01JRENDEROPERATION000000002"
+        bill_repo.begin_pdf_render(bill.id, operation_a)
+        bill_repo.begin_pdf_render(bill.id, operation_b)
+
+        assert receipt_repo.delete_for_render_operation(created.id, bill.id, operation_a) is False
+        assert receipt_repo.get_by_id(created.id) == created
+
+        assert receipt_repo.delete_for_render_operation(created.id, bill.id, operation_b) is True
+        assert receipt_repo.get_by_id(created.id) is None
+
+    def test_delete_for_render_operation_rolls_back_when_receipt_is_missing(
+        self,
+        receipt_repo,
+        billing_with_bill,
+        db_connection,
+        encryption,
+    ):
+        _, bill = billing_with_bill
+        bill_repo = SQLAlchemyBillRepository(db_connection, encryption)
+        operation_id = "01JRENDEROPERATION000000001"
+        bill_repo.begin_pdf_render(bill.id, operation_id)
+
+        assert receipt_repo.delete_for_render_operation(9999, bill.id, operation_id) is False
+        assert bill_repo.get_pdf_render_state(bill.id)[0] == operation_id
+
+    def test_delete_for_render_operation_rolls_back_repository_error(self, encryption):
+        conn = MagicMock()
+        conn.execute.side_effect = RuntimeError("database failed")
+        repo = SQLAlchemyReceiptRepository(conn, encryption)
+
+        with pytest.raises(RuntimeError, match="database failed"):
+            repo.delete_for_render_operation(1, 2, "operation")
+
+        conn.rollback.assert_called_once_with()
+
     def test_delete_many_is_atomic_batch(self, receipt_repo, billing_with_bill):
         _, bill = billing_with_bill
         receipts = [
@@ -144,6 +199,144 @@ class TestReceiptRepoCRUD:
         assert receipt_repo.list_by_bill(bill.id) == []
         assert receipt_repo.delete_many([]) == 0
 
+    def test_restore_after_failed_render_restores_receipt_and_bill_idempotently(
+        self,
+        receipt_repo,
+        billing_with_bill,
+        db_connection,
+        encryption,
+    ):
+        _, bill = billing_with_bill
+        bill_repo = SQLAlchemyBillRepository(db_connection, encryption)
+        created = receipt_repo.create(
+            Receipt(
+                bill_id=bill.id,
+                filename="restore.pdf",
+                storage_key="restore.pdf",
+                content_type="application/pdf",
+                file_size=50,
+                sort_order=4,
+            )
+        )
+        bill_repo.update_pdf_path(bill.id, "old.pdf")
+        bill_repo.update_pdf_render_status(bill.id, "succeeded")
+        receipt_repo.delete(created.id)
+        operation_id = "01JRENDEROPERATION000000001"
+        bill_repo.begin_pdf_render(bill.id, operation_id)
+
+        assert receipt_repo.restore_after_failed_render(created, operation_id, "old.pdf", "succeeded") is True
+        assert receipt_repo.restore_after_failed_render(created, operation_id, "old.pdf", "succeeded") is True
+
+        restored = receipt_repo.get_by_id(created.id)
+        assert restored == created
+        assert bill_repo.get_pdf_render_state(bill.id) == (None, "succeeded", "old.pdf")
+
+    def test_restore_after_failed_render_rejects_foreign_operation(
+        self,
+        receipt_repo,
+        billing_with_bill,
+        db_connection,
+        encryption,
+    ):
+        _, bill = billing_with_bill
+        bill_repo = SQLAlchemyBillRepository(db_connection, encryption)
+        created = receipt_repo.create(Receipt(bill_id=bill.id, filename="restore.pdf"))
+        receipt_repo.delete(created.id)
+        bill_repo.begin_pdf_render(bill.id, "01JRENDEROPERATION000000002")
+
+        assert (
+            receipt_repo.restore_after_failed_render(
+                created,
+                "01JRENDEROPERATION000000001",
+                "old.pdf",
+                "succeeded",
+            )
+            is False
+        )
+        assert receipt_repo.get_by_id(created.id) is None
+        assert bill_repo.get_pdf_render_state(bill.id)[0] == "01JRENDEROPERATION000000002"
+
+    def test_restore_after_failed_render_rejects_missing_receipt_id(self, receipt_repo):
+        with pytest.raises(ValueError, match="without an id"):
+            receipt_repo.restore_after_failed_render(
+                Receipt(bill_id=1, filename="restore.pdf"),
+                "operation",
+                "old.pdf",
+                "succeeded",
+            )
+
+    def test_restore_after_failed_render_returns_false_for_missing_bill(self, receipt_repo):
+        assert (
+            receipt_repo.restore_after_failed_render(
+                Receipt(id=9999, bill_id=9999, filename="restore.pdf"),
+                "operation",
+                "old.pdf",
+                "succeeded",
+            )
+            is False
+        )
+
+    def test_restore_after_failed_render_rejects_existing_receipt(
+        self,
+        receipt_repo,
+        billing_with_bill,
+        db_connection,
+        encryption,
+    ):
+        _, bill = billing_with_bill
+        bill_repo = SQLAlchemyBillRepository(db_connection, encryption)
+        created = receipt_repo.create(Receipt(bill_id=bill.id, filename="restore.pdf"))
+        bill_repo.begin_pdf_render(bill.id, "operation")
+
+        assert (
+            receipt_repo.restore_after_failed_render(
+                created,
+                "operation",
+                "old.pdf",
+                "succeeded",
+            )
+            is False
+        )
+
+    def test_restore_after_failed_render_rolls_back_lost_update(self, encryption):
+        conn = MagicMock()
+        conn.dialect.name = "sqlite"
+        selected = MagicMock()
+        selected.mappings.return_value.fetchone.return_value = {
+            "pdf_path": "old.pdf",
+            "pdf_render_status": "pending",
+            "pdf_render_operation_id": "operation",
+        }
+        missing_receipt = MagicMock()
+        missing_receipt.mappings.return_value.fetchone.return_value = None
+        conn.execute.side_effect = [
+            selected,
+            missing_receipt,
+            MagicMock(),
+            MagicMock(rowcount=0),
+        ]
+        repo = SQLAlchemyReceiptRepository(conn, encryption)
+        receipt = Receipt(id=1, uuid="receipt", bill_id=1, filename="restore.pdf")
+
+        assert repo.restore_after_failed_render(receipt, "operation", "old.pdf", "succeeded") is False
+        conn.rollback.assert_called_once_with()
+
+    def test_restore_after_failed_render_rolls_back_repository_error(self, encryption):
+        conn = MagicMock()
+        conn.dialect.name = "sqlite"
+        conn.execute.side_effect = RuntimeError("database failed")
+        repo = SQLAlchemyReceiptRepository(conn, encryption)
+
+        with pytest.raises(RuntimeError, match="database failed"):
+            repo.restore_after_failed_render(
+                Receipt(id=1, bill_id=1, filename="restore.pdf"),
+                "operation",
+                "old.pdf",
+                "succeeded",
+            )
+
+        conn.rollback.assert_called_once_with()
+
     def test_create_runtime_error(self, receipt_repo, billing_with_bill):
         _, bill = billing_with_bill
         receipt = Receipt(
@@ -156,6 +349,30 @@ class TestReceiptRepoCRUD:
         with patch.object(receipt_repo, "get_by_uuid", return_value=None):
             with pytest.raises(RuntimeError, match="Failed to retrieve receipt after create"):
                 receipt_repo.create(receipt)
+
+    def test_create_rolls_back_insert_when_hydration_fails(
+        self,
+        db_connection,
+        encryption,
+        billing_with_bill,
+    ):
+        _, bill = billing_with_bill
+        failing_encryption = MagicMock(wraps=encryption)
+        failing_encryption.decrypt_many.side_effect = RuntimeError("decrypt failed")
+        repo = SQLAlchemyReceiptRepository(db_connection, failing_encryption)
+
+        with pytest.raises(RuntimeError, match="decrypt failed"):
+            repo.create(
+                Receipt(
+                    bill_id=bill.id,
+                    filename="fail.pdf",
+                    storage_key="k.pdf",
+                    content_type="application/pdf",
+                    file_size=10,
+                )
+            )
+
+        assert db_connection.execute(text("SELECT COUNT(*) FROM receipts")).scalar_one() == 0
 
     def test_update_sort_orders(self, receipt_repo, billing_with_bill):
         _, bill = billing_with_bill

@@ -21,6 +21,7 @@ import sys
 
 from rich.console import Console
 from rich.table import Table
+from ulid import ULID
 
 from rentivo.db import get_connection, initialize_db
 from rentivo.jobs.factory import get_job_backend
@@ -115,11 +116,21 @@ def main() -> None:
             console.print(f"  [yellow]✗[/yellow] {billing.name} - {bill.reference_month}: PIX não configurado")
             continue
 
-        job = job_service.enqueue(
-            "pdf.render",
-            {"bill_id": bill.id},
-            source="cli",
-        )
+        assert bill.id is not None
+        previous_render_status = bill.pdf_render_status
+        render_operation_id = str(ULID())
+        bill_repo.begin_pdf_render(bill.id, render_operation_id)
+        bill.pdf_render_status = "pending"
+        try:
+            job = job_service.enqueue(
+                "pdf.render",
+                {"bill_id": bill.id, "render_operation_id": render_operation_id},
+                source="cli",
+            )
+        except Exception:
+            if bill_repo.finish_pdf_render(bill.id, render_operation_id, previous_render_status):
+                bill.pdf_render_status = previous_render_status
+            raise
         enqueued += 1
         console.print(f"  [green]✓[/green] {billing.name} - {bill.reference_month} → enqueued ulid={job.ulid}")
 

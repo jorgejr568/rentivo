@@ -152,6 +152,7 @@ class TestBillAuditLogs:
         from unittest.mock import patch
 
         billing = create_billing_in_db(test_engine)
+        variable_item = next(item for item in billing.items if item.item_type.value == "variable")
 
         with patch("legacy_web.deps.get_storage") as mock_storage:
             from rentivo.storage.local import LocalStorage
@@ -165,6 +166,7 @@ class TestBillAuditLogs:
                     "reference_month": "2025-03",
                     "due_date": "10/04/2025",
                     "notes": "test",
+                    f"variable_{variable_item.uuid}": "50,00",
                 },
                 follow_redirects=False,
             )

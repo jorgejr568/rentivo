@@ -15,6 +15,8 @@ class TestBillingRepoCRUD:
         assert created.uuid != ""
         assert created.name == "Apt 101"
         assert len(created.items) == 2
+        assert len({item.uuid for item in created.items}) == 2
+        assert all(len(item.uuid) == 26 for item in created.items)
         assert created.created_at is not None
 
     def test_get_by_id(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
@@ -77,15 +79,17 @@ class TestBillingRepoCRUD:
 
     def test_update(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
         created = billing_repo.create(sample_billing())
+        preserved_uuid = created.items[0].uuid
         created.name = "Apt 102 Updated"
         created.items = [
-            BillingItem(description="New item", amount=50000, item_type=ItemType.FIXED),
+            BillingItem(uuid=preserved_uuid, description="New item", amount=50000, item_type=ItemType.FIXED),
         ]
         updated = billing_repo.update(created)
 
         assert updated.name == "Apt 102 Updated"
         assert len(updated.items) == 1
         assert updated.items[0].description == "New item"
+        assert updated.items[0].uuid == preserved_uuid
 
     def test_soft_delete(self, billing_repo: SQLAlchemyBillingRepository, sample_billing):
         created = billing_repo.create(sample_billing())
@@ -329,8 +333,8 @@ class TestBillingRepoEncryption:
         ).scalar_one()
         db_connection.execute(
             text(
-                "INSERT INTO billing_items (billing_id, description, amount, item_type, sort_order) "
-                "VALUES (:bid, 'legacy item plaintext', 100, 'fixed', 0)"
+                "INSERT INTO billing_items (billing_id, uuid, description, amount, item_type, sort_order) "
+                "VALUES (:bid, '01J00000000000000000000020', 'legacy item plaintext', 100, 'fixed', 0)"
             ),
             {"bid": billing_id},
         )
