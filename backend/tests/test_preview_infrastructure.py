@@ -175,6 +175,47 @@ def test_preview_ci_is_consolidated_under_existing_required_gate():
     }
 
 
+def test_compose_ci_renders_the_promoted_production_and_development_topologies():
+    workflow = _yaml(PR_WORKFLOW)
+    job = workflow["jobs"]["compose-config"]
+    steps = {step["name"]: step for step in job["steps"] if "name" in step}
+
+    assert job["env"] == {
+        "MYSQL_DATABASE": "rentivo_compose_ci",
+        "MYSQL_PASSWORD": "ci-only-database-password",
+        "MYSQL_ROOT_PASSWORD": "ci-only-root-password",
+        "MYSQL_USER": "rentivo_compose_ci",
+        "RENTIVO_APP_ENV_FILE": "${{ runner.temp }}/rentivo-compose-app.env",
+        "RENTIVO_PUBLIC_ORIGIN": "https://rentivo.example.test",
+        "RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR": "127.0.0.1/32",
+        "RENTIVO_WEBAUTHN_RP_ID": "rentivo.example.test",
+    }
+    disposable_environment = steps["Create disposable application environment"]["run"]
+    assert "umask 077" in disposable_environment
+    for variable in (
+        "RENTIVO_DB_URL",
+        "RENTIVO_SECRET_KEY",
+        "RENTIVO_EMAIL_BACKEND",
+        "RENTIVO_SES_REGION",
+        "RENTIVO_SES_FROM_EMAIL",
+        "RENTIVO_STORAGE_BACKEND",
+        "RENTIVO_S3_BUCKET",
+        "RENTIVO_S3_REGION",
+        "RENTIVO_ENCRYPTION_BACKEND",
+        "RENTIVO_KMS_KEY_ID",
+        "RENTIVO_KMS_REGION",
+        "RENTIVO_LOG_JSON",
+    ):
+        assert f"'{variable}=" in disposable_environment
+    assert "change-me-in-production" not in disposable_environment
+    assert steps["Validate production Compose"]["run"] == "docker compose -f docker-compose.yml config --quiet"
+    assert steps["Validate development Compose"]["run"] == (
+        "docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet"
+    )
+    assert "docker-compose.next" not in PR_WORKFLOW.read_text()
+    assert "compose-config" in workflow["jobs"]["all-checks-pass"]["needs"]
+
+
 def test_api_runtime_source_and_virtualenv_are_read_only_to_appuser():
     dockerfile = API_DOCKERFILE.read_text()
 

@@ -200,26 +200,43 @@ jobs:
         run: uv run --project backend --no-sync alembic -c backend/alembic.ini current
 
   compose-config:
-    name: preview Compose configuration
+    name: promoted Compose configuration
     runs-on: ubuntu-latest
+    env:
+      MYSQL_DATABASE: rentivo_compose_ci
+      MYSQL_PASSWORD: ci-only-database-password
+      MYSQL_ROOT_PASSWORD: ci-only-root-password
+      MYSQL_USER: rentivo_compose_ci
+      RENTIVO_APP_ENV_FILE: ${{ runner.temp }}/rentivo-compose-app.env
+      RENTIVO_PUBLIC_ORIGIN: https://rentivo.example.test
+      RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: 127.0.0.1/32
+      RENTIVO_WEBAUTHN_RP_ID: rentivo.example.test
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate local preview Compose
-        run: docker compose -f docker-compose.next.yml config --quiet
+      - name: Create disposable application environment
+        run: |
+          umask 077
+          printf '%s\n' \
+            'RENTIVO_DB_URL=mysql+pymysql://rentivo_compose_ci:ci-only-database-password@db:3306/rentivo_compose_ci' \
+            'RENTIVO_SECRET_KEY=ci-only-compose-secret-key-replace-after-job' \
+            'RENTIVO_EMAIL_BACKEND=ses' \
+            'RENTIVO_SES_REGION=us-east-1' \
+            'RENTIVO_SES_FROM_EMAIL=noreply@rentivo.example.test' \
+            'RENTIVO_STORAGE_BACKEND=s3' \
+            'RENTIVO_S3_BUCKET=rentivo-compose-ci' \
+            'RENTIVO_S3_REGION=us-east-1' \
+            'RENTIVO_ENCRYPTION_BACKEND=kms' \
+            'RENTIVO_KMS_KEY_ID=alias/rentivo-compose-ci' \
+            'RENTIVO_KMS_REGION=us-east-1' \
+            'RENTIVO_LOG_JSON=true' \
+            > "$RENTIVO_APP_ENV_FILE"
 
-      - name: Validate remote preview Compose
-        env:
-          MYSQL_DATABASE: rentivo_ci
-          MYSQL_PASSWORD: ci-only-database-password
-          MYSQL_ROOT_PASSWORD: ci-only-root-password
-          MYSQL_USER: rentivo_ci
-          RENTIVO_APP_ENV_FILE: /dev/null
-          RENTIVO_PREVIEW_ORIGIN: https://preview.example.test
-          RENTIVO_PREVIEW_PORT: 8080
-          RENTIVO_WEBAUTHN_RP_ID: preview.example.test
-          RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: 172.30.0.1/32
-        run: docker compose -f docker-compose.next.yml -f docker-compose.next.remote.yml config --quiet
+      - name: Validate production Compose
+        run: docker compose -f docker-compose.yml config --quiet
+
+      - name: Validate development Compose
+        run: docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
 
   preview-images:
     name: preview image (${{ matrix.name }})
