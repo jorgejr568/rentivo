@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.
 
 ## [Unreleased]
 
+## [5.0.0] - 2026-07-19
+### Added
+- API keys with `rntv-v1-` token formatting, hashed secret storage, safe prefix/suffix references, explicit scopes, selectable organization grants, revocation, expiration, and last-used tracking.
+- Browser authentication now uses hidden API keys as login tokens. Login tokens expire after one day by default, are carried by secure cookies, and are revoked on logout; integration keys remain visible and independently managed.
+- React/Vite routes for the public landing page and the complete authenticated billing, invoice, organization, configuration, API-key, and security workflows. Fresh accounts render intentional empty states throughout the application.
+- Dependency-aware API readiness, public health aliases, crawler metadata, compatibility downloads/redirects, a MariaDB-backed production-stack gate, and an operator release/recovery runbook.
+
+### Changed
+- **BREAKING:** Production is replaced in one deployment by the React/Vite frontend, versioned FastAPI API, background worker, MariaDB, one-shot Alembic migration, and Nginx proxy. The default Compose and deployment paths now describe only this topology.
+- **BREAKING:** Existing browser sessions require one fresh login after deployment. The first replacement session check expires the obsolete cookie; no user credentials or organization memberships are removed.
+- Organization-required MFA is enforced on every login-token request, with only the setup, confirmation, recovery, authentication, and logout routes needed to complete the flow exempted.
+- API authorization is consistently the intersection of key scopes, API-key organization grants, and the user's current organization membership/role.
+- Release artifacts are tied to one immutable source SHA and migration runs before API and worker startup.
+
+### Removed
+- **BREAKING:** The server-rendered application, Jinja browser templates, copied static assets, old route package, old container image, old Compose service, and their tests. There is no legacy-application rollback path; recovery redeploys the previous React/FastAPI release, applies a forward fix, or restores a verified backup.
+
 ## [4.0.0] - 2026-06-14
 ### Removed
 - **BREAKING:** The interactive `questionary`/`rich` CLI (`rentivo/cli/`), the `python -m rentivo` entrypoint, the `rentivo` console script, the CLI Docker image (`Dockerfile.cli`) and compose service, and the related `make` targets (`run`, `build-cli`/`up-cli`/`down-cli`/`rentivo`/`shell-cli`, `compose-rentivo`, `compose-shell-cli`). All functionality remains available through the web UI. The `questionary` dependency and the `healthcheck.py` port-2019 server are gone; `make compose-regenerate` now runs in the web container.

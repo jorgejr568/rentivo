@@ -1,15 +1,16 @@
-# Observability (OpenTelemetry Tracing)
+# Observability
 
-Rentivo emits OpenTelemetry **traces** covering each request/response, every
-background job, and the layers underneath — services, repositories, every SQL
-statement, the encryption/storage/email backends, and auth internals (including
-the password-hash compare). Tracing is **fully optional**: off by default, with
-no runtime dependency on a collector.
+Rentivo emits structured application logs and optional OpenTelemetry **traces**
+covering FastAPI requests, background jobs, and the layers underneath: services,
+repositories, SQL statements, encryption/storage/email backends, and auth
+internals. FastAPI attaches `X-Request-ID` to responses and includes the same ID
+in structured request context. Tracing is off by default and has no runtime
+dependency on a collector.
 
 A single authenticated read fans out into dozens of nested spans, e.g.:
 
 ```
-HTTP POST /login
+HTTP POST /api/v1/auth/login
 ├─ user.authenticate
 │  ├─ user_repo.get_by_email → SELECT → base64.decrypt (×N)
 │  └─ auth.verify_password            (bcrypt compare)
@@ -20,7 +21,7 @@ HTTP POST /login
 
 ## Quick start
 
-### Docker compose (Jaeger + the app)
+### Compose topology (Jaeger + API and worker)
 
 The runtime images bundle the `otel` extra, so the containerized app/worker can
 export traces with just an env flag.
@@ -30,16 +31,17 @@ make jaeger-up                 # start Jaeger all-in-one (compose profile)
 # in .env:
 #   RENTIVO_OTEL_ENABLED=true
 #   RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318   # compose hostname
-docker compose up -d --build rentivo worker                  # recreate to pick up .env
+docker compose up -d --build api worker                       # recreate to pick up .env
 ```
 
 ### Host process
 
 ```bash
-uv sync --extra otel
+uv sync --project backend --extra otel
 make jaeger-up
 RENTIVO_OTEL_ENABLED=true RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 \
-  make web-run
+  uv run --project backend uvicorn rentivo.api.app:create_app \
+    --factory --host 127.0.0.1 --port 8001
 ```
 
 Open the UI at http://localhost:16686, pick service `rentivo`, and find a trace.
@@ -49,8 +51,8 @@ Open the UI at http://localhost:16686, pick service `rentivo`, and find a trace.
 - One module, `backend/rentivo/observability/tracing.py`, owns every `opentelemetry`
   import behind a `try/except ImportError`. If the `otel` extra is absent or
   `RENTIVO_OTEL_ENABLED=false`, the tracer is `None` and every helper is a
-  no-op — zero network calls, zero cost beyond a `None` check.
-- `configure_tracing()` runs once at startup (web lifespan, worker boot)
+  no-op: zero network calls and no cost beyond a `None` check.
+- `configure_tracing()` runs once at startup (FastAPI lifespan, worker boot)
   and installs an OTLP/HTTP exporter (`BatchSpanProcessor`).
 - The pure-ASGI `TracingMiddleware` (outermost) opens the root `HTTP <method>`
   span. `@traced` functions and SQLAlchemy query spans nest under it automatically
@@ -157,6 +159,63 @@ operation names, counts, sizes, backend names. **Never** put plaintext, emails,
 PIX fields, receipt filenames, or message bodies into a span. SQLAlchemy spans
 record the statement text with **bound parameters omitted**, so literal PII never
 reaches a span. Span *names* are static strings — no arguments are captured.
+
+## Runtime topology and profiles
+
+The default stack is `db`, one-shot `migrate`, `api`, `worker`, `frontend`, and
+`proxy`. Nginx exposes `127.0.0.1:8080`; API, worker, and frontend stay on
+internal networks. The API provides:
+
+- `/health` and `/api/v1/health` for JSON liveness;
+- `/api/v1/ready` for dependency-aware database readiness;
+- `X-Request-ID` response correlation and problem-details request IDs.
+
+The Nginx health check uses API readiness so a frontend fallback cannot produce
+a false positive. The `observability` Compose profile adds Jaeger only when
+requested:
+
+```bash
+make jaeger-up      # UI 16686; OTLP/HTTP 4318; OTLP/gRPC 4317
+make jaeger-down
+```
+
+The separate `temporal` profile adds a development Temporal cluster and UI:
+
+```bash
+make temporal-up    # frontend 7233; UI 8233
+make temporal-down
+```
+
+Inside Compose, exporters address Jaeger at `http://jaeger:4318` and Temporal at
+`temporal:7233`. Host processes use `localhost` on the published ports.
+
+## Production signals
+
+At minimum, production dashboards and alerts must cover:
+
+| Area | Signals |
+|---|---|
+| Edge/API | readiness, request rate, 4xx/5xx rate, p50/p95/p99 latency, request IDs |
+| Frontend | runtime errors, failed navigation/API calls, Core Web Vitals |
+| Worker | heartbeat, pending/running/failed jobs, oldest queue age, attempts |
+| Temporal | pollers, workflow failures, schedule-to-start latency (when enabled) |
+| MariaDB | availability, connections, locks, slow queries, disk/capacity |
+| Dependencies | KMS, SES, S3, Redis, and OTLP error/latency rates |
+| Release | immutable SHA/image digests, migration revision, rollout timestamps |
+
+The production release baseline is: readiness must not fail twice or remain
+down for 60 seconds; sustained 5xx above 1% for five minutes or above 5% for one
+minute aborts rollout; p95 latency over twice baseline for five minutes aborts;
+worker heartbeat missing for two minutes, stale running work, or queue age over
+five minutes requires maintenance and investigation. See the
+[production release runbook](runbooks/production-release.md) for the complete
+go/abort and recovery procedure.
+
+Logs and traces must carry the release SHA or immutable image identity through
+deployment metadata. Use request IDs to correlate browser reports, Nginx access
+logs, FastAPI logs, job audit events, and traces. Alerting must not rely only on
+container health: green health endpoints do not prove auth, invoice, storage,
+email, or worker workflows are functioning.
 
 ## Configuration
 

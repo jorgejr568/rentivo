@@ -1,7 +1,7 @@
 <h1 align="center">Rentivo</h1>
 
 <p align="center">
-  Apartment billing management with PDF invoice generation — <strong>Web UI</strong>
+  Apartment billing management with PDF invoice generation
 </p>
 
 <p align="center">
@@ -10,231 +10,183 @@
   <a href="https://github.com/jorgejr568/rentivo/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-GPL--3.0-blue" alt="GPL-3.0"></a>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white" alt="FastAPI">
-  <img src="https://img.shields.io/badge/MariaDB-11-003545?logo=mariadb&logoColor=white" alt="MariaDB">
-  <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker">
-  <img src="https://img.shields.io/badge/SQLAlchemy-Core-D71F00?logo=sqlalchemy&logoColor=white" alt="SQLAlchemy">
-</p>
-
----
-
-Built for Brazilian landlords — all tenant-facing output is in **PT-BR** with **BRL (R$)** currency and **PIX QR codes** on invoices.
+Built for Brazilian landlords: tenant-facing output is in **PT-BR**, with
+**BRL (R$)** currency and PIX QR codes on invoices.
 
 ## Features
 
-- Recurring billing templates with multiple line items; one-click monthly bill generation
-- Professional PDF invoices with PIX QR codes; receipt attachments (PDF/JPG/PNG) merged into the invoice
-- Production **legacy web UI** plus a preview React/Vite frontend backed by the versioned FastAPI API
-- Login with sessions, **TOTP MFA and passkeys (WebAuthn)**, password recovery by email
-- **Organizations** with role-based access (owner / admin / manager / viewer) and email invites
-- Transactional emails (AWS SES, or local `.eml` files in dev)
-- **Background job worker** for emails, PDF rendering, and storage cleanup
-- Field-level **encryption of PII at rest** (AWS KMS) with an email blind index
-- Comprehensive **audit logging** with PII redaction
-- Invoice storage on local disk or **S3** with presigned URLs
-- Optional bot protection (Cloudflare Turnstile) and analytics (Google Tag Manager)
-- MariaDB via SQLAlchemy Core; schema migrations with Alembic; Docker-ready
+- Recurring billing templates and one-click monthly bill generation
+- PDF invoices, PIX QR codes, receipt attachments, and payment receipts
+- React/Vite browser application backed by the versioned FastAPI API
+- API-key authentication with scopes and per-organization grants
+- One-day hidden login keys for browser sessions, revoked on logout
+- TOTP MFA, passkeys (WebAuthn), Google login, and password recovery
+- Organizations with owner/admin/manager/viewer roles and email invites
+- Background jobs for email, PDF rendering, exports, and storage cleanup
+- KMS field encryption, audit logging with PII redaction, S3, and SES
+- MariaDB, Alembic migrations, Nginx edge proxy, and optional Temporal/OTel
 
-## Quick start (local Python)
+## Production topology
 
-```bash
-# Prerequisite: install uv — https://docs.astral.sh/uv/  (e.g. `brew install uv`)
-# uv provisions Python 3.14 automatically; no system Python required.
+The default Compose manifest is the production service topology:
 
-make install              # uv sync + install git hooks
-cp .env.example .env      # configure settings
-docker compose up -d db   # start MariaDB
-make migrate              # run database migrations
-make web-createuser       # create a login user
-make web-run              # web UI at http://localhost:8000
+```text
+MariaDB -> one-shot Alembic migration -> FastAPI API + worker
+                                      -> React static frontend
+                                      -> Nginx edge proxy
 ```
 
-Also available: `make worker` (background job worker), `make seed` (demo data).
+Nginx exposes the application on `127.0.0.1:8080` by default. It sends
+`/api/v1` and public machine endpoints to FastAPI and browser routes to React.
+API and worker start only after migration succeeds; Nginx waits for API
+readiness and frontend health.
 
-## Quick start (Docker Compose only)
+## Local development
 
-No local Python needed — web and worker run in containers:
+Prerequisites: [uv](https://docs.astral.sh/uv/), Node.js 22+, npm, Docker, and
+Docker Compose.
 
 ```bash
-cp .env.example .env      # required: compose reads it via env_file
-make compose-dev          # build + start db, web, worker (web with live reload)
-make compose-migrate      # run database migrations
-make compose-createuser   # create a login user
+git clone https://github.com/jorgejr568/rentivo.git
+cd rentivo
+cp .env.example .env
+make install
+make compose-dev
 ```
 
-Open http://localhost:8000. Source edits under `backend/rentivo/` and `backend/legacy_web/` reload automatically; after editing job handlers run `docker compose restart worker`. Use `make compose-up` instead for an immutable (non-dev) stack.
+Open <http://localhost:8080>. The development override uses the same services
+as production, bind-mounts backend and frontend source, enables Uvicorn/Vite
+reload, and uses `.env.db.example` for local MariaDB provisioning. Restart the
+worker after changing handlers because it does not auto-reload:
 
-See [docs/development.md](docs/development.md) for the full developer guide.
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker
+```
 
-## Replacement preview
+For split-process development, start MariaDB with `docker compose up -d db`, run
+`make migrate`, then run `make frontend-dev`, the FastAPI Uvicorn entrypoint,
+and `make worker` in separate terminals. See the
+[development guide](docs/development.md) for exact commands.
 
-The React/FastAPI replacement remains a non-production preview; the default Compose and deployment paths continue to run the legacy app. After preparing the separate application and database environment files, use `make preview-config` and `make preview-up`, then open http://localhost:8080. `make preview-stop` stops only replacement traffic.
+## Production stack commands
 
-See the [developer guide](docs/development.md#reactfrontend-development) for daily commands and the [preview runbook](docs/runbooks/frontend-backend-preview.md) for environment setup, parity fixtures, remote staging, and rollback.
+Production uses separate database interpolation and application environment
+files. Start from `.env.db.example` and `.env.example`, store real values in the
+deployment secret manager, and validate before rollout.
+
+| Command | Purpose |
+|---|---|
+| `make stack-config` | Validate the production Compose configuration |
+| `make stack-build` | Build migration, API, worker, and frontend images |
+| `make stack-migrate` | Run only the one-shot migration job |
+| `make stack-up` | Build and start the complete dependency-ordered stack |
+| `make stack-stop` | Stop proxy, frontend, API, and worker; keep DB running |
+
+Override the secret-managed file locations when needed:
+
+```bash
+make stack-config \
+  RENTIVO_DB_ENV_FILE=/etc/rentivo/db.env \
+  RENTIVO_APP_ENV_FILE=/etc/rentivo/app.env
+```
+
+Follow the [production release runbook](docs/runbooks/production-release.md)
+for immutable artifacts, backup/restore verification, worker drain, migration,
+smoke checks, abort thresholds, and recovery.
+
+## Development and verification commands
+
+| Command | Purpose |
+|---|---|
+| `make frontend-install` | Install locked frontend dependencies |
+| `make frontend-dev` / `frontend-build` | Run Vite / build the production bundle |
+| `make frontend-test-cov` | Run Vitest with 100% coverage thresholds |
+| `make worker` | Run the configured background-job worker locally |
+| `make migrate` | Upgrade a host-connected database to Alembic head |
+| `make seed` | Seed local demonstration data |
+| `make lint` / `fmt` | Check / fix Python formatting and lint |
+| `make test` / `test-cov` | Run backend tests / explicit coverage report |
+| `make openapi-export` / `openapi-generate` | Refresh API snapshot / generated types |
+| `make openapi-check` | Verify committed OpenAPI artifacts are current |
+| `make e2e` / `e2e-update` | Run Playwright / update reviewed baselines |
+| `make jaeger-up` / `jaeger-down` | Start / stop the observability profile |
+| `make temporal-up` / `temporal-down` | Start / stop the Temporal profile |
 
 ## Configuration
 
-Copy `.env.example` to `.env`. All app variables use the `RENTIVO_` prefix. The most important ones:
+All application variables use the `RENTIVO_` prefix. Copy `.env.example` for
+local development; Compose database provisioning uses `.env.db.example`
+locally and a separate `.env.db` in production.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RENTIVO_DB_URL` | `...@localhost:3306/rentivo` | Database URL for host-side commands (compose containers are pinned to the `db` service automatically) |
-| `RENTIVO_SECRET_KEY` | `change-me-in-production` | Session signing key — set a real value in production |
-| `RENTIVO_STORAGE_BACKEND` | `local` | Invoice storage: `local` or `s3` |
-| `RENTIVO_EMAIL_BACKEND` | `local` | `local` (writes `.eml` to `./outbox`) or `ses` |
-| `RENTIVO_ENCRYPTION_BACKEND` | `base64` | PII encryption: `base64` (dev-only obfuscation) or `kms` |
+| Variable | Development default | Purpose |
+|---|---|---|
+| `RENTIVO_DB_URL` | MariaDB on `localhost:3306` | SQLAlchemy database URL |
+| `RENTIVO_SECRET_KEY` | development placeholder | API-key hashing/session secret |
+| `RENTIVO_PUBLIC_URL` | request-derived | Canonical public origin |
+| `RENTIVO_STORAGE_BACKEND` | `local` | `local` or `s3` invoice storage |
+| `RENTIVO_EMAIL_BACKEND` | `local` | local `.eml` or AWS SES |
+| `RENTIVO_ENCRYPTION_BACKEND` | `base64` | development obfuscation or AWS KMS |
+| `RENTIVO_JOB_BACKEND` | `database` | database polling or Temporal |
 
-**Full reference for all ~47 variables: [docs/configuration.md](docs/configuration.md)** — kept in sync with the code by a test.
-
-## Makefile reference
-
-<details>
-<summary><strong>Local development</strong></summary>
-
-| Command | Description |
-|---------|-------------|
-| `make install` | Sync dependencies into `.venv` with uv and install git hooks |
-| `make web-run` | Start the web UI (uvicorn --reload, port 8000) |
-| `make worker` | Run the background job worker |
-| `make web-createuser` | Create a web login user |
-| `make migrate` | Run pending Alembic migrations |
-| `make migrate-fresh` | ⚠️ Drop all tables and re-migrate (dev only) |
-| `make seed` | Seed the database with demo data |
-| `make test` / `make test-cov` | Run tests (parallel) / with coverage |
-| `make lint` / `make fmt` | Check / auto-fix lint and formatting |
-
-</details>
-
-<details>
-<summary><strong>React frontend, API contract, and E2E</strong></summary>
-
-| Command | Description |
-|---------|-------------|
-| `make frontend-install` / `frontend-dev` | Install locked frontend dependencies / start Vite |
-| `make frontend-build` / `frontend-test-cov` | Build the frontend / run unit tests with coverage |
-| `make openapi-export` / `openapi-generate` | Refresh the API snapshot / generated TypeScript types |
-| `make openapi-check` | Verify the committed OpenAPI snapshot and generated types are current |
-| `make e2e` / `e2e-update` | Run Playwright E2E/parity checks / update reviewed baselines |
-
-</details>
-
-<details>
-<summary><strong>Replacement preview</strong></summary>
-
-| Command | Description |
-|---------|-------------|
-| `make preview-config` / `preview-config-remote` | Validate local / remote replacement Compose configuration |
-| `make preview-build` | Build the legacy, worker, API, and frontend images used by the preview |
-| `make preview-up` | Migrate, build, and start the replacement preview beside the legacy app |
-| `make preview-stop` | Stop only the proxy, frontend, and API replacement services |
-
-</details>
-
-<details>
-<summary><strong>Maintenance scripts</strong></summary>
-
-| Command | Description |
-|---------|-------------|
-| `make regenerate-pdfs` / `-dry` | Re-render all invoice PDFs |
-| `make backfill-encryption` / `-dry` | Encrypt legacy plaintext rows (after enabling KMS) |
-| `make backfill-encryption-reset-blind-index` | Rebuild email blind index after secret-key rotation |
-| `make redact-audit-logs` / `-dry` | Redact PII from legacy audit log rows |
-
-</details>
-
-<details>
-<summary><strong>Docker Compose</strong></summary>
-
-| Command | Description |
-|---------|-------------|
-| `make compose-up` / `compose-down` | Start / stop the full stack (db, web, worker) |
-| `make compose-dev` / `compose-dev-down` | Same, with source bind mounts + web live reload |
-| `make compose-migrate` | Run migrations in the web container |
-| `make compose-createuser` | Create a login user |
-| `make compose-shell` | Bash in the web container |
-| `make compose-logs` / `compose-logs-worker` | Tail logs |
-| `make compose-regenerate` | Re-render PDFs inside the web container |
-
-</details>
-
-<details>
-<summary><strong>Docker (standalone containers)</strong></summary>
-
-| Command | Description |
-|---------|-------------|
-| `make build` / `up` / `down` / `restart` | Web image / container lifecycle |
-| `make build-worker` / `up-worker` / `down-worker` | Worker image / container lifecycle |
-| `make shell` / `shell-worker` | Bash in a container |
-| `make docker-migrate` / `docker-createuser` | Migrations / user creation in the web container |
-| `make logs` / `logs-worker` / `make health` | Logs / health check |
-
-</details>
+Production validation rejects development secrets, insecure cookies, localhost
+origins, local storage/email, and reversible encryption. See the generated
+[configuration reference](docs/configuration.md) for every setting.
 
 ## Architecture
 
-The repository is a uv workspace. Its Python backend is independently packaged under `backend/`; the React/Vite application is independently packaged under `frontend/`. The preview produces four deployables: the **legacy web app**, versioned **FastAPI API**, **job worker**, and static **frontend**. Production remains legacy-first.
+The repository is a uv workspace with independently packaged backend and
+frontend applications.
 
-```
+```text
 backend/
-  pyproject.toml       # Python project and dependency metadata
   rentivo/
-    settings.py        # Pydantic Settings (env prefix RENTIVO_)
-    db.py              # SQLAlchemy engine; schema managed by Alembic
-    models/            # Pydantic domain models (Billing, Bill, User, Organization, ...)
-    repositories/      # Abstract bases + SQLAlchemy Core implementations
-    services/          # Business logic (billing, bills, users, orgs, audit, email, ...)
-    storage/           # Local / S3 invoice storage
-    encryption/        # base64 / KMS field encryption + decryption cache
-    cache/             # Generic key-value cache (memory / redis)
-    jobs/              # Job queue: registry, worker loop, handlers (email, pdf, s3)
-    workers/           # Worker entrypoint (run locally with make worker)
-    pdf/               # fpdf2 invoice generator + pypdf receipt merger
-    scripts/           # seed, regenerate_pdfs, backfill_encryption, redact_audit_logs
-  legacy_web/
-    app.py             # FastAPI app, middleware stack, templates
-    auth.py            # Login / logout / signup / password recovery
-    routes/            # Billing, bills, security (MFA/passkeys), organizations, invites
-    templates/         # Jinja2 (PT-BR) + emails
-    static/            # CSS + JS
-  alembic/             # Migrations
-frontend/              # React/Vite/TypeScript replacement UI
-  e2e/                 # Playwright workflows and visual-parity baselines
+    api/              FastAPI app, middleware, routes, and schemas
+    models/           Pydantic domain models
+    repositories/     Abstract contracts and SQLAlchemy Core implementations
+    services/         Billing, bills, users, organizations, auth, and audit
+    jobs/             Database and Temporal drivers, registry, and handlers
+    workers/          Worker entrypoint
+    email/            Transactional templates and rendering
+    storage/          Local and S3 invoice storage
+    encryption/       Base64/KMS field encryption and caches
+    observability/    Structured logging and OpenTelemetry tracing
+    pdf/              Invoice and receipt PDF generation
+    scripts/          Maintenance and data migration commands
+  alembic/            Schema migrations
+frontend/
+  src/                React/Vite/TypeScript application
+  e2e/                Playwright workflows and reviewed visual baselines
+infra/proxy/           Nginx edge configuration
 ```
 
 ## Documentation
 
-| Doc | Contents |
-|-----|----------|
-| [docs/configuration.md](docs/configuration.md) | Every environment variable, defaults, validation rules |
-| [docs/development.md](docs/development.md) | Dev setup (local & compose-only), worker, migrations, troubleshooting |
-| [docs/runbooks/frontend-backend-preview.md](docs/runbooks/frontend-backend-preview.md) | Replacement preview setup, staging, health checks, and rollback |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Workflow, conventions, tests, PR expectations |
-| [SECURITY.md](SECURITY.md) | Vulnerability reporting |
-| [CHANGELOG.md](CHANGELOG.md) | Release history (SemVer, Keep a Changelog) |
+| Document | Contents |
+|---|---|
+| [Configuration](docs/configuration.md) | Environment variables and validation rules |
+| [Development](docs/development.md) | Local and Compose development workflows |
+| [Job drivers](docs/jobs.md) | Database and optional Temporal job execution |
+| [Observability](docs/observability.md) | Logging, traces, profiles, and production signals |
+| [Production release](docs/runbooks/production-release.md) | Big-bang deployment and recovery runbook |
+| [Contributing](CONTRIBUTING.md) | Workflow, conventions, tests, and PR expectations |
+| [Security](SECURITY.md) | Private vulnerability reporting |
+| [Changelog](CHANGELOG.md) | SemVer release history |
 
 ## Tech stack
 
 | Layer | Technology |
-|-------|-----------|
-| Language | Python 3.14+ |
-| Backend API | FastAPI + Uvicorn |
-| Frontend | React + Vite + TypeScript |
-| Templates | Jinja2 + custom CSS |
-| Database | MariaDB 11 (SQLAlchemy Core) |
+|---|---|
+| Frontend | React, Vite, TypeScript |
+| Backend API | FastAPI, Uvicorn |
+| Database | MariaDB 11, SQLAlchemy Core |
 | Migrations | Alembic |
-| PDF generation | fpdf2 + pypdf |
-| QR codes | qrcode (PIX) |
-| Auth | bcrypt + session cookies, pyotp (TOTP), webauthn (passkeys) |
-| Storage | Local filesystem / AWS S3 |
-| Email | AWS SES / local .eml files |
-| Encryption | AWS KMS (field-level PII) |
-| Caching | cachetools / Redis (optional) |
-| Logging | structlog |
-| Containers | Docker + Docker Compose |
+| Edge | Nginx |
+| Jobs | Database worker or optional Temporal |
+| Auth | API keys, secure cookies, TOTP, WebAuthn |
+| Storage / email | Local or S3 / local or SES |
+| Encryption | AWS KMS in production |
+| Observability | structlog, OpenTelemetry, Jaeger/CloudWatch |
 | CI/CD | GitHub Actions |
-| Coverage | Codecov (100% threshold) |
 
 ## License
 

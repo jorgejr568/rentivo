@@ -1,6 +1,11 @@
 # Job Drivers
 
-Rentivo runs background work — `email.send`, `communication.send`, `pdf.render`, and `s3.delete` — through a pluggable **job driver** selected by `RENTIVO_JOB_BACKEND`. State-changing web flows enqueue work; the worker process executes it. Two drivers are available: `database` (the default) and `temporal` (optional).
+Rentivo runs background work such as `email.send`, `communication.send`,
+`pdf.render`, `recibo.render`, `export.generate`, `export.send`, `s3.delete`, and
+`auth.cleanup` through a pluggable **job driver** selected by
+`RENTIVO_JOB_BACKEND`. State-changing API flows enqueue work; the worker process
+executes it. Two drivers are available: `database` (the default) and `temporal`
+(optional).
 
 ## Database driver (`database`, default)
 
@@ -104,25 +109,50 @@ Trigger an enqueue from the app (for example, request a password reset) and watc
 make temporal-down
 ```
 
-## Docker
+## Containers and Compose profiles
 
-Both backend images — legacy web (`backend/Dockerfile.legacy`) and worker (`backend/Dockerfile.worker`) — **bundle the `temporal` extra by default**, so you can switch `RENTIVO_JOB_BACKEND` between `database` and `temporal` at runtime without rebuilding. This is just a packaging convenience: the database driver is still the default and Temporal is still optional — the bundled `temporalio` is dormant until you point the app at a Temporal cluster.
+The default production topology has separate FastAPI and worker images:
 
-Each image exposes a build arg to override the extras (e.g. to slim a database-only deployment by dropping `temporal`):
-
-| Image | Build arg | Default |
+| Image | Build file | Runtime |
 |---|---|---|
-| `backend/Dockerfile.legacy` | `APP_EXTRAS` | `cache otel temporal` |
-| `backend/Dockerfile.worker` | `WORKER_EXTRAS` | `cache otel temporal` |
+| API and migration | `backend/Dockerfile.api` | FastAPI or one-shot Alembic |
+| Worker | `backend/Dockerfile.worker` | Selected job driver |
+
+Both runtime images include the optional cache, OpenTelemetry, and Temporal
+extras by default. Selecting `database` keeps Temporal dormant; selecting
+`temporal` requires a reachable cluster.
+
+The production default starts one `worker` service. Local Temporal is an
+opt-in Compose profile and is never started with the base stack:
 
 ```bash
-# Default build — Temporal-capable out of the box:
-docker build -f backend/Dockerfile.legacy -t rentivo-legacy .
-
-# Slim, database-only build (drop temporal):
-docker build -f backend/Dockerfile.legacy --build-arg APP_EXTRAS="cache otel" -t rentivo-legacy .
+make temporal-up       # temporal:7233 and UI at localhost:8233
+make temporal-down
 ```
 
-## Known limitations
+The profile is for development. Production Temporal must use a durable,
+operated cluster rather than the profile's local SQLite service.
 
-Neither the database worker nor the Temporal worker performs graceful SIGTERM draining yet: a job in flight when the process is signalled is interrupted and re-claimed/retried rather than being allowed to finish first. Job execution is idempotent-friendly (handlers re-run safely), but a graceful-drain shutdown is future work for both drivers.
+## Operations and draining
+
+Monitor the database driver by status (`pending`, `running`, `succeeded`, and
+`failed`), oldest due `pending` age, attempts, job type, and worker heartbeat.
+Alert when the heartbeat is absent for two minutes, a running claim exceeds
+`RENTIVO_JOB_WORKER_STUCK_AFTER_SECONDS`, failures increase, or oldest queue age
+exceeds five minutes. For Temporal, monitor the same job outcomes plus task-queue
+pollers, workflow failures, and schedule-to-start latency.
+
+Neither driver currently performs graceful `SIGTERM` draining. Before a
+production rollout:
+
+1. Put the application in edge maintenance mode and stop schedules/integrations
+   that can enqueue jobs.
+2. Wait for running database jobs or Temporal workflows to reach zero.
+3. Record outstanding pending/failed work and oldest queue age.
+4. Stop the worker only after the queue is quiescent.
+
+If a worker is interrupted, the database driver reclaims the job after the
+stuck threshold and Temporal retries according to workflow semantics. Handlers
+are designed for at-least-once execution, but operators must investigate any
+uncertain external side effect before resuming. The full release procedure is
+in the [production release runbook](runbooks/production-release.md).
