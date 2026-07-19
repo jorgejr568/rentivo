@@ -70,10 +70,6 @@ async def allow_mfa_setup(request: Request) -> None:
     request.state.allow_mfa_setup = True
 
 
-async def expire_legacy_session_cookie(request: Request) -> None:
-    request.state.expire_legacy_session_cookie = True
-
-
 def delete_legacy_session_cookie(response: Response) -> None:
     response.delete_cookie(
         "session",

@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import APIRouter, Depends, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -37,6 +37,7 @@ from rentivo.settings import validate_production_settings
 
 configure_logging()
 logger = structlog.get_logger(__name__)
+_SESSION_PATH = "/api/v1/auth/session"
 
 
 class _LazyServices:
@@ -104,6 +105,29 @@ class _RequestContextMiddleware:
             structlog.contextvars.clear_contextvars()
 
 
+class _LegacySessionCookieExpiryMiddleware:
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") != _SESSION_PATH:
+            await self.app(scope, receive, send)
+            return
+
+        cookie_response = Response()
+        delete_legacy_session_cookie(cookie_response)
+        cookie_headers = cookie_response.headers.getlist("set-cookie")
+
+        async def send_with_expired_cookie(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for value in cookie_headers:
+                    headers.append("set-cookie", value)
+            await send(message)
+
+        await self.app(scope, receive, send_with_expired_cookie)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     validate_production_settings()
@@ -151,13 +175,12 @@ def create_app() -> FastAPI:
     app.add_middleware(_RequestServicesMiddleware)
     app.add_middleware(_RequestContextMiddleware)
     app.add_middleware(TracingMiddleware)
+    app.add_middleware(_LegacySessionCookieExpiryMiddleware)
 
     @app.exception_handler(ProblemException)
     async def problem_exception_handler(request: Request, exc: ProblemException):
         response = problem_response(exc.problem)
         response.headers.update(exc.headers)
-        if getattr(request.state, "expire_legacy_session_cookie", False):
-            delete_legacy_session_cookie(response)
         if exc.problem.status == 401 and getattr(request.state, "clear_auth_cookies", False):
             from rentivo.api.authentication import ACCESS_COOKIE_NAME
             from rentivo.api.csrf import CSRF_COOKIE_NAME

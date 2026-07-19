@@ -8,8 +8,6 @@ from fastapi.responses import JSONResponse, Response
 
 from rentivo.api.authentication import (
     allow_mfa_setup,
-    delete_legacy_session_cookie,
-    expire_legacy_session_cookie,
     reject_out_of_band_credentials,
 )
 from rentivo.api.csrf import issue_csrf_token, require_csrf
@@ -254,7 +252,6 @@ _login_principal = require_login_scope(APIScope.PROFILE_READ)
 
 @router.get("/session", response_model=AuthenticatedResponse)
 async def session(
-    _expire_legacy_session: None = Depends(expire_legacy_session_cookie),
     _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_login_principal),
     services: RequestServices = Depends(get_services),
@@ -268,9 +265,7 @@ async def session(
             "bootstrap": services.login.bootstrap(principal),
         },
     )()
-    response = _authenticated_response(result, set_access_cookie=False)
-    delete_legacy_session_cookie(response)
-    return response
+    return _authenticated_response(result, set_access_cookie=False)
 
 
 @router.post("/logout", status_code=204)

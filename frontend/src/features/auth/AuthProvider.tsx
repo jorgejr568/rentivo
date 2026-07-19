@@ -32,6 +32,7 @@ interface AuthContextValue {
   config: AuthConfig | null;
   configStatus: LoadStatus;
   logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   retryConfig: () => void;
   retrySession: () => void;
   status: SessionStatus;
@@ -82,6 +83,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const authenticate = useCallback((response: AuthenticatedResponse) => {
     sessionGeneration.current += 1;
     applyBootstrap(response.bootstrap);
+  }, [applyBootstrap]);
+
+  const refreshSession = useCallback(async () => {
+    const generation = sessionGeneration.current + 1;
+    sessionGeneration.current = generation;
+    const { data } = await apiRequest(apiClient.GET("/api/v1/auth/session"));
+    if (sessionGeneration.current === generation) {
+      applyBootstrap(data.bootstrap);
+    }
   }, [applyBootstrap]);
 
   useEffect(() => {
@@ -164,11 +174,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       config,
       configStatus,
       logout,
+      refreshSession,
       retryConfig,
       retrySession,
       status
     }),
-    [authenticate, bootstrap, config, configStatus, logout, retryConfig, retrySession, status]
+    [authenticate, bootstrap, config, configStatus, logout, refreshSession, retryConfig, retrySession, status]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

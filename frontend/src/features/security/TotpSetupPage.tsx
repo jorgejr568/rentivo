@@ -10,7 +10,7 @@ import { pushAnalyticsFromResponse } from "../auth/analytics";
 type Setup = components["schemas"]["TOTPSetupResponse"];
 
 export function TotpSetupPage() {
-  const { bootstrap, status } = useAuth();
+  const { bootstrap, refreshSession, status } = useAuth();
   const navigate = useNavigate();
   const [setup, setSetup] = useState<Setup | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +58,7 @@ export function TotpSetupPage() {
         })
       );
       pushAnalyticsFromResponse(response);
+      await refreshSession();
       navigate("/security/recovery-codes", { replace: true, state: { recoveryCodes: data.recovery_codes } });
     } catch (caught: unknown) {
       setError(caught instanceof ApiError ? caught.message : "Não foi possível confirmar o código.");

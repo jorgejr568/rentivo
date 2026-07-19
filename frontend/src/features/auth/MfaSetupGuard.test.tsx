@@ -5,7 +5,6 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { createAppRouter } from "../../app/router";
 import { AUTH_CONFIG, AUTHENTICATED_RESPONSE, jsonResponse } from "../../test/auth";
-import { useAuth } from "./AuthProvider";
 
 const MFA_REQUIRED_RESPONSE = {
   ...AUTHENTICATED_RESPONSE,
@@ -32,11 +31,6 @@ function installSessionSequence(...sessions: typeof AUTHENTICATED_RESPONSE[]) {
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
-}
-
-function SetupProbe() {
-  const { retrySession } = useAuth();
-  return <button onClick={retrySession}>atualizar sessão</button>;
 }
 
 afterEach(() => {
@@ -68,25 +62,69 @@ it("guards direct navigation while preserving setup, recovery, and logout access
   router.dispose();
 });
 
-it("removes the redirect after a refreshed bootstrap reports MFA complete", async () => {
+it("refreshes the bootstrap across the production setup, recovery, and Continue flow", async () => {
   const user = userEvent.setup();
-  const fetchMock = installSessionSequence(MFA_REQUIRED_RESPONSE, AUTHENTICATED_RESPONSE);
+  let sessionIndex = 0;
+  const sessions = [MFA_REQUIRED_RESPONSE, AUTHENTICATED_RESPONSE];
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/v1/auth/config") return jsonResponse(AUTH_CONFIG);
+    if (url === "/api/v1/auth/session") {
+      const session = sessions[Math.min(sessionIndex, sessions.length - 1)];
+      sessionIndex += 1;
+      return jsonResponse(session);
+    }
+    if (url === "/api/v1/security/totp/setup") {
+      return jsonResponse({
+        provisioning_uri: "otpauth://totp/test",
+        qr_code_base64: "cXI=",
+        secret: "SECRET"
+      });
+    }
+    if (url === "/api/v1/security/totp/confirm") {
+      return jsonResponse({ recovery_codes: ["code-one"] });
+    }
+    if (url === "/api/v1/security") {
+      return jsonResponse({
+        mfa: { organization_enforced: true, setup_required: false },
+        passkeys: [],
+        profile: {
+          email: "user@example.com",
+          pix_key: "pix",
+          pix_merchant_city: "SP",
+          pix_merchant_name: "User"
+        },
+        totp: { enabled: true, recovery_codes_remaining: 1 }
+      });
+    }
+    if (url === "/api/v1/api-keys") return jsonResponse({ items: [] });
+    if (url === "/api/v1/api-keys/options") {
+      return jsonResponse({
+        default_expiration_days: 90,
+        max_expiration_days: 365,
+        organizations: [],
+        personal_workspace: { resource_id: "personal", resource_type: "user" },
+        scopes: ["profile:read"]
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
   window.history.pushState({}, "", "/security/totp/setup");
-  const router = createAppRouter([
-    { element: <h1>Conteúdo privado</h1>, path: "/private" },
-    { element: <SetupProbe />, path: "/security/totp/setup" }
-  ]);
+  const router = createAppRouter();
 
   const view = render(<RouterProvider router={router} />);
 
-  await user.click(await screen.findByRole("button", { name: "atualizar sessão" }));
+  expect(await screen.findByAltText("QR Code TOTP")).toBeVisible();
+  await user.type(screen.getByLabelText("Código de verificação"), "123456");
+  await user.click(screen.getByRole("button", { name: "Confirmar e Ativar" }));
+  expect(await screen.findByRole("heading", { name: "Códigos de Recuperação" })).toBeVisible();
   await waitFor(() => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url) === "/api/v1/auth/session")).toHaveLength(2);
   });
-  await screen.findByRole("button", { name: "atualizar sessão" });
-  await act(async () => router.navigate("/private"));
-  expect(await screen.findByRole("heading", { name: "Conteúdo privado" })).toBeVisible();
-  expect(router.state.location.pathname).toBe("/private");
+  await user.click(screen.getByRole("link", { name: "Continuar" }));
+  expect(await screen.findByRole("heading", { name: "Segurança" })).toBeVisible();
+  expect(router.state.location.pathname).toBe("/security");
 
   view.unmount();
   router.dispose();

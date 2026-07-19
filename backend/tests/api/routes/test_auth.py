@@ -505,6 +505,25 @@ def test_session_requires_authentication(auth_harness: AuthHarness) -> None:
     _assert_deleted_cookie(response, "session", http_only=True)
 
 
+@pytest.mark.parametrize(
+    ("path", "headers"),
+    [
+        ("/api/v1/auth/session?access_token=outside", {}),
+        ("/api/v1/auth/session", {"Authorization": "Bearer"}),
+    ],
+)
+def test_rejected_session_credentials_still_expire_the_legacy_cookie(
+    auth_harness: AuthHarness,
+    path: str,
+    headers: dict[str, str],
+) -> None:
+    response = auth_harness.client.get(path, headers=headers)
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "malformed_credentials"
+    _assert_deleted_cookie(response, "session", http_only=True)
+
+
 @pytest.mark.parametrize("path", ["/api/v1/auth/session", "/api/v1/auth/csrf"])
 def test_integration_keys_cannot_use_interactive_login_endpoints(
     auth_harness: AuthHarness,
