@@ -1,9 +1,16 @@
 # Development override for the production service topology.
 # Usage: make compose-dev
+x-development-backend-environment: &development-backend-environment
+  RENTIVO_ENVIRONMENT: dev
+  RENTIVO_DB_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+
 services:
+  migrate:
+    environment: *development-backend-environment
+
   api:
     environment:
-      RENTIVO_ENVIRONMENT: dev
+      <<: *development-backend-environment
       RENTIVO_PUBLIC_URL: http://localhost:8080
       RENTIVO_PUBLIC_APP_URL: http://localhost:8080
       RENTIVO_WEBAUTHN_ORIGIN: http://localhost:8080
@@ -27,8 +34,7 @@ services:
       - ./backend/rentivo:/app/backend/rentivo
 
   worker:
-    environment:
-      RENTIVO_ENVIRONMENT: dev
+    environment: *development-backend-environment
     volumes:
       - ./backend/rentivo:/app/backend/rentivo
 

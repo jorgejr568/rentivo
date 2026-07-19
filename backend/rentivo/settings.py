@@ -6,6 +6,8 @@ import structlog
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from rentivo.origins import parse_public_origin
+
 logger = structlog.get_logger(__name__)
 
 _INSECURE_DEFAULT_KEY = "change-me-in-production"
@@ -158,6 +160,13 @@ class Settings(BaseSettings):
     def _validate_email_backend(cls, v: str) -> str:
         if v not in ("local", "ses"):
             raise ValueError("RENTIVO_EMAIL_BACKEND must be one of: local, ses")
+        return v
+
+    @field_validator("storage_backend")
+    @classmethod
+    def _validate_storage_backend(cls, v: str) -> str:
+        if v not in ("local", "s3"):
+            raise ValueError("RENTIVO_STORAGE_BACKEND must be one of: local, s3")
         return v
 
     @field_validator("encryption_backend")
@@ -328,8 +337,10 @@ settings = Settings()
 
 
 def _https_hostname(value: str) -> str | None:
-    parsed = urlsplit(value)
-    return parsed.hostname if parsed.scheme == "https" else None
+    origin = parse_public_origin(value, allow_localhost=False)
+    if origin is None or not origin.startswith("https://"):
+        return None
+    return urlsplit(origin).hostname
 
 
 def validate_production_settings() -> None:
@@ -346,14 +357,17 @@ def validate_production_settings() -> None:
     public_hostname = _https_hostname(settings.public_url)
     app_hostname = _https_hostname(settings.public_app_url)
     webauthn_hostname = _https_hostname(settings.webauthn_origin)
-    configured_webauthn_hostname = urlsplit(settings.webauthn_origin).hostname
+    configured_webauthn_origin = parse_public_origin(settings.webauthn_origin, allow_localhost=False)
+    configured_webauthn_hostname = (
+        urlsplit(configured_webauthn_origin).hostname if configured_webauthn_origin is not None else None
+    )
     if public_hostname is None:
         errors.append("RENTIVO_PUBLIC_URL must be an HTTPS origin")
     if app_hostname is None:
         errors.append("RENTIVO_PUBLIC_APP_URL must be an HTTPS origin")
     if webauthn_hostname is None:
         errors.append("RENTIVO_WEBAUTHN_ORIGIN must be an HTTPS origin")
-    if settings.webauthn_rp_id != configured_webauthn_hostname:
+    if configured_webauthn_hostname is not None and settings.webauthn_rp_id != configured_webauthn_hostname:
         errors.append("RENTIVO_WEBAUTHN_RP_ID must match the WebAuthn origin hostname")
 
     if not settings.cookie_secure:
@@ -366,12 +380,35 @@ def validate_production_settings() -> None:
         if not name.startswith("__Host-"):
             errors.append(f"{variable} must use the __Host- prefix")
 
-    if settings.email_backend == "local":
+    if settings.email_backend not in {"local", "ses"}:
+        errors.append("RENTIVO_EMAIL_BACKEND must be one of: local, ses")
+    elif settings.email_backend == "local":
         errors.append("RENTIVO_EMAIL_BACKEND must not be local")
-    if settings.storage_backend == "local":
+    else:
+        if not settings.ses_region.strip():
+            errors.append("RENTIVO_SES_REGION is required when RENTIVO_EMAIL_BACKEND=ses")
+        if not settings.ses_from_email.strip():
+            errors.append("RENTIVO_SES_FROM_EMAIL is required when RENTIVO_EMAIL_BACKEND=ses")
+
+    if settings.storage_backend not in {"local", "s3"}:
+        errors.append("RENTIVO_STORAGE_BACKEND must be one of: local, s3")
+    elif settings.storage_backend == "local":
         errors.append("RENTIVO_STORAGE_BACKEND must not be local")
-    if settings.encryption_backend == "base64":
+    else:
+        if not settings.s3_bucket.strip():
+            errors.append("RENTIVO_S3_BUCKET is required when RENTIVO_STORAGE_BACKEND=s3")
+        if not settings.s3_region.strip():
+            errors.append("RENTIVO_S3_REGION is required when RENTIVO_STORAGE_BACKEND=s3")
+
+    if settings.encryption_backend not in {"base64", "kms"}:
+        errors.append("RENTIVO_ENCRYPTION_BACKEND must be one of: base64, kms")
+    elif settings.encryption_backend == "base64":
         errors.append("RENTIVO_ENCRYPTION_BACKEND must not be base64")
+    else:
+        if not settings.kms_key_id.strip():
+            errors.append("RENTIVO_KMS_KEY_ID is required when RENTIVO_ENCRYPTION_BACKEND=kms")
+        if not settings.kms_region.strip():
+            errors.append("RENTIVO_KMS_REGION is required when RENTIVO_ENCRYPTION_BACKEND=kms")
     if not settings.log_json:
         errors.append("RENTIVO_LOG_JSON must be true")
 

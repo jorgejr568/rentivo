@@ -8,7 +8,11 @@ UVICORN := uv run --project backend uvicorn
 ALEMBIC := uv run --project backend alembic -c backend/alembic.ini
 NPM_FRONTEND := npm --prefix frontend
 
-STACK_COMPOSE := docker compose
+RENTIVO_DB_ENV_FILE ?= .env.db
+RENTIVO_APP_ENV_FILE ?= .env
+RENTIVO_DEV_DB_ENV_FILE ?= .env.db.example
+STACK_COMPOSE := RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)" docker compose --env-file "$(RENTIVO_DB_ENV_FILE)"
+DEV_COMPOSE := RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)" docker compose --env-file "$(RENTIVO_DEV_DB_ENV_FILE)" -f docker-compose.yml -f docker-compose.dev.yml
 
 # --- Local development ---
 
@@ -261,11 +265,11 @@ compose-restart:
 
 .PHONY: compose-dev
 compose-dev:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+	$(DEV_COMPOSE) up -d --build
 
 .PHONY: compose-dev-down
 compose-dev-down:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
+	$(DEV_COMPOSE) down
 
 .PHONY: compose-shell
 compose-shell:
@@ -326,7 +330,7 @@ stack-build:
 
 .PHONY: stack-migrate
 stack-migrate:
-	$(STACK_COMPOSE) up --build migrate
+	$(STACK_COMPOSE) run --rm migrate
 
 .PHONY: stack-up
 stack-up:

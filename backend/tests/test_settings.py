@@ -15,7 +15,11 @@ def _secure_production_settings(**overrides):
         "webauthn_origin": "https://rentivo.example.com",
         "webauthn_rp_id": "rentivo.example.com",
         "email_backend": "ses",
+        "ses_region": "us-east-1",
+        "ses_from_email": "noreply@rentivo.example.com",
         "storage_backend": "s3",
+        "s3_bucket": "rentivo-production",
+        "s3_region": "us-east-1",
         "encryption_backend": "kms",
         "kms_key_id": "alias/rentivo",
         "kms_region": "us-east-1",
@@ -136,6 +140,80 @@ def test_production_settings_do_not_report_matching_rp_id_as_mismatched(monkeypa
     assert "RENTIVO_WEBAUTHN_RP_ID" not in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://user@rentivo.example.com",
+        "https://rentivo.example.com/path",
+        "https://rentivo.example.com?query=yes",
+        "https://rentivo.example.com#fragment",
+        "https://rentivo.example.com/",
+        "https://rentivo.example.com:",
+        "https://rentivo.example.com:not-a-port",
+        "https://[invalid",
+        " https://rentivo.example.com",
+        "https://rentivo.example.com\n",
+        "https://rentivo.\texample.com",
+    ],
+)
+@pytest.mark.parametrize(
+    ("field", "variable"),
+    [
+        ("public_url", "RENTIVO_PUBLIC_URL"),
+        ("public_app_url", "RENTIVO_PUBLIC_APP_URL"),
+        ("webauthn_origin", "RENTIVO_WEBAUTHN_ORIGIN"),
+    ],
+)
+def test_production_settings_reject_non_origin_https_values(monkeypatch, field, variable, value):
+    configured = _secure_production_settings().model_copy(update={field: value})
+    monkeypatch.setattr(settings_module, "settings", configured)
+
+    with pytest.raises(ValueError, match="Insecure production settings") as exc_info:
+        settings_module.validate_production_settings()
+
+    assert variable in str(exc_info.value)
+
+
+def test_production_settings_aggregate_invalid_cloud_backend_names(monkeypatch):
+    configured = _secure_production_settings().model_copy(
+        update={
+            "storage_backend": "s33",
+            "email_backend": "sez",
+            "encryption_backend": "kmz",
+        }
+    )
+    monkeypatch.setattr(settings_module, "settings", configured)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    message = str(exc_info.value)
+    assert "RENTIVO_STORAGE_BACKEND" in message
+    assert "RENTIVO_EMAIL_BACKEND" in message
+    assert "RENTIVO_ENCRYPTION_BACKEND" in message
+
+
+@pytest.mark.parametrize(
+    ("override", "variable"),
+    [
+        ({"s3_bucket": ""}, "RENTIVO_S3_BUCKET"),
+        ({"s3_region": ""}, "RENTIVO_S3_REGION"),
+        ({"ses_region": ""}, "RENTIVO_SES_REGION"),
+        ({"ses_from_email": ""}, "RENTIVO_SES_FROM_EMAIL"),
+        ({"kms_key_id": ""}, "RENTIVO_KMS_KEY_ID"),
+        ({"kms_region": ""}, "RENTIVO_KMS_REGION"),
+    ],
+)
+def test_production_settings_require_selected_cloud_backend_fields(monkeypatch, override, variable):
+    configured = _secure_production_settings().model_copy(update=override)
+    monkeypatch.setattr(settings_module, "settings", configured)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    assert variable in str(exc_info.value)
+
+
 def test_production_settings_report_every_insecure_value_together(monkeypatch):
     insecure = _secure_production_settings(
         db_url="mysql+pymysql://rentivo:rentivo@db:3306/rentivo",
@@ -205,6 +283,13 @@ def test_settings_email_backend_validation(monkeypatch):
     from rentivo.settings import Settings
 
     with _pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_storage_backend_validation(monkeypatch):
+    monkeypatch.setenv("RENTIVO_STORAGE_BACKEND", "s33")
+
+    with pytest.raises(ValueError, match="must be one of: local, s3"):
         Settings()
 
 

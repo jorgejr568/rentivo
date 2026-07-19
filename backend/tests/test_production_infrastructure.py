@@ -1,3 +1,5 @@
+import os
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -12,10 +14,58 @@ WORKER_DOCKERFILE = REPO_ROOT / "backend" / "Dockerfile.worker"
 FRONTEND_DOCKERFILE = REPO_ROOT / "frontend" / "Dockerfile"
 NGINX_CONFIG = REPO_ROOT / "infra" / "proxy" / "nginx.conf"
 MAKEFILE = REPO_ROOT / "Makefile"
+APP_ENV_EXAMPLE = REPO_ROOT / ".env.example"
+DB_ENV_EXAMPLE = REPO_ROOT / ".env.db.example"
 
 
 def _yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text())
+
+
+def _render_compose(tmp_path: Path, *, development: bool) -> dict:
+    db_env = tmp_path / "database.env"
+    db_env.write_text(
+        "\n".join(
+            (
+                "MYSQL_ROOT_PASSWORD=database-root-secret",
+                "MYSQL_DATABASE=rendered_database",
+                "MYSQL_USER=rendered_user",
+                "MYSQL_PASSWORD=rendered_password",
+                "MYSQL_PORT=3307",
+                "RENTIVO_PUBLIC_ORIGIN=https://rentivo.example.com",
+                "RENTIVO_WEBAUTHN_RP_ID=rentivo.example.com",
+                "RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR=10.0.0.0/24",
+            )
+        )
+        + "\n"
+    )
+    app_env = tmp_path / "application.env"
+    app_env.write_text(
+        "RENTIVO_DB_URL=mysql+pymysql://host_user:host_password@localhost:3307/host_database\n"
+        "RENTIVO_SECRET_KEY=application-only-secret\n"
+    )
+    command = [
+        "docker",
+        "compose",
+        "--env-file",
+        str(db_env),
+        "-f",
+        str(COMPOSE_FILE),
+    ]
+    if development:
+        command.extend(("-f", str(DEV_COMPOSE_FILE)))
+    command.append("config")
+    environment = os.environ.copy()
+    environment["RENTIVO_APP_ENV_FILE"] = str(app_env)
+    rendered = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return yaml.safe_load(rendered.stdout)
 
 
 def test_default_compose_is_the_replacement_production_stack():
@@ -110,10 +160,10 @@ def test_runtime_dockerfiles_do_not_scaffold_the_legacy_package():
         assert "backend/rentivo/__init__.py" in contents
 
 
-def test_development_override_targets_api_and_worker_only():
+def test_development_override_targets_backend_and_frontend_services():
     override = _yaml(DEV_COMPOSE_FILE)["services"]
 
-    assert set(override) == {"api", "worker", "frontend"}
+    assert set(override) == {"migrate", "api", "worker", "frontend"}
     assert "legacy_web" not in DEV_COMPOSE_FILE.read_text()
 
 
@@ -156,6 +206,47 @@ def test_database_and_application_environment_sources_are_separate():
         assert "RENTIVO_DB_URL" not in services[service_name].get("environment", {})
 
 
+def test_rendered_production_compose_separates_database_and_application_env(tmp_path):
+    services = _render_compose(tmp_path, development=False)["services"]
+
+    assert services["db"]["environment"]["MYSQL_ROOT_PASSWORD"] == "database-root-secret"
+    for service_name in ("migrate", "api", "worker"):
+        environment = services[service_name]["environment"]
+        assert environment["RENTIVO_DB_URL"].endswith("@localhost:3307/host_database")
+        assert not set(environment).intersection(
+            {"MYSQL_ROOT_PASSWORD", "MYSQL_DATABASE", "MYSQL_USER", "MYSQL_PASSWORD"}
+        )
+
+
+def test_rendered_development_compose_uses_internal_database_without_secret_leak(tmp_path):
+    services = _render_compose(tmp_path, development=True)["services"]
+
+    expected_url = "mysql+pymysql://rendered_user:rendered_password@db:3306/rendered_database"
+    for service_name in ("migrate", "api", "worker"):
+        environment = services[service_name]["environment"]
+        assert environment["RENTIVO_ENVIRONMENT"] == "dev"
+        assert environment["RENTIVO_DB_URL"] == expected_url
+        assert "MYSQL_ROOT_PASSWORD" not in environment
+
+
+def test_default_env_examples_keep_database_provisioning_out_of_app_runtime():
+    application_variables = {
+        line.partition("=")[0] for line in APP_ENV_EXAMPLE.read_text().splitlines() if line and not line.startswith("#")
+    }
+    database_variables = {
+        line.partition("=")[0] for line in DB_ENV_EXAMPLE.read_text().splitlines() if line and not line.startswith("#")
+    }
+
+    assert "RENTIVO_DB_URL" in application_variables
+    assert not {name for name in application_variables if name.startswith("MYSQL_")}
+    assert {
+        "MYSQL_ROOT_PASSWORD",
+        "MYSQL_DATABASE",
+        "MYSQL_USER",
+        "MYSQL_PASSWORD",
+    } <= database_variables
+
+
 def test_api_runtime_source_and_virtualenv_are_read_only_to_appuser():
     dockerfile = API_DOCKERFILE.read_text()
 
@@ -178,3 +269,14 @@ def test_makefile_promotes_stack_targets_and_keeps_non_legacy_preview_aliases():
     ):
         assert f"{alias}: {target}" in makefile
     assert "docker-compose.next" not in makefile
+
+
+def test_makefile_selects_separate_env_files_and_terminating_migration_command():
+    makefile = MAKEFILE.read_text()
+
+    assert "RENTIVO_DB_ENV_FILE ?= .env.db" in makefile
+    assert "RENTIVO_APP_ENV_FILE ?= .env" in makefile
+    assert '--env-file "$(RENTIVO_DB_ENV_FILE)"' in makefile
+    assert 'RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)"' in makefile
+    assert "$(STACK_COMPOSE) run --rm migrate" in makefile
+    assert "$(STACK_COMPOSE) up --build migrate" not in makefile
