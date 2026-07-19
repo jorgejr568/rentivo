@@ -1,9 +1,7 @@
 """Email notifications for billing-ownership changes.
 
-Previously lived as the route-private helper
-legacy_web.routes.billing._notify_billing_transferred and was imported across
-route modules via the leading-underscore name. Moved into a service so
-route → route private imports go away.
+Billing transfer notification delivery belongs in the service layer so
+API route modules share one implementation.
 """
 
 from __future__ import annotations
