@@ -4,12 +4,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import structlog
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from rentivo.api.authentication import allow_mfa_setup, delete_legacy_session_cookie
 from rentivo.api.errors import ProblemException, problem, problem_response
 from rentivo.api.routes.api_keys import router as api_keys_router
 from rentivo.api.routes.auth import router as auth_router
@@ -133,7 +134,7 @@ def create_app() -> FastAPI:
     api = APIRouter(prefix="/api/v1")
     api.include_router(health_router)
     api.include_router(auth_router)
-    api.include_router(mfa_auth_router)
+    api.include_router(mfa_auth_router, dependencies=[Depends(allow_mfa_setup)])
     api.include_router(google_auth_router)
     api.include_router(profile_router)
     api.include_router(security_router)
@@ -155,6 +156,8 @@ def create_app() -> FastAPI:
     async def problem_exception_handler(request: Request, exc: ProblemException):
         response = problem_response(exc.problem)
         response.headers.update(exc.headers)
+        if getattr(request.state, "expire_legacy_session_cookie", False):
+            delete_legacy_session_cookie(response)
         if exc.problem.status == 401 and getattr(request.state, "clear_auth_cookies", False):
             from rentivo.api.authentication import ACCESS_COOKIE_NAME
             from rentivo.api.csrf import CSRF_COOKIE_NAME

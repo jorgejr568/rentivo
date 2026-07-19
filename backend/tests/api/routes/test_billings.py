@@ -599,6 +599,7 @@ def billing_harness(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> BillingH
     organization = FakeOrganizationService()
     services = SimpleNamespace(
         user=FakeUserService(),
+        mfa=SimpleNamespace(user_requires_mfa_setup=lambda _user_id: False),
         organization=organization,
         api_key=FakeAPIKeyService(organization),
         authorization=FakeAuthorizationService(organization),

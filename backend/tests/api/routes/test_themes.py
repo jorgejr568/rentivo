@@ -222,6 +222,7 @@ class FakeServices:
     def __init__(self) -> None:
         self.roles = {(ORGANIZATION.id, USER.id): "admin"}
         self.api_key = FakeAPIKeyService()
+        self.mfa = SimpleNamespace(user_requires_mfa_setup=lambda _user_id: False)
         self.user = SimpleNamespace(get_by_id=lambda user_id: USER if user_id == USER.id else None)
         self.theme = FakeThemeService()
         self.organization = FakeOrganizationService(self.roles)

@@ -6,7 +6,12 @@ import structlog
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, Response
 
-from rentivo.api.authentication import reject_out_of_band_credentials
+from rentivo.api.authentication import (
+    allow_mfa_setup,
+    delete_legacy_session_cookie,
+    expire_legacy_session_cookie,
+    reject_out_of_band_credentials,
+)
 from rentivo.api.csrf import issue_csrf_token, require_csrf
 from rentivo.api.dependencies import get_services, require_login_scope
 from rentivo.api.errors import ProblemException, problem
@@ -249,6 +254,8 @@ _login_principal = require_login_scope(APIScope.PROFILE_READ)
 
 @router.get("/session", response_model=AuthenticatedResponse)
 async def session(
+    _expire_legacy_session: None = Depends(expire_legacy_session_cookie),
+    _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_login_principal),
     services: RequestServices = Depends(get_services),
 ) -> JSONResponse:
@@ -261,11 +268,14 @@ async def session(
             "bootstrap": services.login.bootstrap(principal),
         },
     )()
-    return _authenticated_response(result, set_access_cookie=False)
+    response = _authenticated_response(result, set_access_cookie=False)
+    delete_legacy_session_cookie(response)
+    return response
 
 
 @router.post("/logout", status_code=204)
 async def logout(
+    _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_login_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),

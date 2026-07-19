@@ -6,6 +6,7 @@ from typing import Any
 
 import structlog
 from fastapi import Depends, Request
+from fastapi.responses import Response
 
 from rentivo.api.dependencies import get_services
 from rentivo.api.errors import ProblemException
@@ -63,6 +64,38 @@ async def reject_out_of_band_credentials(request: Request) -> None:
                     "A chave deve ser enviada apenas por cookie ou cabeçalho Authorization Bearer.",
                 )
     _credential_transport(request)
+
+
+async def allow_mfa_setup(request: Request) -> None:
+    request.state.allow_mfa_setup = True
+
+
+async def expire_legacy_session_cookie(request: Request) -> None:
+    request.state.expire_legacy_session_cookie = True
+
+
+def delete_legacy_session_cookie(response: Response) -> None:
+    response.delete_cookie(
+        "session",
+        path="/",
+        secure=settings.cookie_secure,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def enforce_login_mfa(
+    request: Request,
+    principal: Principal,
+    services: RequestServices,
+) -> None:
+    if not principal.api_key.is_login_token or getattr(request.state, "allow_mfa_setup", False):
+        return
+    if services.mfa.user_requires_mfa_setup(principal.user.id):
+        raise ProblemException.forbidden(
+            "mfa_setup_required",
+            "Sua organização exige a configuração da autenticação multifator.",
+        )
 
 
 def _bearer_credential(request: Request) -> str | None:
@@ -127,6 +160,7 @@ async def get_optional_principal(
         api_key_uuid=key.uuid,
         api_key_class="login" if key.is_login_token else "integration",
     )
+    enforce_login_mfa(request, principal, services)
     return principal
 
 

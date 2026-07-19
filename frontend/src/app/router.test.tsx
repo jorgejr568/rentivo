@@ -113,6 +113,37 @@ it("does not render or request private content until session authentication succ
   router.dispose();
 });
 
+it("redirects direct protected navigation when live bootstrap requires MFA setup", async () => {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/v1/auth/config") return jsonResponse(AUTH_CONFIG);
+    if (url === "/api/v1/auth/session") return jsonResponse({
+      ...AUTHENTICATED_RESPONSE,
+      bootstrap: {
+        ...AUTHENTICATED_RESPONSE.bootstrap,
+        capabilities: {
+          ...AUTHENTICATED_RESPONSE.bootstrap.capabilities,
+          mfa_setup_required: true
+        }
+      }
+    });
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  window.history.pushState({}, "", "/private");
+  const router = createAppRouter([
+    { element: <h1>Conteúdo privado</h1>, path: "/private" },
+    { element: <h1>Configuração MFA</h1>, path: "/security/totp/setup" }
+  ]);
+  const view = render(<RouterProvider router={router} />);
+
+  expect(await screen.findByRole("heading", { name: "Configuração MFA" })).toBeVisible();
+  expect(router.state.location.pathname).toBe("/security/totp/setup");
+  expect(screen.queryByRole("heading", { name: "Conteúdo privado" })).not.toBeInTheDocument();
+
+  view.unmount();
+  router.dispose();
+});
+
 it("offers an in-place retry when protected-session validation is temporarily unavailable", async () => {
   const user = userEvent.setup();
   let sessionAttempts = 0;

@@ -56,6 +56,16 @@ class FakeUserService:
         return self.user if user_id == self.user.id else None
 
 
+class FakeMFAService:
+    def __init__(self) -> None:
+        self.setup_required = False
+        self.user_requires_mfa_setup_calls: list[int] = []
+
+    def user_requires_mfa_setup(self, user_id: int) -> bool:
+        self.user_requires_mfa_setup_calls.append(user_id)
+        return self.setup_required
+
+
 @pytest.fixture()
 def login_key() -> APIKey:
     return _key(uuid="login-key-uuid", secret_hash=b"l" * 32, is_login_token=True)
@@ -75,6 +85,7 @@ def services(login_key: APIKey, integration_key: APIKey) -> Any:
                 INTEGRATION_SECRET: integration_key,
             }
         ),
+        mfa=FakeMFAService(),
         user=FakeUserService(User(id=7, email="person@example.com")),
     )
 
@@ -181,6 +192,45 @@ def test_bearer_integration_is_attributed_to_the_integration_source(api_client: 
     assert response.json()["source"] == "integration"
     assert response.json()["actor"]["source"] == "integration"
     assert response.json()["actor"]["is_login_token"] is False
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"Cookie": _cookie_header(LOGIN_SECRET)},
+        {"Authorization": f"Bearer {LOGIN_SECRET}"},
+    ],
+)
+def test_live_organization_mfa_blocks_login_tokens_on_every_protected_request(
+    api_client: TestClient,
+    services: Any,
+    headers: dict[str, str],
+) -> None:
+    first = api_client.get("/api/v1/test/principal", headers=headers)
+    services.mfa.setup_required = True
+
+    blocked = api_client.get("/api/v1/test/principal", headers=headers)
+
+    assert first.status_code == 200
+    assert blocked.status_code == 403
+    assert blocked.json()["code"] == "mfa_setup_required"
+    assert services.mfa.user_requires_mfa_setup_calls == [7, 7]
+
+
+def test_live_organization_mfa_does_not_change_integration_key_authentication(
+    api_client: TestClient,
+    services: Any,
+) -> None:
+    services.mfa.setup_required = True
+
+    response = api_client.get(
+        "/api/v1/test/principal",
+        headers={"Authorization": f"Bearer {INTEGRATION_SECRET}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["source"] == "integration"
+    assert services.mfa.user_requires_mfa_setup_calls == []
 
 
 def test_optional_principal_allows_missing_credentials(api_client: TestClient) -> None:

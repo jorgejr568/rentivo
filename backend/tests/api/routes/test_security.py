@@ -770,7 +770,7 @@ def test_security_summary_exposes_profile_and_mfa_state_without_stored_secrets(
     assert "is_login_token" not in serialized
 
 
-def test_security_summary_reports_organization_enforced_mfa_setup(
+def test_security_summary_is_blocked_while_organization_mfa_setup_is_required(
     security_harness: SecurityHarness,
 ) -> None:
     security_harness.mfa.totp = None
@@ -780,10 +780,8 @@ def test_security_summary_reports_organization_enforced_mfa_setup(
 
     response = security_harness.request("GET", "/api/v1/security")
 
-    assert response.status_code == 200
-    assert response.json()["mfa"] == {"setup_required": True, "organization_enforced": True}
-    assert response.json()["totp"] == {"enabled": False, "recovery_codes_remaining": 0}
-    assert response.json()["passkeys"] == []
+    assert response.status_code == 403
+    assert response.json()["code"] == "mfa_setup_required"
 
 
 def test_pix_update_normalizes_profile_and_writes_redacted_audit_state(
@@ -967,6 +965,7 @@ def test_totp_setup_returns_only_deliberate_setup_material_with_no_store(
     security_harness: SecurityHarness,
 ) -> None:
     security_harness.mfa.totp = None
+    security_harness.mfa.setup_required = True
 
     response = security_harness.request("POST", "/api/v1/security/totp/setup")
 

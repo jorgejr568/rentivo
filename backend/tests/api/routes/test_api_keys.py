@@ -314,6 +314,7 @@ def api_key_harness(monkeypatch: pytest.MonkeyPatch) -> APIKeyHarness:
     organization = FakeOrganizationService()
     services = SimpleNamespace(
         api_key=api_key,
+        mfa=SimpleNamespace(user_requires_mfa_setup=lambda _user_id: False),
         user=FakeUserService(),
         organization=organization,
         audit=audit,

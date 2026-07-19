@@ -9,6 +9,7 @@ import { LoadingState } from "../components/PageState";
 import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
 import { GoogleCallbackPage } from "../features/auth/GoogleCallbackPage";
 import { LoginPage } from "../features/auth/LoginPage";
+import { MfaSetupGuard } from "../features/auth/MfaSetupGuard";
 import { MfaVerifyPage } from "../features/auth/MfaVerifyPage";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
 import { SignupPage } from "../features/auth/SignupPage";
@@ -66,7 +67,11 @@ function ProtectedApp() {
   if (status === "anonymous") {
     return <Navigate replace to="/login" />;
   }
-  return <AuthenticatedAppShell />;
+  return (
+    <AuthenticatedAppShell>
+      <MfaSetupGuard />
+    </AuthenticatedAppShell>
+  );
 }
 
 // eslint-disable-next-line react-refresh/only-export-components

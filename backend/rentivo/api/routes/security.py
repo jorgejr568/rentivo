@@ -17,7 +17,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
-from rentivo.api.authentication import reject_out_of_band_credentials
+from rentivo.api.authentication import allow_mfa_setup, reject_out_of_band_credentials
 from rentivo.api.csrf import require_csrf
 from rentivo.api.dependencies import get_services, require_login_scope
 from rentivo.api.errors import ProblemException, problem
@@ -237,6 +237,7 @@ async def change_password(
 
 @router.post("/totp/setup", response_model=TOTPSetupResponse)
 async def setup_totp(
+    _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_security_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -260,6 +261,7 @@ async def setup_totp(
 async def confirm_totp(
     payload: TOTPConfirmRequest,
     request: Request,
+    _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_security_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),

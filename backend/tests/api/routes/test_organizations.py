@@ -352,6 +352,7 @@ class FakeMFAService:
     def __init__(self) -> None:
         self.has_mfa = False
         self.requires_setup = False
+        self.requires_setup_results: list[bool] = []
         self.requires_setup_calls: list[int] = []
 
     def has_any_mfa(self, user_id: int) -> bool:
@@ -360,6 +361,8 @@ class FakeMFAService:
 
     def user_requires_mfa_setup(self, user_id: int) -> bool:
         self.requires_setup_calls.append(user_id)
+        if self.requires_setup_results:
+            return self.requires_setup_results.pop(0)
         return self.requires_setup
 
 

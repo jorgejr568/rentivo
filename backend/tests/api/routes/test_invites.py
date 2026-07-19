@@ -132,7 +132,7 @@ def test_accept_invite_audits_notifies_and_reports_mfa_bootstrap(
 ) -> None:
     invite = organization_harness.invite.invites[0]
     invite.invited_user_id = USER.id
-    organization_harness.mfa.requires_setup = True
+    organization_harness.mfa.requires_setup_results = [False, True]
 
     response = organization_harness.client.post(
         f"/api/v1/invites/{invite.uuid}/accept",
@@ -251,4 +251,4 @@ def test_invite_response_resolves_organization_before_mutation(
     assert invite.status == "pending"
     assert organization_harness.audit.calls == []
     assert organization_harness.job.calls == []
-    assert organization_harness.mfa.requires_setup_calls == []
+    assert organization_harness.mfa.requires_setup_calls == [USER.id]

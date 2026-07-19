@@ -78,6 +78,7 @@ def csrf_client(principals: dict[str, Principal], monkeypatch: pytest.MonkeyPatc
                 INTEGRATION_SECRET: principals["integration"].api_key,
             }
         ),
+        mfa=SimpleNamespace(user_requires_mfa_setup=lambda _user_id: False),
         user=FakeUserService(),
     )
     app = create_app()

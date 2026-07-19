@@ -183,13 +183,15 @@ export function useAuth(): AuthContextValue {
   return value;
 }
 
-export function AuthenticatedAppShell() {
+export function AuthenticatedAppShell({ children }: { children?: ReactNode }) {
   const { bootstrap, logout } = useAuth();
   return (
     <AppShell
       currentUser={bootstrap?.user}
       onLogout={logout}
       pendingInviteCount={bootstrap?.pending_invite_count}
-    />
+    >
+      {children}
+    </AppShell>
   );
 }

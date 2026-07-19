@@ -159,6 +159,15 @@ class FakeUserService:
         return USER if user_id == USER.id else None
 
 
+class FakeMFAService:
+    def __init__(self) -> None:
+        self.setup_required = False
+
+    def user_requires_mfa_setup(self, user_id: int) -> bool:
+        assert user_id == USER.id
+        return self.setup_required
+
+
 class FakePasswordResetService:
     def __init__(self) -> None:
         self.request_calls: list[str] = []
@@ -234,6 +243,7 @@ class AuthHarness:
     client: TestClient
     app: Any
     login: FakeLoginService
+    mfa: FakeMFAService
     api_key: FakeAPIKeyService
     password_reset: FakePasswordResetService
     turnstile: FakeTurnstileService
@@ -254,6 +264,7 @@ def auth_harness(monkeypatch: pytest.MonkeyPatch) -> AuthHarness:
     monkeypatch.setattr(csrf.secrets, "token_urlsafe", lambda _size: "deterministic-csrf-nonce")
 
     login = FakeLoginService()
+    mfa = FakeMFAService()
     api_key = FakeAPIKeyService()
     password_reset = FakePasswordResetService()
     turnstile = FakeTurnstileService()
@@ -263,6 +274,7 @@ def auth_harness(monkeypatch: pytest.MonkeyPatch) -> AuthHarness:
     password_reset.api_key_service = api_key
     services = SimpleNamespace(
         login=login,
+        mfa=mfa,
         api_key=api_key,
         user=FakeUserService(),
         password_reset=password_reset,
@@ -278,6 +290,7 @@ def auth_harness(monkeypatch: pytest.MonkeyPatch) -> AuthHarness:
         client=TestClient(app),
         app=app,
         login=login,
+        mfa=mfa,
         api_key=api_key,
         password_reset=password_reset,
         turnstile=turnstile,
@@ -467,6 +480,21 @@ def test_session_returns_login_bootstrap_without_exposing_the_cookie_credential(
     assert response.json()["bootstrap"]["csrf_token"] == response.cookies[CSRF_COOKIE_NAME]
     _assert_no_auth_secret(response.json())
     assert auth_harness.login.bootstrap_calls == [LOGIN_KEY.uuid]
+    _assert_deleted_cookie(response, "session", http_only=True)
+
+
+def test_required_mfa_session_remains_available_for_live_bootstrap(
+    auth_harness: AuthHarness,
+) -> None:
+    auth_harness.mfa.setup_required = True
+
+    response = auth_harness.client.get(
+        "/api/v1/auth/session",
+        headers={"Cookie": _cookie_header(ACCESS_SECRET)},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "authenticated"
 
 
 def test_session_requires_authentication(auth_harness: AuthHarness) -> None:
@@ -474,6 +502,7 @@ def test_session_requires_authentication(auth_harness: AuthHarness) -> None:
 
     assert response.status_code == 401
     assert response.json()["code"] == "authentication_required"
+    _assert_deleted_cookie(response, "session", http_only=True)
 
 
 @pytest.mark.parametrize("path", ["/api/v1/auth/session", "/api/v1/auth/csrf"])
@@ -488,6 +517,8 @@ def test_integration_keys_cannot_use_interactive_login_endpoints(
 
     assert response.status_code == 403
     assert response.json()["code"] == "login_token_required"
+    if path.endswith("/session"):
+        _assert_deleted_cookie(response, "session", http_only=True)
 
 
 def test_logout_deletes_only_the_current_login_key_and_clears_browser_cookies(
@@ -516,6 +547,22 @@ def test_logout_deletes_only_the_current_login_key_and_clears_browser_cookies(
         headers={"Cookie": _cookie_header(SECOND_ACCESS_SECRET)},
     )
     assert other_session.status_code == 200
+
+
+def test_required_mfa_user_can_still_logout(auth_harness: AuthHarness) -> None:
+    auth_harness.mfa.setup_required = True
+    csrf_token = _csrf_token_for()
+
+    response = auth_harness.client.post(
+        "/api/v1/auth/logout",
+        headers={
+            "Cookie": _cookie_header(ACCESS_SECRET, csrf_token=csrf_token),
+            CSRF_HEADER_NAME: csrf_token,
+        },
+    )
+
+    assert response.status_code == 204
+    assert auth_harness.api_key.logout_calls == [LOGIN_KEY.uuid]
 
 
 def test_cookie_authenticated_logout_requires_csrf_before_deleting_the_key(

@@ -314,11 +314,14 @@ describe("AuthProvider", () => {
 
     render(
       <Wrapper>
-        <AuthenticatedAppShell />
+        <AuthenticatedAppShell>
+          <p>conteúdo protegido</p>
+        </AuthenticatedAppShell>
       </Wrapper>
     );
 
     expect(await screen.findByRole("button", { name: /user@example.com/i })).toBeVisible();
+    expect(screen.getByText("conteúdo protegido")).toBeVisible();
     expect(screen.getByRole("main")).toBeInTheDocument();
   });
 
