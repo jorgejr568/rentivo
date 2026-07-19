@@ -1,18 +1,44 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
+import { AUTH_CONFIG, AUTHENTICATED_RESPONSE, jsonResponse } from "../../test/auth";
+import { AuthProvider } from "../auth/AuthProvider";
 import { RecoveryCodesPage } from "./RecoveryCodesPage";
+
+function LocationProbe() {
+  return <span>{useLocation().pathname}</span>;
+}
+
+function renderRecovery(recoveryCodes?: string[]) {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "/api/v1/auth/config") return jsonResponse(AUTH_CONFIG);
+    if (url === "/api/v1/auth/session") return jsonResponse(AUTHENTICATED_RESPONSE);
+    throw new Error(`Unexpected request: ${url}`);
+  }));
+  const entry = recoveryCodes
+    ? { pathname: "/security/recovery-codes", state: { recoveryCodes } }
+    : "/security/recovery-codes";
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <AuthProvider>
+        <Routes>
+          <Route element={<RecoveryCodesPage />} path="/security/recovery-codes" />
+          <Route element={<LocationProbe />} path="/security" />
+        </Routes>
+      </AuthProvider>
+    </MemoryRouter>
+  );
+}
+
+afterEach(() => vi.unstubAllGlobals());
 
 it("shows and copies one-time recovery codes", async () => {
   const user = userEvent.setup();
   const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
-  render(
-    <MemoryRouter initialEntries={[{ pathname: "/security/recovery-codes", state: { recoveryCodes: ["one", "two"] } }]}>
-      <Routes><Route element={<RecoveryCodesPage />} path="/security/recovery-codes" /></Routes>
-    </MemoryRouter>
-  );
+  renderRecovery(["one", "two"]);
 
   expect(screen.getByText("one")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Copiar todos" }));
@@ -21,15 +47,14 @@ it("shows and copies one-time recovery codes", async () => {
 });
 
 it("returns to security when codes are absent", () => {
-  function Probe() { return <span>{useLocation().pathname}</span>; }
-  render(<MemoryRouter initialEntries={["/security/recovery-codes"]}><Routes><Route element={<RecoveryCodesPage />} path="/security/recovery-codes" /><Route element={<Probe />} path="/security" /></Routes></MemoryRouter>);
+  renderRecovery();
   expect(screen.getByText("/security")).toBeVisible();
 });
 
 it("reports clipboard failures", async () => {
   const user = userEvent.setup();
   vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("denied"));
-  render(<MemoryRouter initialEntries={[{ pathname: "/security/recovery-codes", state: { recoveryCodes: ["one"] } }]}><Routes><Route element={<RecoveryCodesPage />} path="/security/recovery-codes" /></Routes></MemoryRouter>);
+  renderRecovery(["one"]);
   await user.click(screen.getByRole("button", { name: "Copiar todos" }));
   expect(await screen.findByText("Não foi possível copiar os códigos.")).toBeVisible();
 });

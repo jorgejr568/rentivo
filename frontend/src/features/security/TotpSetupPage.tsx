@@ -58,7 +58,7 @@ export function TotpSetupPage() {
         })
       );
       pushAnalyticsFromResponse(response);
-      await refreshSession();
+      await refreshSession().catch(() => undefined);
       navigate("/security/recovery-codes", { replace: true, state: { recoveryCodes: data.recovery_codes } });
     } catch (caught: unknown) {
       setError(caught instanceof ApiError ? caught.message : "Não foi possível confirmar o código.");
