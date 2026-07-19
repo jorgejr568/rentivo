@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
+from ipaddress import IPv6Address, ip_address
 from urllib.parse import urlsplit
 from xml.sax.saxutils import escape
 
@@ -46,12 +48,29 @@ AI_CRAWLERS: tuple[str, ...] = (
     "Diffbot",
     "YouBot",
 )
+DNS_LABEL_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", re.IGNORECASE)
 
 
-def _parse_public_origin(value: str) -> str | None:
+def _parse_public_host(hostname: str, *, allow_localhost: bool) -> str | None:
+    if hostname == "localhost":
+        return hostname if allow_localhost else None
+    if "%" in hostname:
+        return None
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        if len(hostname) > 253 or not all(DNS_LABEL_PATTERN.fullmatch(label) for label in hostname.split(".")):
+            return None
+        return hostname.lower()
+    if isinstance(address, IPv6Address):
+        return f"[{address.compressed}]"
+    return str(address)
+
+
+def _parse_public_origin(value: str, *, allow_localhost: bool) -> str | None:
     try:
         parsed = urlsplit(value)
-        parsed.port
+        port = parsed.port
     except ValueError:
         return None
     if (
@@ -64,12 +83,16 @@ def _parse_public_origin(value: str) -> str | None:
         or parsed.fragment
     ):
         return None
-    return f"{parsed.scheme}://{parsed.netloc}"
+    host = _parse_public_host(parsed.hostname, allow_localhost=allow_localhost)
+    if host is None or parsed.netloc.endswith(":"):
+        return None
+    authority = host if port is None else f"{host}:{port}"
+    return f"{parsed.scheme}://{authority}"
 
 
 def _public_origin(request: Request) -> str:
     if settings.public_url:
-        configured_origin = _parse_public_origin(settings.public_url)
+        configured_origin = _parse_public_origin(settings.public_url, allow_localhost=False)
         if configured_origin is None:
             raise ProblemException(
                 problem(
@@ -89,7 +112,7 @@ def _public_origin(request: Request) -> str:
                 detail="A origem pública precisa ser configurada em produção.",
             )
         )
-    request_origin = _parse_public_origin(f"{request.url.scheme}://{request.url.netloc}")
+    request_origin = _parse_public_origin(f"{request.url.scheme}://{request.url.netloc}", allow_localhost=True)
     if request_origin is None:
         raise ProblemException.bad_request("invalid_public_origin", "A origem pública da requisição é inválida.")
     return request_origin

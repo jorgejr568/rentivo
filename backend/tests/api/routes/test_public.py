@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 
 from rentivo.api.app import create_app
 from rentivo.api.errors import ProblemException
-from rentivo.api.routes.public import _public_origin
+from rentivo.api.routes.public import _parse_public_origin, _public_origin
 from rentivo.settings import settings
 
 
@@ -122,6 +122,23 @@ def test_crawler_routes_reject_non_http_request_origins(monkeypatch: pytest.Monk
     assert captured.value.problem.code == "invalid_public_origin"
 
 
+def test_nonproduction_request_origin_allows_localhost(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "environment", "dev")
+    monkeypatch.setattr(settings, "public_url", "")
+    request = Request(
+        {
+            "type": "http",
+            "scheme": "http",
+            "server": ("localhost", 8000),
+            "path": "/robots.txt",
+            "query_string": b"",
+            "headers": [(b"host", b"localhost:8000")],
+        }
+    )
+
+    assert _public_origin(request) == "http://localhost:8000"
+
+
 @pytest.mark.parametrize("path", ["/robots.txt", "/sitemap.xml"])
 def test_crawler_routes_require_configured_origin_in_production(
     client: TestClient,
@@ -170,7 +187,18 @@ def test_configured_origin_is_canonical_regardless_of_host(
         "https://rentivo.example/path",
         "https://rentivo.example?brand=one",
         "https://rentivo.example#fragment",
+        "https://rentivo example",
+        "https://rentivo.example\\bad",
+        "https://%zz",
+        "https://rentivo%2eexample",
+        "https://-rentivo.example",
+        "https://rentivo-.example",
+        "https://rentivo..example",
+        "https://rentivo_example",
+        "https://rentivo.example:",
+        "https://rentivo.example:invalid",
         "https://rentivo.example:99999",
+        "https://localhost",
     ],
 )
 def test_crawler_routes_reject_malformed_configured_origins(
@@ -187,6 +215,19 @@ def test_crawler_routes_reject_malformed_configured_origins(
     assert response.headers["X-Request-ID"] == "invalid-origin"
     assert response.json()["code"] == "invalid_public_origin"
     assert response.json()["request_id"] == "invalid-origin"
+
+
+@pytest.mark.parametrize(
+    ("origin", "expected_origin"),
+    [
+        ("https://rentivo.example", "https://rentivo.example"),
+        ("https://sub-domain.rentivo.example:8443", "https://sub-domain.rentivo.example:8443"),
+        ("http://127.0.0.1:8000", "http://127.0.0.1:8000"),
+        ("https://[2001:db8::1]:8443", "https://[2001:db8::1]:8443"),
+    ],
+)
+def test_parse_public_origin_accepts_valid_dns_and_ip_hosts(origin: str, expected_origin: str) -> None:
+    assert _parse_public_origin(origin, allow_localhost=False) == expected_origin
 
 
 def test_sitemap_is_xml_with_canonical_urls(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
