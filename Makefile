@@ -6,7 +6,7 @@ NPM_FRONTEND := npm --prefix frontend
 
 RENTIVO_DB_ENV_FILE ?= .env.db
 RENTIVO_APP_ENV_FILE ?= .env
-RENTIVO_DEV_DB_ENV_FILE ?= .env.db.example
+RENTIVO_DEV_DB_ENV_FILE ?= .env.db
 STACK_COMPOSE := RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)" docker compose --env-file "$(RENTIVO_DB_ENV_FILE)"
 DEV_COMPOSE := RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)" docker compose --env-file "$(RENTIVO_DEV_DB_ENV_FILE)" -f docker-compose.yml -f docker-compose.dev.yml
 
@@ -174,16 +174,16 @@ shell-worker:
 
 .PHONY: compose-up
 compose-up:
-	docker compose up -d --build
+	$(DEV_COMPOSE) up -d --build
 
 .PHONY: compose-down
 compose-down:
-	docker compose down
+	$(DEV_COMPOSE) down
 
 .PHONY: compose-restart
 compose-restart:
-	docker compose down
-	docker compose up -d --build
+	$(DEV_COMPOSE) down
+	$(DEV_COMPOSE) up -d --build
 
 .PHONY: compose-dev
 compose-dev:
@@ -195,23 +195,23 @@ compose-dev-down:
 
 .PHONY: compose-shell
 compose-shell:
-	docker compose exec api bash
+	$(DEV_COMPOSE) exec api bash
 
 .PHONY: compose-worker
 compose-worker:
-	docker compose up -d --build worker
+	$(DEV_COMPOSE) up -d --build worker
 
 .PHONY: compose-logs-worker
 compose-logs-worker:
-	docker compose logs -f worker
+	$(DEV_COMPOSE) logs -f worker
 
 .PHONY: compose-migrate
 compose-migrate:
-	docker compose run --rm migrate
+	$(DEV_COMPOSE) run --rm migrate
 
 .PHONY: compose-migrate-fresh
 compose-migrate-fresh:
-	docker compose exec api python -c "\
+	$(DEV_COMPOSE) exec api python -c "\
 from rentivo.db import get_engine; \
 from sqlalchemy import text; \
 e = get_engine(); \
@@ -222,23 +222,23 @@ tables = [r[0] for r in conn.execute(text('SHOW TABLES')).fetchall()]; \
 conn.execute(text('SET FOREIGN_KEY_CHECKS = 1')); \
 conn.commit(); conn.close(); \
 print(f'Dropped {len(tables)} tables.')"
-	docker compose run --rm migrate
+	$(DEV_COMPOSE) run --rm migrate
 
 .PHONY: compose-createuser
 compose-createuser:
-	docker compose exec -it api python -c "from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
+	$(DEV_COMPOSE) exec -it api python -c "from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
 
 .PHONY: compose-regenerate
 compose-regenerate:
-	docker compose exec api python -m rentivo.scripts.regenerate_pdfs
+	$(DEV_COMPOSE) exec api python -m rentivo.scripts.regenerate_pdfs
 
 .PHONY: compose-regenerate-recibos
 compose-regenerate-recibos:
-	docker compose exec api python -m rentivo.scripts.regenerate_recibos
+	$(DEV_COMPOSE) exec api python -m rentivo.scripts.regenerate_recibos
 
 .PHONY: compose-logs
 compose-logs:
-	docker compose logs -f
+	$(DEV_COMPOSE) logs -f
 
 # --- Production stack ---
 
@@ -280,19 +280,19 @@ preview-stop: stack-stop
 
 .PHONY: jaeger-up
 jaeger-up:
-	docker compose --profile observability up -d jaeger
+	$(DEV_COMPOSE) --profile observability up -d jaeger
 	@echo "Jaeger UI: http://localhost:16686"
 	@echo "Set RENTIVO_OTEL_ENABLED=true and RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 (compose) to send traces."
 
 .PHONY: jaeger-down
 jaeger-down:
-	docker compose --profile observability stop jaeger
+	$(DEV_COMPOSE) --profile observability stop jaeger
 
 .PHONY: temporal-up
 temporal-up:
-	docker compose --profile temporal up -d temporal temporal-ui
+	$(DEV_COMPOSE) --profile temporal up -d temporal temporal-ui
 	@echo "Temporal UI at http://localhost:8233 — set RENTIVO_JOB_BACKEND=temporal and RENTIVO_TEMPORAL_HOST=temporal:7233 (compose) or localhost:7233 (host)."
 
 .PHONY: temporal-down
 temporal-down:
-	docker compose --profile temporal stop temporal temporal-ui
+	$(DEV_COMPOSE) --profile temporal stop temporal temporal-ui

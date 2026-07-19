@@ -13,13 +13,14 @@ MariaDB. Nginx is the single browser entrypoint in the default Compose topology.
 git clone https://github.com/jorgejr568/rentivo.git
 cd rentivo
 cp .env.example .env
+cp .env.db.example .env.db
 make install
 ```
 
 ## Compose development (recommended)
 
 The development override layers `docker-compose.dev.yml` onto the production
-service topology. It uses `.env.db.example` for local MariaDB values,
+service topology. It uses `.env.db` for local MariaDB values,
 bind-mounts `backend/rentivo` and `frontend`, and enables Uvicorn and Vite
 reload.
 
@@ -36,7 +37,8 @@ Backend and frontend edits reload automatically. The worker does not reload;
 restart it after changing jobs or shared backend code:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker
+RENTIVO_APP_ENV_FILE=.env docker compose --env-file .env.db \
+  -f docker-compose.yml -f docker-compose.dev.yml restart worker
 ```
 
 Useful commands:
@@ -49,8 +51,9 @@ make compose-createuser     # create a login user
 make compose-dev-down       # stop the development stack
 ```
 
-`make compose-up` runs the same default topology with code baked into images.
-Use it to inspect immutable local builds, not for daily editing.
+All `compose-*` development helpers use this same `.env` plus `.env.db` contract
+and the development override. Override `RENTIVO_DEV_DB_ENV_FILE` or
+`RENTIVO_APP_ENV_FILE` when testing alternate local files.
 
 ## Split-process development
 
@@ -58,7 +61,8 @@ Run MariaDB in Compose and the applications on the host when debugging Python
 or frontend tooling directly:
 
 ```bash
-docker compose up -d db
+RENTIVO_APP_ENV_FILE=.env docker compose --env-file .env.db \
+  -f docker-compose.yml -f docker-compose.dev.yml up -d db
 make migrate
 make frontend-install
 ```
@@ -179,10 +183,10 @@ uv run --project backend alembic -c backend/alembic.ini revision -m "add foo"
 only against disposable development databases. Let Alembic generate revision
 IDs; never invent them by hand.
 
-## Production topology rehearsal
+## Disposable production-topology rehearsal
 
-Use secret-managed production values, or production-equivalent disposable
-values, in separate application and database files:
+Use production-equivalent disposable values in separate application and
+database files to test source topology and startup ordering locally:
 
 ```bash
 make stack-config \
@@ -198,9 +202,11 @@ make stack-up \
 
 `stack-up` runs the migration service before API and worker and exposes Nginx
 on `RENTIVO_PORT` (default `8080`). Use `make stack-migrate` only for an explicit
-migration-only rehearsal; do not run it immediately before `stack-up` in a real
-release. Follow the [production release runbook](runbooks/production-release.md)
-for rollout and recovery.
+migration-only rehearsal. These targets build local images and are not a
+production deployment mechanism. Production releases and previous-version
+redeploys use only protected automation with complete-gate-tested immutable
+image digests; follow the
+[production release runbook](runbooks/production-release.md).
 
 ## Maintenance scripts
 

@@ -24,14 +24,16 @@ HTTP POST /api/v1/auth/login
 ### Compose topology (Jaeger + API and worker)
 
 The runtime images bundle the `otel` extra, so the containerized app/worker can
-export traces with just an env flag.
+export traces with just an env flag. Complete the development setup first so
+both `.env` and `.env.db` exist; every command below uses that split-env
+contract.
 
 ```bash
 make jaeger-up                 # start Jaeger all-in-one (compose profile)
 # in .env:
 #   RENTIVO_OTEL_ENABLED=true
 #   RENTIVO_OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318   # compose hostname
-docker compose up -d --build api worker                       # recreate to pick up .env
+make compose-dev                  # recreate the app and worker to pick up .env
 ```
 
 ### Host process

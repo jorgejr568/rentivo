@@ -88,6 +88,11 @@ A local Temporal cluster ships as an **opt-in** docker-compose profile, so it is
 make temporal-up      # start the `temporal` compose profile (cluster + UI)
 ```
 
+The target uses the development Compose contract: application settings from
+`.env`, database/interpolation values from `.env.db`, and both the base and
+development override manifests. Create those files from their checked-in
+examples as described in [development.md](development.md).
+
 The Temporal Web UI is at <http://localhost:8233>. Point Rentivo at the local cluster:
 
 ```bash

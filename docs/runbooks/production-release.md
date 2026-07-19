@@ -5,8 +5,9 @@ React/Vite, FastAPI, worker, MariaDB, and Nginx stack. The release is atomic:
 one immutable source SHA supplies every application image, one Alembic job runs
 before application services, and traffic moves to that tested stack once.
 
-There is no legacy-application rollback path. Recovery uses the previous
-React/FastAPI stack version, a forward fix, or a verified database restore.
+There is no rollback path to the removed server-rendered application. Recovery
+uses the previous React/FastAPI stack version, a forward fix, or a verified
+database restore.
 
 ## Ownership and release record
 
@@ -17,7 +18,7 @@ but every role needs a primary and a backup.
 |---|---|
 | Release commander | Owns go/abort decisions and the release timeline |
 | Database operator | Owns backup, restore rehearsal, migration, and revision checks |
-| Runtime operator | Owns images, Compose rollout, health, and rollback |
+| Runtime operator | Owns image verification, automated rollout, health, and rollback |
 | Application verifier | Runs smoke tests and checks critical user workflows |
 | Incident lead | Owns alerts, communications, and recovery coordination |
 
@@ -131,40 +132,20 @@ missing, built from another SHA, or was not produced by the complete gate.
 The protected deployment workflow is the canonical production entrypoint. It
 must receive the tested SHA/digests, run one `migrate` job, wait for success,
 start `api`, `worker`, `frontend`, and `proxy`, and report migration, rollout,
-and smoke status as one result. Trigger it once. Do not also run a manual
-Compose rollout.
+and smoke status as one result. The automation must deploy image references by
+recorded digest, not rebuild or resolve mutable tags. Trigger it once.
 
-For an approved self-hosted/manual deployment, check out the exact SHA and run
-the equivalent default topology once:
+There is no supported direct/manual production rollout. The repository Compose
+services contain local `build:` definitions and therefore cannot consume the
+recorded registry digests as a production deployment contract. Local stack
+targets, Docker builds, ad hoc Compose overrides, and host-side migration
+commands must not be used for production. If protected automation cannot accept
+and report the complete-gate-tested SHA and digest references, abort the release
+until that contract is available.
 
-```bash
-git rev-parse HEAD                     # must equal RELEASE_SHA
-make stack-config \
-  RENTIVO_DB_ENV_FILE=/etc/rentivo/db.env \
-  RENTIVO_APP_ENV_FILE=/etc/rentivo/app.env
-make stack-up \
-  RENTIVO_DB_ENV_FILE=/etc/rentivo/db.env \
-  RENTIVO_APP_ENV_FILE=/etc/rentivo/app.env
-```
-
-`stack-up` starts MariaDB, runs the one-shot Alembic `migrate` service, and only
-then starts API and worker; Nginx waits for API readiness and frontend health.
-Do not precede it with `stack-migrate`, because that would create a second
-migration invocation. `stack-migrate` is for rehearsals and operator-directed
-migration-only work.
-
-Record migration start/end time, exit code, logs, and revision:
-
-```bash
-RENTIVO_APP_ENV_FILE=/etc/rentivo/app.env \
-  docker compose --env-file /etc/rentivo/db.env logs migrate
-RENTIVO_APP_ENV_FILE=/etc/rentivo/app.env \
-  docker compose --env-file /etc/rentivo/db.env exec api \
-    alembic -c backend/alembic.ini current
-```
-
-The reported revision must equal the recorded expected head before traffic is
-enabled.
+The automation result must record migration start/end time, exit code, logs,
+and the database's current Alembic revision. The reported revision must equal
+the recorded expected head before traffic is enabled.
 
 ## Health, alerts, and smoke
 
@@ -224,10 +205,12 @@ Choose recovery based on schema compatibility and data written since cutover.
 ### Redeploy the previous new-stack version
 
 If the schema remains compatible, enter maintenance, drain the current worker,
-and redeploy the previously recorded React/FastAPI API, worker, and frontend
-digests. Do not rebuild the old SHA. Run the previous stack's readiness and
-smoke checks before enabling traffic. Do not run a downgrade migration unless a
-reviewed recovery change explicitly requires it.
+and submit the previously recorded React/FastAPI API, worker, and frontend
+digest references to the same protected deployment automation. The automation
+must redeploy those exact immutable references; never rebuild the old SHA,
+retag an image, or fall back to local Compose. Run the previous stack's
+readiness and smoke checks before enabling traffic. Do not run a downgrade
+migration unless a reviewed recovery change explicitly requires it.
 
 ### Forward fix
 
@@ -242,8 +225,9 @@ Restore only when corruption, incompatible schema changes, or unacceptable data
 mutation makes artifact redeployment/forward repair unsafe. Keep maintenance
 active, stop API and worker, preserve the failed database for investigation,
 restore the verified backup, deploy the matching previous new-stack digests,
-verify revision and critical row counts, then run the full smoke suite. Record
-and communicate all data lost after the backup consistency point.
+through the protected automation, verify revision and critical row counts, then
+run the full smoke suite. Record and communicate all data lost after the backup
+consistency point.
 
-Never route traffic to, rebuild, or restore the deleted legacy application. It
-is not a supported artifact, schema owner, or recovery target.
+Never route traffic to, rebuild, or restore the deleted server-rendered
+application. It is not a supported artifact, schema owner, or recovery target.

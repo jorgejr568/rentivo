@@ -50,37 +50,32 @@ Docker Compose.
 git clone https://github.com/jorgejr568/rentivo.git
 cd rentivo
 cp .env.example .env
+cp .env.db.example .env.db
 make install
 make compose-dev
 ```
 
 Open <http://localhost:8080>. The development override uses the same services
 as production, bind-mounts backend and frontend source, enables Uvicorn/Vite
-reload, and uses `.env.db.example` for local MariaDB provisioning. Restart the
+reload, and uses `.env.db` for local MariaDB provisioning. Restart the
 worker after changing handlers because it does not auto-reload:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml restart worker
+RENTIVO_APP_ENV_FILE=.env docker compose --env-file .env.db \
+  -f docker-compose.yml -f docker-compose.dev.yml restart worker
 ```
 
-For split-process development, start MariaDB with `docker compose up -d db`, run
-`make migrate`, then run `make frontend-dev`, the FastAPI Uvicorn entrypoint,
-and `make worker` in separate terminals. See the
+For split-process development, start MariaDB with the split-env Compose command
+in the development guide, run `make migrate`, then run `make frontend-dev`, the
+FastAPI Uvicorn entrypoint, and `make worker` in separate terminals. See the
 [development guide](docs/development.md) for exact commands.
 
-## Production stack commands
+## Production configuration
 
 Production uses separate database interpolation and application environment
-files. Start from `.env.db.example` and `.env.example`, store real values in the
-deployment secret manager, and validate before rollout.
-
-| Command | Purpose |
-|---|---|
-| `make stack-config` | Validate the production Compose configuration |
-| `make stack-build` | Build migration, API, worker, and frontend images |
-| `make stack-migrate` | Run only the one-shot migration job |
-| `make stack-up` | Build and start the complete dependency-ordered stack |
-| `make stack-stop` | Stop proxy, frontend, API, and worker; keep DB running |
+files. Start from `.env.db.example` and `.env.example`, then store real values in
+the deployment secret manager. `make stack-config` validates the source Compose
+topology against those files; it does not deploy production.
 
 Override the secret-managed file locations when needed:
 
@@ -91,8 +86,9 @@ make stack-config \
 ```
 
 Follow the [production release runbook](docs/runbooks/production-release.md)
-for immutable artifacts, backup/restore verification, worker drain, migration,
-smoke checks, abort thresholds, and recovery.
+for the only supported deployment path: protected automation consuming the
+complete-gate-tested immutable SHA and image digests. Local `stack-build` and
+`stack-up` outputs are never production release artifacts.
 
 ## Development and verification commands
 
@@ -115,8 +111,8 @@ smoke checks, abort thresholds, and recovery.
 ## Configuration
 
 All application variables use the `RENTIVO_` prefix. Copy `.env.example` for
-local development; Compose database provisioning uses `.env.db.example`
-locally and a separate `.env.db` in production.
+local development and copy `.env.db.example` to `.env.db` for Compose database
+provisioning. Production injects both files from its secret manager.
 
 | Variable | Development default | Purpose |
 |---|---|---|
