@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["rentivo*", "legacy_web*"]
+include = ["rentivo*"]
 
 [project.optional-dependencies]
 cache = ["redis>=5.0,<9"]
@@ -73,7 +73,7 @@ asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
-source = ["rentivo", "legacy_web"]
+source = ["rentivo"]
 omit = [
     "*/rentivo/scripts/seed.py",
     "*/rentivo/jobs/sqlalchemy.py",
@@ -92,4 +92,4 @@ line-length = 120
 select = ["E", "F", "I", "W"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["legacy_web", "rentivo"]
+known-first-party = ["rentivo"]

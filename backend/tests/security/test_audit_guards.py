@@ -1,6 +1,6 @@
 """Static-analysis-style guards locking in the clean state of the 2026-05-02 audit.
 
-Each test scans the production source tree (``rentivo/`` and ``legacy_web/``) for an
+Each test scans the production source tree (``rentivo/``) for an
 anti-pattern that the audit ruled out. A failure means a regression has slipped
 in: either fix the code, or — if the pattern is genuinely necessary — document
 the exception in ``docs/security/`` and update the regex below to allow it.
@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-PROD_DIRS = (REPO_ROOT / "rentivo", REPO_ROOT / "legacy_web")
+PROD_DIRS = (REPO_ROOT / "rentivo",)
 
 
 def _iter_production_py_files() -> list[Path]:
@@ -27,7 +27,7 @@ def _iter_production_py_files() -> list[Path]:
 @pytest.fixture(scope="module")
 def production_files() -> list[Path]:
     files = _iter_production_py_files()
-    assert files, "expected at least one production .py file under rentivo/ or legacy_web/"
+    assert files, "expected at least one production .py file under rentivo/"
     return files
 
 

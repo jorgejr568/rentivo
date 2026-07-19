@@ -4,6 +4,7 @@ status mapping, and cache interaction (using an injected memory cache)."""
 from __future__ import annotations
 
 from datetime import date
+from unittest.mock import patch
 
 import pytest
 
@@ -54,6 +55,17 @@ def cache():
 
 
 class TestRollup:
+    def test_defaults_to_the_current_sao_paulo_date(self, cache):
+        repo = FakeBillRepo([])
+        service = BillingStatsService(repo, FakeExpenseRepo(), cache=cache)
+
+        with patch("rentivo.services.billing_stats_service.datetime") as clock:
+            clock.now.return_value.date.return_value = date(2031, 7, 9)
+            stats = service.stats_for_ids([])
+
+        assert stats.year == 2031
+        clock.now.assert_called_once()
+
     def test_empty_ids_returns_zeroed_stats_without_querying(self, cache):
         repo = FakeBillRepo([])
         stats = BillingStatsService(repo, FakeExpenseRepo(), cache=cache).stats_for_ids([], today=TODAY)

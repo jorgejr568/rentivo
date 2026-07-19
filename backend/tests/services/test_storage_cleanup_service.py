@@ -1,6 +1,6 @@
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from rentivo.context import Actor
 from rentivo.models.bill import Bill
 from rentivo.models.billing import Billing
 from rentivo.models.receipt import Receipt
@@ -8,8 +8,7 @@ from rentivo.services.storage_cleanup_service import StorageCleanupService
 
 
 def _actor():
-    """Duck-typed actor (same shape as legacy_web.context.WebActor)."""
-    return SimpleNamespace(source="web", user_id=7, email="a@x")
+    return Actor(source="web", user_id=7, email="a@x")
 
 
 def _make_service(*, bills=None, receipts_by_bill=None, attachments=None):

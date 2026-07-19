@@ -1,3 +1,5 @@
+import importlib.metadata
+import importlib.util
 import os
 import subprocess
 from pathlib import Path
@@ -18,8 +20,50 @@ APP_ENV_EXAMPLE = REPO_ROOT / ".env.example"
 DB_ENV_EXAMPLE = REPO_ROOT / ".env.db.example"
 
 
+def _runtime_configuration_paths() -> list[Path]:
+    paths = [
+        REPO_ROOT / "backend" / "rentivo",
+        REPO_ROOT / "backend" / "pyproject.toml",
+        REPO_ROOT / "pyproject.toml",
+        REPO_ROOT / "Makefile",
+        REPO_ROOT / ".github",
+    ]
+    paths.extend(sorted(REPO_ROOT.glob("docker-compose*.yml")))
+    return paths
+
+
+def _files_below(path: Path) -> list[Path]:
+    if path.is_file():
+        return [path]
+    return [candidate for candidate in path.rglob("*") if candidate.is_file()]
+
+
 def _yaml(path: Path) -> dict:
     return yaml.safe_load(path.read_text())
+
+
+def test_runtime_is_independent_of_the_removed_legacy_application():
+    forbidden_references = ("legacy_web", "Dockerfile.legacy")
+    offenders: list[str] = []
+
+    for root in _runtime_configuration_paths():
+        for path in _files_below(root):
+            contents = path.read_text(errors="ignore")
+            if any(reference in contents for reference in forbidden_references):
+                offenders.append(str(path.relative_to(REPO_ROOT)))
+
+    assert offenders == []
+    assert "rentivo" not in _yaml(COMPOSE_FILE)["services"]
+    assert importlib.util.find_spec("legacy_web") is None
+    installed_distributions = [
+        distribution
+        for distribution in importlib.metadata.distributions()
+        if distribution.metadata["Name"] == "rentivo"
+    ]
+    assert installed_distributions
+    assert all(
+        distribution.read_text("top_level.txt").splitlines() == ["rentivo"] for distribution in installed_distributions
+    )
 
 
 def _render_compose(tmp_path: Path, *, development: bool) -> dict:
@@ -156,7 +200,6 @@ def test_internal_edge_network_exposes_only_the_proxy():
 def test_runtime_dockerfiles_do_not_scaffold_the_legacy_package():
     for path in (API_DOCKERFILE, WORKER_DOCKERFILE):
         contents = path.read_text()
-        assert "legacy_web" not in contents
         assert "backend/rentivo/__init__.py" in contents
 
 
@@ -164,7 +207,6 @@ def test_development_override_targets_backend_and_frontend_services():
     override = _yaml(DEV_COMPOSE_FILE)["services"]
 
     assert set(override) == {"migrate", "api", "worker", "frontend"}
-    assert "legacy_web" not in DEV_COMPOSE_FILE.read_text()
 
 
 def test_proxy_replaces_forwarding_input_and_re_resolves_services():

@@ -26,8 +26,6 @@ import time
 
 import pytest
 
-from legacy_web.routes.theme import _HEX_COLOR_RE
-
 # Import every regex from its production site so this test fails the moment a
 # new prod pattern is added without being registered below.
 from rentivo.pix import _PIX_KEY_PATTERNS
@@ -43,8 +41,6 @@ from rentivo.settings import _GTM_RE
 PRODUCTION_REGEXES: list[tuple[str, re.Pattern[str], str]] = [
     # Variable-length: stress with a very long matching prefix + trailing bad char.
     ("settings._GTM_RE", _GTM_RE, "GTM-" + ("A" * 1000) + "!"),
-    # Fixed length 7 (#RRGGBB): length-7 prefix of valid hex chars + bad trailing char.
-    ("theme._HEX_COLOR_RE", _HEX_COLOR_RE, "#" + ("a" * 6) + "!"),
     # Fixed length 11 digits: 11 valid digits + bad trailing char.
     ("pix.cpf", _PIX_KEY_PATTERNS["cpf"], ("9" * 11) + "!"),
     # Fixed length 14 digits: 14 valid digits + bad trailing char.

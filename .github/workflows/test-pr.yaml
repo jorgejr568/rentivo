@@ -228,10 +228,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: legacy
-            dockerfile: backend/Dockerfile.legacy
-            image: rentivo-legacy
-            scope: preview-legacy
           - name: api
             dockerfile: backend/Dockerfile.api
             image: rentivo-api

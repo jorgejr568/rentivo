@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import text
 
 from rentivo.constants import SP_TZ
+from rentivo.context import Actor
 from rentivo.encryption.base64 import Base64Backend
 from rentivo.jobs.base import Job
 from rentivo.models.bill import Bill, BillLineItem
@@ -31,7 +32,6 @@ from rentivo.services.bill_service import (
 from rentivo.services.job_service import JobService
 from rentivo.services.pix_service import PixConfig, PixService
 from rentivo.storage.local import LocalStorage
-from tests.web.conftest import test_engine, web_test_db  # noqa: F401
 
 
 class _FailOnceJobBackend:
@@ -2061,7 +2061,6 @@ class TestRenderOrEnqueue:
             self.storage.delete.assert_called_once_with(candidate_path)
 
     def test_job_service_enqueues_and_marks_pending(self):
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2070,7 +2069,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="alice@example.com")
+        actor = Actor(user_id=7, email="alice@example.com", source="web")
         with patch.object(service, "pdf_generator") as mock_pdf:
             path, failed = service._render_or_enqueue(self._bill(), self._billing(), actor=actor)
 
@@ -2237,7 +2236,6 @@ class TestRenderOrEnqueue:
             service._render_or_enqueue(bill, self._billing())
 
     def test_update_bill_uses_render_or_enqueue(self):
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2246,7 +2244,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="a@x")
+        actor = Actor(user_id=7, email="a@x", source="web")
         self.bill_repo.update.return_value = self._bill()
         with patch.object(service, "pdf_generator") as mock_pdf:
             service.update_bill(self._bill(), self._billing(), [], "notes", "", actor=actor)
@@ -2256,7 +2254,6 @@ class TestRenderOrEnqueue:
         assert self.job_service.enqueue_for.call_args.args[0] is actor
 
     def test_regenerate_pdf_uses_render_or_enqueue(self):
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2265,7 +2262,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="a@x")
+        actor = Actor(user_id=7, email="a@x", source="web")
         with patch.object(service, "pdf_generator") as mock_pdf:
             service.regenerate_pdf(self._bill(), self._billing(), actor=actor)
 
@@ -2275,7 +2272,6 @@ class TestRenderOrEnqueue:
 
     def test_regenerate_pdf_paid_also_enqueues_recibo(self):
         """A PAID bill regenerates both the invoice and the recibo, in that order."""
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2284,7 +2280,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="a@x")
+        actor = Actor(user_id=7, email="a@x", source="web")
         paid_bill = Bill(
             id=42, uuid="b-uuid", billing_id=1, reference_month="2026-05", total_amount=10000, status="paid"
         )
@@ -2319,7 +2315,6 @@ class TestRenderOrEnqueue:
         assert job_types == ["pdf.render"]
 
     def test_add_receipt_uses_render_or_enqueue_in_async_mode(self):
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2328,7 +2323,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="a@x")
+        actor = Actor(user_id=7, email="a@x", source="web")
         bill = self._bill()
         self.receipt_repo.create.return_value = Receipt(
             id=11,
@@ -2379,7 +2374,6 @@ class TestRenderOrEnqueue:
         assert bill.pdf_path == "old.pdf"
 
     def test_delete_receipt_uses_render_or_enqueue_in_async_mode(self):
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2388,7 +2382,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="a@x")
+        actor = Actor(user_id=7, email="a@x", source="web")
         bill = self._bill()
         receipt = Receipt(id=5, bill_id=42, filename="r.pdf", uuid="r-uuid", storage_key="receipts/r.pdf")
         events = []
@@ -2527,7 +2521,6 @@ class TestRenderOrEnqueue:
         self.storage.delete.assert_not_called()
 
     def test_reorder_receipts_uses_render_or_enqueue_in_async_mode(self):
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2536,7 +2529,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="a@x")
+        actor = Actor(user_id=7, email="a@x", source="web")
         bill = self._bill()
         existing = [
             Receipt(id=1, uuid="a", bill_id=42, filename="x.pdf", sort_order=0),
@@ -2598,7 +2591,6 @@ class TestRenderOrEnqueue:
             total_amount=10000,
             line_items=[BillLineItem(description="Rent", amount=10000, item_type=ItemType.FIXED, sort_order=0)],
         )
-        from legacy_web.context import WebActor
 
         service = BillService(
             self.bill_repo,
@@ -2607,7 +2599,7 @@ class TestRenderOrEnqueue:
             pix_service=self.pix,
             job_service=self.job_service,
         )
-        actor = WebActor(user_id=7, email="a@x")
+        actor = Actor(user_id=7, email="a@x", source="web")
         with patch.object(service, "pdf_generator") as mock_pdf:
             mock_pdf.generate.return_value = b"%PDF"
             service.generate_bill(billing, "2026-05", {}, [], actor=actor)
@@ -2968,12 +2960,11 @@ class TestReciboLifecycle:
         repo.update_recibo_pdf_path.assert_not_called()
 
     def test_change_status_to_paid_enqueues_job_with_actor(self):
-        from legacy_web.context import WebActor
 
         repo = MagicMock()
         job_service = MagicMock()
         service = BillService(repo, MagicMock(), job_service=job_service)
-        actor = WebActor(user_id=7, email="alice@example.com")
+        actor = Actor(user_id=7, email="alice@example.com", source="web")
 
         operation_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
         with patch("rentivo.services.bill_service.ULID", return_value=operation_id):
@@ -3017,12 +3008,11 @@ class TestReciboLifecycle:
         job_service.enqueue.assert_not_called()
 
     def test_change_status_leaving_paid_enqueues_s3_delete_with_actor(self):
-        from legacy_web.context import WebActor
 
         repo = MagicMock()
         job_service = MagicMock()
         service = BillService(repo, MagicMock(), job_service=job_service)
-        actor = WebActor(user_id=7, email="alice@example.com")
+        actor = Actor(user_id=7, email="alice@example.com", source="web")
         bill = self._bill(status="paid", recibo_pdf_path="bg-uuid/b-uuid.recibo.pdf")
         repo.update_status_and_clear_recibo.return_value = (True, bill.recibo_pdf_path)
 

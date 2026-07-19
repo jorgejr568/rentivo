@@ -1,10 +1,6 @@
-IMAGE_NAME     := rentivo-web
-CONTAINER      := rentivo
-
 PYTHON  := uv run --project backend python
 PYTEST  := uv run --project backend pytest
 RUFF    := uv run --project backend ruff
-UVICORN := uv run --project backend uvicorn
 ALEMBIC := uv run --project backend alembic -c backend/alembic.ini
 NPM_FRONTEND := npm --prefix frontend
 
@@ -111,16 +107,6 @@ e2e:
 e2e-update:
 	$(NPM_FRONTEND) run e2e:update
 
-# --- Web (local) ---
-
-.PHONY: web-run
-web-run:
-	$(UVICORN) legacy_web.app:app --reload --port 8000
-
-.PHONY: web-createuser
-web-createuser:
-	$(PYTHON) -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
-
 # --- React frontend & OpenAPI contract ---
 
 .PHONY: frontend-install
@@ -156,70 +142,6 @@ openapi-check:
 .PHONY: worker
 worker:
 	$(PYTHON) -m rentivo.workers
-
-# --- Docker: Web (standalone) ---
-
-.PHONY: build
-build:
-	docker build -f backend/Dockerfile.legacy -t $(IMAGE_NAME) .
-
-.PHONY: up
-up:
-	docker run -d --name $(CONTAINER) \
-		--env-file .env \
-		-p 8000:8000 \
-		$(IMAGE_NAME)
-
-.PHONY: down
-down:
-	docker rm -f $(CONTAINER) 2>/dev/null || true
-
-.PHONY: restart
-restart: down up
-
-.PHONY: shell
-shell:
-	docker exec -it $(CONTAINER) bash
-
-.PHONY: logs
-logs:
-	docker logs -f $(CONTAINER)
-
-.PHONY: health
-health:
-	curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/
-
-.PHONY: docker-migrate
-docker-migrate:
-	docker exec $(CONTAINER) python -c "from rentivo.db import initialize_db; initialize_db()"
-
-.PHONY: docker-migrate-fresh
-docker-migrate-fresh:
-	docker exec $(CONTAINER) python -c "\
-from rentivo.db import get_engine; \
-from sqlalchemy import text; \
-e = get_engine(); \
-conn = e.connect(); \
-conn.execute(text('SET FOREIGN_KEY_CHECKS = 0')); \
-tables = [r[0] for r in conn.execute(text('SHOW TABLES')).fetchall()]; \
-[conn.execute(text(f'DROP TABLE \`{t}\`')) for t in tables]; \
-conn.execute(text('SET FOREIGN_KEY_CHECKS = 1')); \
-conn.commit(); conn.close(); \
-print(f'Dropped {len(tables)} tables.'); \
-from rentivo.db import initialize_db; initialize_db(); \
-print('Migrations applied.')"
-
-.PHONY: docker-createuser
-docker-createuser:
-	docker exec -it $(CONTAINER) python -c "from rentivo.db import initialize_db; initialize_db(); from rentivo.repositories.factory import get_user_repository; from rentivo.services.user_service import UserService; svc = UserService(get_user_repository()); username = input('Username: '); password = __import__('getpass').getpass('Password: '); svc.create_user(username, password); print(f'User {username} created.')"
-
-.PHONY: docker-regenerate
-docker-regenerate:
-	docker exec $(CONTAINER) python -m rentivo.scripts.regenerate_pdfs
-
-.PHONY: docker-regenerate-recibos
-docker-regenerate-recibos:
-	docker exec $(CONTAINER) python -m rentivo.scripts.regenerate_recibos
 
 # --- Docker: Worker (standalone) ---
 

@@ -1,6 +1,7 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
+from rentivo.context import ANON_ACTOR, Actor
 from rentivo.jobs.base import Job
 from rentivo.services.job_service import JobService
 
@@ -78,17 +79,15 @@ def test_enqueue_default_source_is_empty_string():
 
 
 class TestEnqueueFor:
-    """Tests for enqueue_for — the WebActor-unpacking convenience wrapper."""
+    """Tests for enqueue_for's actor-unpacking convenience wrapper."""
 
     def test_enqueue_for_unpacks_actor(self):
-        from legacy_web.context import WebActor
-
         repo = MagicMock()
         repo.enqueue.return_value = _make_job()
         audit = MagicMock()
         svc = JobService(repo, audit)
 
-        actor = WebActor(user_id=7, email="a@x.z")
+        actor = Actor(user_id=7, email="a@x.z", source="web")
         result = svc.enqueue_for(actor, "email.send", {"event": "welcome"})
 
         assert result.id == 42
@@ -99,8 +98,6 @@ class TestEnqueueFor:
         assert kwargs["actor_username"] == "a@x.z"
 
     def test_enqueue_for_anon_actor(self):
-        from legacy_web.context import ANON_ACTOR
-
         repo = MagicMock()
         repo.enqueue.return_value = _make_job()
         audit = MagicMock()
@@ -109,13 +106,11 @@ class TestEnqueueFor:
         svc.enqueue_for(ANON_ACTOR, "email.send", {"event": "welcome"})
 
         kwargs = audit.safe_log.call_args.kwargs
-        assert kwargs["source"] == "web"
+        assert kwargs["source"] == "anonymous"
         assert kwargs["actor_id"] is None
         assert kwargs["actor_username"] == ""
 
     def test_enqueue_for_passes_run_after_and_max_attempts(self):
-        from legacy_web.context import WebActor
-
         repo = MagicMock()
         repo.enqueue.return_value = _make_job(max_attempts=3)
         audit = MagicMock()
@@ -123,7 +118,7 @@ class TestEnqueueFor:
 
         when = datetime(2030, 1, 1, 12, 0, 0)
         svc.enqueue_for(
-            WebActor(user_id=1, email="x@y.z"),
+            Actor(user_id=1, email="x@y.z", source="web"),
             "email.send",
             {"event": "welcome"},
             run_after=when,

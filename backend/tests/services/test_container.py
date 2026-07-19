@@ -1,17 +1,3 @@
-def test_legacy_request_services_reexports_shared_container():
-    from legacy_web.services_container import RequestServices as LegacyRequestServices
-    from rentivo.services.container import RequestServices
-
-    assert LegacyRequestServices is RequestServices
-
-
-def test_legacy_service_container_preserves_module_patch_points():
-    import legacy_web.services_container as legacy_container
-    import rentivo.services.container as shared_container
-
-    assert legacy_container is shared_container
-
-
 def test_api_key_service_is_lazily_cached(db_connection, fake_encryption):
     from rentivo.services.api_key_service import APIKeyService
     from rentivo.services.container import RequestServices
@@ -93,3 +79,69 @@ def test_mfa_and_pix_services_resolve_with_their_own_repositories(db_connection,
     assert isinstance(services.pix, PixService)
     assert services.mfa is services.mfa
     assert services.pix is services.pix
+
+
+def test_all_retained_request_services_resolve_and_are_cached(db_connection, fake_encryption):
+    from rentivo.services.api_key_service import APIKeyService
+    from rentivo.services.audit_service import AuditService
+    from rentivo.services.auth_challenge_service import AuthChallengeService
+    from rentivo.services.authorization_service import AuthorizationService
+    from rentivo.services.bill_service import BillService
+    from rentivo.services.billing_attachment_service import BillingAttachmentService
+    from rentivo.services.billing_notification_service import BillingNotificationService
+    from rentivo.services.billing_service import BillingService
+    from rentivo.services.billing_stats_service import BillingStatsService
+    from rentivo.services.communication_service import CommunicationService
+    from rentivo.services.container import RequestServices
+    from rentivo.services.expense_service import ExpenseService
+    from rentivo.services.google_auth_service import GoogleAuthService
+    from rentivo.services.invite_service import InviteService
+    from rentivo.services.job_service import JobService
+    from rentivo.services.known_device_service import KnownDeviceService
+    from rentivo.services.login_service import LoginService
+    from rentivo.services.mfa_service import MFAService
+    from rentivo.services.organization_service import OrganizationService
+    from rentivo.services.password_reset_service import PasswordResetService
+    from rentivo.services.pix_service import PixService
+    from rentivo.services.rate_limit_service import RateLimitService
+    from rentivo.services.recipient_service import RecipientService
+    from rentivo.services.storage_cleanup_service import StorageCleanupService
+    from rentivo.services.theme_service import ThemeService
+    from rentivo.services.turnstile_service import TurnstileService
+    from rentivo.services.user_service import UserService
+
+    services = RequestServices(conn=db_connection, encryption=fake_encryption)
+    expected_types = {
+        "billing": BillingService,
+        "api_key": APIKeyService,
+        "auth_challenge": AuthChallengeService,
+        "auth_rate_limit": RateLimitService,
+        "login": LoginService,
+        "billing_attachment": BillingAttachmentService,
+        "billing_stats": BillingStatsService,
+        "expense": ExpenseService,
+        "user": UserService,
+        "organization": OrganizationService,
+        "theme": ThemeService,
+        "pix": PixService,
+        "invite": InviteService,
+        "authorization": AuthorizationService,
+        "audit": AuditService,
+        "mfa": MFAService,
+        "job": JobService,
+        "known_device": KnownDeviceService,
+        "turnstile": TurnstileService,
+        "google_auth": GoogleAuthService,
+        "password_reset": PasswordResetService,
+        "bill": BillService,
+        "recipient": RecipientService,
+        "reply_to": RecipientService,
+        "communication": CommunicationService,
+        "storage_cleanup": StorageCleanupService,
+        "billing_notification": BillingNotificationService,
+    }
+
+    for property_name, expected_type in expected_types.items():
+        service = getattr(services, property_name)
+        assert isinstance(service, expected_type)
+        assert getattr(services, property_name) is service

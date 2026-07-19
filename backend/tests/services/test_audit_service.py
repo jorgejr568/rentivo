@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from rentivo.context import ANON_ACTOR, Actor
 from rentivo.models.audit_log import AuditEventType, AuditLog
 from rentivo.services.audit_service import AuditService
 
@@ -211,7 +212,7 @@ class TestActorUsernameRedaction:
 
 
 class TestSafeLogFor:
-    """Tests for safe_log_for — the WebActor-unpacking convenience wrapper."""
+    """Tests for safe_log_for's actor-unpacking convenience wrapper."""
 
     def setup_method(self):
         self.mock_repo = MagicMock()
@@ -219,9 +220,7 @@ class TestSafeLogFor:
         self.service = AuditService(self.mock_repo)
 
     def test_safe_log_for_unpacks_actor(self):
-        from legacy_web.context import WebActor
-
-        actor = WebActor(user_id=42, email="alice@example.com")
+        actor = Actor(user_id=42, email="alice@example.com", source="web")
         result = self.service.safe_log_for(
             actor,
             AuditEventType.BILLING_CREATE,
@@ -259,8 +258,6 @@ class TestSafeLogFor:
         }
 
     def test_safe_log_for_anon_actor(self):
-        from legacy_web.context import ANON_ACTOR
-
         self.service.safe_log_for(
             ANON_ACTOR,
             AuditEventType.USER_LOGIN_FAILED,
@@ -271,14 +268,12 @@ class TestSafeLogFor:
         created_log = self.mock_repo.create.call_args[0][0]
         assert created_log.actor_id is None
         assert created_log.actor_username == ""
-        assert created_log.source == "web"
+        assert created_log.source == "anonymous"
 
     def test_safe_log_for_swallows_exceptions(self):
-        from legacy_web.context import WebActor
-
         self.mock_repo.create.side_effect = RuntimeError("DB down")
         result = self.service.safe_log_for(
-            WebActor(user_id=1, email="x@y.z"),
+            Actor(user_id=1, email="x@y.z", source="web"),
             "test.event",
         )
         assert result is None

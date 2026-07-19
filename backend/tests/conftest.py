@@ -336,6 +336,17 @@ def db_connection(db_engine: Engine) -> Connection:
     conn.close()
 
 
+@pytest.fixture()
+def test_engine(db_engine: Engine) -> Engine:
+    with db_engine.connect() as conn:
+        for statement in SCHEMA_DDL.strip().split(";"):
+            stmt = statement.strip()
+            if stmt:
+                conn.execute(text(stmt))
+        conn.commit()
+    return db_engine
+
+
 def _sample_billing(**overrides) -> Billing:
     defaults = dict(
         name="Apt 101",

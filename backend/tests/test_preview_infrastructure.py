@@ -10,9 +10,6 @@ COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
 NGINX_CONFIG = REPO_ROOT / "infra" / "proxy" / "nginx.conf"
 PREVIEW_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 PR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "test-pr.yaml"
-LEGACY_CUSTOM_CSS = REPO_ROOT / "backend" / "legacy_web" / "static" / "core" / "css" / "custom.css"
-FRONTEND_CUSTOM_CSS = REPO_ROOT / "frontend" / "src" / "styles" / "custom.css"
-BILL_DETAIL_TEMPLATE = REPO_ROOT / "backend" / "legacy_web" / "templates" / "bill" / "detail.html"
 
 
 def _yaml(path: Path) -> dict:
@@ -172,19 +169,10 @@ def test_preview_ci_is_consolidated_under_existing_required_gate():
     assert required_jobs <= jobs.keys()
     assert set(jobs["all-checks-pass"]["needs"]) == required_jobs
     assert {item["name"] for item in jobs["preview-images"]["strategy"]["matrix"]["include"]} == {
-        "legacy",
         "api",
         "worker",
         "frontend",
     }
-
-
-def test_status_menu_host_style_survives_frontend_split():
-    selector = ".panel--menu-host { overflow: visible; }"
-
-    assert 'class="panel panel--menu-host"' in BILL_DETAIL_TEMPLATE.read_text()
-    assert selector in LEGACY_CUSTOM_CSS.read_text()
-    assert selector in FRONTEND_CUSTOM_CSS.read_text()
 
 
 def test_api_runtime_source_and_virtualenv_are_read_only_to_appuser():
