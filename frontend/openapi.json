@@ -8681,6 +8681,28 @@
         ]
       }
     },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "ready_api_v1_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Ready Api V1 Ready Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready"
+      }
+    },
     "/api/v1/security": {
       "get": {
         "operationId": "security_summary_api_v1_security_get",
@@ -9380,6 +9402,301 @@
         "tags": [
           "themes"
         ]
+      }
+    },
+    "/auth/google/login": {
+      "get": {
+        "operationId": "google_login_alias_auth_google_login_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Google Login Alias"
+      }
+    },
+    "/billings/{billing_uuid}/attachments/{attachment_uuid}": {
+      "get": {
+        "operationId": "attachment_alias_billings__billing_uuid__attachments__attachment_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "attachment_uuid",
+            "required": true,
+            "schema": {
+              "title": "Attachment Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Attachment Alias"
+      }
+    },
+    "/billings/{billing_uuid}/bills/{bill_uuid}/invoice": {
+      "get": {
+        "operationId": "invoice_alias_billings__billing_uuid__bills__bill_uuid__invoice_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Invoice Alias"
+      }
+    },
+    "/billings/{billing_uuid}/bills/{bill_uuid}/receipts/{receipt_uuid}": {
+      "get": {
+        "operationId": "receipt_alias_billings__billing_uuid__bills__bill_uuid__receipts__receipt_uuid__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "receipt_uuid",
+            "required": true,
+            "schema": {
+              "title": "Receipt Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Receipt Alias"
+      }
+    },
+    "/billings/{billing_uuid}/bills/{bill_uuid}/recibo": {
+      "get": {
+        "operationId": "recibo_alias_billings__billing_uuid__bills__bill_uuid__recibo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "billing_uuid",
+            "required": true,
+            "schema": {
+              "title": "Billing Uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "bill_uuid",
+            "required": true,
+            "schema": {
+              "title": "Bill Uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Recibo Alias"
+      }
+    },
+    "/change-password": {
+      "get": {
+        "operationId": "change_password_alias_change_password_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Change Password Alias"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/robots.txt": {
+      "get": {
+        "operationId": "robots_txt_robots_txt_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Robots Txt"
+      }
+    },
+    "/security/pix": {
+      "get": {
+        "operationId": "pix_alias_security_pix_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Pix Alias"
+      }
+    },
+    "/sitemap.xml": {
+      "get": {
+        "operationId": "sitemap_xml_sitemap_xml_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sitemap Xml"
       }
     }
   }
