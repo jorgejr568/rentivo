@@ -110,6 +110,11 @@ public struct MockFixtures: Sendable {
       name: "comprovante-pix-junho.pdf",
       sortOrder: 0
     )
+    let paidReceiptImage = Receipt(
+      id: stableUUID(2_002),
+      name: "confirmacao-bancaria.jpg",
+      sortOrder: 1
+    )
     let bills = [
       bill(
         id: StableID.billDraft,
@@ -139,7 +144,7 @@ public struct MockFixtures: Sendable {
         status: .paid,
         variableAmount: 14_340,
         paidAt: DateOnly(year: 2026, month: 6, day: 8),
-        receipts: [paidReceipt]
+        receipts: [paidReceipt, paidReceiptImage]
       ),
       bill(
         id: StableID.billCancelled,

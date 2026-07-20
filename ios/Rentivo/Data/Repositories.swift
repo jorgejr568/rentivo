@@ -24,7 +24,13 @@ public protocol BillingRepository: AnyObject {
 public protocol BillRepository: AnyObject {
   func listBills(billingID: UUID) async throws -> [Bill]
   func bill(billingID: UUID, id: UUID) async throws -> Bill
+  func createBill(_ draft: BillDraft) async throws -> Bill
+  func updateBill(billingID: UUID, billID: UUID, draft: BillDraft) async throws -> Bill
+  func deleteBill(billingID: UUID, billID: UUID) async throws
   func transitionBill(billingID: UUID, billID: UUID, to status: BillStatus) async throws
+  func addReceipt(billingID: UUID, billID: UUID, name: String) async throws -> Receipt
+  func reorderReceipts(billingID: UUID, billID: UUID, receiptIDs: [UUID]) async throws
+  func deleteReceipt(billingID: UUID, billID: UUID, receiptID: UUID) async throws
 }
 
 @MainActor
@@ -38,6 +44,24 @@ public protocol ExpenseRepository: AnyObject {
     amount: Money
   ) async throws -> Expense
   func deleteExpense(billingID: UUID, expenseID: UUID) async throws
+}
+
+@MainActor
+public protocol AttachmentRepository: AnyObject {
+  func listAttachments(billingID: UUID) async throws -> [Attachment]
+  func addAttachment(billingID: UUID, name: String, mediaType: String) async throws -> Attachment
+  func deleteAttachment(billingID: UUID, attachmentID: UUID) async throws
+}
+
+@MainActor
+public protocol CommunicationRepository: AnyObject {
+  func sendCommunication(
+    billingID: UUID,
+    billID: UUID?,
+    recipients: [String],
+    subject: String,
+    message: String
+  ) async throws -> CommunicationRecord
 }
 
 @MainActor

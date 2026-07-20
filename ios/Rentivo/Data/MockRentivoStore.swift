@@ -2,8 +2,9 @@ import Foundation
 
 @MainActor
 public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingRepository,
-  BillRepository, ExpenseRepository, OrganizationRepository, InvitationRepository,
-  SecurityRepository, APIKeyRepository, ThemeRepository
+  BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository,
+  OrganizationRepository, InvitationRepository, SecurityRepository, APIKeyRepository,
+  ThemeRepository
 {
   public private(set) var snapshot: StoreSnapshot
 
@@ -148,6 +149,66 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return bill
   }
 
+  public func createBill(_ draft: BillDraft) async throws -> Bill {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard snapshot.billings.contains(where: { $0.id == draft.billingID }) else {
+      throw DemoError.resourceNotFound
+    }
+    guard draft.validate().isEmpty else { throw DemoError.operationFailed }
+    let bill = Bill(
+      id: UUID(),
+      billingID: draft.billingID,
+      referenceMonth: draft.referenceMonth,
+      dueDate: draft.dueDate,
+      paidAt: nil,
+      notes: draft.notes,
+      status: .draft,
+      lineItems: draft.lineItems,
+      receipts: []
+    )
+    snapshot.bills.insert(bill, at: 0)
+    recordActivity(kind: .bill, title: "Fatura criada", detail: draft.referenceMonth.label)
+    return bill
+  }
+
+  public func updateBill(billingID: UUID, billID: UUID, draft: BillDraft) async throws -> Bill {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard draft.billingID == billingID, draft.validate().isEmpty else {
+      throw DemoError.operationFailed
+    }
+    guard
+      let index = snapshot.bills.firstIndex(where: {
+        $0.billingID == billingID && $0.id == billID
+      })
+    else {
+      throw DemoError.resourceNotFound
+    }
+    guard snapshot.bills[index].status == .draft else { throw DemoError.permissionDenied }
+    snapshot.bills[index].referenceMonth = draft.referenceMonth
+    snapshot.bills[index].dueDate = draft.dueDate
+    snapshot.bills[index].notes = draft.notes
+    snapshot.bills[index].lineItems = draft.lineItems
+    recordActivity(kind: .bill, title: "Fatura atualizada", detail: draft.referenceMonth.label)
+    return snapshot.bills[index]
+  }
+
+  public func deleteBill(billingID: UUID, billID: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard
+      let index = snapshot.bills.firstIndex(where: {
+        $0.billingID == billingID && $0.id == billID
+      })
+    else {
+      throw DemoError.resourceNotFound
+    }
+    let reference = snapshot.bills[index].referenceMonth.label
+    snapshot.bills.remove(at: index)
+    recordActivity(kind: .bill, title: "Fatura excluída", detail: reference)
+  }
+
   public func transitionBill(billingID: UUID, billID: UUID, to status: BillStatus) async throws {
     try await prepareOperation()
     try requireWriteAccess()
@@ -171,6 +232,59 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       title: "Fatura (status.label.lowercased())",
       detail: billingName
     )
+  }
+
+  public func addReceipt(billingID: UUID, billID: UUID, name: String) async throws -> Receipt {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = billIndex(billingID: billingID, billID: billID) else {
+      throw DemoError.resourceNotFound
+    }
+    let receipt = Receipt(
+      id: UUID(),
+      name: name,
+      sortOrder: snapshot.bills[index].receipts.count
+    )
+    snapshot.bills[index].receipts.append(receipt)
+    recordActivity(kind: .bill, title: "Comprovante adicionado", detail: name)
+    return receipt
+  }
+
+  public func reorderReceipts(
+    billingID: UUID,
+    billID: UUID,
+    receiptIDs: [UUID]
+  ) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = billIndex(billingID: billingID, billID: billID) else {
+      throw DemoError.resourceNotFound
+    }
+    let current = snapshot.bills[index].receipts
+    guard Set(current.map(\.id)) == Set(receiptIDs), current.count == receiptIDs.count else {
+      throw DemoError.operationFailed
+    }
+    let byID = Dictionary(uniqueKeysWithValues: current.map { ($0.id, $0) })
+    snapshot.bills[index].receipts = receiptIDs.enumerated().compactMap { offset, id in
+      guard var receipt = byID[id] else { return nil }
+      receipt.sortOrder = offset
+      return receipt
+    }
+  }
+
+  public func deleteReceipt(billingID: UUID, billID: UUID, receiptID: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = billIndex(billingID: billingID, billID: billID) else {
+      throw DemoError.resourceNotFound
+    }
+    guard snapshot.bills[index].receipts.contains(where: { $0.id == receiptID }) else {
+      throw DemoError.resourceNotFound
+    }
+    snapshot.bills[index].receipts.removeAll { $0.id == receiptID }
+    for offset in snapshot.bills[index].receipts.indices {
+      snapshot.bills[index].receipts[offset].sortOrder = offset
+    }
   }
 
   public func listExpenses(billingID: UUID) async throws -> [Expense] {
@@ -222,6 +336,71 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     let description = snapshot.expenses[index].description
     snapshot.expenses.remove(at: index)
     recordActivity(kind: .expense, title: "Despesa excluída", detail: description)
+  }
+
+  public func listAttachments(billingID: UUID) async throws -> [Attachment] {
+    try await prepareOperation()
+    guard snapshot.billings.contains(where: { $0.id == billingID }) else {
+      throw DemoError.resourceNotFound
+    }
+    guard !emptyMode else { return [] }
+    return snapshot.attachments[billingID] ?? []
+  }
+
+  public func addAttachment(
+    billingID: UUID,
+    name: String,
+    mediaType: String
+  ) async throws -> Attachment {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard snapshot.billings.contains(where: { $0.id == billingID }) else {
+      throw DemoError.resourceNotFound
+    }
+    let attachment = Attachment(
+      id: UUID(),
+      name: name,
+      mediaType: mediaType,
+      byteCount: 96_000
+    )
+    snapshot.attachments[billingID, default: []].append(attachment)
+    recordActivity(kind: .billing, title: "Arquivo adicionado", detail: name)
+    return attachment
+  }
+
+  public func deleteAttachment(billingID: UUID, attachmentID: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard snapshot.attachments[billingID]?.contains(where: { $0.id == attachmentID }) == true else {
+      throw DemoError.resourceNotFound
+    }
+    snapshot.attachments[billingID]?.removeAll { $0.id == attachmentID }
+  }
+
+  public func sendCommunication(
+    billingID: UUID,
+    billID: UUID?,
+    recipients: [String],
+    subject: String,
+    message: String
+  ) async throws -> CommunicationRecord {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard snapshot.billings.contains(where: { $0.id == billingID }), !recipients.isEmpty else {
+      throw DemoError.operationFailed
+    }
+    let communication = CommunicationRecord(
+      id: UUID(),
+      billingID: billingID,
+      billID: billID,
+      recipients: recipients,
+      subject: subject,
+      message: message,
+      sentAt: Date()
+    )
+    snapshot.communications.insert(communication, at: 0)
+    recordActivity(kind: .bill, title: "Comunicação simulada", detail: subject)
+    return communication
   }
 
   public func dashboardSummary() async throws -> DashboardSummary {
@@ -379,6 +558,10 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
 
   private func total(for bills: [Bill]) -> Money {
     bills.map(\.total).reduce(.zero, +)
+  }
+
+  private func billIndex(billingID: UUID, billID: UUID) -> Int? {
+    snapshot.bills.firstIndex { $0.billingID == billingID && $0.id == billID }
   }
 
   private func recordActivity(kind: ActivityKind, title: String, detail: String) {

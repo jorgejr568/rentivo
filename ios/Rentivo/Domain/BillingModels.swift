@@ -379,6 +379,52 @@ public struct Bill: Identifiable, Hashable, Codable, Sendable {
   }
 }
 
+public struct BillDraft: Hashable, Sendable {
+  public let billingID: UUID
+  public var referenceMonth: ReferenceMonth
+  public var dueDate: DateOnly
+  public var notes: String
+  public var lineItems: [BillLineItem]
+
+  public init(
+    billingID: UUID,
+    referenceMonth: ReferenceMonth,
+    dueDate: DateOnly,
+    notes: String,
+    lineItems: [BillLineItem]
+  ) {
+    self.billingID = billingID
+    self.referenceMonth = referenceMonth
+    self.dueDate = dueDate
+    self.notes = notes
+    self.lineItems = lineItems
+  }
+
+  public var total: Money {
+    lineItems.map(\.amount).reduce(.zero, +)
+  }
+
+  public func validate() -> [ValidationIssue] {
+    var issues: [ValidationIssue] = []
+    if lineItems.isEmpty {
+      issues.append(ValidationIssue(field: .items, message: "Adicione ao menos um item."))
+    }
+    if lineItems.contains(where: {
+      $0.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }) {
+      issues.append(
+        ValidationIssue(field: .itemDescription, message: "Descreva todos os itens da fatura.")
+      )
+    }
+    if lineItems.contains(where: { $0.amount.centavos < 0 }) {
+      issues.append(
+        ValidationIssue(field: .itemAmount, message: "Os valores não podem ser negativos.")
+      )
+    }
+    return issues
+  }
+}
+
 public enum ExpenseCategory: String, CaseIterable, Codable, Sendable {
   case propertyTax = "iptu"
   case condominium = "condominio"

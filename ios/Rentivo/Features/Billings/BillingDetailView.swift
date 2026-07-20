@@ -14,6 +14,7 @@ struct BillingDetailView: View {
 
   @State private var state: LoadState<BillingDetailData> = .idle
   @State private var showingEdit = false
+  @State private var showingCreateBill = false
   @State private var confirmingDelete = false
 
   var body: some View {
@@ -36,6 +37,16 @@ struct BillingDetailView: View {
       if let billing = state.value?.billing {
         NavigationStack {
           BillingFormView(billing: billing) {
+            await load()
+            await onMutation()
+          }
+        }
+      }
+    }
+    .sheet(isPresented: $showingCreateBill) {
+      if let billing = state.value?.billing {
+        NavigationStack {
+          BillFormView(billing: billing) {
             await load()
             await onMutation()
           }
@@ -80,8 +91,15 @@ struct BillingDetailView: View {
         }
 
         lineItems(data.billing.items)
-        bills(data.bills)
+        bills(data)
         financialSummary(data)
+        BillingOperationsLinks(
+          billingID: billingID,
+          recipients: data.billing.recipients.map(\.email)
+        ) {
+          await load()
+          await onMutation()
+        }
         recipients(data.billing)
 
         if data.billing.capabilities.canDelete {
@@ -129,30 +147,50 @@ struct BillingDetailView: View {
     }
   }
 
-  private func bills(_ bills: [Bill]) -> some View {
+  private func bills(_ data: BillingDetailData) -> some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
-      SectionTitle(title: "Faturas", symbol: "doc.text.fill")
-      if bills.isEmpty {
+      HStack {
+        SectionTitle(title: "Faturas", symbol: "doc.text.fill")
+        Spacer()
+        if data.billing.capabilities.canCreateBills {
+          Button {
+            showingCreateBill = true
+          } label: {
+            Image(systemName: "plus.circle.fill")
+          }
+          .accessibilityLabel("Gerar fatura")
+          .accessibilityIdentifier("bill.create")
+        }
+      }
+      if data.bills.isEmpty {
         Text("Nenhuma fatura foi gerada para esta cobrança.")
           .foregroundStyle(RentivoColors.secondaryInk)
       } else {
-        ForEach(bills) { bill in
-          RentivoCard {
-            HStack {
-              VStack(alignment: .leading, spacing: RentivoSpacing.small) {
-                Text(bill.referenceMonth.label.capitalized)
-                  .font(.headline)
-                StatusBadge(status: bill.status)
-              }
-              Spacer()
-              VStack(alignment: .trailing, spacing: RentivoSpacing.small) {
-                MoneyText(money: bill.total)
-                Text("Vence \(bill.dueDate.iso8601)")
-                  .font(.caption)
-                  .foregroundStyle(RentivoColors.secondaryInk)
+        ForEach(data.bills) { bill in
+          NavigationLink {
+            BillDetailView(billingID: billingID, billID: bill.id) {
+              await load()
+              await onMutation()
+            }
+          } label: {
+            RentivoCard {
+              HStack {
+                VStack(alignment: .leading, spacing: RentivoSpacing.small) {
+                  Text(bill.referenceMonth.label.capitalized)
+                    .font(.headline)
+                  StatusBadge(status: bill.status)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: RentivoSpacing.small) {
+                  MoneyText(money: bill.total)
+                  Text("Vence \(bill.dueDate.iso8601)")
+                    .font(.caption)
+                    .foregroundStyle(RentivoColors.secondaryInk)
+                }
               }
             }
           }
+          .buttonStyle(.plain)
         }
       }
     }

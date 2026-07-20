@@ -136,3 +136,51 @@ import Testing
   #expect(try await store.listBillings().count == 6)
   #expect(try #require(try await store.listBillings().first).capabilities == .full)
 }
+
+@Test @MainActor func receiptOrderPersists() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let bill = try await store.bill(
+    billingID: StableID.billingAurora101,
+    id: StableID.billPaid
+  )
+  let reversed = Array(bill.receipts.map(\.id).reversed())
+
+  try await store.reorderReceipts(
+    billingID: bill.billingID,
+    billID: bill.id,
+    receiptIDs: reversed
+  )
+
+  let updated = try await store.bill(billingID: bill.billingID, id: bill.id)
+  #expect(bill.receipts.count == 2)
+  #expect(updated.receipts.map(\.id) == reversed)
+}
+
+@Test @MainActor func communicationMutationUsesSharedActivityGraph() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+
+  let communication = try await store.sendCommunication(
+    billingID: StableID.billingAurora101,
+    billID: StableID.billPublished,
+    recipients: ["locatario@example.com"],
+    subject: "Sua fatura está disponível",
+    message: "Olá! Consulte os detalhes no Rentivo."
+  )
+
+  #expect(store.snapshot.communications.contains { $0.id == communication.id })
+  #expect(store.recentActivities.first?.detail == communication.subject)
+}
+
+@Test @MainActor func deletingExpenseUpdatesDashboard() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let expense = try #require(
+    try await store.listExpenses(billingID: StableID.billingAurora101).first
+  )
+  let before = try await store.dashboardSummary()
+
+  try await store.deleteExpense(billingID: expense.billingID, expenseID: expense.id)
+
+  let after = try await store.dashboardSummary()
+  #expect(after.expenses == before.expenses - expense.amount)
+  #expect(after.netIncome == before.netIncome + expense.amount)
+}

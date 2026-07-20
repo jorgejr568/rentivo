@@ -46,3 +46,22 @@ import Testing
 
   #expect(draft.validate().isEmpty)
 }
+
+@Test func invoiceDraftRejectsBlankRowsAndNegativeValues() {
+  let draft = BillDraft(
+    billingID: StableID.billingAurora101,
+    referenceMonth: ReferenceMonth(year: 2026, month: 8),
+    dueDate: DateOnly(year: 2026, month: 8, day: 10),
+    notes: "",
+    lineItems: [
+      BillLineItem(
+        id: UUID(),
+        description: "",
+        amount: Money(centavos: -100),
+        kind: .variable
+      )
+    ]
+  )
+
+  #expect(draft.validate().map(\.field) == [.itemDescription, .itemAmount])
+}
