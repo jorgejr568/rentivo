@@ -16,6 +16,13 @@ RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 DOCKER_BUILD_ACTION = REPO_ROOT / ".github" / "actions" / "docker-build" / "action.yml"
 DEPENDABOT_CONFIG = REPO_ROOT / ".github" / "dependabot.yml"
 BACKEND_PYPROJECT = REPO_ROOT / "backend" / "pyproject.toml"
+CHECKOUT_SHA = "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
+LOGIN_SHA = "c94ce9fb468520275223c153574b00df6fe4bcc9"
+SETUP_BUILDX_SHA = "8d2750c68a42422c14e847fe6c8ac0403b4cbd6f"
+BUILD_PUSH_SHA = "10e90e3645eae34f1e60eeb005ba3a3d33f178e8"
+ATTEST_SHA = "977bb373ede98d70efdf65b84cb5f73e068dcc2a"
+TRIVY_SHA = "ed142fd0673e97e23eac54620cfb913e5ce36c25"
+SETUP_UV_SHA = "08807647e7069bb48b6ef5acd8ec9567f424441b"
 
 
 def _yaml(path: Path) -> dict:
@@ -170,7 +177,9 @@ def test_image_builds_are_consolidated_under_the_complete_release_gate():
         "frontend",
         "migrations",
         "compose-config",
-        "production-stack",
+        "functional-stack",
+        "production-startup",
+        "security-scan",
     }
     assert set(jobs["release-gate"]["needs"]) == required_jobs
     assert set(jobs["all-checks-pass"]["needs"]) == {"release-gate", "production-images"}
@@ -230,10 +239,10 @@ def test_api_runtime_source_and_virtualenv_are_read_only_to_appuser():
     assert "chown appuser:appuser /app/invoices /app/outbox" in dockerfile
 
 
-def test_pr_gate_boots_and_exercises_the_promoted_production_stack():
+def test_pr_gate_boots_and_exercises_the_functional_stack():
     workflow = _yaml(PR_WORKFLOW)
     jobs = workflow["jobs"]
-    stack = jobs["production-stack"]
+    stack = jobs["functional-stack"]
     steps = {step["name"]: step for step in stack["steps"] if "name" in step}
 
     assert {
@@ -242,19 +251,71 @@ def test_pr_gate_boots_and_exercises_the_promoted_production_stack():
         "e2e",
         "migrations",
         "compose-config",
-        "production-stack",
+        "functional-stack",
+        "production-startup",
+        "security-scan",
     } <= set(jobs["release-gate"]["needs"])
     assert jobs["production-images"]["needs"] == "release-gate"
     assert set(jobs["all-checks-pass"]["needs"]) == {"release-gate", "production-images"}
+    assert "functional" in stack["name"].lower()
     assert "Create secure disposable stack environment" in steps
-    assert "Start promoted production stack" in steps
-    assert "Run production stack smoke" in steps
+    assert "Start functional stack" in steps
+    assert "Test production smoke parser" in steps
+    assert steps["Test production smoke parser"]["run"] == "npm run pretest"
+    assert "Run functional stack smoke" in steps
     assert "Run real-stack Playwright project" in steps
     assert steps["Run real-stack Playwright project"]["env"]["PLAYWRIGHT_PRODUCTION_STACK"] == "1"
     assert "--project=production-stack" in steps["Run real-stack Playwright project"]["run"]
     assert "route(" not in steps["Run real-stack Playwright project"]["run"]
-    assert steps["Capture production stack logs"]["if"] == "always()"
-    assert steps["Stop production stack"]["if"] == "always()"
+    assert steps["Capture functional stack logs"]["if"] == "always()"
+    assert steps["Stop functional stack"]["if"] == "always()"
+    disposable_environment = steps["Create secure disposable stack environment"]["run"]
+    assert disposable_environment.count("RENTIVO_ENVIRONMENT: dev") == 3
+
+
+def test_pr_gate_starts_services_with_validated_production_settings():
+    workflow = _yaml(PR_WORKFLOW)
+    job = workflow["jobs"]["production-startup"]
+    steps = {step["name"]: step for step in job["steps"] if "name" in step}
+    environment = steps["Create secure production startup environment"]["run"]
+    startup = steps["Migrate and start production services"]["run"]
+
+    assert job["env"] == {
+        "MYSQL_DATABASE": "rentivo_production_ci",
+        "MYSQL_USER": "rentivo_production_ci",
+        "RENTIVO_APP_ENV_FILE": "${{ runner.temp }}/rentivo-production-app.env",
+        "RENTIVO_PUBLIC_ORIGIN": "https://rentivo.example.test",
+        "RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR": "127.0.0.1/32",
+        "RENTIVO_WEBAUTHN_RP_ID": "rentivo.example.test",
+        "STACK_OVERRIDE": "${{ runner.temp }}/rentivo-production.override.yml",
+        "STACK_PROJECT": "rentivo-production-startup",
+    }
+    assert "RENTIVO_ENVIRONMENT=production" in environment
+    assert "RENTIVO_PUBLIC_URL=https://rentivo.example.test" in environment
+    assert "RENTIVO_WEBAUTHN_ORIGIN=https://rentivo.example.test" in environment
+    assert "RENTIVO_WEBAUTHN_RP_ID=rentivo.example.test" in environment
+    assert "RENTIVO_COOKIE_SECURE=true" in environment
+    for cookie_name in ("__Host-rentivo_access", "__Host-rentivo_challenge", "__Host-rentivo_csrf"):
+        assert cookie_name in environment
+    for variable in (
+        "RENTIVO_EMAIL_BACKEND=ses",
+        "RENTIVO_SES_ENDPOINT_URL=https://ses.example.test",
+        "RENTIVO_STORAGE_BACKEND=s3",
+        "RENTIVO_S3_ENDPOINT_URL=https://s3.example.test",
+        "RENTIVO_ENCRYPTION_BACKEND=kms",
+        "RENTIVO_KMS_ENDPOINT_URL=https://kms.example.test",
+        "RENTIVO_LOG_JSON=true",
+    ):
+        assert variable in environment
+    assert "RENTIVO_ENVIRONMENT: dev" not in environment
+    assert "validate_production_settings" in startup
+    assert "up --build -d db migrate api worker" in startup
+    assert "/api/v1/ready" in startup
+    assert "ps --status running --services" in startup
+    assert "worker" in startup
+    assert steps["Capture production startup logs"]["if"] == "always()"
+    assert steps["Stop production startup services"]["if"] == "always()"
+    assert "down --volumes --remove-orphans" in steps["Stop production startup services"]["run"]
 
 
 def test_docker_build_action_supports_exact_immutable_publication():
@@ -262,11 +323,18 @@ def test_docker_build_action_supports_exact_immutable_publication():
     build = action["runs"]["steps"][-1]
     inputs = action["inputs"]
 
-    assert {"dockerfile", "image-name", "image-tag", "cache-scope", "push"} <= inputs.keys()
+    assert {"dockerfile", "image-name", "image-tag", "cache-scope", "load", "push"} <= inputs.keys()
+    assert inputs["load"]["default"] == "false"
     assert inputs["push"]["default"] == "false"
     assert build["id"] == "build"
     assert build["with"]["push"] == "${{ inputs.push }}"
+    assert build["with"]["load"] == "${{ inputs.load }}"
     assert build["with"]["tags"] == "${{ inputs.image-name }}:${{ inputs.image-tag }}"
+    assert "org.opencontainers.image.revision=${{ github.sha }}" in build["with"]["labels"]
+    source_label = "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}"
+    assert source_label in build["with"]["labels"]
+    assert action["runs"]["steps"][0]["uses"] == f"docker/setup-buildx-action@{SETUP_BUILDX_SHA}"
+    assert build["uses"] == f"docker/build-push-action@{BUILD_PUSH_SHA}"
     assert action["outputs"]["digest"]["value"] == "${{ steps.build.outputs.digest }}"
     assert action["outputs"]["image-ref"]["value"].endswith("@${{ steps.build.outputs.digest }}")
     assert ":latest" not in DOCKER_BUILD_ACTION.read_text()
@@ -277,6 +345,69 @@ def test_dependabot_covers_the_frontend_npm_lockfile():
     updates = _yaml(DEPENDABOT_CONFIG)["updates"]
 
     assert any(update["package-ecosystem"] == "npm" and update["directory"] == "/frontend" for update in updates)
+
+
+def test_complete_gate_runs_dependency_repository_and_image_security_scans():
+    workflow = _yaml(PR_WORKFLOW)
+    jobs = workflow["jobs"]
+    scan = jobs["security-scan"]
+    scan_steps = {step["name"]: step for step in scan["steps"] if "name" in step}
+    image_steps = jobs["production-images"]["steps"]
+    image_scan = next(step for step in image_steps if step.get("name") == "Scan immutable image")
+    image_build = next(step for step in image_steps if step.get("uses") == "./.github/actions/docker-build")
+
+    assert workflow["permissions"] == {"contents": "read"}
+    assert scan["permissions"] == {"contents": "read"}
+    assert scan_steps["Checkout"]["uses"] == f"actions/checkout@{CHECKOUT_SHA}"
+    assert scan_steps["Audit frontend dependencies"]["run"] == "npm --prefix frontend audit --audit-level=high"
+    assert scan_steps["Install uv for locked SAST"]["uses"] == f"astral-sh/setup-uv@{SETUP_UV_SHA}"
+    assert scan_steps["Install uv for locked SAST"]["with"] == {"version": "0.11.16"}
+    assert scan_steps["Install locked SAST dependencies"]["run"] == ("uv sync --project backend --extra dev --frozen")
+    assert scan_steps["Run backend static security analysis"]["run"] == (
+        "uv run --project backend --no-sync bandit -r backend/rentivo -ll -ii"
+    )
+    assert scan_steps["Export locked backend dependencies"]["run"] == (
+        "uv export --project backend --all-extras --frozen --no-hashes --no-emit-project "
+        '--output-file "$RUNNER_TEMP/rentivo-backend-requirements.txt"'
+    )
+    for name in ("Audit backend dependencies", "Scan repository secrets and misconfigurations"):
+        step = scan_steps[name]
+        assert step["uses"] == f"aquasecurity/trivy-action@{TRIVY_SHA}"
+        assert step["with"]["exit-code"] == "1"
+        assert step["with"]["severity"] == "HIGH,CRITICAL"
+    assert scan_steps["Audit backend dependencies"]["with"]["scanners"] == "vuln"
+    assert scan_steps["Audit backend dependencies"]["with"]["scan-ref"] == (
+        "${{ runner.temp }}/rentivo-backend-requirements.txt"
+    )
+    assert "skip-dirs" not in scan_steps["Audit backend dependencies"]["with"]
+    assert scan_steps["Scan repository secrets and misconfigurations"]["with"]["scanners"] == "secret,misconfig"
+    assert scan_steps["Scan repository secrets and misconfigurations"]["with"]["skip-dirs"] == ".venv"
+    assert "security-scan" in jobs["release-gate"]["needs"]
+    assert image_build["with"]["load"] == "true"
+    assert image_scan["uses"] == f"aquasecurity/trivy-action@{TRIVY_SHA}"
+    assert image_scan["with"] == {
+        "exit-code": "1",
+        "ignore-unfixed": "true",
+        "image-ref": "${{ matrix.image }}:${{ github.sha }}",
+        "scanners": "vuln",
+        "severity": "HIGH,CRITICAL",
+    }
+    assert set(jobs["all-checks-pass"]["needs"]) == {"release-gate", "production-images"}
+
+
+def test_backend_sast_tool_is_exactly_pinned_in_the_lock_contract():
+    metadata = tomllib.loads(BACKEND_PYPROJECT.read_text())
+
+    assert "bandit[toml]==1.9.4" in metadata["project"]["optional-dependencies"]["dev"]
+
+
+def test_backend_dependency_floors_exclude_audited_high_vulnerabilities():
+    project = tomllib.loads(BACKEND_PYPROJECT.read_text())["project"]
+    dependencies = project["dependencies"]
+
+    assert "cryptography>=48.0.1,<49" in dependencies
+    assert "starlette>=1.3.1,<2" in dependencies
+    assert project["optional-dependencies"]["temporal"] == ["temporalio>=1.30,<2"]
 
 
 def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
@@ -290,7 +421,12 @@ def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
     assert workflow["concurrency"]["cancel-in-progress"] is False
     assert jobs["gate"]["uses"] == "./.github/workflows/test-pr.yaml"
     assert publish["needs"] == "gate"
-    assert publish["permissions"] == {"contents": "read", "packages": "write"}
+    assert publish["permissions"] == {
+        "attestations": "write",
+        "contents": "read",
+        "id-token": "write",
+        "packages": "write",
+    }
     assert publish["outputs"] == {
         "api-digest": "${{ steps.api.outputs.digest }}",
         "api-ref": "${{ steps.api.outputs.image-ref }}",
@@ -304,6 +440,27 @@ def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
     assert {step["id"] for step in build_steps} == {"api", "worker", "frontend"}
     assert all(step["with"]["image-tag"] == "${{ github.sha }}" for step in build_steps)
     assert all(step["with"]["push"] == "true" for step in build_steps)
+    attestation_steps = [
+        step for step in publish["steps"] if step.get("uses") == f"actions/attest-build-provenance@{ATTEST_SHA}"
+    ]
+    assert len(attestation_steps) == 3
+    assert {step["with"]["subject-name"].rsplit("/", 1)[-1] for step in attestation_steps} == {
+        "api",
+        "frontend",
+        "worker",
+    }
+    assert all(step["with"]["push-to-registry"] is True for step in attestation_steps)
+    assert {step["with"]["subject-digest"] for step in attestation_steps} == {
+        "${{ steps.api.outputs.digest }}",
+        "${{ steps.frontend.outputs.digest }}",
+        "${{ steps.worker.outputs.digest }}",
+    }
+    assert next(step for step in publish["steps"] if step.get("name") == "Checkout")["uses"] == (
+        f"actions/checkout@{CHECKOUT_SHA}"
+    )
+    assert next(step for step in publish["steps"] if step.get("name") == "Authenticate to GHCR")["uses"] == (
+        f"docker/login-action@{LOGIN_SHA}"
+    )
     assert deploy["needs"] == "publish-images"
     assert deploy["permissions"] == {"contents": "read"}
     assert deploy["environment"]["name"] == "production"
@@ -317,6 +474,13 @@ def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
         assert f".images.{image}.reference == ${image}_ref" in deploy_script
         assert f".images.{image}.digest == ${image}_digest" in deploy_script
     assert "sha256:[0-9a-f]" in deploy_script
+    assert "from urllib.parse import urlsplit" in deploy_script
+    assert 'parsed.scheme != "https"' in deploy_script
+    assert "not parsed.hostname" in deploy_script
+    assert "parsed.username is not None" in deploy_script
+    assert "parsed.password is not None" in deploy_script
+    assert "--insecure" not in deploy_script
+    assert " -k" not in deploy_script
     assert "for " not in deploy_script
     assert "sleep " not in deploy_script
     assert "DEPLOY_TRIGGER_URL" not in DEPLOY_WORKFLOW.read_text()
@@ -331,14 +495,27 @@ def test_release_requires_the_exact_commit_gate_and_published_images():
         step["run"] for step in verification["steps"] if step.get("name") == "Require exact commit images"
     )
 
-    assert workflow["permissions"] == {"contents": "read", "packages": "read"}
+    assert workflow["permissions"] == {"contents": "read"}
     assert jobs["gate"]["uses"] == "./.github/workflows/test-pr.yaml"
     assert verification["needs"] == "gate"
-    assert verification_script.count("docker buildx imagetools inspect") == 3
-    assert verification_script.count("${GITHUB_SHA}") == 3
+    assert verification["permissions"] == {"attestations": "read", "contents": "read", "packages": "read"}
+    assert "docker buildx imagetools inspect \"$tag_ref\" --format '{{json .Manifest}}'" in verification_script
+    assert "jq -er '.digest'" in verification_script
+    assert "sha256sum" not in verification_script
+    assert "org.opencontainers.image.revision" in verification_script
+    assert "org.opencontainers.image.source" in verification_script
+    assert 'gh attestation verify "oci://$digest_ref"' in verification_script
+    for argument in ("--repo", "--signer-workflow", "--source-digest", "--deny-self-hosted-runners"):
+        assert argument in verification_script
+    assert verification_script.count("require_verified_image") == 4
     assert ":latest" not in verification_script
+    verify_steps = {step["name"]: step for step in verification["steps"] if "name" in step}
+    assert verify_steps["Authenticate to GHCR"]["uses"] == f"docker/login-action@{LOGIN_SHA}"
+    assert verify_steps["Enable Docker Buildx"]["uses"] == f"docker/setup-buildx-action@{SETUP_BUILDX_SHA}"
     assert set(release["needs"]) == {"gate", "verify-images"}
     assert release["permissions"] == {"contents": "write"}
+    checkout = next(step for step in release["steps"] if step.get("name") == "Checkout")
+    assert checkout["uses"] == f"actions/checkout@{CHECKOUT_SHA}"
 
 
 def test_release_contract_has_no_deleted_preview_or_legacy_paths():

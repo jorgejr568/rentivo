@@ -22,7 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: gate
     permissions:
+      attestations: write
       contents: read
+      id-token: write
       packages: write
     outputs:
       api-digest: ${{ steps.api.outputs.digest }}
@@ -32,11 +34,12 @@ jobs:
       worker-digest: ${{ steps.worker.outputs.digest }}
       worker-ref: ${{ steps.worker.outputs.image-ref }}
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           ref: ${{ github.sha }}
       - name: Authenticate to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -50,6 +53,12 @@ jobs:
           image-tag: ${{ github.sha }}
           cache-scope: production-api
           push: "true"
+      - name: Attest API image provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/api
+          subject-digest: ${{ steps.api.outputs.digest }}
+          push-to-registry: true
       - id: worker
         name: Publish worker image
         uses: ./.github/actions/docker-build
@@ -59,6 +68,12 @@ jobs:
           image-tag: ${{ github.sha }}
           cache-scope: production-worker
           push: "true"
+      - name: Attest worker image provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/worker
+          subject-digest: ${{ steps.worker.outputs.digest }}
+          push-to-registry: true
       - id: frontend
         name: Publish frontend image
         uses: ./.github/actions/docker-build
@@ -68,6 +83,12 @@ jobs:
           image-tag: ${{ github.sha }}
           cache-scope: production-frontend
           push: "true"
+      - name: Attest frontend image provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/frontend
+          subject-digest: ${{ steps.frontend.outputs.digest }}
+          push-to-registry: true
 
   deploy:
     name: Atomic production deployment
@@ -94,6 +115,19 @@ jobs:
           set -euo pipefail
           : "${PRODUCTION_DEPLOY_WEBHOOK_URL:?Configure the protected production webhook URL}"
           : "${PRODUCTION_DEPLOY_WEBHOOK_TOKEN:?Configure the protected production webhook token}"
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlsplit
+
+          parsed = urlsplit(os.environ["PRODUCTION_DEPLOY_WEBHOOK_URL"])
+          if (
+              parsed.scheme != "https"
+              or not parsed.hostname
+              or parsed.username is not None
+              or parsed.password is not None
+          ):
+              raise SystemExit("Production deploy webhook must be an HTTPS URL without embedded credentials.")
+          PY
           require_digest() {
             local name="$1" ref="$2" digest="$3"
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "$name image digest is invalid."; exit 1; }

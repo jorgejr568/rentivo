@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -20,23 +19,63 @@ jobs:
     secrets: inherit
 
   verify-images:
-    name: Verify immutable images exist
+    name: Verify immutable image provenance
     runs-on: ubuntu-latest
     needs: gate
+    permissions:
+      attestations: read
+      contents: read
+      packages: read
     steps:
       - name: Authenticate to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Enable Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
       - name: Require exact commit images
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}/api:${GITHUB_SHA}" >/dev/null
-          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}/worker:${GITHUB_SHA}" >/dev/null
-          docker buildx imagetools inspect "ghcr.io/${GITHUB_REPOSITORY}/frontend:${GITHUB_SHA}" >/dev/null
+          set -euo pipefail
+          require_verified_image() {
+            local image="$1"
+            local image_name="ghcr.io/${GITHUB_REPOSITORY}/${image}"
+            local tag_ref="${image_name}:${GITHUB_SHA}"
+            local digest digest_ref revision source
+
+            digest="$(docker buildx imagetools inspect "$tag_ref" --format '{{json .Manifest}}' | jq -er '.digest')"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+              echo "${image} tag did not resolve to a valid digest."
+              exit 1
+            }
+            digest_ref="${image_name}@${digest}"
+            docker pull "$digest_ref" >/dev/null
+            revision="$(docker image inspect "$digest_ref" \
+              --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
+            source="$(docker image inspect "$digest_ref" \
+              --format '{{ index .Config.Labels "org.opencontainers.image.source" }}')"
+            [ "$revision" = "$GITHUB_SHA" ] || {
+              echo "${image} OCI revision does not match the release SHA."
+              exit 1
+            }
+            [ "$source" = "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" ] || {
+              echo "${image} OCI source does not match this repository."
+              exit 1
+            }
+            gh attestation verify "oci://$digest_ref" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/deploy.yml" \
+              --source-digest "$GITHUB_SHA" \
+              --deny-self-hosted-runners >/dev/null
+          }
+
+          require_verified_image api
+          require_verified_image worker
+          require_verified_image frontend
 
   release:
     runs-on: ubuntu-latest
@@ -44,7 +83,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}

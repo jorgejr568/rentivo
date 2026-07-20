@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  packages: read
 
 concurrency:
   group: release-gate-${{ github.workflow }}-${{ github.ref }}
@@ -209,8 +208,8 @@ jobs:
       - name: Validate development Compose
         run: docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet
 
-  production-stack:
-    name: MariaDB-backed promoted production stack
+  functional-stack:
+    name: MariaDB-backed functional stack with CI-only local backends
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -221,7 +220,7 @@ jobs:
       RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: 127.0.0.1/32
       RENTIVO_WEBAUTHN_RP_ID: 127.0.0.1
       STACK_OVERRIDE: ${{ runner.temp }}/rentivo-gate.override.yml
-      STACK_PROJECT: rentivo-production-gate
+      STACK_PROJECT: rentivo-functional-gate
     steps:
       - uses: actions/checkout@v7
       - name: Install Node.js
@@ -281,7 +280,7 @@ jobs:
               environment:
                 RENTIVO_ENVIRONMENT: dev
           YAML
-      - name: Start promoted production stack
+      - name: Start functional stack
         shell: bash
         run: |
           set -euo pipefail
@@ -303,10 +302,13 @@ jobs:
             if curl --fail --silent --show-error http://127.0.0.1:8080/api/v1/ready >/dev/null; then
               exit 0
             fi
-            [ "$attempt" -lt 90 ] || { echo "Production stack never became ready."; exit 1; }
+            [ "$attempt" -lt 90 ] || { echo "Functional stack never became ready."; exit 1; }
             sleep 2
           done
-      - name: Run production stack smoke
+      - name: Test production smoke parser
+        working-directory: frontend
+        run: npm run pretest
+      - name: Run functional stack smoke
         run: ./scripts/smoke-production-stack.sh http://127.0.0.1:8080
       - name: Run real-stack Playwright project
         working-directory: frontend
@@ -314,31 +316,202 @@ jobs:
           PLAYWRIGHT_PRODUCTION_STACK: "1"
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:8080
         run: npm run e2e -- --project=production-stack
-      - name: Capture production stack logs
+      - name: Capture functional stack logs
         if: always()
         run: |
           mkdir -p artifacts
-          docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" ps -a > artifacts/production-stack-ps.txt
-          docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" logs --no-color > artifacts/production-stack.log
-      - name: Upload production stack evidence
+          docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" ps -a > artifacts/functional-stack-ps.txt
+          docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" logs --no-color > artifacts/functional-stack.log
+      - name: Upload functional stack evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: production-stack-results
+          name: functional-stack-results
           path: |
-            artifacts/production-stack-ps.txt
-            artifacts/production-stack.log
+            artifacts/functional-stack-ps.txt
+            artifacts/functional-stack.log
             frontend/test-results
           if-no-files-found: warn
           retention-days: 14
-      - name: Stop production stack
+      - name: Stop functional stack
         if: always()
         run: docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" down --volumes --remove-orphans
+
+  production-startup:
+    name: production settings migration, API, and worker startup
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      MYSQL_DATABASE: rentivo_production_ci
+      MYSQL_USER: rentivo_production_ci
+      RENTIVO_APP_ENV_FILE: ${{ runner.temp }}/rentivo-production-app.env
+      RENTIVO_PUBLIC_ORIGIN: https://rentivo.example.test
+      RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: 127.0.0.1/32
+      RENTIVO_WEBAUTHN_RP_ID: rentivo.example.test
+      STACK_OVERRIDE: ${{ runner.temp }}/rentivo-production.override.yml
+      STACK_PROJECT: rentivo-production-startup
+    steps:
+      - uses: actions/checkout@v7
+      - name: Create secure production startup environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          db_password="$(openssl rand -hex 32)"
+          db_root_password="$(openssl rand -hex 32)"
+          app_secret="$(openssl rand -hex 48)"
+          echo "::add-mask::$db_password"
+          echo "::add-mask::$db_root_password"
+          echo "::add-mask::$app_secret"
+          {
+            echo "MYSQL_PASSWORD=$db_password"
+            echo "MYSQL_ROOT_PASSWORD=$db_root_password"
+          } >> "$GITHUB_ENV"
+          printf '%s\n' \
+            "RENTIVO_DB_URL=mysql+pymysql://rentivo_production_ci:${db_password}@db:3306/rentivo_production_ci" \
+            "RENTIVO_SECRET_KEY=${app_secret}" \
+            'RENTIVO_ENVIRONMENT=production' \
+            'RENTIVO_PUBLIC_URL=https://rentivo.example.test' \
+            'RENTIVO_PUBLIC_APP_URL=https://rentivo.example.test' \
+            'RENTIVO_WEBAUTHN_ORIGIN=https://rentivo.example.test' \
+            'RENTIVO_WEBAUTHN_RP_ID=rentivo.example.test' \
+            'RENTIVO_COOKIE_SECURE=true' \
+            'RENTIVO_ACCESS_COOKIE_NAME=__Host-rentivo_access' \
+            'RENTIVO_CHALLENGE_COOKIE_NAME=__Host-rentivo_challenge' \
+            'RENTIVO_CSRF_COOKIE_NAME=__Host-rentivo_csrf' \
+            'RENTIVO_EMAIL_BACKEND=ses' \
+            'RENTIVO_SES_REGION=us-east-1' \
+            'RENTIVO_SES_FROM_EMAIL=noreply@rentivo.example.test' \
+            'RENTIVO_SES_ACCESS_KEY_ID=AKIACIEXAMPLE0000001' \
+            'RENTIVO_SES_SECRET_ACCESS_KEY=ci-only-fake-ses-secret-access-key' \
+            'RENTIVO_SES_ENDPOINT_URL=https://ses.example.test' \
+            'RENTIVO_STORAGE_BACKEND=s3' \
+            'RENTIVO_S3_BUCKET=rentivo-production-ci' \
+            'RENTIVO_S3_REGION=us-east-1' \
+            'RENTIVO_S3_ACCESS_KEY_ID=AKIACIEXAMPLE0000002' \
+            'RENTIVO_S3_SECRET_ACCESS_KEY=ci-only-fake-s3-secret-access-key' \
+            'RENTIVO_S3_ENDPOINT_URL=https://s3.example.test' \
+            'RENTIVO_ENCRYPTION_BACKEND=kms' \
+            'RENTIVO_KMS_KEY_ID=alias/rentivo-production-ci' \
+            'RENTIVO_KMS_REGION=us-east-1' \
+            'RENTIVO_KMS_ACCESS_KEY_ID=AKIACIEXAMPLE0000003' \
+            'RENTIVO_KMS_SECRET_ACCESS_KEY=ci-only-fake-kms-secret-access-key' \
+            'RENTIVO_KMS_ENDPOINT_URL=https://kms.example.test' \
+            'RENTIVO_LOG_JSON=true' \
+            > "$RENTIVO_APP_ENV_FILE"
+          cat > "$STACK_OVERRIDE" <<'YAML'
+          services:
+            api:
+              ports:
+                - "127.0.0.1:18000:8000"
+          YAML
+      - name: Migrate and start production services
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE")
+          "${compose[@]}" up --build -d db migrate api worker
+          migration_id="$("${compose[@]}" ps -aq migrate)"
+          for attempt in $(seq 1 60); do
+            state="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$migration_id")"
+            if [ "$state" = "exited:0" ]; then
+              break
+            fi
+            if [[ "$state" == exited:* ]]; then
+              echo "Production migration failed with $state."
+              exit 1
+            fi
+            [ "$attempt" -lt 60 ] || { echo "Production migration did not finish."; exit 1; }
+            sleep 2
+          done
+          "${compose[@]}" run --rm --no-deps migrate \
+            python -c 'from rentivo.settings import validate_production_settings; validate_production_settings()'
+          for attempt in $(seq 1 90); do
+            if curl --fail --silent --show-error http://127.0.0.1:18000/api/v1/ready >/dev/null; then
+              break
+            fi
+            [ "$attempt" -lt 90 ] || { echo "Production API never became ready."; exit 1; }
+            sleep 2
+          done
+          running_services="$("${compose[@]}" ps --status running --services)"
+          printf '%s\n' "$running_services" | grep -qx api
+          printf '%s\n' "$running_services" | grep -qx worker
+      - name: Capture production startup logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          if [ -f "$STACK_OVERRIDE" ] && [ -n "${MYSQL_PASSWORD:-}" ]; then
+            docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" \
+              ps -a > artifacts/production-startup-ps.txt || true
+            docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" \
+              logs --no-color > artifacts/production-startup.log || true
+          fi
+      - name: Upload production startup evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: production-startup-results
+          path: |
+            artifacts/production-startup-ps.txt
+            artifacts/production-startup.log
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Stop production startup services
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "$STACK_OVERRIDE" ] && [ -n "${MYSQL_PASSWORD:-}" ]; then
+            docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" \
+              down --volumes --remove-orphans
+          fi
+
+  security-scan:
+    name: dependency, secret, and configuration security scans
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Audit frontend dependencies
+        run: npm --prefix frontend audit --audit-level=high
+      - name: Install uv for locked SAST
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.16"
+      - name: Install locked SAST dependencies
+        run: uv sync --project backend --extra dev --frozen
+      - name: Run backend static security analysis
+        run: uv run --project backend --no-sync bandit -r backend/rentivo -ll -ii
+      - name: Export locked backend dependencies
+        run: >-
+          uv export --project backend --all-extras --frozen --no-hashes --no-emit-project
+          --output-file "$RUNNER_TEMP/rentivo-backend-requirements.txt"
+      - name: Audit backend dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: ${{ runner.temp }}/rentivo-backend-requirements.txt
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "true"
+          exit-code: "1"
+      - name: Scan repository secrets and misconfigurations
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: secret,misconfig
+          skip-dirs: .venv
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "false"
+          exit-code: "1"
 
   release-gate:
     name: complete-release-gate
     runs-on: ubuntu-latest
-    needs: [backend, frontend, e2e, migrations, compose-config, production-stack]
+    needs: [backend, frontend, e2e, migrations, compose-config, functional-stack, production-startup, security-scan]
     if: always()
     steps:
       - name: Verify every release gate succeeded
@@ -372,14 +545,23 @@ jobs:
             image: ghcr.io/${{ github.repository }}/frontend
             scope: production-frontend
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - uses: ./.github/actions/docker-build
         with:
           dockerfile: ${{ matrix.dockerfile }}
           image-name: ${{ matrix.image }}
           image-tag: ${{ github.sha }}
           cache-scope: ${{ matrix.scope }}
+          load: "true"
           push: "false"
+      - name: Scan immutable image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ matrix.image }}:${{ github.sha }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "true"
+          exit-code: "1"
 
   all-checks-pass:
     name: all-checks-pass
