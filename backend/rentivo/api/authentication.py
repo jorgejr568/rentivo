@@ -44,7 +44,8 @@ async def reject_out_of_band_credentials(request: Request) -> None:
         )
     media_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
     if media_type in {"application/x-www-form-urlencoded", "multipart/form-data"}:
-        await request.body()
+        if getattr(request, "_form", None) is None:
+            await request.body()
         form = await request.form()
         if any(str(key).lower() in _OUT_OF_BAND_CREDENTIAL_FIELDS for key in form):
             raise ProblemException.bad_request(

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
+from typing import Annotated, Any
 
 import pytest
-from fastapi import Depends, Request
+from fastapi import Depends, Form, Request
 from fastapi.testclient import TestClient
 
 from rentivo.api.app import create_app
@@ -143,6 +143,13 @@ def api_client(services: Any) -> TestClient:
             "body": (await request.body()).decode("latin-1"),
         }
 
+    @app.post("/api/v1/test/principal-form")
+    async def principal_form_endpoint(
+        payload: Annotated[str, Form()],
+        principal: Principal = Depends(get_principal),
+    ) -> dict[str, object]:
+        return {"user_id": principal.user.id, "payload": payload}
+
     return TestClient(app)
 
 
@@ -151,6 +158,17 @@ def _cookie_header(secret: str, *, csrf: str | None = None) -> str:
     if csrf is not None:
         values.append(f"{CSRF_COOKIE_NAME}={csrf}")
     return "; ".join(values)
+
+
+def test_multipart_form_authentication_reuses_the_parsed_form(api_client: TestClient) -> None:
+    response = api_client.post(
+        "/api/v1/test/principal-form",
+        files={"payload": (None, "hello")},
+        headers={"Authorization": f"Bearer {INTEGRATION_SECRET}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"user_id": 7, "payload": "hello"}
 
 
 @pytest.mark.parametrize(
