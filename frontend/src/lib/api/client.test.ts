@@ -62,6 +62,7 @@ describe("typed API client", () => {
     await apiRequest(
       apiClient.POST("/api/v1/auth/login", {
         body: {
+          credential_transport: "cookie",
           email: "user@example.com",
           password: "password",
           turnstile_token: ""
@@ -220,7 +221,12 @@ describe("typed API client", () => {
     await expect(
       apiRequest(
         apiClient.POST("/api/v1/auth/login", {
-          body: { email: "user@example.com", password: "password", turnstile_token: "" }
+          body: {
+            credential_transport: "cookie",
+            email: "user@example.com",
+            password: "password",
+            turnstile_token: ""
+          }
         })
       )
     ).rejects.toBeInstanceOf(ApiError);

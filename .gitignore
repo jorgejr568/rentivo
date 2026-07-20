@@ -6,8 +6,6 @@ dist/
 build/
 .env
 .env.db
-.env.preview-app
-.env.preview-db
 !.env.example
 !.env.db.example
 /node_modules/

@@ -22,12 +22,14 @@ from rentivo.api.schemas.auth import (
     AuthenticatedResponse,
     BootstrapAnalytics,
     BootstrapResponse,
+    CredentialTransport,
     CSRFResponse,
     FeatureFlags,
     LoginRequest,
     MFARequiredResponse,
     PasswordForgotRequest,
     PasswordResetRequest,
+    SessionResponse,
     SignupRequest,
 )
 from rentivo.constants.api_scopes import APIScope
@@ -109,14 +111,23 @@ def _copy_set_cookies(source: Response, target: Response) -> None:
         target.headers.append("set-cookie", value)
 
 
-def _authenticated_response(result: object, *, set_access_cookie: bool) -> JSONResponse:
+def _authenticated_response(
+    result: object,
+    *,
+    credential_transport: CredentialTransport = "cookie",
+    include_credential: bool = True,
+) -> JSONResponse:
     user = getattr(result, "user", None)
     api_key = getattr(result, "api_key", None)
     bootstrap = getattr(result, "bootstrap", None)
     credential = getattr(result, "access_credential", None)
     if user is None or api_key is None or bootstrap is None:
         raise RuntimeError("Authenticated login result is incomplete")
-    principal = Principal(user=user, api_key=api_key, source="web")
+    principal = Principal(
+        user=user,
+        api_key=api_key,
+        source="web" if credential_transport == "cookie" else "mobile",
+    )
     csrf_cookie = Response()
     csrf_token = issue_csrf_token(csrf_cookie, principal)
     bootstrap_response = BootstrapResponse.model_validate({**bootstrap, "csrf_token": csrf_token})
@@ -130,36 +141,70 @@ def _authenticated_response(result: object, *, set_access_cookie: bool) -> JSONR
                 )
             }
         )
-    payload = AuthenticatedResponse(bootstrap=bootstrap_response)
+    if include_credential and credential is None:
+        raise RuntimeError("Authenticated login result has no access credential")
+    expose_credential = credential_transport == "body" and include_credential
+    if include_credential:
+        payload = AuthenticatedResponse.model_validate(
+            {
+                "credential_transport": credential_transport,
+                "bootstrap": bootstrap_response,
+                **(
+                    {
+                        "access_token": credential,
+                        "token_type": "Bearer",
+                        "expires_in": settings.api_key_login_ttl_seconds,
+                    }
+                    if expose_credential
+                    else {}
+                ),
+            }
+        )
+    else:
+        payload = SessionResponse(bootstrap=bootstrap_response)
     response = JSONResponse(payload.model_dump(mode="json"))
-    _copy_set_cookies(csrf_cookie, response)
-    if set_access_cookie:
-        if credential is None:
-            raise RuntimeError("Authenticated login result has no access credential")
+    if credential_transport == "cookie":
+        _copy_set_cookies(csrf_cookie, response)
+    if credential_transport == "cookie" and include_credential:
         _set_access_cookie(response, credential)
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-def _mfa_response(result: object) -> JSONResponse:
+def _mfa_response(
+    result: object,
+    *,
+    credential_transport: CredentialTransport = "cookie",
+) -> JSONResponse:
     challenge_id = getattr(result, "challenge_id", None)
     challenge_nonce = getattr(result, "challenge_nonce", None)
     methods = tuple(getattr(result, "methods", ()))
     if challenge_id is None or challenge_nonce is None:
         raise RuntimeError("MFA login result is incomplete")
-    payload = MFARequiredResponse(challenge_id=challenge_id, methods=methods)
-    response = JSONResponse(
-        payload.model_dump(mode="json"),
-        status_code=202,
+    payload = MFARequiredResponse.model_validate(
+        {
+            "credential_transport": credential_transport,
+            "challenge_id": challenge_id,
+            "methods": methods,
+            **({"challenge_token": challenge_nonce} if credential_transport == "body" else {}),
+        }
     )
-    _set_challenge_cookie(response, challenge_nonce)
+    response = JSONResponse(payload.model_dump(mode="json"), status_code=202)
+    if credential_transport == "cookie":
+        _set_challenge_cookie(response, challenge_nonce)
     response.headers["Cache-Control"] = "no-store"
     return response
 
 
-def _audit_login_failure(services: RequestServices, *, email: str, client_ip: str) -> None:
+def _audit_login_failure(
+    services: RequestServices,
+    *,
+    email: str,
+    client_ip: str,
+    source: str,
+) -> None:
     services.audit.safe_log_for(
-        ANON_ACTOR,
+        Actor(user_id=None, email="", source=source),
         AuditEventType.USER_LOGIN_FAILED,
         entity_type="user",
         new_state={"email": email},
@@ -206,10 +251,11 @@ async def signup(
             password=payload.password,
             client_ip=_client_ip(request),
             user_agent=request.headers.get("user-agent", ""),
+            source="web" if payload.credential_transport == "cookie" else "mobile",
         )
     except UserAlreadyRegisteredError:
         raise ProblemException.bad_request("email_already_registered", "E-mail já cadastrado.") from None
-    return _authenticated_response(result, set_access_cookie=True)
+    return _authenticated_response(result, credential_transport=payload.credential_transport)
 
 
 @router.post(
@@ -233,30 +279,42 @@ async def login(
     ):
         raise _login_failure_problem(rate_limited=True)
     try:
+        source = "web" if payload.credential_transport == "cookie" else "mobile"
         result = services.login.login(
             email=payload.email,
             password=payload.password,
             client_ip=client_ip,
             user_agent=request.headers.get("user-agent", ""),
+            source=source,
         )
     except ProblemException as exc:
         if exc.problem.code == "invalid_credentials":
-            _audit_login_failure(services, email=payload.email, client_ip=client_ip)
+            _audit_login_failure(
+                services,
+                email=payload.email,
+                client_ip=client_ip,
+                source=source,
+            )
             raise _login_failure_problem(rate_limited=False) from None
         raise
     if result is None:
-        _audit_login_failure(services, email=payload.email, client_ip=client_ip)
+        _audit_login_failure(
+            services,
+            email=payload.email,
+            client_ip=client_ip,
+            source=source,
+        )
         raise _login_failure_problem(rate_limited=False)
     services.auth_rate_limit.clear(action="login", identity=rate_identity)
     if result.status == "mfa_required":
-        return _mfa_response(result)
-    return _authenticated_response(result, set_access_cookie=True)
+        return _mfa_response(result, credential_transport=payload.credential_transport)
+    return _authenticated_response(result, credential_transport=payload.credential_transport)
 
 
 _login_principal = require_login_scope(APIScope.PROFILE_READ)
 
 
-@router.get("/session", response_model=AuthenticatedResponse)
+@router.get("/session", response_model=SessionResponse)
 async def session(
     _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_login_principal),
@@ -271,7 +329,11 @@ async def session(
             "bootstrap": services.login.bootstrap(principal),
         },
     )()
-    return _authenticated_response(result, set_access_cookie=False)
+    return _authenticated_response(
+        result,
+        credential_transport="body" if principal.source == "mobile" else "cookie",
+        include_credential=False,
+    )
 
 
 @router.post("/logout", status_code=204)

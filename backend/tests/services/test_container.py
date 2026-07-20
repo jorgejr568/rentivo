@@ -8,6 +8,42 @@ def test_api_key_service_is_lazily_cached(db_connection, fake_encryption):
     assert services.api_key is services.api_key
 
 
+def test_api_key_service_uses_the_configured_login_lifetime(
+    db_connection,
+    fake_encryption,
+    monkeypatch,
+):
+    from datetime import timedelta
+
+    from rentivo.services.container import RequestServices
+    from rentivo.settings import settings
+
+    monkeypatch.setattr(settings, "api_key_login_ttl_seconds", 6 * 60 * 60)
+    services = RequestServices(conn=db_connection, encryption=fake_encryption)
+
+    assert services.api_key.login_ttl == timedelta(hours=6)
+
+
+def test_api_key_service_uses_the_configured_integration_lifetimes_and_throttle(
+    db_connection,
+    fake_encryption,
+    monkeypatch,
+):
+    from datetime import timedelta
+
+    from rentivo.services.container import RequestServices
+    from rentivo.settings import settings
+
+    monkeypatch.setattr(settings, "api_key_integration_default_ttl_days", 30)
+    monkeypatch.setattr(settings, "api_key_integration_max_ttl_days", 180)
+    monkeypatch.setattr(settings, "api_key_last_used_throttle_seconds", 15 * 60)
+    services = RequestServices(conn=db_connection, encryption=fake_encryption)
+
+    assert services.api_key.integration_default_ttl == timedelta(days=30)
+    assert services.api_key.integration_max_ttl == timedelta(days=180)
+    assert services.api_key.last_used_interval == timedelta(minutes=15)
+
+
 def test_auth_challenge_service_is_lazily_cached(db_connection, fake_encryption):
     from rentivo.services.auth_challenge_service import AuthChallengeService
     from rentivo.services.container import RequestServices

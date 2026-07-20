@@ -250,8 +250,37 @@ def test_successful_password_login_preserves_audit_device_and_analytics_semantic
         user_agent=USER_AGENT,
         client_ip=CLIENT_IP,
         job_service=dependencies["job_service"],
+        source="web",
     )
     assert result.analytics_event == {"event": "rentivo_login_success", "via": "password"}
+
+
+def test_native_password_login_labels_the_key_and_audit_actor_as_mobile(
+    service: LoginService,
+    dependencies: dict[str, MagicMock],
+) -> None:
+    result = service.login_with_password(
+        email="user@example.com",
+        password="correct horse battery staple",
+        client_ip=CLIENT_IP,
+        user_agent=USER_AGENT,
+        source="mobile",
+    )
+
+    assert result is not None
+    dependencies["api_key_service"].issue_login.assert_called_once_with(
+        user_id=7,
+        name="Mobile login",
+    )
+    actor = dependencies["audit_service"].safe_log_for.call_args.args[0]
+    assert actor.source == "mobile"
+    dependencies["known_device_service"].notify_if_new.assert_called_once_with(
+        user=_user(),
+        user_agent=USER_AGENT,
+        client_ip=CLIENT_IP,
+        job_service=dependencies["job_service"],
+        source="mobile",
+    )
 
 
 def test_mfa_challenge_preserves_audit_semantics_without_complete_login_side_effects(

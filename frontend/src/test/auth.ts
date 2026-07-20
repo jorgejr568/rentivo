@@ -60,6 +60,7 @@ export const AUTHENTICATED_RESPONSE: AuthenticatedResponse = {
     pending_invite_count: 2,
     user: { email: "user@example.com", id: 42 }
   },
+  credential_transport: "cookie",
   status: "authenticated"
 };
 

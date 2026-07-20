@@ -60,6 +60,7 @@ class KnownDeviceService:
         user_agent: str,
         client_ip: str,
         job_service,
+        source: str = "web",
     ) -> None:
         """Enqueue a new_device_login email iff the device is unseen.
 
@@ -83,7 +84,7 @@ class KnownDeviceService:
                     "reset_url": forgot_password_url,
                 },
             },
-            source="web",
+            source=source,
             actor_id=user.id,
             actor_username=user.email,
         )

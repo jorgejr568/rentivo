@@ -46,7 +46,8 @@ describe("MfaVerifyPage", () => {
         "/api/v1/auth/mfa/totp/verify": (init) => {
           expect(JSON.parse(String(init?.body))).toEqual({
             challenge_id: "challenge-1",
-            code: "123456"
+            code: "123456",
+            credential_transport: "cookie"
           });
           return jsonResponse(AUTHENTICATED_RESPONSE);
         }
@@ -69,7 +70,8 @@ describe("MfaVerifyPage", () => {
         "/api/v1/auth/mfa/recovery/verify": (init) => {
           expect(JSON.parse(String(init?.body))).toEqual({
             challenge_id: "challenge-1",
-            code: "recovery-code"
+            code: "recovery-code",
+            credential_transport: "cookie"
           });
           return jsonResponse(AUTHENTICATED_RESPONSE);
         }
@@ -156,18 +158,24 @@ describe("MfaVerifyPage", () => {
     storeChallenge(["passkey"]);
     renderAuth(<MfaVerifyPage />, {
       handlers: {
-        "/api/v1/auth/mfa/passkeys/begin": () =>
-          jsonResponse({
+        "/api/v1/auth/mfa/passkeys/begin": (init) => {
+          expect(JSON.parse(String(init?.body))).toEqual({
+            challenge_id: "challenge-1",
+            credential_transport: "cookie"
+          });
+          return jsonResponse({
             allowCredentials: [{ id: "AQI", type: "public-key" }],
             challenge: "AwQ",
             rpId: "rentivo.app",
             timeout: 60000,
             userVerification: "preferred"
-          }),
+          });
+        },
         "/api/v1/auth/mfa/passkeys/complete": (init) => {
           expect(JSON.parse(String(init?.body))).toEqual({
             challenge_id: "challenge-1",
-            credential
+            credential,
+            credential_transport: "cookie"
           });
           return jsonResponse(AUTHENTICATED_RESPONSE);
         }

@@ -124,7 +124,7 @@ async def google_callback(
             )
             _set_challenge_cookie(response, result.challenge_nonce)
     else:
-        cookie_response = _authenticated_response(result, set_access_cookie=True)
+        cookie_response = _authenticated_response(result)
         if as_json:
             response = cookie_response
             _delete_cookie(response, settings.challenge_cookie_name, httponly=True)

@@ -26,6 +26,7 @@ test("password login establishes the shell session and preserves the legacy dest
     (request) => request.method === "POST" && request.path === "/auth/login"
   );
   expect(login?.body).toEqual({
+    credential_transport: "cookie",
     email: "ana@example.com",
     password: "correct-horse-e2e",
     turnstile_token: ""

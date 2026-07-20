@@ -84,6 +84,10 @@ class RequestServices:
             repository=SQLAlchemyAPIKeyRepository(self._conn),
             user_repository=SQLAlchemyUserRepository(self._conn, self._encryption),
             organization_repository=SQLAlchemyOrganizationRepository(self._conn, self._encryption),
+            login_ttl=timedelta(seconds=settings.api_key_login_ttl_seconds),
+            integration_default_ttl=timedelta(days=settings.api_key_integration_default_ttl_days),
+            integration_max_ttl=timedelta(days=settings.api_key_integration_max_ttl_days),
+            last_used_interval=timedelta(seconds=settings.api_key_last_used_throttle_seconds),
         )
 
     @cached_property

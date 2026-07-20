@@ -87,5 +87,5 @@ class APIKeyOptionsResponse(_StrictModel):
     scopes: tuple[str, ...]
     personal_workspace: PersonalWorkspaceOption
     organizations: tuple[OrganizationWorkspaceOption, ...]
-    default_expiration_days: Literal[90] = 90
-    max_expiration_days: Literal[365] = 365
+    default_expiration_days: int = Field(ge=1)
+    max_expiration_days: int = Field(ge=1)

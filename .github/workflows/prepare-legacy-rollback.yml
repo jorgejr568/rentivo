@@ -1,0 +1,160 @@
+name: Prepare Legacy Rollback Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      legacy_sha:
+        description: Pre-5.0 commit to preserve as rollback artifacts
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rentivo-prepare-legacy-rollback
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Test and publish legacy rollback artifacts
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    env:
+      LEGACY_SHA: ${{ inputs.legacy_sha }}
+      LEGACY_ARTIFACT_TAG: ${{ inputs.legacy_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+      LEGACY_WEB_IMAGE: ghcr.io/${{ github.repository }}/legacy-web
+      LEGACY_WORKER_IMAGE: ghcr.io/${{ github.repository }}/legacy-worker
+    steps:
+      - name: Checkout workflow source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify and checkout legacy commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$LEGACY_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "legacy_sha must be exactly 40 lowercase hexadecimal characters."
+            exit 1
+          }
+          git fetch --no-tags --prune origin \
+            "+refs/heads/main:refs/remotes/origin/main"
+          git cat-file -e "${LEGACY_SHA}^{commit}"
+          git merge-base --is-ancestor "$LEGACY_SHA" origin/main || {
+            echo "legacy_sha is not an ancestor of origin/main."
+            exit 1
+          }
+          git checkout --detach "$LEGACY_SHA"
+          [ "$(git rev-parse HEAD)" = "$LEGACY_SHA" ]
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+
+      - name: Sync legacy dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Run legacy test suite
+        run: uv run --no-sync python -m pytest -n auto
+
+      - name: Authenticate to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - id: legacy-web
+        name: Build and push legacy web image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v7
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository }}/legacy-web:${{ env.LEGACY_ARTIFACT_TAG }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ inputs.legacy_sha }}
+
+      - id: legacy-worker
+        name: Build and push legacy worker image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v7
+        with:
+          context: .
+          file: Dockerfile.worker
+          push: true
+          tags: ghcr.io/${{ github.repository }}/legacy-worker:${{ env.LEGACY_ARTIFACT_TAG }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ inputs.legacy_sha }}
+
+      - name: Scan exact legacy web image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/legacy-web@${{ steps.legacy-web.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "true"
+          exit-code: "1"
+
+      - name: Scan exact legacy worker image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}/legacy-worker@${{ steps.legacy-worker.outputs.digest }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: "true"
+          exit-code: "1"
+
+      - name: Attest legacy web image provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/legacy-web
+          subject-digest: ${{ steps.legacy-web.outputs.digest }}
+          push-to-registry: true
+
+      - name: Attest legacy worker image provenance
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ghcr.io/${{ github.repository }}/legacy-worker
+          subject-digest: ${{ steps.legacy-worker.outputs.digest }}
+          push-to-registry: true
+
+      - name: Publish immutable artifact references
+        shell: bash
+        env:
+          WEB_DIGEST: ${{ steps.legacy-web.outputs.digest }}
+          WORKER_DIGEST: ${{ steps.legacy-worker.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "Attestation workflow source must be a lowercase 40-character commit SHA."
+            exit 1
+          }
+          [[ "$WEB_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$WORKER_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          {
+            echo "## Legacy rollback artifacts"
+            echo
+            echo "Legacy revision: \`$LEGACY_SHA\`"
+            echo "Preparation tag: \`$LEGACY_ARTIFACT_TAG\`"
+            echo "Attestation workflow source: \`$GITHUB_SHA\`"
+            echo
+            echo "| Role | Digest | Immutable reference |"
+            echo "| --- | --- | --- |"
+            echo "| Web | \`$WEB_DIGEST\` | \`${LEGACY_WEB_IMAGE}@${WEB_DIGEST}\` |"
+            echo "| Worker | \`$WORKER_DIGEST\` | \`${LEGACY_WORKER_IMAGE}@${WORKER_DIGEST}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

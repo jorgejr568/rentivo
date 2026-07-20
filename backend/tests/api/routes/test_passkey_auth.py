@@ -519,6 +519,41 @@ def test_passkey_complete_validates_server_values_then_consumes_before_one_login
     assert response.headers["cache-control"] == "no-store"
 
 
+def test_native_passkey_flow_uses_the_body_challenge_and_returns_a_body_token(
+    passkey_harness: PasskeyHarness,
+) -> None:
+    passkey_harness.challenge.challenge = _challenge(webauthn_challenge=None)
+    begin = passkey_harness.client.post(
+        "/api/v1/auth/mfa/passkeys/begin",
+        json={
+            "challenge_id": CHALLENGE_ID,
+            "challenge_token": CHALLENGE_NONCE,
+            "credential_transport": "body",
+        },
+    )
+
+    assert begin.status_code == 200
+    assert begin.json() == OPTIONS_PAYLOAD
+
+    complete = passkey_harness.client.post(
+        "/api/v1/auth/mfa/passkeys/complete",
+        json={
+            "challenge_id": CHALLENGE_ID,
+            "challenge_token": CHALLENGE_NONCE,
+            "credential": ASSERTION,
+            "credential_transport": "body",
+        },
+    )
+
+    assert complete.status_code == 200
+    assert complete.json()["access_token"] == ACCESS_SECRET
+    assert complete.json()["token_type"] == "Bearer"
+    assert complete.json()["expires_in"] == 24 * 60 * 60
+    assert settings.access_cookie_name not in complete.cookies
+    assert settings.csrf_cookie_name not in complete.cookies
+    assert settings.challenge_cookie_name not in complete.cookies
+
+
 @pytest.mark.parametrize("state", ["missing", "expired", "replayed"])
 def test_passkey_complete_rejects_missing_expired_and_replayed_challenges_before_verification(
     passkey_harness: PasskeyHarness,
@@ -718,7 +753,10 @@ def test_passkey_openapi_exposes_begin_and_complete_json_contracts(passkey_harne
     assert begin_response["content"]["application/json"]["schema"]["$ref"].endswith("/WebAuthnAuthenticationOptions")
 
     complete_request = schema["components"]["schemas"]["PasskeyAuthCompleteRequest"]
-    credential_ref = complete_request["properties"]["credential"]["$ref"]
+    assert complete_request["discriminator"]["propertyName"] == "credential_transport"
+    body_request = schema["components"]["schemas"]["BodyPasskeyAuthCompleteRequest"]
+    assert "challenge_token" in body_request["required"]
+    credential_ref = body_request["properties"]["credential"]["$ref"]
     assert credential_ref.endswith("/WebAuthnAuthenticationCredential")
     credential_schema = schema["components"]["schemas"]["WebAuthnAuthenticationCredential"]
     assert credential_schema["additionalProperties"] is False

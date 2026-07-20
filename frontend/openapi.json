@@ -210,14 +210,12 @@
         "additionalProperties": false,
         "properties": {
           "default_expiration_days": {
-            "const": 90,
-            "default": 90,
+            "minimum": 1.0,
             "title": "Default Expiration Days",
             "type": "integer"
           },
           "max_expiration_days": {
-            "const": 365,
-            "default": 365,
+            "minimum": 1.0,
             "title": "Max Expiration Days",
             "type": "integer"
           },
@@ -242,7 +240,9 @@
         "required": [
           "scopes",
           "personal_workspace",
-          "organizations"
+          "organizations",
+          "default_expiration_days",
+          "max_expiration_days"
         ],
         "title": "APIKeyOptionsResponse",
         "type": "object"
@@ -530,23 +530,22 @@
         "type": "object"
       },
       "AuthenticatedResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "bootstrap": {
-            "$ref": "#/components/schemas/BootstrapResponse"
+        "discriminator": {
+          "mapping": {
+            "body": "#/components/schemas/BodyAuthenticatedResponse",
+            "cookie": "#/components/schemas/CookieAuthenticatedResponse"
           },
-          "status": {
-            "const": "authenticated",
-            "default": "authenticated",
-            "title": "Status",
-            "type": "string"
-          }
+          "propertyName": "credential_transport"
         },
-        "required": [
-          "bootstrap"
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CookieAuthenticatedResponse"
+          },
+          {
+            "$ref": "#/components/schemas/BodyAuthenticatedResponse"
+          }
         ],
-        "title": "AuthenticatedResponse",
-        "type": "object"
+        "title": "AuthenticatedResponse"
       },
       "AvailableTransitionResponse": {
         "additionalProperties": false,
@@ -1824,6 +1823,180 @@
         "title": "BillingUpdateRequest",
         "type": "object"
       },
+      "BodyAuthenticatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "access_token": {
+            "minLength": 1,
+            "title": "Access Token",
+            "type": "string"
+          },
+          "bootstrap": {
+            "$ref": "#/components/schemas/BootstrapResponse"
+          },
+          "credential_transport": {
+            "const": "body",
+            "title": "Credential Transport",
+            "type": "string"
+          },
+          "expires_in": {
+            "exclusiveMinimum": 0.0,
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "status": {
+            "const": "authenticated",
+            "default": "authenticated",
+            "title": "Status",
+            "type": "string"
+          },
+          "token_type": {
+            "const": "Bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootstrap",
+          "credential_transport",
+          "access_token",
+          "token_type",
+          "expires_in"
+        ],
+        "title": "BodyAuthenticatedResponse",
+        "type": "object"
+      },
+      "BodyMFACodeVerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "challenge_token": {
+            "minLength": 1,
+            "title": "Challenge Token",
+            "type": "string"
+          },
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "credential_transport": {
+            "const": "body",
+            "title": "Credential Transport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential_transport",
+          "challenge_token",
+          "challenge_id",
+          "code"
+        ],
+        "title": "BodyMFACodeVerifyRequest",
+        "type": "object"
+      },
+      "BodyMFARequiredResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "challenge_token": {
+            "minLength": 1,
+            "title": "Challenge Token",
+            "type": "string"
+          },
+          "credential_transport": {
+            "const": "body",
+            "title": "Credential Transport",
+            "type": "string"
+          },
+          "methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "status": {
+            "const": "mfa_required",
+            "default": "mfa_required",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "methods",
+          "credential_transport",
+          "challenge_token"
+        ],
+        "title": "BodyMFARequiredResponse",
+        "type": "object"
+      },
+      "BodyPasskeyAuthBeginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "challenge_token": {
+            "minLength": 1,
+            "title": "Challenge Token",
+            "type": "string"
+          },
+          "credential_transport": {
+            "const": "body",
+            "title": "Credential Transport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential_transport",
+          "challenge_token",
+          "challenge_id"
+        ],
+        "title": "BodyPasskeyAuthBeginRequest",
+        "type": "object"
+      },
+      "BodyPasskeyAuthCompleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "challenge_token": {
+            "minLength": 1,
+            "title": "Challenge Token",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/WebAuthnAuthenticationCredential"
+          },
+          "credential_transport": {
+            "const": "body",
+            "title": "Credential Transport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "credential_transport",
+          "challenge_token",
+          "challenge_id",
+          "credential"
+        ],
+        "title": "BodyPasskeyAuthCompleteRequest",
+        "type": "object"
+      },
       "Body_create_bill_api_v1_billings__billing_uuid__bills_post": {
         "properties": {
           "payload": {
@@ -2288,6 +2461,138 @@
         "title": "ContactResponse",
         "type": "object"
       },
+      "CookieAuthenticatedResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/BootstrapResponse"
+          },
+          "credential_transport": {
+            "const": "cookie",
+            "title": "Credential Transport",
+            "type": "string"
+          },
+          "status": {
+            "const": "authenticated",
+            "default": "authenticated",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootstrap",
+          "credential_transport"
+        ],
+        "title": "CookieAuthenticatedResponse",
+        "type": "object"
+      },
+      "CookieMFACodeVerifyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "code": {
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "credential_transport": {
+            "const": "cookie",
+            "default": "cookie",
+            "title": "Credential Transport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "code"
+        ],
+        "title": "CookieMFACodeVerifyRequest",
+        "type": "object"
+      },
+      "CookieMFARequiredResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential_transport": {
+            "const": "cookie",
+            "title": "Credential Transport",
+            "type": "string"
+          },
+          "methods": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Methods",
+            "type": "array"
+          },
+          "status": {
+            "const": "mfa_required",
+            "default": "mfa_required",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "methods",
+          "credential_transport"
+        ],
+        "title": "CookieMFARequiredResponse",
+        "type": "object"
+      },
+      "CookiePasskeyAuthBeginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential_transport": {
+            "const": "cookie",
+            "default": "cookie",
+            "title": "Credential Transport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id"
+        ],
+        "title": "CookiePasskeyAuthBeginRequest",
+        "type": "object"
+      },
+      "CookiePasskeyAuthCompleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "challenge_id": {
+            "minLength": 1,
+            "title": "Challenge Id",
+            "type": "string"
+          },
+          "credential": {
+            "$ref": "#/components/schemas/WebAuthnAuthenticationCredential"
+          },
+          "credential_transport": {
+            "const": "cookie",
+            "default": "cookie",
+            "title": "Credential Transport",
+            "type": "string"
+          }
+        },
+        "required": [
+          "challenge_id",
+          "credential"
+        ],
+        "title": "CookiePasskeyAuthCompleteRequest",
+        "type": "object"
+      },
       "CurrentBillResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2532,19 +2837,6 @@
         "title": "FrontendCapabilities",
         "type": "object"
       },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
-        "type": "object"
-      },
       "InviteAcceptResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2602,6 +2894,15 @@
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
+          "credential_transport": {
+            "default": "cookie",
+            "enum": [
+              "cookie",
+              "body"
+            ],
+            "title": "Credential Transport",
+            "type": "string"
+          },
           "email": {
             "title": "Email",
             "type": "string"
@@ -2625,53 +2926,40 @@
         "type": "object"
       },
       "MFACodeVerifyRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "challenge_id": {
-            "minLength": 1,
-            "title": "Challenge Id",
-            "type": "string"
+        "discriminator": {
+          "mapping": {
+            "body": "#/components/schemas/BodyMFACodeVerifyRequest",
+            "cookie": "#/components/schemas/CookieMFACodeVerifyRequest"
           },
-          "code": {
-            "minLength": 1,
-            "title": "Code",
-            "type": "string"
-          }
+          "propertyName": "credential_transport"
         },
-        "required": [
-          "challenge_id",
-          "code"
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CookieMFACodeVerifyRequest"
+          },
+          {
+            "$ref": "#/components/schemas/BodyMFACodeVerifyRequest"
+          }
         ],
-        "title": "MFACodeVerifyRequest",
-        "type": "object"
+        "title": "MFACodeVerifyRequest"
       },
       "MFARequiredResponse": {
-        "additionalProperties": false,
-        "properties": {
-          "challenge_id": {
-            "title": "Challenge Id",
-            "type": "string"
+        "discriminator": {
+          "mapping": {
+            "body": "#/components/schemas/BodyMFARequiredResponse",
+            "cookie": "#/components/schemas/CookieMFARequiredResponse"
           },
-          "methods": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Methods",
-            "type": "array"
-          },
-          "status": {
-            "const": "mfa_required",
-            "default": "mfa_required",
-            "title": "Status",
-            "type": "string"
-          }
+          "propertyName": "credential_transport"
         },
-        "required": [
-          "challenge_id",
-          "methods"
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CookieMFARequiredResponse"
+          },
+          {
+            "$ref": "#/components/schemas/BodyMFARequiredResponse"
+          }
         ],
-        "title": "MFARequiredResponse",
-        "type": "object"
+        "title": "MFARequiredResponse"
       },
       "MFAStatusResponse": {
         "additionalProperties": false,
@@ -3287,38 +3575,40 @@
         "type": "object"
       },
       "PasskeyAuthBeginRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "challenge_id": {
-            "minLength": 1,
-            "title": "Challenge Id",
-            "type": "string"
-          }
+        "discriminator": {
+          "mapping": {
+            "body": "#/components/schemas/BodyPasskeyAuthBeginRequest",
+            "cookie": "#/components/schemas/CookiePasskeyAuthBeginRequest"
+          },
+          "propertyName": "credential_transport"
         },
-        "required": [
-          "challenge_id"
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CookiePasskeyAuthBeginRequest"
+          },
+          {
+            "$ref": "#/components/schemas/BodyPasskeyAuthBeginRequest"
+          }
         ],
-        "title": "PasskeyAuthBeginRequest",
-        "type": "object"
+        "title": "PasskeyAuthBeginRequest"
       },
       "PasskeyAuthCompleteRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "challenge_id": {
-            "minLength": 1,
-            "title": "Challenge Id",
-            "type": "string"
+        "discriminator": {
+          "mapping": {
+            "body": "#/components/schemas/BodyPasskeyAuthCompleteRequest",
+            "cookie": "#/components/schemas/CookiePasskeyAuthCompleteRequest"
           },
-          "credential": {
-            "$ref": "#/components/schemas/WebAuthnAuthenticationCredential"
-          }
+          "propertyName": "credential_transport"
         },
-        "required": [
-          "challenge_id",
-          "credential"
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CookiePasskeyAuthCompleteRequest"
+          },
+          {
+            "$ref": "#/components/schemas/BodyPasskeyAuthCompleteRequest"
+          }
         ],
-        "title": "PasskeyAuthCompleteRequest",
-        "type": "object"
+        "title": "PasskeyAuthCompleteRequest"
       },
       "PasskeyListResponse": {
         "additionalProperties": false,
@@ -4014,12 +4304,40 @@
         "title": "SecuritySummaryResponse",
         "type": "object"
       },
+      "SessionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bootstrap": {
+            "$ref": "#/components/schemas/BootstrapResponse"
+          },
+          "status": {
+            "const": "authenticated",
+            "default": "authenticated",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootstrap"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
       "SignupRequest": {
         "additionalProperties": false,
         "properties": {
           "confirm_password": {
             "minLength": 1,
             "title": "Confirm Password",
+            "type": "string"
+          },
+          "credential_transport": {
+            "default": "cookie",
+            "enum": [
+              "cookie",
+              "body"
+            ],
+            "title": "Credential Transport",
             "type": "string"
           },
           "email": {
@@ -4380,46 +4698,6 @@
           "text_contrast"
         ],
         "title": "ThemeValuesResponse",
-        "type": "object"
-      },
-      "ValidationError": {
-        "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
         "type": "object"
       },
       "WebAuthnAuthenticationCredential": {
@@ -5057,13 +5335,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Request validation problem"
           },
           "429": {
             "content": {
@@ -5134,13 +5412,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Revoke Api Key",
@@ -5185,13 +5463,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Get Api Key",
@@ -5246,13 +5524,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Api Key",
@@ -5384,13 +5662,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Google Callback",
@@ -5459,13 +5737,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Login",
@@ -5516,7 +5794,14 @@
             "description": "Unauthorized"
           },
           "422": {
-            "description": "Unprocessable Content"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request validation problem"
           }
         },
         "summary": "Begin Passkey Authentication",
@@ -5553,7 +5838,14 @@
             "description": "Unauthorized"
           },
           "422": {
-            "description": "Unprocessable Content"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request validation problem"
           },
           "429": {
             "description": "Too Many Requests"
@@ -5593,7 +5885,14 @@
             "description": "Unauthorized"
           },
           "422": {
-            "description": "Unprocessable Content"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request validation problem"
           },
           "429": {
             "description": "Too Many Requests"
@@ -5633,7 +5932,14 @@
             "description": "Unauthorized"
           },
           "422": {
-            "description": "Unprocessable Content"
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request validation problem"
           },
           "429": {
             "description": "Too Many Requests"
@@ -5671,13 +5977,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Password Forgot",
@@ -5705,13 +6011,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Password Reset",
@@ -5728,7 +6034,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                  "$ref": "#/components/schemas/SessionResponse"
                 }
               }
             },
@@ -5767,13 +6073,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Signup",
@@ -5827,13 +6133,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Create Billing",
@@ -5862,13 +6168,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Delete Billing",
@@ -5902,13 +6208,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Get Billing",
@@ -5952,13 +6258,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Billing",
@@ -5994,13 +6300,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "List Attachments",
@@ -6057,13 +6363,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Upload Attachment",
@@ -6101,13 +6407,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Delete Attachment",
@@ -6175,13 +6481,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Download Attachment",
@@ -6227,13 +6533,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "List Bills",
@@ -6333,13 +6639,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Request validation problem"
           }
         },
         "summary": "Create Bill",
@@ -6407,13 +6713,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Delete Bill",
@@ -6466,13 +6772,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Get Bill",
@@ -6555,13 +6861,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Bill",
@@ -6624,13 +6930,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Download Invoice",
@@ -6715,13 +7021,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Reorder Receipts",
@@ -6786,13 +7092,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "List Receipts",
@@ -6875,13 +7181,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Upload Receipts",
@@ -6958,13 +7264,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Delete Receipt",
@@ -7034,13 +7340,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Download Receipt",
@@ -7113,13 +7419,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Download Recibo",
@@ -7192,13 +7498,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Download Recibo Content",
@@ -7273,13 +7579,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Get Recibo Download",
@@ -7354,13 +7660,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Regenerate Bill",
@@ -7445,13 +7751,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Transition Bill",
@@ -7497,13 +7803,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Preview Communication",
@@ -7549,13 +7855,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Send Communication",
@@ -7591,13 +7897,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "List Expenses",
@@ -7641,13 +7947,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Create Expense",
@@ -7685,13 +7991,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Delete Expense",
@@ -7737,13 +8043,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Create Export",
@@ -7789,13 +8095,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Replace Recipients",
@@ -7841,13 +8147,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Replace Reply To",
@@ -7886,13 +8192,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Transfer Billing",
@@ -8000,13 +8306,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Accept Invite",
@@ -8063,13 +8369,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Decline Invite",
@@ -8123,13 +8429,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Request validation problem"
           }
         },
         "summary": "Create Organization",
@@ -8169,13 +8475,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Delete Organization",
@@ -8228,13 +8534,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Get Organization",
@@ -8289,13 +8595,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Organization",
@@ -8362,13 +8668,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Transfer Billing",
@@ -8435,13 +8741,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Create Invite",
@@ -8501,13 +8807,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Remove Member",
@@ -8582,13 +8888,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Member Role",
@@ -8645,13 +8951,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Mfa Policy",
@@ -8743,13 +9049,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Change Password",
@@ -8826,13 +9132,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Complete Passkey Registration",
@@ -8861,13 +9167,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Delete Passkey",
@@ -8902,13 +9208,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Pix",
@@ -8964,13 +9270,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Confirm Totp",
@@ -8998,13 +9304,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Disable Totp",
@@ -9055,13 +9361,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Reset Billing Theme",
@@ -9096,13 +9402,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Get Billing Theme",
@@ -9147,13 +9453,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Billing Theme",
@@ -9183,13 +9489,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Reset Organization Theme",
@@ -9224,13 +9530,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Get Organization Theme",
@@ -9275,13 +9581,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update Organization Theme",
@@ -9317,13 +9623,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Preview Theme",
@@ -9389,13 +9695,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Update User Theme",
@@ -9454,13 +9760,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Attachment Alias"
@@ -9500,13 +9806,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Invoice Alias"
@@ -9555,13 +9861,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Receipt Alias"
@@ -9601,13 +9907,13 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Request validation problem"
           }
         },
         "summary": "Recibo Alias"

@@ -381,6 +381,30 @@ def test_signup_returns_authenticated_bootstrap_and_secure_login_cookies(
     assert len(auth_harness.login.signup_calls) == 1
 
 
+def test_signup_can_return_a_cookie_free_native_login_token(
+    auth_harness: AuthHarness,
+) -> None:
+    response = auth_harness.client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": " person@example.com ",
+            "password": "correct horse battery staple",
+            "confirm_password": "correct horse battery staple",
+            "turnstile_token": "signup-turnstile",
+            "credential_transport": "body",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == ACCESS_SECRET
+    assert response.json()["token_type"] == "Bearer"
+    assert response.json()["expires_in"] == 24 * 60 * 60
+    assert ACCESS_COOKIE_NAME not in response.cookies
+    assert CSRF_COOKIE_NAME not in response.cookies
+    assert response.headers["cache-control"] == "no-store"
+    assert auth_harness.login.signup_calls[0][1]["source"] == "mobile"
+
+
 def test_password_login_without_mfa_returns_200_and_never_serializes_the_key(
     auth_harness: AuthHarness,
 ) -> None:
@@ -405,6 +429,29 @@ def test_password_login_without_mfa_returns_200_and_never_serializes_the_key(
     assert response.headers["cache-control"] == "no-store"
 
 
+def test_password_login_can_return_a_cookie_free_native_login_token(
+    auth_harness: AuthHarness,
+) -> None:
+    response = auth_harness.client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": USER.email,
+            "password": "correct",
+            "turnstile_token": "login-turnstile",
+            "credential_transport": "body",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == ACCESS_SECRET
+    assert response.json()["token_type"] == "Bearer"
+    assert response.json()["expires_in"] == 24 * 60 * 60
+    assert ACCESS_COOKIE_NAME not in response.cookies
+    assert CSRF_COOKIE_NAME not in response.cookies
+    assert response.headers["cache-control"] == "no-store"
+    assert auth_harness.login.login_calls[0][1]["source"] == "mobile"
+
+
 def test_password_login_with_mfa_returns_202_and_only_discloses_public_challenge_data(
     auth_harness: AuthHarness,
 ) -> None:
@@ -423,6 +470,7 @@ def test_password_login_with_mfa_returns_202_and_only_discloses_public_challenge
     assert response.json() == {
         "status": "mfa_required",
         "challenge_id": CHALLENGE_ID,
+        "credential_transport": "cookie",
         "methods": ["totp", "recovery", "passkey"],
     }
     assert ACCESS_COOKIE_NAME not in response.cookies
@@ -434,6 +482,35 @@ def test_password_login_with_mfa_returns_202_and_only_discloses_public_challenge
         http_only=True,
         max_age=5 * 60,
     )
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_native_password_login_returns_the_mfa_challenge_token_in_the_body(
+    auth_harness: AuthHarness,
+) -> None:
+    auth_harness.login.login_result = MFA_RESULT
+
+    response = auth_harness.client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": USER.email,
+            "password": "correct",
+            "turnstile_token": "login-turnstile",
+            "credential_transport": "body",
+        },
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "status": "mfa_required",
+        "challenge_id": CHALLENGE_ID,
+        "challenge_token": CHALLENGE_NONCE,
+        "credential_transport": "body",
+        "methods": ["totp", "recovery", "passkey"],
+    }
+    assert settings.challenge_cookie_name not in response.cookies
+    assert ACCESS_COOKIE_NAME not in response.cookies
+    assert CSRF_COOKIE_NAME not in response.cookies
     assert response.headers["cache-control"] == "no-store"
 
 
@@ -466,6 +543,35 @@ def test_unknown_email_and_wrong_password_share_the_same_login_problem(
     assert responses[0].headers["X-Rentivo-Analytics-Reason"] == "bad_credentials"
 
 
+@pytest.mark.parametrize(
+    ("credential_transport", "expected_source"),
+    [("cookie", "web"), ("body", "mobile")],
+)
+def test_failed_password_login_audits_the_requested_transport_source(
+    auth_harness: AuthHarness,
+    credential_transport: str,
+    expected_source: str,
+) -> None:
+    auth_harness.login.reject_login = True
+
+    response = auth_harness.client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "unknown@example.com",
+            "password": "wrong",
+            "turnstile_token": "turnstile",
+            "credential_transport": credential_transport,
+        },
+    )
+
+    assert response.status_code == 401
+    actor, event_type = auth_harness.audit.calls[0][0]
+    assert actor.source == expected_source
+    assert actor.user_id is None
+    assert actor.email == ""
+    assert event_type == AuditEventType.USER_LOGIN_FAILED
+
+
 def test_session_returns_login_bootstrap_without_exposing_the_cookie_credential(
     auth_harness: AuthHarness,
 ) -> None:
@@ -481,6 +587,22 @@ def test_session_returns_login_bootstrap_without_exposing_the_cookie_credential(
     _assert_no_auth_secret(response.json())
     assert auth_harness.login.bootstrap_calls == [LOGIN_KEY.uuid]
     _assert_deleted_cookie(response, "session", http_only=True)
+
+
+def test_bearer_session_is_cookie_free_and_does_not_echo_the_login_token(
+    auth_harness: AuthHarness,
+) -> None:
+    response = auth_harness.client.get(
+        "/api/v1/auth/session",
+        headers={"Authorization": f"Bearer {ACCESS_SECRET}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "authenticated"
+    assert response.json()["bootstrap"]["user"] == BOOTSTRAP["user"]
+    _assert_no_auth_secret(response.json())
+    assert ACCESS_COOKIE_NAME not in response.cookies
+    assert CSRF_COOKIE_NAME not in response.cookies
 
 
 def test_required_mfa_session_remains_available_for_live_bootstrap(
@@ -566,6 +688,19 @@ def test_logout_deletes_only_the_current_login_key_and_clears_browser_cookies(
         headers={"Cookie": _cookie_header(SECOND_ACCESS_SECRET)},
     )
     assert other_session.status_code == 200
+
+
+def test_bearer_login_logout_revokes_the_native_key_without_csrf(
+    auth_harness: AuthHarness,
+) -> None:
+    response = auth_harness.client.post(
+        "/api/v1/auth/logout",
+        headers={"Authorization": f"Bearer {ACCESS_SECRET}"},
+    )
+
+    assert response.status_code == 204
+    assert auth_harness.api_key.logout_calls == [LOGIN_KEY.uuid]
+    assert ACCESS_SECRET not in auth_harness.api_key.keys
 
 
 def test_required_mfa_user_can_still_logout(auth_harness: AuthHarness) -> None:
@@ -739,6 +874,20 @@ def test_auth_openapi_exposes_versioned_json_operations_and_both_login_outcomes(
     assert schema["paths"]["/api/v1/auth/logout"]["post"]["responses"].get("204") is not None
     bootstrap_schema = schema["components"]["schemas"]["BootstrapResponse"]
     assert bootstrap_schema["additionalProperties"] is False
+    login_request = schema["components"]["schemas"]["LoginRequest"]
+    assert login_request["properties"]["credential_transport"] == {
+        "type": "string",
+        "enum": ["cookie", "body"],
+        "default": "cookie",
+        "title": "Credential Transport",
+    }
+    authenticated = schema["components"]["schemas"]["AuthenticatedResponse"]
+    assert authenticated["discriminator"]["propertyName"] == "credential_transport"
+    body_authenticated = schema["components"]["schemas"]["BodyAuthenticatedResponse"]
+    assert {"access_token", "token_type", "expires_in"} <= set(body_authenticated["required"])
+    mfa_required = schema["components"]["schemas"]["MFARequiredResponse"]
+    assert mfa_required["discriminator"]["propertyName"] == "credential_transport"
+    assert "challenge_token" in schema["components"]["schemas"]["BodyMFARequiredResponse"]["required"]
 
 
 def test_turnstile_failure_stops_login_before_credentials(auth_harness: AuthHarness) -> None:

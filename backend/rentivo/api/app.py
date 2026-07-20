@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from rentivo.api.authentication import allow_mfa_setup, delete_legacy_session_cookie
-from rentivo.api.errors import ProblemException, problem, problem_response
+from rentivo.api.errors import Problem, ProblemException, problem, problem_response
 from rentivo.api.routes.api_keys import router as api_keys_router
 from rentivo.api.routes.auth import router as auth_router
 from rentivo.api.routes.billings import router as billings_router
@@ -217,5 +217,29 @@ def create_app() -> FastAPI:
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         return problem_response(_http_problem(exc))
+
+    default_openapi = app.openapi
+
+    def problem_openapi():
+        schema = default_openapi()
+        schemas = schema.setdefault("components", {}).setdefault("schemas", {})
+        schemas["Problem"] = Problem.model_json_schema(ref_template="#/components/schemas/{model}")
+        validation_response = {
+            "description": "Request validation problem",
+            "content": {
+                "application/problem+json": {
+                    "schema": {"$ref": "#/components/schemas/Problem"},
+                }
+            },
+        }
+        for path in schema["paths"].values():
+            for method, operation in path.items():
+                if method in {"delete", "get", "patch", "post", "put"} and "422" in operation["responses"]:
+                    operation["responses"]["422"] = validation_response
+        schemas.pop("HTTPValidationError", None)
+        schemas.pop("ValidationError", None)
+        return schema
+
+    app.openapi = problem_openapi
 
     return app

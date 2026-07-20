@@ -129,6 +129,17 @@ def test_production_settings_validation_is_disabled_outside_production(monkeypat
     settings_module.validate_production_settings()
 
 
+def test_production_settings_require_a_fixed_24_hour_login_key_ttl(monkeypatch):
+    monkeypatch.setattr(
+        settings_module,
+        "settings",
+        _secure_production_settings(api_key_login_ttl_seconds=60 * 60),
+    )
+
+    with pytest.raises(ValueError, match="RENTIVO_API_KEY_LOGIN_TTL_SECONDS"):
+        settings_module.validate_production_settings()
+
+
 def test_production_settings_do_not_report_matching_rp_id_as_mismatched(monkeypatch):
     insecure = _secure_production_settings(webauthn_origin="http://rentivo.example.com")
     monkeypatch.setattr(settings_module, "settings", insecure)
@@ -650,3 +661,8 @@ def test_integration_default_ttl_cannot_exceed_maximum():
             api_key_integration_default_ttl_days=366,
             api_key_integration_max_ttl_days=365,
         )
+
+
+def test_integration_maximum_ttl_cannot_exceed_one_year():
+    with pytest.raises(ValidationError, match="365 days"):
+        Settings(_env_file=None, api_key_integration_max_ttl_days=366)

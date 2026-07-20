@@ -48,6 +48,7 @@ describe("SignupPage", () => {
         "/api/v1/auth/signup": (init) => {
           expect(JSON.parse(String(init?.body))).toEqual({
             confirm_password: "correct-password",
+            credential_transport: "cookie",
             email: "user@example.com",
             password: "correct-password",
             turnstile_token: ""

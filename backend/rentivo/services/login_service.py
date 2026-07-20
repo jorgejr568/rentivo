@@ -21,6 +21,7 @@ from rentivo.services.mfa_service import MFAService
 from rentivo.services.user_service import UserService
 
 BootstrapBuilder = Callable[..., dict[str, Any]]
+LoginSource = Literal["web", "mobile"]
 logger = structlog.get_logger(__name__)
 
 
@@ -111,11 +112,16 @@ class LoginService:
         self.public_app_url = public_app_url.rstrip("/")
 
     @staticmethod
-    def _actor(user: User, api_key: APIKey | None = None) -> Actor:
+    def _actor(
+        user: User,
+        api_key: APIKey | None = None,
+        *,
+        source: LoginSource = "web",
+    ) -> Actor:
         return Actor(
             user_id=user.id,
             email=user.email,
-            source="web",
+            source=source,
             api_key_uuid=None if api_key is None else api_key.uuid,
             is_login_token=None if api_key is None else api_key.is_login_token,
         )
@@ -147,8 +153,12 @@ class LoginService:
         analytics_event: dict[str, Any] | None = None,
         notify_new_device: bool = True,
         audit_new_state: dict[str, Any] | None = None,
+        source: LoginSource = "web",
     ) -> LoginResult:
-        issued = self.api_key_service.issue_login(user_id=user.id, name="Web login")
+        issued = self.api_key_service.issue_login(
+            user_id=user.id,
+            name="Web login" if source == "web" else "Mobile login",
+        )
         try:
             mfa_setup_required = self.mfa_service.user_requires_mfa_setup(user.id)
             bootstrap = self.bootstrap_builder(
@@ -162,10 +172,11 @@ class LoginService:
                     user_agent=user_agent,
                     client_ip=client_ip,
                     job_service=self.job_service,
+                    source=source,
                 )
             metadata = {"ip": client_ip, **(audit_metadata or {})}
             self.audit_service.safe_log_for(
-                self._actor(user, issued.key),
+                self._actor(user, issued.key, source=source),
                 audit_event,
                 entity_type="user",
                 entity_id=user.id,
@@ -191,6 +202,7 @@ class LoginService:
         password: str,
         client_ip: str,
         user_agent: str,
+        source: LoginSource = "web",
     ) -> LoginResult | None:
         user = self.user_service.authenticate(email, password)
         if user is None:
@@ -203,7 +215,7 @@ class LoginService:
                 allowed_methods=methods,
             )
             self.audit_service.safe_log_for(
-                self._actor(user),
+                self._actor(user, source=source),
                 AuditEventType.MFA_CHALLENGE_ISSUED,
                 entity_type="user",
                 entity_id=user.id,
@@ -219,6 +231,7 @@ class LoginService:
             via="password",
             client_ip=client_ip,
             user_agent=user_agent,
+            source=source,
         )
 
     @traced("login.google", record_exception_details=False)
@@ -325,6 +338,7 @@ class LoginService:
         password: str,
         client_ip: str,
         user_agent: str,
+        source: LoginSource = "web",
     ) -> LoginResult:
         user = self.user_service.register_user(email, password)
         try:
@@ -337,6 +351,7 @@ class LoginService:
                 analytics_event={"event": "rentivo_signup_completed"},
                 notify_new_device=False,
                 audit_new_state=serialize_user(user),
+                source=source,
             )
         except BaseException:
             try:
@@ -347,7 +362,7 @@ class LoginService:
             raise
         try:
             self.job_service.enqueue_for(
-                self._actor(user),
+                self._actor(user, source=source),
                 "email.send",
                 {
                     "event": "welcome",

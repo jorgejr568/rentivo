@@ -55,6 +55,7 @@ export function SignupPage() {
     setLoading(true);
     const payload: SignupRequest = {
       confirm_password: confirmPassword,
+      credential_transport: "cookie",
       email: email.trim(),
       password,
       turnstile_token: turnstileToken

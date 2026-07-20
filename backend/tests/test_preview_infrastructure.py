@@ -6,17 +6,26 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GITIGNORE = REPO_ROOT / ".gitignore"
+DOCKERIGNORE = REPO_ROOT / ".dockerignore"
 API_DOCKERFILE = REPO_ROOT / "backend" / "Dockerfile.api"
 FRONTEND_DOCKERFILE = REPO_ROOT / "frontend" / "Dockerfile"
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
+DEV_COMPOSE_FILE = REPO_ROOT / "docker-compose.dev.yml"
+MAKEFILE = REPO_ROOT / "Makefile"
 NGINX_CONFIG = REPO_ROOT / "infra" / "proxy" / "nginx.conf"
 PREVIEW_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 PR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "test-pr.yaml"
 DEPLOY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+ROLLBACK_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "rollback.yml"
+PREPARE_LEGACY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "prepare-legacy-rollback.yml"
+SETUP_ACTION = REPO_ROOT / ".github" / "actions" / "setup" / "action.yml"
 DOCKER_BUILD_ACTION = REPO_ROOT / ".github" / "actions" / "docker-build" / "action.yml"
 DEPENDABOT_CONFIG = REPO_ROOT / ".github" / "dependabot.yml"
 BACKEND_PYPROJECT = REPO_ROOT / "backend" / "pyproject.toml"
+CLAUDE_DOC = REPO_ROOT / "CLAUDE.md"
+CONTRIBUTING_DOC = REPO_ROOT / "CONTRIBUTING.md"
+PRODUCTION_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "production-release.md"
 CHECKOUT_SHA = "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0"
 LOGIN_SHA = "c94ce9fb468520275223c153574b00df6fe4bcc9"
 SETUP_BUILDX_SHA = "8d2750c68a42422c14e847fe6c8ac0403b4cbd6f"
@@ -24,6 +33,9 @@ BUILD_PUSH_SHA = "10e90e3645eae34f1e60eeb005ba3a3d33f178e8"
 ATTEST_SHA = "977bb373ede98d70efdf65b84cb5f73e068dcc2a"
 TRIVY_SHA = "ed142fd0673e97e23eac54620cfb913e5ce36c25"
 SETUP_UV_SHA = "08807647e7069bb48b6ef5acd8ec9567f424441b"
+SETUP_NODE_SHA = "249970729cb0ef3589644e2896645e5dc5ba9c38"
+UPLOAD_ARTIFACT_SHA = "b7c566a772e6b6bfb58ed0dc250532a479d7789f"
+CODECOV_SHA = "a99c28d3f0da835de33ff2feb2e15691c7b9641f"
 
 
 def _yaml(path: Path) -> dict:
@@ -49,6 +61,26 @@ def test_api_readiness_checks_the_database_and_http_endpoint():
     assert "http://localhost:8000/api/v1/ready" in health_command
     assert api["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
     assert compose["services"]["proxy"]["healthcheck"]["test"][-1] == ("http://localhost/api/v1/ready")
+
+
+def test_production_validation_is_a_one_shot_migration_prerequisite():
+    compose = _yaml(COMPOSE_FILE)
+    validate = compose["services"]["validate"]
+    migrate = compose["services"]["migrate"]
+
+    assert validate["build"] == {
+        "context": ".",
+        "dockerfile": "backend/Dockerfile.api",
+    }
+    assert "validate_production_settings" in " ".join(validate["command"])
+    assert validate["restart"] == "no"
+    assert validate["depends_on"] == {"db": {"condition": "service_healthy"}}
+    assert migrate["depends_on"] == {
+        "db": {"condition": "service_healthy"},
+        "validate": {"condition": "service_completed_successfully"},
+    }
+    assert _yaml(DEV_COMPOSE_FILE)["services"]["validate"]["environment"] == {"RENTIVO_ENVIRONMENT": "dev"}
+    assert "build validate migrate api worker frontend" in MAKEFILE.read_text()
 
 
 def test_production_cookie_and_webauthn_settings_are_explicit():
@@ -121,14 +153,14 @@ def test_proxy_uses_a_dedicated_non_internal_ingress_network():
     assert compose["networks"]["app-edge"]["internal"] is True
     assert compose["networks"]["ingress"].get("internal", False) is False
     assert set(compose["services"]["proxy"]["networks"]) == {"app-edge", "ingress"}
-    for service_name in ("db", "migrate", "worker", "api", "frontend"):
+    for service_name in ("db", "validate", "migrate", "worker", "api", "frontend"):
         assert "ingress" not in compose["services"][service_name].get("networks", [])
 
 
 def test_database_interpolation_and_application_runtime_env_are_separate():
     compose = _yaml(COMPOSE_FILE)
 
-    for service_name in ("migrate", "worker", "api"):
+    for service_name in ("validate", "migrate", "worker", "api"):
         service = compose["services"][service_name]
         assert service["env_file"] == [
             {
@@ -142,12 +174,18 @@ def test_database_interpolation_and_application_runtime_env_are_separate():
     assert "mysql+pymysql://${MYSQL_USER" not in COMPOSE_FILE.read_text()
 
 
-def test_preview_secret_files_are_ignored_but_examples_remain_trackable():
+def test_environment_examples_remain_trackable():
     patterns = set(GITIGNORE.read_text().splitlines())
 
-    assert ".env.preview-app" in patterns
-    assert ".env.preview-db" in patterns
     assert "!.env.example" in patterns
+
+
+def test_docker_build_context_excludes_environment_files_except_examples():
+    patterns = DOCKERIGNORE.read_text().splitlines()
+
+    assert "**/.env*" in patterns
+    assert "!.env.example" in patterns
+    assert "!.env.db.example" in patterns
 
 
 def test_frontend_runs_unprivileged_and_read_only_on_port_8080():
@@ -271,7 +309,31 @@ def test_pr_gate_boots_and_exercises_the_functional_stack():
     assert steps["Capture functional stack logs"]["if"] == "always()"
     assert steps["Stop functional stack"]["if"] == "always()"
     disposable_environment = steps["Create secure disposable stack environment"]["run"]
-    assert disposable_environment.count("RENTIVO_ENVIRONMENT: dev") == 3
+    assert disposable_environment.count("RENTIVO_ENVIRONMENT: dev") == 4
+    assert "validate:" in disposable_environment
+
+
+def test_pr_migrations_rehearse_a_populated_production_head_to_5_0():
+    workflow = _yaml(PR_WORKFLOW)
+    scripts = "\n".join(str(step.get("run", "")) for step in workflow["jobs"]["migrations"]["steps"])
+
+    assert "upgrade 55dc25bae00d" in scripts
+    assert "upgrade head" in scripts
+    assert scripts.index("upgrade 55dc25bae00d") < scripts.index("upgrade head")
+    assert "downgrade" not in scripts
+    for table in ("users", "mfa_totp", "passkeys", "organizations", "billings", "billing_items", "bills"):
+        assert table in scripts
+    assert "FIXED" in scripts
+    assert "VARIABLE" in scripts
+    assert "migration-before.json" in scripts
+    assert "actual_rows == expected_rows" in scripts
+    assert "COUNT(uuid)" in scripts
+    assert "COUNT(DISTINCT uuid)" in scripts
+    assert "total == populated == distinct" in scripts
+    assert "api_keys" in scripts
+    assert "auth_challenges" in scripts
+    assert "auth_rate_limits" in scripts
+    assert "e0f1a2b3c4d5" in scripts
 
 
 def test_pr_gate_starts_services_with_validated_production_settings():
@@ -310,8 +372,11 @@ def test_pr_gate_starts_services_with_validated_production_settings():
         assert variable in environment
     assert "RENTIVO_ENVIRONMENT: dev" not in environment
     assert re.search(r"\bAKIA[A-Z0-9]{16}\b", environment) is None
-    assert "validate_production_settings" in startup
-    assert "up --build -d db migrate api worker" in startup
+    assert "up --build -d db validate migrate api worker" in startup
+    assert "ps -aq validate" in startup
+    assert "Production validation failed" in startup
+    assert startup.index("ps -aq validate") < startup.index("ps -aq migrate")
+    assert "run --rm --no-deps migrate" not in startup
     assert "/api/v1/ready" in startup
     assert "ps --status running --services" in startup
     assert "worker" in startup
@@ -386,6 +451,8 @@ def test_complete_gate_runs_dependency_repository_and_image_security_scans():
     assert scan_steps["Scan repository secrets and misconfigurations"]["with"]["skip-dirs"] == ".venv"
     assert "security-scan" in jobs["release-gate"]["needs"]
     assert image_build["with"]["load"] == "true"
+    assert image_build["with"]["push"] == "false"
+    assert jobs["production-images"].get("permissions", {"contents": "read"}) == {"contents": "read"}
     assert image_scan["uses"] == f"aquasecurity/trivy-action@{TRIVY_SHA}"
     assert image_scan["with"] == {
         "exit-code": "1",
@@ -395,6 +462,38 @@ def test_complete_gate_runs_dependency_repository_and_image_security_scans():
         "severity": "HIGH,CRITICAL",
     }
     assert set(jobs["all-checks-pass"]["needs"]) == {"release-gate", "production-images"}
+
+
+def test_every_external_action_is_pinned_to_an_expected_commit():
+    paths = tuple(sorted((REPO_ROOT / ".github" / "workflows").glob("*.y*ml"))) + tuple(
+        sorted((REPO_ROOT / ".github" / "actions").glob("**/action.yml"))
+    )
+    expected = {
+        "actions/checkout": CHECKOUT_SHA,
+        "actions/setup-node": SETUP_NODE_SHA,
+        "actions/upload-artifact": UPLOAD_ARTIFACT_SHA,
+        "astral-sh/setup-uv": SETUP_UV_SHA,
+        "codecov/codecov-action": CODECOV_SHA,
+        "docker/login-action": LOGIN_SHA,
+        "docker/build-push-action": BUILD_PUSH_SHA,
+        "docker/setup-buildx-action": SETUP_BUILDX_SHA,
+        "actions/attest-build-provenance": ATTEST_SHA,
+        "aquasecurity/trivy-action": TRIVY_SHA,
+    }
+    found: set[str] = set()
+
+    for path in paths:
+        for action_spec in re.findall(r"uses:\s+([^\s#]+)", path.read_text()):
+            if action_spec.startswith("./"):
+                continue
+            assert "@" in action_spec, f"{path}: {action_spec} is not pinned"
+            action, ref = action_spec.rsplit("@", 1)
+            assert re.fullmatch(r"[0-9a-f]{40}", ref), f"{path}: {action}@{ref} is mutable"
+            assert action in expected, f"Add the reviewed SHA for {action}"
+            assert ref == expected[action]
+            found.add(action)
+
+    assert found == set(expected)
 
 
 def test_backend_sast_tool_is_exactly_pinned_in_the_lock_contract():
@@ -417,6 +516,8 @@ def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
     jobs = workflow["jobs"]
     deploy = jobs["deploy"]
     publish = jobs["publish-images"]
+    resolve = jobs["resolve-images"]
+    verify = jobs["verify-images"]
     deploy_script = next(step["run"] for step in deploy["steps"] if step.get("name") == "Deploy tested images once")
 
     assert workflow["permissions"] == {"contents": "read"}
@@ -442,6 +543,25 @@ def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
     assert {step["id"] for step in build_steps} == {"api", "worker", "frontend"}
     assert all(step["with"]["image-tag"] == "${{ github.sha }}" for step in build_steps)
     assert all(step["with"]["push"] == "true" for step in build_steps)
+    for image in ("API", "worker", "frontend"):
+        build_index = next(
+            index for index, step in enumerate(publish["steps"]) if step.get("name") == f"Publish {image} image"
+        )
+        scan_index = next(
+            index for index, step in enumerate(publish["steps"]) if step.get("name") == f"Scan {image} image"
+        )
+        attest_index = next(
+            index
+            for index, step in enumerate(publish["steps"])
+            if step.get("name") == f"Attest {image} image provenance"
+        )
+        scan = publish["steps"][scan_index]
+        image_id = image.lower()
+        assert build_index < scan_index < attest_index
+        assert scan["uses"] == f"aquasecurity/trivy-action@{TRIVY_SHA}"
+        assert scan["with"]["image-ref"] == f"${{{{ steps.{image_id}.outputs.image-ref }}}}"
+        assert scan["with"]["exit-code"] == "1"
+        assert scan["with"]["severity"] == "HIGH,CRITICAL"
     attestation_steps = [
         step for step in publish["steps"] if step.get("uses") == f"actions/attest-build-provenance@{ATTEST_SHA}"
     ]
@@ -463,15 +583,105 @@ def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
     assert next(step for step in publish["steps"] if step.get("name") == "Authenticate to GHCR")["uses"] == (
         f"docker/login-action@{LOGIN_SHA}"
     )
-    assert deploy["needs"] == "publish-images"
+    assert resolve["needs"] == "publish-images"
+    assert resolve["permissions"] == {"attestations": "read", "contents": "read", "packages": "read"}
+    assert resolve["outputs"] == {
+        "api-digest": "${{ steps.resolve.outputs.api-digest }}",
+        "api-ref": "${{ steps.resolve.outputs.api-ref }}",
+        "frontend-digest": "${{ steps.resolve.outputs.frontend-digest }}",
+        "frontend-ref": "${{ steps.resolve.outputs.frontend-ref }}",
+        "worker-digest": "${{ steps.resolve.outputs.worker-digest }}",
+        "worker-ref": "${{ steps.resolve.outputs.worker-ref }}",
+    }
+    resolve_script = next(step["run"] for step in resolve["steps"] if step.get("name") == "Resolve and verify images")
+    assert resolve["env"] == {
+        "PUBLISHED_API_DIGEST": "${{ needs.publish-images.outputs.api-digest }}",
+        "PUBLISHED_API_REF": "${{ needs.publish-images.outputs.api-ref }}",
+        "PUBLISHED_FRONTEND_DIGEST": "${{ needs.publish-images.outputs.frontend-digest }}",
+        "PUBLISHED_FRONTEND_REF": "${{ needs.publish-images.outputs.frontend-ref }}",
+        "PUBLISHED_WORKER_DIGEST": "${{ needs.publish-images.outputs.worker-digest }}",
+        "PUBLISHED_WORKER_REF": "${{ needs.publish-images.outputs.worker-ref }}",
+    }
+    assert 'docker buildx imagetools inspect "$tag_ref"' in resolve_script
+    assert 'local published_digest="$2" published_ref="$3"' in resolve_script
+    assert '[ "$digest" = "$published_digest" ]' in resolve_script
+    assert '[ "$digest_ref" = "$published_ref" ]' in resolve_script
+    assert 'docker pull "$digest_ref"' in resolve_script
+    assert "org.opencontainers.image.revision" in resolve_script
+    assert "org.opencontainers.image.source" in resolve_script
+    assert 'gh attestation verify "oci://$digest_ref"' in resolve_script
+    assert ".github/workflows/deploy.yml" in resolve_script
+    assert resolve_script.count("resolve_verified_image ") == 3
+    for image in ("API", "WORKER", "FRONTEND"):
+        assert f'"$PUBLISHED_{image}_DIGEST" "$PUBLISHED_{image}_REF"' in resolve_script
+    assert 'echo "${image}-digest=$digest"' in resolve_script
+    assert 'echo "${image}-ref=$digest_ref"' in resolve_script
+
+    assert verify["needs"] == "resolve-images"
+    assert verify["permissions"] == {"contents": "read", "packages": "read"}
+    assert verify["env"] == {
+        "API_REF": "${{ needs.resolve-images.outputs.api-ref }}",
+        "FRONTEND_REF": "${{ needs.resolve-images.outputs.frontend-ref }}",
+        "WORKER_REF": "${{ needs.resolve-images.outputs.worker-ref }}",
+    }
+    verify_steps = {step["name"]: step for step in verify["steps"] if "name" in step}
+    override = verify_steps["Create exact-image stack environment"]["run"]
+    assert "RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR=127.0.0.1/32" in override
+    for local_backend in (
+        "RENTIVO_EMAIL_BACKEND=local",
+        "RENTIVO_STORAGE_BACKEND=local",
+        "RENTIVO_ENCRYPTION_BACKEND=base64",
+    ):
+        assert local_backend in override
+    for service in ("validate", "migrate", "api"):
+        assert f"{service}:" in override
+        assert "image: ${API_REF:?API_REF is required}" in override
+    assert "image: ${WORKER_REF:?WORKER_REF is required}" in override
+    assert "image: ${FRONTEND_REF:?FRONTEND_REF is required}" in override
+    assert override.count("RENTIVO_ENVIRONMENT: dev") == 4
+    startup = verify_steps["Start and verify exact-image stack"]["run"]
+    assert "RENTIVO_PORT=18080" in startup
+    assert "--no-build" in startup
+    assert "docker build" not in startup
+    assert " up " in startup
+    assert "validate migrate api worker frontend proxy" in startup
+    assert verify_steps["Run exact-image shell smoke"]["run"].endswith("http://127.0.0.1:18080")
+    assert verify_steps["Run exact-image Playwright smoke"]["env"] == {
+        "PLAYWRIGHT_BASE_URL": "http://127.0.0.1:18080",
+        "PLAYWRIGHT_PRODUCTION_STACK": "1",
+    }
+    assert "--project=production-stack" in verify_steps["Run exact-image Playwright smoke"]["run"]
+
+    assert set(deploy["needs"]) == {"resolve-images", "verify-images"}
     assert deploy["permissions"] == {"contents": "read"}
     assert deploy["environment"]["name"] == "production"
+    assert deploy["env"]["EXPECTED_ALEMBIC_REVISION"] == "e0f1a2b3c4d5"
     assert deploy_script.count("curl ") == 1
     assert "X-Idempotency-Key" in deploy_script
     assert "Authorization: Bearer" in deploy_script
-    assert "schema_version" in deploy_script
-    for field in ("migration", "rollout", "smoke", "deployment_count"):
+    assert 'schema_version "rentivo.deploy.v2"' in deploy_script
+    assert "expected_alembic_revision" in deploy_script
+    assert ".migration.revision == $expected_alembic_revision" in deploy_script
+    assert ".migration.exit_code == 0" in deploy_script
+    assert ".migration.log_sha256" in deploy_script
+    assert ".stage_order == $required_stages" in deploy_script
+    for stage in ("configuration", "production_integrations", "migration", "rollout", "smoke"):
+        assert f".{stage}.started_at" in deploy_script
+        assert f".{stage}.completed_at" in deploy_script
+    assert "fromdateiso8601" in deploy_script
+    assert ".configuration.started_at <=" not in deploy_script
+    for field in (
+        "configuration",
+        "production_integrations",
+        "migration",
+        "rollout",
+        "smoke",
+        "deployment_count",
+    ):
         assert field in deploy_script
+    assert 'required_stages: ["configuration", "production_integrations", "migration", "rollout", "smoke"]' in (
+        deploy_script
+    )
     for image in ("api", "worker", "frontend"):
         assert f".images.{image}.reference == ${image}_ref" in deploy_script
         assert f".images.{image}.digest == ${image}_digest" in deploy_script
@@ -486,6 +696,118 @@ def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
     assert "for " not in deploy_script
     assert "sleep " not in deploy_script
     assert "DEPLOY_TRIGGER_URL" not in DEPLOY_WORKFLOW.read_text()
+
+
+def test_protected_rollback_workflow_can_restore_legacy_or_new_stack_artifacts():
+    workflow = _yaml(ROLLBACK_WORKFLOW)
+    trigger = workflow.get("on", workflow.get(True))["workflow_dispatch"]
+    inputs = trigger["inputs"]
+    job = workflow["jobs"]["rollback"]
+    script = next(step["run"] for step in job["steps"] if step.get("name") == "Execute protected rollback")
+
+    assert inputs["rollback_kind"]["options"] == ["first-5.0-cutover", "new-stack", "new-stack-restore"]
+    assert {
+        "target_sha",
+        "expected_alembic_revision",
+        "database_backup_id",
+        "database_backup_sha256",
+        "legacy_attestation_source_sha",
+        "legacy_web_ref",
+        "legacy_worker_ref",
+        "api_ref",
+        "worker_ref",
+        "frontend_ref",
+    } <= set(inputs)
+    assert inputs["database_backup_id"]["required"] is False
+    assert inputs["database_backup_sha256"]["required"] is False
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"] == {"group": "rentivo-production", "cancel-in-progress": False}
+    assert job["environment"]["name"] == "production"
+    assert job["permissions"] == {"attestations": "read", "contents": "read", "packages": "read"}
+    assert script.count("curl ") == 1
+    assert 'schema_version "rentivo.rollback.v1"' in script
+    assert "X-Idempotency-Key" in script
+    assert "Authorization: Bearer" in script
+    assert "first-5.0-cutover" in script
+    assert '[[ "$EXPECTED_ALEMBIC_REVISION" == "55dc25bae00d" ]]' in script
+    assert "new-stack" in script
+    assert "new-stack-restore" in script
+    assert "database_backup_id" in script
+    assert "database_backup_sha256" in script
+    assert "expected_alembic_revision" in script
+    assert '["maintenance", "drain", "schema_check", "rollout", "smoke"]' in script
+    assert '["maintenance", "drain", "database_restore", "rollout", "smoke"]' in script
+    assert ".database_restore.revision == $expected_alembic_revision" in script
+    assert ".database_restore.backup_id == $database_backup_id" in script
+    assert ".database_restore.backup_sha256 == $database_backup_sha256" in script
+    assert ".schema_check.revision == $expected_alembic_revision" in script
+    assert ".stage_order == $required_stages" in script
+    assert "legacy-web" in script
+    assert "legacy-worker" in script
+    assert "org.opencontainers.image.revision" in script
+    assert "org.opencontainers.image.source" in script
+    assert "gh attestation verify" in script
+    assert '--source-digest "$provenance_sha"' in script
+    assert "LEGACY_ATTESTATION_SOURCE_SHA" in script
+    assert 'legacy-web legacy-web "$LEGACY_WEB_REF"' in script
+    assert script.count('.github/workflows/prepare-legacy-rollback.yml "$LEGACY_ATTESTATION_SOURCE_SHA"') == 2
+    assert 'api api "$API_REF" .github/workflows/deploy.yml "$TARGET_SHA"' in script
+    assert ".github/workflows/prepare-legacy-rollback.yml" in script
+    assert ".github/workflows/deploy.yml" in script
+    assert "sha256sum" in script
+    assert "rentivo-rollback-${payload_hash}" in script
+    assert "fromdateiso8601" in script
+    assert ".maintenance.started_at <=" not in script
+    assert "@sha256:" in script
+    assert "docker build" not in script
+    assert "imagetools inspect" not in script
+    assert ":latest" not in script
+
+
+def test_legacy_rollback_artifacts_are_built_tested_scanned_and_attested_once():
+    workflow = _yaml(PREPARE_LEGACY_WORKFLOW)
+    trigger = workflow.get("on", workflow.get(True))["workflow_dispatch"]
+    job = workflow["jobs"]["prepare"]
+    steps = job["steps"]
+    scripts = "\n".join(str(step.get("run", "")) for step in steps)
+
+    assert set(trigger["inputs"]) == {"legacy_sha"}
+    assert trigger["inputs"]["legacy_sha"]["required"] is True
+    assert workflow["permissions"] == {"contents": "read"}
+    assert job["environment"]["name"] == "production"
+    assert job["permissions"] == {
+        "attestations": "write",
+        "contents": "read",
+        "id-token": "write",
+        "packages": "write",
+    }
+    assert "merge-base --is-ancestor" in scripts
+    assert "GITHUB_SHA" in scripts
+    assert "Attestation workflow source" in scripts
+    assert "uv sync --all-extras --frozen" in scripts
+    assert "pytest" in scripts
+    builds = [step for step in steps if step.get("uses", "").startswith("docker/build-push-action@")]
+    assert len(builds) == 2
+    assert {step["with"]["file"] for step in builds} == {"Dockerfile", "Dockerfile.worker"}
+    assert {step["with"]["tags"].split("/")[-1].split(":")[0] for step in builds} == {
+        "legacy-web",
+        "legacy-worker",
+    }
+    assert all(step["with"]["push"] is True for step in builds)
+    assert all("org.opencontainers.image.revision" in step["with"]["labels"] for step in builds)
+    assert all("org.opencontainers.image.source" in step["with"]["labels"] for step in builds)
+    assert "LEGACY_ARTIFACT_TAG" in job["env"]
+    assert "github.run_id" in job["env"]["LEGACY_ARTIFACT_TAG"]
+    assert "github.run_attempt" in job["env"]["LEGACY_ARTIFACT_TAG"]
+    assert all("${{ env.LEGACY_ARTIFACT_TAG }}" in step["with"]["tags"] for step in builds)
+    assert "Reject existing mutable legacy tags" not in PREPARE_LEGACY_WORKFLOW.read_text()
+    scans = [step for step in steps if step.get("uses", "").startswith("aquasecurity/trivy-action@")]
+    attestations = [step for step in steps if step.get("uses", "").startswith("actions/attest-build-provenance@")]
+    assert len(scans) == len(attestations) == 2
+    assert all(step["with"]["exit-code"] == "1" for step in scans)
+    assert all(step["with"]["severity"] == "HIGH,CRITICAL" for step in scans)
+    assert all(step["with"]["push-to-registry"] is True for step in attestations)
+    assert ":latest" not in PREPARE_LEGACY_WORKFLOW.read_text()
 
 
 def test_release_requires_the_exact_commit_gate_and_published_images():
@@ -507,6 +829,7 @@ def test_release_requires_the_exact_commit_gate_and_published_images():
     assert "org.opencontainers.image.revision" in verification_script
     assert "org.opencontainers.image.source" in verification_script
     assert 'gh attestation verify "oci://$digest_ref"' in verification_script
+    assert '--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/deploy.yml"' in verification_script
     for argument in ("--repo", "--signer-workflow", "--source-digest", "--deny-self-hosted-runners"):
         assert argument in verification_script
     assert verification_script.count("require_verified_image") == 4
@@ -523,11 +846,92 @@ def test_release_requires_the_exact_commit_gate_and_published_images():
 def test_release_contract_has_no_deleted_preview_or_legacy_paths():
     contract = "\n".join(
         path.read_text()
-        for path in (DOCKER_BUILD_ACTION, PR_WORKFLOW, DEPLOY_WORKFLOW, RELEASE_WORKFLOW, DEPENDABOT_CONFIG)
+        for path in (
+            DOCKER_BUILD_ACTION,
+            PR_WORKFLOW,
+            DEPLOY_WORKFLOW,
+            RELEASE_WORKFLOW,
+            DEPENDABOT_CONFIG,
+            GITIGNORE,
+            MAKEFILE,
+        )
     )
 
-    for deleted_path in ("docker-compose.next", "Dockerfile.legacy", "legacy_web", ".env.preview"):
+    for deleted_path in (
+        "docker-compose.next",
+        "Dockerfile.legacy",
+        "legacy_web",
+        ".env.preview",
+        "preview-config",
+        "preview-build",
+        "preview-migrate",
+        "preview-up",
+        "preview-stop",
+    ):
         assert deleted_path not in contract
+
+
+def test_contributor_docs_describe_the_current_react_fastapi_contract():
+    docs = CLAUDE_DOC.read_text() + "\n" + CONTRIBUTING_DOC.read_text()
+    forbidden = (
+        "backend/legacy_web",
+        "backend/tests/web",
+        "Dockerfile.legacy",
+        "make web-createuser",
+        "make web-run",
+    )
+
+    for stale in forbidden:
+        assert stale not in docs
+    for current in ("React", "FastAPI", "frontend/src", "backend/rentivo/api"):
+        assert current in docs
+
+    contributing = CONTRIBUTING_DOC.read_text()
+    for contract in (
+        "SQLite",
+        "ephemeral Temporal",
+        "MariaDB",
+        "backend/tests/api/conftest.py",
+        "functional-stack",
+        "production-startup",
+        "production-images",
+    ):
+        assert contract in contributing
+
+
+def test_runbook_defines_the_one_time_5_0_rollback_artifact_and_release_guards():
+    runbook = PRODUCTION_RUNBOOK.read_text()
+
+    assert "first 5.0 cutover" in runbook
+    assert "verified pre-cutover legacy web and worker image digests" in runbook
+    assert "database backup" in runbook
+    assert "one rollback artifact" in runbook
+    assert "Later releases must not use the legacy images" in runbook
+    assert "prepare-legacy-rollback.yml" in runbook
+    assert "55dc25bae00d" in runbook
+    assert "e0f1a2b3c4d5" in runbook
+    assert "populated production migration rehearsal" in runbook
+    assert "legacy_web_ref" in runbook
+    assert "legacy_worker_ref" in runbook
+    assert "legacy_attestation_source_sha" in runbook
+    assert "new-stack-restore" in runbook
+    assert "image-only" in runbook
+    assert "schema_check" in runbook
+    assert "full normalized rollback payload" in runbook
+    assert "fractional seconds" in runbook
+    for procedure in (
+        "Enter maintenance mode",
+        "Stop the API and worker",
+        "Restore the verified pre-cutover database backup",
+        "Redeploy the verified pre-cutover legacy web and worker images by digest",
+        "Run the pre-cutover smoke suite",
+        "Re-enable traffic",
+    ):
+        assert procedure in runbook
+    for integration in ("KMS", "S3", "SES", "job backend"):
+        assert integration in runbook
+    assert "before migration" in runbook
+    assert "never rebuilt after verification" in runbook
 
 
 def test_backend_version_matches_the_breaking_release():

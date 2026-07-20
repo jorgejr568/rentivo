@@ -193,6 +193,8 @@ async def api_key_options(
         scopes=tuple(sorted(services.api_key.integration_scopes)),
         personal_workspace=PersonalWorkspaceOption(),
         organizations=organizations,
+        default_expiration_days=services.api_key.integration_default_ttl.days,
+        max_expiration_days=services.api_key.integration_max_ttl.days,
     )
 
 

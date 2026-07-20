@@ -50,6 +50,10 @@ class APIKeyService:
         now: Callable[[], datetime] = _utcnow,
         token_factory: Callable[[int], str] = secrets.token_urlsafe,
         deployed_scopes: Iterable[str] = DEPLOYED_API_SCOPES,
+        login_ttl: timedelta = _LOGIN_TTL,
+        integration_default_ttl: timedelta = _INTEGRATION_DEFAULT_TTL,
+        integration_max_ttl: timedelta = _INTEGRATION_MAX_TTL,
+        last_used_interval: timedelta = _LAST_USED_INTERVAL,
     ) -> None:
         self.repository = repository
         self.user_repository = user_repository
@@ -57,6 +61,10 @@ class APIKeyService:
         self.now = now
         self.token_factory = token_factory
         self.integration_scopes = deployed_integration_scopes(deployed_scopes)
+        self.login_ttl = login_ttl
+        self.integration_default_ttl = integration_default_ttl
+        self.integration_max_ttl = integration_max_ttl
+        self.last_used_interval = last_used_interval
 
     @staticmethod
     def _digest(secret: str) -> bytes:
@@ -140,7 +148,7 @@ class APIKeyService:
             is_login_token=True,
             scopes=ALL_FIRST_PARTY_SCOPES,
             grants=(),
-            expires_at=now + _LOGIN_TTL,
+            expires_at=now + self.login_ttl,
         )
 
     @traced("api_key.issue_integration", record_exception_details=False)
@@ -203,9 +211,9 @@ class APIKeyService:
             scopes=scopes,
             grants=grants,
         )
-        expiration = _as_aware_utc(expires_at) if expires_at is not None else now + _INTEGRATION_DEFAULT_TTL
-        if expiration <= now or expiration > now + _INTEGRATION_MAX_TTL:
-            raise ValueError("API-key expiration must be within one year")
+        expiration = _as_aware_utc(expires_at) if expires_at is not None else now + self.integration_default_ttl
+        if expiration <= now or expiration > now + self.integration_max_ttl:
+            raise ValueError("API-key expiration must be within the configured maximum lifetime")
         return now, normalized_name, normalized_scopes, normalized_grants, expiration
 
     @traced("api_key.authenticate", record_exception_details=False)
@@ -219,8 +227,8 @@ class APIKeyService:
             return None
         if key.revoked_at is not None or _as_aware_utc(key.expires_at) <= now:
             return None
-        if key.id is not None and (key.last_used_at is None or key.last_used_at <= now - _LAST_USED_INTERVAL):
-            if self.repository.touch_last_used(key.id, now, now - _LAST_USED_INTERVAL):
+        if key.id is not None and (key.last_used_at is None or key.last_used_at <= now - self.last_used_interval):
+            if self.repository.touch_last_used(key.id, now, now - self.last_used_interval):
                 key = key.model_copy(update={"last_used_at": now})
         return key
 

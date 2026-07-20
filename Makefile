@@ -254,7 +254,7 @@ stack-config:
 
 .PHONY: stack-build
 stack-build:
-	$(STACK_COMPOSE) build migrate api worker frontend
+	$(STACK_COMPOSE) build validate migrate api worker frontend
 
 .PHONY: stack-migrate
 stack-migrate:
@@ -267,22 +267,6 @@ stack-up:
 .PHONY: stack-stop
 stack-stop:
 	$(STACK_COMPOSE) stop proxy frontend api worker
-
-# Compatibility aliases for one release. All execute the production stack.
-.PHONY: preview-config
-preview-config: stack-config
-
-.PHONY: preview-build
-preview-build: stack-build
-
-.PHONY: preview-migrate
-preview-migrate: stack-migrate
-
-.PHONY: preview-up
-preview-up: stack-up
-
-.PHONY: preview-stop
-preview-stop: stack-stop
 
 .PHONY: jaeger-up
 jaeger-up:

@@ -106,6 +106,19 @@ class TestNotifyIfNew:
         assert kwargs["actor_id"] == 1
         assert kwargs["actor_username"] == "u@x.com"
 
+    def test_native_login_preserves_mobile_job_source(self):
+        service, job_service = self._service_and_job(device_known=False)
+
+        service.notify_if_new(
+            user=self._user(),
+            user_agent="Rentivo Mobile/1.0",
+            client_ip="1.2.3.4",
+            job_service=job_service,
+            source="mobile",
+        )
+
+        assert job_service.enqueue.call_args.kwargs["source"] == "mobile"
+
     def test_reset_url_strips_trailing_slash_from_public_app_url(self, monkeypatch):
         from rentivo.settings import settings
 

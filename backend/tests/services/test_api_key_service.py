@@ -225,7 +225,7 @@ def test_default_clock_is_utc_aware() -> None:
     assert _utcnow().tzinfo is UTC
 
 
-def test_issue_login_has_fixed_24_hour_lifetime_and_every_scope(
+def test_issue_login_has_default_24_hour_lifetime_and_every_scope(
     service: APIKeyService,
     repository: FakeAPIKeyRepository,
     token_factory: TokenFactory,
@@ -239,6 +239,27 @@ def test_issue_login_has_fixed_24_hour_lifetime_and_every_scope(
     assert issued.key.grants == ()
     assert token_factory.requested_bytes == [32]
     assert repository.get_by_secret_hash(issued.key.secret_hash) == issued.key
+
+
+def test_issue_login_uses_the_configured_lifetime(
+    repository: FakeAPIKeyRepository,
+    clock: MutableClock,
+    token_factory: TokenFactory,
+    organization_repository: MagicMock,
+) -> None:
+    service = APIKeyService(
+        repository=repository,
+        user_repository=MagicMock(),
+        organization_repository=organization_repository,
+        now=clock,
+        token_factory=token_factory,
+        deployed_scopes=DEPLOYED_SCOPES,
+        login_ttl=timedelta(hours=6),
+    )
+
+    issued = service.issue_login(user_id=7, name="Mobile login")
+
+    assert issued.key.expires_at == NOW + timedelta(hours=6)
 
 
 def test_login_activity_never_extends_absolute_expiration(
@@ -264,6 +285,29 @@ def test_integration_defaults_to_90_days_when_expiration_is_omitted(
     issued = service.issue_integration(**args)
 
     assert issued.key.expires_at == NOW + timedelta(days=90)
+
+
+def test_integration_uses_the_configured_default_lifetime(
+    repository: FakeAPIKeyRepository,
+    clock: MutableClock,
+    token_factory: TokenFactory,
+    organization_repository: MagicMock,
+) -> None:
+    service = APIKeyService(
+        repository=repository,
+        user_repository=MagicMock(),
+        organization_repository=organization_repository,
+        now=clock,
+        token_factory=token_factory,
+        deployed_scopes=DEPLOYED_SCOPES,
+        integration_default_ttl=timedelta(days=30),
+    )
+    args = _integration_args()
+    del args["expires_at"]
+
+    issued = service.issue_integration(**args)
+
+    assert issued.key.expires_at == NOW + timedelta(days=30)
 
 
 def test_validate_integration_checks_business_rules_without_persisting(
@@ -372,6 +416,29 @@ def test_integration_accepts_expiration_at_exactly_one_year(
     assert issued.key.expires_at == NOW + timedelta(days=365)
 
 
+def test_integration_uses_the_configured_maximum_lifetime(
+    repository: FakeAPIKeyRepository,
+    clock: MutableClock,
+    token_factory: TokenFactory,
+    organization_repository: MagicMock,
+) -> None:
+    service = APIKeyService(
+        repository=repository,
+        user_repository=MagicMock(),
+        organization_repository=organization_repository,
+        now=clock,
+        token_factory=token_factory,
+        deployed_scopes=DEPLOYED_SCOPES,
+        integration_max_ttl=timedelta(days=180),
+    )
+
+    with pytest.raises(ValueError):
+        service.issue_integration(**_integration_args(expires_at=NOW + timedelta(days=181)))
+
+    issued = service.issue_integration(**_integration_args(expires_at=NOW + timedelta(days=180)))
+    assert issued.key.expires_at == NOW + timedelta(days=180)
+
+
 def test_integration_rejects_expiration_without_timezone(service: APIKeyService) -> None:
     with pytest.raises(ValueError, match="timezone"):
         service.issue_integration(**_integration_args(expires_at=datetime(2026, 10, 15, 12, 0)))
@@ -411,6 +478,39 @@ def test_authenticate_touches_last_use_at_most_once_per_five_minutes(
     assert repository.touch_calls[-1] == (
         issued.key.id,
         NOW + timedelta(minutes=5),
+        NOW,
+    )
+
+
+def test_authenticate_uses_the_configured_last_used_throttle(
+    repository: FakeAPIKeyRepository,
+    clock: MutableClock,
+    token_factory: TokenFactory,
+    organization_repository: MagicMock,
+) -> None:
+    service = APIKeyService(
+        repository=repository,
+        user_repository=MagicMock(),
+        organization_repository=organization_repository,
+        now=clock,
+        token_factory=token_factory,
+        deployed_scopes=DEPLOYED_SCOPES,
+        last_used_interval=timedelta(minutes=15),
+    )
+    issued = service.issue_integration(**_integration_args())
+
+    assert service.authenticate(issued.secret) is not None
+    assert repository.touch_calls == [(issued.key.id, NOW, NOW - timedelta(minutes=15))]
+
+    clock.advance(timedelta(minutes=14, seconds=59))
+    assert service.authenticate(issued.secret) is not None
+    assert len(repository.touch_calls) == 1
+
+    clock.advance(timedelta(seconds=1))
+    assert service.authenticate(issued.secret) is not None
+    assert repository.touch_calls[-1] == (
+        issued.key.id,
+        NOW + timedelta(minutes=15),
         NOW,
     )
 

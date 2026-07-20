@@ -18,6 +18,10 @@ NGINX_CONFIG = REPO_ROOT / "infra" / "proxy" / "nginx.conf"
 MAKEFILE = REPO_ROOT / "Makefile"
 APP_ENV_EXAMPLE = REPO_ROOT / ".env.example"
 DB_ENV_EXAMPLE = REPO_ROOT / ".env.db.example"
+LEGACY_ROLLBACK_WORKFLOWS = {
+    REPO_ROOT / ".github" / "workflows" / "prepare-legacy-rollback.yml",
+    REPO_ROOT / ".github" / "workflows" / "rollback.yml",
+}
 
 
 def _runtime_configuration_paths() -> list[Path]:
@@ -48,6 +52,8 @@ def test_runtime_is_independent_of_the_removed_legacy_application():
 
     for root in _runtime_configuration_paths():
         for path in _files_below(root):
+            if path in LEGACY_ROLLBACK_WORKFLOWS:
+                continue
             contents = path.read_text(errors="ignore")
             if any(reference in contents for reference in forbidden_references):
                 offenders.append(str(path.relative_to(REPO_ROOT)))
@@ -116,7 +122,7 @@ def test_default_compose_is_the_replacement_production_stack():
     compose = _yaml(COMPOSE_FILE)
 
     default_services = {name for name, service in compose["services"].items() if "profiles" not in service}
-    assert default_services == {"db", "migrate", "api", "worker", "frontend", "proxy"}
+    assert default_services == {"db", "validate", "migrate", "api", "worker", "frontend", "proxy"}
     assert compose["services"]["jaeger"]["profiles"] == ["observability"]
     assert compose["services"]["temporal"]["profiles"] == ["temporal"]
     assert compose["services"]["temporal-ui"]["profiles"] == ["temporal"]
@@ -193,7 +199,7 @@ def test_internal_edge_network_exposes_only_the_proxy():
     assert compose["networks"]["app-edge"]["internal"] is True
     assert compose["networks"]["ingress"].get("internal", False) is False
     assert set(compose["services"]["proxy"]["networks"]) == {"app-edge", "ingress"}
-    for service_name in ("db", "migrate", "api", "worker", "frontend"):
+    for service_name in ("db", "validate", "migrate", "api", "worker", "frontend"):
         assert "ingress" not in compose["services"][service_name].get("networks", [])
 
 
@@ -206,7 +212,7 @@ def test_runtime_dockerfiles_do_not_scaffold_the_legacy_package():
 def test_development_override_targets_backend_and_frontend_services():
     override = _yaml(DEV_COMPOSE_FILE)["services"]
 
-    assert set(override) == {"migrate", "api", "worker", "frontend"}
+    assert set(override) == {"validate", "migrate", "api", "worker", "frontend"}
 
 
 def test_proxy_replaces_forwarding_input_and_re_resolves_services():
@@ -297,19 +303,13 @@ def test_api_runtime_source_and_virtualenv_are_read_only_to_appuser():
     assert "chown appuser:appuser /app/invoices /app/outbox" in dockerfile
 
 
-def test_makefile_promotes_stack_targets_and_keeps_non_legacy_preview_aliases():
+def test_makefile_promotes_stack_targets_without_preview_aliases():
     makefile = MAKEFILE.read_text()
 
     for target in ("stack-config", "stack-build", "stack-migrate", "stack-up", "stack-stop"):
         assert f".PHONY: {target}" in makefile
-    for alias, target in (
-        ("preview-config", "stack-config"),
-        ("preview-build", "stack-build"),
-        ("preview-migrate", "stack-migrate"),
-        ("preview-up", "stack-up"),
-        ("preview-stop", "stack-stop"),
-    ):
-        assert f"{alias}: {target}" in makefile
+    for alias in ("preview-config", "preview-build", "preview-migrate", "preview-up", "preview-stop"):
+        assert alias not in makefile
     assert "docker-compose.next" not in makefile
 
 

@@ -46,6 +46,7 @@ describe("LoginPage", () => {
       handlers: {
         "/api/v1/auth/login": (init) => {
           expect(JSON.parse(String(init?.body))).toEqual({
+            credential_transport: "cookie",
             email: "user@example.com",
             password: "correct-password",
             turnstile_token: ""

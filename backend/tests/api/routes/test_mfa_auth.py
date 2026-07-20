@@ -346,6 +346,88 @@ def test_code_mfa_consumes_login_challenge_before_issuing_exactly_one_login_key(
     assert response.headers["cache-control"] == "no-store"
 
 
+def test_code_mfa_can_exchange_a_body_challenge_for_a_cookie_free_native_token(
+    mfa_harness: MFAHarness,
+) -> None:
+    response = mfa_harness.client.post(
+        "/api/v1/auth/mfa/totp/verify",
+        json={
+            "challenge_id": CHALLENGE_ID,
+            "challenge_token": CHALLENGE_NONCE,
+            "code": "123456",
+            "credential_transport": "body",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"] == ACCESS_SECRET
+    assert response.json()["token_type"] == "Bearer"
+    assert response.json()["expires_in"] == 24 * 60 * 60
+    assert settings.access_cookie_name not in response.cookies
+    assert settings.csrf_cookie_name not in response.cookies
+    assert settings.challenge_cookie_name not in response.cookies
+    assert mfa_harness.challenge.consume_calls == [(CHALLENGE_ID, CHALLENGE_NONCE, "login", "totp")]
+    assert mfa_harness.login.calls[0]["source"] == "mobile"
+
+
+def test_body_mfa_rejects_a_conflicting_challenge_cookie(
+    mfa_harness: MFAHarness,
+) -> None:
+    response = mfa_harness.client.post(
+        "/api/v1/auth/mfa/totp/verify",
+        json={
+            "challenge_id": CHALLENGE_ID,
+            "challenge_token": CHALLENGE_NONCE,
+            "code": "123456",
+            "credential_transport": "body",
+        },
+        headers={"Cookie": f"{settings.challenge_cookie_name}=different-nonce"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "invalid_or_expired_challenge"
+    assert mfa_harness.challenge.get_valid_calls == []
+    assert mfa_harness.login.calls == []
+
+
+def test_body_mfa_rejects_a_non_ascii_challenge_cookie_without_crashing(
+    mfa_harness: MFAHarness,
+) -> None:
+    response = mfa_harness.client.post(
+        "/api/v1/auth/mfa/totp/verify",
+        json={
+            "challenge_id": CHALLENGE_ID,
+            "challenge_token": CHALLENGE_NONCE,
+            "code": "123456",
+            "credential_transport": "body",
+        },
+        headers={"Cookie": f'{settings.challenge_cookie_name}="\\351"'},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "invalid_or_expired_challenge"
+    assert mfa_harness.challenge.get_valid_calls == []
+    assert mfa_harness.login.calls == []
+
+
+def test_body_mfa_requires_the_challenge_token(
+    mfa_harness: MFAHarness,
+) -> None:
+    response = mfa_harness.client.post(
+        "/api/v1/auth/mfa/totp/verify",
+        json={
+            "challenge_id": CHALLENGE_ID,
+            "code": "123456",
+            "credential_transport": "body",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+    assert mfa_harness.challenge.get_valid_calls == []
+    assert mfa_harness.login.calls == []
+
+
 @pytest.mark.parametrize("method", ["totp", "recovery"])
 def test_invalid_code_counts_challenge_failure_and_writes_failure_audit(
     mfa_harness: MFAHarness,
@@ -577,3 +659,8 @@ def test_mfa_openapi_exposes_json_verification_contracts(mfa_harness: MFAHarness
         assert "auth" in operation["tags"]
         assert "application/json" in operation["requestBody"]["content"]
         assert {"200", "401", "422", "429"}.issubset(operation["responses"])
+
+    verify_request = schema["components"]["schemas"]["MFACodeVerifyRequest"]
+    assert verify_request["discriminator"]["propertyName"] == "credential_transport"
+    body_request = schema["components"]["schemas"]["BodyMFACodeVerifyRequest"]
+    assert {"challenge_token", "credential_transport"} <= set(body_request["required"])

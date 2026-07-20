@@ -314,6 +314,8 @@ class Settings(BaseSettings):
     def _validate_auth_cookies(self) -> "Settings":
         if self.api_key_integration_default_ttl_days > self.api_key_integration_max_ttl_days:
             raise ValueError("Integration API-key default TTL cannot exceed its maximum TTL")
+        if self.api_key_integration_max_ttl_days > 365:
+            raise ValueError("Integration API-key maximum TTL cannot exceed 365 days")
         if self.environment != "staging":
             return self
         if not self.cookie_secure:
@@ -353,6 +355,8 @@ def validate_production_settings() -> None:
         errors.append("RENTIVO_DB_URL must not use the default rentivo credentials")
     if not settings.secret_key or settings.secret_key == _INSECURE_DEFAULT_KEY:
         errors.append("RENTIVO_SECRET_KEY must be a stable non-default secret")
+    if settings.api_key_login_ttl_seconds != 24 * 60 * 60:
+        errors.append("RENTIVO_API_KEY_LOGIN_TTL_SECONDS must be exactly 86400 in production")
 
     public_hostname = _https_hostname(settings.public_url)
     app_hostname = _https_hostname(settings.public_app_url)

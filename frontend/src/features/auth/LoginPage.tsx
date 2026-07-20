@@ -55,6 +55,7 @@ export function LoginPage() {
     setError(null);
     setLoading(true);
     const payload: LoginRequest = {
+      credential_transport: "cookie",
       email: email.trim(),
       password,
       turnstile_token: turnstileToken

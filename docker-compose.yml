@@ -29,6 +29,20 @@ services:
       timeout: 5s
       retries: 5
 
+  validate:
+    <<: *backend-runtime
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.api
+    command:
+      - python
+      - -c
+      - from rentivo.settings import validate_production_settings; validate_production_settings()
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
   migrate:
     <<: *backend-runtime
     build:
@@ -39,6 +53,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      validate:
+        condition: service_completed_successfully
 
   api:
     <<: *backend-runtime

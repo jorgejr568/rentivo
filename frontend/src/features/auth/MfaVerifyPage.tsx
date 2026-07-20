@@ -95,7 +95,8 @@ export function MfaVerifyPage() {
     setLoadingMethod(method);
     const payload: MfaCodeVerifyRequest = {
       challenge_id: activeChallenge.challengeId,
-      code: (method === "recovery" ? recoveryCode : code).trim()
+      code: (method === "recovery" ? recoveryCode : code).trim(),
+      credential_transport: "cookie"
     };
     try {
       const request = method === "recovery"
@@ -118,7 +119,8 @@ export function MfaVerifyPage() {
     setLoadingMethod("passkey");
     try {
       const beginPayload: PasskeyAuthBeginRequest = {
-        challenge_id: activeChallenge.challengeId
+        challenge_id: activeChallenge.challengeId,
+        credential_transport: "cookie"
       };
       const { data: options } = await apiRequest(
         apiClient.POST("/api/v1/auth/mfa/passkeys/begin", { body: beginPayload })
@@ -129,7 +131,8 @@ export function MfaVerifyPage() {
       }
       const completePayload: PasskeyAuthCompleteRequest = {
         challenge_id: activeChallenge.challengeId,
-        credential
+        credential,
+        credential_transport: "cookie"
       };
       const { data, response } = await apiRequest(
         apiClient.POST("/api/v1/auth/mfa/passkeys/complete", { body: completePayload })

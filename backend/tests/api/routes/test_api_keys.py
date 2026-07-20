@@ -83,6 +83,8 @@ INTEGRATION_KEY = _api_key(
 class FakeAPIKeyService:
     def __init__(self) -> None:
         self.integration_scopes = frozenset({APIScope.PROFILE_READ.value})
+        self.integration_default_ttl = timedelta(days=90)
+        self.integration_max_ttl = timedelta(days=365)
         self.live_organization_ids = {ORGANIZATION.id}
         self.keys = [LOGIN_KEY, INTEGRATION_KEY]
         self.credentials = {
@@ -482,6 +484,22 @@ def test_options_exposes_only_safe_deployed_scopes_and_current_workspaces(
     ]
     assert APIScope.API_KEYS_MANAGE.value not in response.text
     assert APIScope.BILLINGS_READ.value not in response.text
+
+
+def test_options_exposes_the_lifetimes_enforced_by_the_service(
+    api_key_harness: APIKeyHarness,
+) -> None:
+    api_key_harness.api_key.integration_default_ttl = timedelta(days=30)
+    api_key_harness.api_key.integration_max_ttl = timedelta(days=180)
+
+    response = api_key_harness.client.get(
+        "/api/v1/api-keys/options",
+        headers=_login_headers(csrf=False),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["default_expiration_days"] == 30
+    assert response.json()["max_expiration_days"] == 180
 
 
 def test_list_omits_hidden_login_tokens_and_returns_only_masked_metadata(

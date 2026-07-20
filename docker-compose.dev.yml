@@ -5,6 +5,10 @@ x-development-backend-environment: &development-backend-environment
   RENTIVO_DB_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
 
 services:
+  validate:
+    environment:
+      RENTIVO_ENVIRONMENT: dev
+
   migrate:
     environment: *development-backend-environment
 

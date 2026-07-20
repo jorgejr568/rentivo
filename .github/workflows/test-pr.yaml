@@ -18,9 +18,9 @@ jobs:
     name: backend lint, tests, and coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
       - name: Sync dependencies
@@ -38,14 +38,14 @@ jobs:
             --cov-report=xml:artifacts/backend-coverage.xml
       - name: Upload backend coverage artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: backend-coverage
           path: artifacts/backend-coverage.xml
           if-no-files-found: warn
           retention-days: 14
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@a99c28d3f0da835de33ff2feb2e15691c7b9641f # v7
         with:
           files: artifacts/backend-coverage.xml
         env:
@@ -58,16 +58,16 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install uv for API contract generation
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
       - name: Sync backend dependencies
         working-directory: .
         run: uv sync --all-extras --frozen
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
           cache: npm
@@ -86,7 +86,7 @@ jobs:
         run: npm run build
       - name: Upload frontend coverage and build artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: frontend-results
           path: |
@@ -102,9 +102,9 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
           cache: npm
@@ -117,7 +117,7 @@ jobs:
         run: npm run e2e
       - name: Upload Playwright results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-results
           path: frontend/test-results
@@ -144,9 +144,9 @@ jobs:
       RENTIVO_DB_URL: mysql+pymysql://root:ci-only-root-password@127.0.0.1:3306/rentivo_ci
       RENTIVO_ENVIRONMENT: dev
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
       - name: Sync dependencies
@@ -167,10 +167,382 @@ jobs:
           uv run --project backend --no-sync pytest
           backend/tests/repositories/test_mfa_repos.py
           -k mariadb -q
-      - name: Upgrade an empty database to head
+      - name: Upgrade to the legacy production revision
+        run: uv run --project backend --no-sync alembic -c backend/alembic.ini upgrade 55dc25bae00d
+      - name: Seed and snapshot representative production data
+        run: |
+          uv run --project backend --no-sync python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from sqlalchemy import text
+
+          from rentivo.db import get_engine
+
+          FIXED = "fixed"
+          VARIABLE = "variable"
+
+          def legacy_uuid(sequence: int) -> str:
+              return f"01J{sequence:023d}"
+
+          statements = [
+              (
+                  """
+                  INSERT INTO users
+                      (id, password_hash, created_at, email, pix_key,
+                       pix_merchant_name, pix_merchant_city, email_hash)
+                  VALUES
+                      (1, :password_hash, :created_at, :owner_email, :owner_pix,
+                       :merchant_name, :merchant_city, :owner_email_hash),
+                      (2, :password_hash, :created_at, :member_email, '', '', '',
+                       :member_email_hash)
+                  """,
+                  {
+                      "password_hash": "legacy-password-hash",
+                      "created_at": "2026-06-01 09:00:00",
+                      "owner_email": "legacy-owner@example.test",
+                      "member_email": "legacy-member@example.test",
+                      "owner_pix": "legacy-encrypted-pix-key",
+                      "merchant_name": "Legacy Rentals",
+                      "merchant_city": "SALVADOR",
+                      "owner_email_hash": "a" * 64,
+                      "member_email_hash": "b" * 64,
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO user_passkeys
+                      (id, uuid, user_id, credential_id, public_key, sign_count, name,
+                       transports, created_at, last_used_at)
+                  VALUES
+                      (1, :uuid, 1, :credential_id, :public_key, 7, 'Legacy security key',
+                       '["internal","usb"]', :created_at, :last_used_at)
+                  """,
+                  {
+                      "uuid": legacy_uuid(1),
+                      "credential_id": "legacy-credential-id",
+                      "public_key": "legacy-cose-public-key",
+                      "created_at": "2026-06-01 09:05:00",
+                      "last_used_at": "2026-07-01 12:00:00",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO user_totp
+                      (id, user_id, secret, confirmed, created_at, confirmed_at)
+                  VALUES (1, 1, :secret, 1, :created_at, :confirmed_at)
+                  """,
+                  {
+                      "secret": "legacy-encrypted-totp-secret",
+                      "created_at": "2026-06-01 09:10:00",
+                      "confirmed_at": "2026-06-01 09:11:00",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO user_recovery_codes
+                      (id, user_id, code_hash, used_at, created_at)
+                  VALUES
+                      (1, 1, 'legacy-recovery-hash-1', NULL, :created_at),
+                      (2, 1, 'legacy-recovery-hash-2', :used_at, :created_at)
+                  """,
+                  {
+                      "created_at": "2026-06-01 09:12:00",
+                      "used_at": "2026-06-15 18:30:00",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO known_devices
+                      (id, user_id, device_hash, user_agent_snippet, first_seen_at, last_seen_at)
+                  VALUES (1, 1, :device_hash, 'Legacy browser', :first_seen_at, :last_seen_at)
+                  """,
+                  {
+                      "device_hash": "c" * 64,
+                      "first_seen_at": "2026-06-01 09:15:00",
+                      "last_seen_at": "2026-07-01 12:00:00",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO organizations
+                      (id, uuid, name, created_by, created_at, updated_at, deleted_at,
+                       enforce_mfa, pix_key, pix_merchant_name, pix_merchant_city)
+                  VALUES
+                      (1, :uuid, 'Legacy Property Group', 1, :created_at, :updated_at,
+                       NULL, 1, :pix_key, 'Legacy Property Group', 'SALVADOR')
+                  """,
+                  {
+                      "uuid": legacy_uuid(2),
+                      "created_at": "2026-06-02 08:00:00",
+                      "updated_at": "2026-06-20 14:00:00",
+                      "pix_key": "legacy-organization-pix-key",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO organization_members
+                      (id, organization_id, user_id, role, created_at)
+                  VALUES
+                      (1, 1, 1, 'owner', :created_at),
+                      (2, 1, 2, 'member', :created_at)
+                  """,
+                  {"created_at": "2026-06-02 08:05:00"},
+              ),
+              (
+                  """
+                  INSERT INTO invites
+                      (id, uuid, organization_id, invited_user_id, invited_by_user_id,
+                       role, status, created_at, responded_at)
+                  VALUES
+                      (1, :uuid, 1, 2, 1, 'member', 'accepted', :created_at, :responded_at)
+                  """,
+                  {
+                      "uuid": legacy_uuid(3),
+                      "created_at": "2026-06-02 08:01:00",
+                      "responded_at": "2026-06-02 08:04:00",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO billings
+                      (id, name, description, created_at, updated_at, pix_key, uuid,
+                       deleted_at, owner_type, owner_id, pix_merchant_name, pix_merchant_city)
+                  VALUES
+                      (1, 'Legacy July Billing', 'Populated production migration rehearsal',
+                       :created_at, :updated_at, :pix_key, :uuid, NULL, 'organization', 1,
+                       'Legacy Property Group', 'SALVADOR')
+                  """,
+                  {
+                      "created_at": "2026-06-03 10:00:00",
+                      "updated_at": "2026-07-01 10:00:00",
+                      "pix_key": "legacy-billing-pix-key",
+                      "uuid": legacy_uuid(4),
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO billing_items
+                      (id, billing_id, description, amount, item_type, sort_order)
+                  VALUES
+                      (1, 1, 'Monthly rent', 250000, :fixed, 0),
+                      (2, 1, 'Water consumption', 18450, :variable, 1),
+                      (3, 1, 'Condominium fee', 62500, :fixed, 2)
+                  """,
+                  {"fixed": FIXED, "variable": VARIABLE},
+              ),
+              (
+                  """
+                  INSERT INTO billing_recipients
+                      (id, uuid, billing_id, name, email, sort_order, created_at)
+                  VALUES (1, :uuid, 1, 'Legacy Tenant', 'tenant@example.test', 0, :created_at)
+                  """,
+                  {"uuid": legacy_uuid(5), "created_at": "2026-06-03 10:05:00"},
+              ),
+              (
+                  """
+                  INSERT INTO billing_reply_to
+                      (id, uuid, billing_id, name, email, sort_order, created_at)
+                  VALUES (1, :uuid, 1, 'Legacy Support', 'support@example.test', 0, :created_at)
+                  """,
+                  {"uuid": legacy_uuid(6), "created_at": "2026-06-03 10:06:00"},
+              ),
+              (
+                  """
+                  INSERT INTO billing_attachments
+                      (id, uuid, billing_id, name, filename, storage_key, content_type,
+                       file_size, sort_order, created_at)
+                  VALUES
+                      (1, :uuid, 1, 'Building rules', 'rules.pdf', :storage_key,
+                       'application/pdf', 4096, 0, :created_at)
+                  """,
+                  {
+                      "uuid": legacy_uuid(7),
+                      "storage_key": "legacy/billings/1/rules.pdf",
+                      "created_at": "2026-06-03 10:07:00",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO bills
+                      (id, billing_id, reference_month, total_amount, pdf_path, notes,
+                       created_at, uuid, due_date, deleted_at, status, status_updated_at,
+                       pdf_render_status, recibo_pdf_path)
+                  VALUES
+                      (1, 1, '2026-07', 330950, :pdf_path, 'Legacy issued bill',
+                       :created_at, :uuid, '2026-07-10', NULL, 'issued', :status_updated_at,
+                       'rendered', :recibo_pdf_path)
+                  """,
+                  {
+                      "pdf_path": "legacy/bills/july.pdf",
+                      "created_at": "2026-07-01 10:15:00",
+                      "uuid": legacy_uuid(8),
+                      "status_updated_at": "2026-07-01 10:20:00",
+                      "recibo_pdf_path": "legacy/bills/july-receipt.pdf",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO bill_line_items
+                      (id, bill_id, description, amount, item_type, sort_order)
+                  VALUES
+                      (1, 1, 'Monthly rent', 250000, :fixed, 0),
+                      (2, 1, 'Water consumption', 18450, :variable, 1),
+                      (3, 1, 'Condominium fee', 62500, :fixed, 2)
+                  """,
+                  {"fixed": FIXED, "variable": VARIABLE},
+              ),
+              (
+                  """
+                  INSERT INTO receipts
+                      (id, uuid, bill_id, filename, storage_key, content_type,
+                       file_size, sort_order, created_at)
+                  VALUES
+                      (1, :uuid, 1, 'payment.pdf', :storage_key, 'application/pdf',
+                       2048, 0, :created_at)
+                  """,
+                  {
+                      "uuid": legacy_uuid(9),
+                      "storage_key": "legacy/receipts/payment.pdf",
+                      "created_at": "2026-07-05 11:00:00",
+                  },
+              ),
+              (
+                  """
+                  INSERT INTO expenses
+                      (id, uuid, billing_id, description, amount, category,
+                       incurred_on, created_at, deleted_at)
+                  VALUES
+                      (1, :uuid, 1, 'Emergency plumbing', 15750, 'manutencao',
+                       '2026-06-28', :created_at, NULL)
+                  """,
+                  {"uuid": legacy_uuid(10), "created_at": "2026-06-28 16:00:00"},
+              ),
+              (
+                  """
+                  INSERT INTO audit_logs
+                      (id, uuid, event_type, actor_id, actor_username, source,
+                       entity_type, entity_id, entity_uuid, previous_state, new_state,
+                       metadata, created_at)
+                  VALUES
+                      (1, :uuid, 'bill.created', 1, 'legacy-owner@example.test', 'web',
+                       'bill', 1, :bill_uuid, NULL, :new_state, :metadata, :created_at)
+                  """,
+                  {
+                      "uuid": legacy_uuid(11),
+                      "bill_uuid": legacy_uuid(8),
+                      "new_state": '{"status":"issued"}',
+                      "metadata": '{"migration_rehearsal":true}',
+                      "created_at": "2026-07-01 10:20:00",
+                  },
+              ),
+          ]
+
+          stable_columns = {
+              "users": "id, password_hash, created_at, email, pix_key, pix_merchant_name, pix_merchant_city, email_hash",
+              # The mfa_totp and passkeys datasets live in legacy user_totp/user_passkeys tables.
+              "user_passkeys": "id, uuid, user_id, credential_id, public_key, sign_count, name, transports, created_at, last_used_at",
+              "user_totp": "id, user_id, secret, confirmed, created_at, confirmed_at",
+              "user_recovery_codes": "id, user_id, code_hash, used_at, created_at",
+              "known_devices": "id, user_id, device_hash, user_agent_snippet, first_seen_at, last_seen_at",
+              "organizations": "id, uuid, name, created_by, created_at, updated_at, deleted_at, enforce_mfa, pix_key, pix_merchant_name, pix_merchant_city",
+              "organization_members": "id, organization_id, user_id, role, created_at",
+              "invites": "id, uuid, organization_id, invited_user_id, invited_by_user_id, role, status, created_at, responded_at",
+              "billings": "id, name, description, created_at, updated_at, pix_key, uuid, deleted_at, owner_type, owner_id, pix_merchant_name, pix_merchant_city",
+              "billing_items": "id, billing_id, description, amount, item_type, sort_order",
+              "billing_recipients": "id, uuid, billing_id, name, email, sort_order, created_at",
+              "billing_reply_to": "id, uuid, billing_id, name, email, sort_order, created_at",
+              "billing_attachments": "id, uuid, billing_id, name, filename, storage_key, content_type, file_size, sort_order, created_at",
+              "bills": "id, billing_id, reference_month, total_amount, pdf_path, notes, created_at, uuid, due_date, deleted_at, status, status_updated_at, pdf_render_status, recibo_pdf_path",
+              "bill_line_items": "id, bill_id, description, amount, item_type, sort_order",
+              "receipts": "id, uuid, bill_id, filename, storage_key, content_type, file_size, sort_order, created_at",
+              "expenses": "id, uuid, billing_id, description, amount, category, incurred_on, created_at, deleted_at",
+              "audit_logs": "id, uuid, event_type, actor_id, actor_username, source, entity_type, entity_id, entity_uuid, previous_state, new_state, metadata, created_at",
+          }
+
+          with get_engine().begin() as connection:
+              for statement, parameters in statements:
+                  connection.execute(text(statement), parameters)
+
+              tables = {}
+              for table, columns in stable_columns.items():
+                  rows = [
+                      dict(row)
+                      for row in connection.execute(
+                          text(f"SELECT {columns} FROM {table} ORDER BY id")
+                      ).mappings()
+                  ]
+                  assert rows, f"Representative legacy table {table} is empty"
+                  tables[table] = {
+                      "columns": columns,
+                      "count": len(rows),
+                      "rows": rows,
+                  }
+
+          snapshot = Path(os.environ["RUNNER_TEMP"]) / "migration-before.json"
+          snapshot.write_text(json.dumps({"tables": tables}, default=str, sort_keys=True))
+          print(f"Snapshotted {sum(item['count'] for item in tables.values())} legacy rows.")
+          PY
+      - name: Upgrade the complete production chain to head
         run: uv run --project backend --no-sync alembic -c backend/alembic.ini upgrade head
-      - name: Report the applied revision
-        run: uv run --project backend --no-sync alembic -c backend/alembic.ini current
+      - name: Verify the populated production migration
+        run: |
+          uv run --project backend --no-sync python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from sqlalchemy import inspect, text
+
+          from rentivo.db import get_connection
+
+          connection = get_connection()
+          snapshot = json.loads(
+              (Path(os.environ["RUNNER_TEMP"]) / "migration-before.json").read_text()
+          )
+
+          revisions = connection.execute(text("SELECT version_num FROM alembic_version")).scalars().all()
+          assert revisions == ["e0f1a2b3c4d5"], revisions
+
+          for table, expected in snapshot["tables"].items():
+              actual_rows = [
+                  dict(row)
+                  for row in connection.execute(
+                      text(f"SELECT {expected['columns']} FROM {table} ORDER BY id")
+                  ).mappings()
+              ]
+              actual_rows = json.loads(json.dumps(actual_rows, default=str, sort_keys=True))
+              expected_rows = expected["rows"]
+              assert len(actual_rows) == expected["count"], (table, len(actual_rows), expected["count"])
+              assert actual_rows == expected_rows, (table, actual_rows, expected_rows)
+
+          existing_tables = set(inspect(connection).get_table_names())
+          required_auth_tables = {
+              "api_keys",
+              "api_key_scopes",
+              "api_key_resource_grants",
+              "auth_challenges",
+              "auth_rate_limits",
+          }
+          assert required_auth_tables <= existing_tables, required_auth_tables - existing_tables
+
+          total, populated, distinct = connection.execute(
+              text("SELECT COUNT(*), COUNT(uuid), COUNT(DISTINCT uuid) FROM billing_items")
+          ).one()
+          expected_total = snapshot["tables"]["billing_items"]["count"]
+          assert total == expected_total, (total, expected_total)
+          assert total == populated == distinct, (total, populated, distinct)
+          print(
+              f"Verified {sum(item['count'] for item in snapshot['tables'].values())} "
+              f"preserved legacy rows and {total} populated, distinct billing item UUIDs."
+          )
+          PY
+      - name: Report and verify the applied revision
+        run: |
+          current="$(uv run --project backend --no-sync alembic -c backend/alembic.ini current)"
+          printf '%s\n' "$current"
+          printf '%s\n' "$current" | grep -F 'e0f1a2b3c4d5 (head)'
 
   compose-config:
     name: promoted Compose configuration
@@ -185,7 +557,7 @@ jobs:
       RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: 127.0.0.1/32
       RENTIVO_WEBAUTHN_RP_ID: rentivo.example.test
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Create disposable application environment
         run: |
           umask 077
@@ -222,9 +594,9 @@ jobs:
       STACK_OVERRIDE: ${{ runner.temp }}/rentivo-gate.override.yml
       STACK_PROJECT: rentivo-functional-gate
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22
           cache: npm
@@ -262,6 +634,9 @@ jobs:
             > "$RENTIVO_APP_ENV_FILE"
           cat > "$STACK_OVERRIDE" <<'YAML'
           services:
+            validate:
+              environment:
+                RENTIVO_ENVIRONMENT: dev
             migrate:
               environment:
                 RENTIVO_ENVIRONMENT: dev
@@ -324,7 +699,7 @@ jobs:
           docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE" logs --no-color > artifacts/functional-stack.log
       - name: Upload functional stack evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: functional-stack-results
           path: |
@@ -351,7 +726,7 @@ jobs:
       STACK_OVERRIDE: ${{ runner.temp }}/rentivo-production.override.yml
       STACK_PROJECT: rentivo-production-startup
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Create secure production startup environment
         shell: bash
         run: |
@@ -410,7 +785,20 @@ jobs:
         run: |
           set -euo pipefail
           compose=(docker compose -p "$STACK_PROJECT" -f docker-compose.yml -f "$STACK_OVERRIDE")
-          "${compose[@]}" up --build -d db migrate api worker
+          "${compose[@]}" up --build -d db validate migrate api worker
+          validation_id="$("${compose[@]}" ps -aq validate)"
+          for attempt in $(seq 1 60); do
+            state="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$validation_id")"
+            if [ "$state" = "exited:0" ]; then
+              break
+            fi
+            if [[ "$state" == exited:* ]]; then
+              echo "Production validation failed with $state."
+              exit 1
+            fi
+            [ "$attempt" -lt 60 ] || { echo "Production validation did not finish."; exit 1; }
+            sleep 2
+          done
           migration_id="$("${compose[@]}" ps -aq migrate)"
           for attempt in $(seq 1 60); do
             state="$(docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$migration_id")"
@@ -424,8 +812,6 @@ jobs:
             [ "$attempt" -lt 60 ] || { echo "Production migration did not finish."; exit 1; }
             sleep 2
           done
-          "${compose[@]}" run --rm --no-deps migrate \
-            python -c 'from rentivo.settings import validate_production_settings; validate_production_settings()'
           for attempt in $(seq 1 90); do
             if curl --fail --silent --show-error http://127.0.0.1:18000/api/v1/ready >/dev/null; then
               break
@@ -449,7 +835,7 @@ jobs:
           fi
       - name: Upload production startup evidence
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: production-startup-results
           path: |
@@ -528,6 +914,8 @@ jobs:
     name: immutable image build (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: release-gate
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:

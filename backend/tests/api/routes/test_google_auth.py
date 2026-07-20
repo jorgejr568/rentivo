@@ -598,6 +598,7 @@ def test_google_json_callback_returns_typed_mfa_handoff(
     assert response.json() == {
         "status": "mfa_required",
         "challenge_id": MFA_CHALLENGE_ID,
+        "credential_transport": "cookie",
         "methods": ["totp", "recovery"],
     }
     assert "location" not in response.headers

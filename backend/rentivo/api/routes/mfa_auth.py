@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from hashlib import sha256
+from secrets import compare_digest
 from typing import Any, Literal
 
 import structlog
@@ -14,6 +16,7 @@ from rentivo.api.errors import ProblemException, problem, problem_response
 from rentivo.api.routes.auth import _authenticated_response, _client_ip, _delete_cookie
 from rentivo.api.schemas.auth import (
     AuthenticatedResponse,
+    CredentialTransport,
     MFACodeVerifyRequest,
     PasskeyAuthBeginRequest,
     PasskeyAuthCompleteRequest,
@@ -62,15 +65,36 @@ def _rate_limited() -> ProblemException:
     )
 
 
-def _nonce(request: Request) -> str:
-    value = request.cookies.get(settings.challenge_cookie_name, "")
-    if not value:
+def _nonce(
+    request: Request,
+    *,
+    challenge_token: str | None,
+    credential_transport: CredentialTransport,
+) -> str:
+    cookie_token = request.cookies.get(settings.challenge_cookie_name)
+    if credential_transport == "cookie":
+        if challenge_token is not None or not cookie_token:
+            raise _invalid_challenge()
+        return cookie_token
+    assert challenge_token is not None
+    if cookie_token is not None and not compare_digest(
+        sha256(cookie_token.encode()).digest(),
+        sha256(challenge_token.encode()).digest(),
+    ):
         raise _invalid_challenge()
-    return value
+    return challenge_token
 
 
-def _actor(challenge: AuthChallenge, email: str) -> Actor:
-    return Actor(user_id=challenge.user_id, email=email, source="web")
+def _actor(
+    challenge: AuthChallenge,
+    email: str,
+    credential_transport: CredentialTransport,
+) -> Actor:
+    return Actor(
+        user_id=challenge.user_id,
+        email=email,
+        source="web" if credential_transport == "cookie" else "mobile",
+    )
 
 
 def _rate_identity(request: Request, user_id: int) -> str:
@@ -100,9 +124,10 @@ def _audit_failure(
     email: str,
     client_ip: str,
     method: str,
+    credential_transport: CredentialTransport,
 ) -> None:
     services.audit.safe_log_for(
-        _actor(challenge, email),
+        _actor(challenge, email, credential_transport),
         AuditEventType.MFA_VERIFY_FAILED,
         entity_type="user",
         entity_id=challenge.user_id,
@@ -118,6 +143,7 @@ def _finish_login(
     via: str,
     audit_metadata: dict[str, Any],
     identity: str,
+    credential_transport: CredentialTransport,
 ) -> JSONResponse:
     services.auth_rate_limit.clear(action="mfa_verify", identity=identity)
     result = services.login.complete_login(
@@ -126,9 +152,11 @@ def _finish_login(
         client_ip=_client_ip(request),
         user_agent=request.headers.get("user-agent", ""),
         audit_metadata=audit_metadata,
+        source="web" if credential_transport == "cookie" else "mobile",
     )
-    response = _authenticated_response(result, set_access_cookie=True)
-    _delete_cookie(response, settings.challenge_cookie_name, httponly=True)
+    response = _authenticated_response(result, credential_transport=credential_transport)
+    if credential_transport == "cookie":
+        _delete_cookie(response, settings.challenge_cookie_name, httponly=True)
     return response
 
 
@@ -138,7 +166,11 @@ async def _verify_code(
     request: Request,
     services: RequestServices,
 ) -> JSONResponse:
-    nonce = _nonce(request)
+    nonce = _nonce(
+        request,
+        challenge_token=payload.challenge_token,
+        credential_transport=payload.credential_transport,
+    )
     challenge = services.auth_challenge.get_valid(
         payload.challenge_id,
         nonce,
@@ -169,6 +201,7 @@ async def _verify_code(
             email=user.email,
             client_ip=_client_ip(request),
             method=method,
+            credential_transport=payload.credential_transport,
         )
         raise _invalid_code()
     consumed = services.auth_challenge.consume(
@@ -180,7 +213,7 @@ async def _verify_code(
     if consumed is None:
         raise _invalid_challenge()
     services.audit.safe_log_for(
-        _actor(challenge, user.email),
+        _actor(challenge, user.email, payload.credential_transport),
         AuditEventType.MFA_VERIFY_SUCCESS,
         entity_type="user",
         entity_id=user.id,
@@ -193,6 +226,7 @@ async def _verify_code(
         via="mfa",
         audit_metadata={"mfa": True, "method": method},
         identity=identity,
+        credential_transport=payload.credential_transport,
     )
 
 
@@ -232,7 +266,11 @@ async def begin_passkey_authentication(
     request: Request,
     services: RequestServices = Depends(get_services),
 ) -> JSONResponse:
-    nonce = _nonce(request)
+    nonce = _nonce(
+        request,
+        challenge_token=payload.challenge_token,
+        credential_transport=payload.credential_transport,
+    )
     challenge = services.auth_challenge.get_valid(
         payload.challenge_id,
         nonce,
@@ -270,7 +308,11 @@ async def complete_passkey_authentication(
     request: Request,
     services: RequestServices = Depends(get_services),
 ) -> JSONResponse:
-    nonce = _nonce(request)
+    nonce = _nonce(
+        request,
+        challenge_token=payload.challenge_token,
+        credential_transport=payload.credential_transport,
+    )
     challenge = services.auth_challenge.get_valid(
         payload.challenge_id,
         nonce,
@@ -298,6 +340,7 @@ async def complete_passkey_authentication(
             email=user.email,
             client_ip=_client_ip(request),
             method="passkey",
+            credential_transport=payload.credential_transport,
         )
         raise _invalid_passkey()
     try:
@@ -323,6 +366,7 @@ async def complete_passkey_authentication(
             email=user.email,
             client_ip=_client_ip(request),
             method="passkey",
+            credential_transport=payload.credential_transport,
         )
         raise _invalid_passkey() from None
     consumed = services.auth_challenge.consume(
@@ -346,13 +390,15 @@ async def complete_passkey_authentication(
             email=user.email,
             client_ip=_client_ip(request),
             method="passkey",
+            credential_transport=payload.credential_transport,
         )
         failure = _invalid_passkey()
         response = problem_response(failure.problem)
-        _delete_cookie(response, settings.challenge_cookie_name, httponly=True)
+        if payload.credential_transport == "cookie":
+            _delete_cookie(response, settings.challenge_cookie_name, httponly=True)
         return response
     services.audit.safe_log_for(
-        _actor(challenge, user.email),
+        _actor(challenge, user.email, payload.credential_transport),
         AuditEventType.MFA_PASSKEY_USED,
         entity_type="user",
         entity_id=user.id,
@@ -365,4 +411,5 @@ async def complete_passkey_authentication(
         via="passkey",
         audit_metadata={"mfa": True, "method": "passkey"},
         identity=identity,
+        credential_transport=payload.credential_transport,
     )

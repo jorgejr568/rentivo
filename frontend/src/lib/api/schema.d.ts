@@ -1436,18 +1436,10 @@ export interface components {
         };
         /** APIKeyOptionsResponse */
         APIKeyOptionsResponse: {
-            /**
-             * Default Expiration Days
-             * @default 90
-             * @constant
-             */
-            default_expiration_days: 90;
-            /**
-             * Max Expiration Days
-             * @default 365
-             * @constant
-             */
-            max_expiration_days: 365;
+            /** Default Expiration Days */
+            default_expiration_days: number;
+            /** Max Expiration Days */
+            max_expiration_days: number;
             /** Organizations */
             organizations: components["schemas"]["OrganizationWorkspaceOption"][];
             personal_workspace: components["schemas"]["PersonalWorkspaceOption"];
@@ -1518,15 +1510,7 @@ export interface components {
             feature_flags: components["schemas"]["FeatureFlags"];
         };
         /** AuthenticatedResponse */
-        AuthenticatedResponse: {
-            bootstrap: components["schemas"]["BootstrapResponse"];
-            /**
-             * Status
-             * @default authenticated
-             * @constant
-             */
-            status: "authenticated";
-        };
+        AuthenticatedResponse: components["schemas"]["CookieAuthenticatedResponse"] | components["schemas"]["BodyAuthenticatedResponse"];
         /** AvailableTransitionResponse */
         AvailableTransitionResponse: {
             /** Label */
@@ -1941,6 +1925,89 @@ export interface components {
             /** Receipt Files */
             receipt_files: Blob[];
         };
+        /** BodyAuthenticatedResponse */
+        BodyAuthenticatedResponse: {
+            /** Access Token */
+            access_token: string;
+            bootstrap: components["schemas"]["BootstrapResponse"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "body";
+            /** Expires In */
+            expires_in: number;
+            /**
+             * Status
+             * @default authenticated
+             * @constant
+             */
+            status: "authenticated";
+            /**
+             * Token Type
+             * @constant
+             */
+            token_type: "Bearer";
+        };
+        /** BodyMFACodeVerifyRequest */
+        BodyMFACodeVerifyRequest: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Challenge Token */
+            challenge_token: string;
+            /** Code */
+            code: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "body";
+        };
+        /** BodyMFARequiredResponse */
+        BodyMFARequiredResponse: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Challenge Token */
+            challenge_token: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "body";
+            /** Methods */
+            methods: string[];
+            /**
+             * Status
+             * @default mfa_required
+             * @constant
+             */
+            status: "mfa_required";
+        };
+        /** BodyPasskeyAuthBeginRequest */
+        BodyPasskeyAuthBeginRequest: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Challenge Token */
+            challenge_token: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "body";
+        };
+        /** BodyPasskeyAuthCompleteRequest */
+        BodyPasskeyAuthCompleteRequest: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Challenge Token */
+            challenge_token: string;
+            credential: components["schemas"]["WebAuthnAuthenticationCredential"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "body";
+        };
         /** BootstrapAnalytics */
         BootstrapAnalytics: {
             /**
@@ -2084,6 +2151,72 @@ export interface components {
             /** Uuid */
             uuid: string;
         };
+        /** CookieAuthenticatedResponse */
+        CookieAuthenticatedResponse: {
+            bootstrap: components["schemas"]["BootstrapResponse"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "cookie";
+            /**
+             * Status
+             * @default authenticated
+             * @constant
+             */
+            status: "authenticated";
+        };
+        /** CookieMFACodeVerifyRequest */
+        CookieMFACodeVerifyRequest: {
+            /** Challenge Id */
+            challenge_id: string;
+            /** Code */
+            code: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "cookie";
+        };
+        /** CookieMFARequiredResponse */
+        CookieMFARequiredResponse: {
+            /** Challenge Id */
+            challenge_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "cookie";
+            /** Methods */
+            methods: string[];
+            /**
+             * Status
+             * @default mfa_required
+             * @constant
+             */
+            status: "mfa_required";
+        };
+        /** CookiePasskeyAuthBeginRequest */
+        CookiePasskeyAuthBeginRequest: {
+            /** Challenge Id */
+            challenge_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "cookie";
+        };
+        /** CookiePasskeyAuthCompleteRequest */
+        CookiePasskeyAuthCompleteRequest: {
+            /** Challenge Id */
+            challenge_id: string;
+            credential: components["schemas"]["WebAuthnAuthenticationCredential"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            credential_transport: "cookie";
+        };
         /** CSRFResponse */
         CSRFResponse: {
             /** Csrf Token */
@@ -2196,11 +2329,6 @@ export interface components {
             /** Scopes */
             scopes: string[];
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
         /** InviteAcceptResponse */
         InviteAcceptResponse: {
             /** Mfa Setup Required */
@@ -2232,6 +2360,12 @@ export interface components {
         ItemType: "fixed" | "variable" | "extra";
         /** LoginRequest */
         LoginRequest: {
+            /**
+             * Credential Transport
+             * @default cookie
+             * @enum {string}
+             */
+            credential_transport: "cookie" | "body";
             /** Email */
             email: string;
             /** Password */
@@ -2243,25 +2377,9 @@ export interface components {
             turnstile_token: string;
         };
         /** MFACodeVerifyRequest */
-        MFACodeVerifyRequest: {
-            /** Challenge Id */
-            challenge_id: string;
-            /** Code */
-            code: string;
-        };
+        MFACodeVerifyRequest: components["schemas"]["CookieMFACodeVerifyRequest"] | components["schemas"]["BodyMFACodeVerifyRequest"];
         /** MFARequiredResponse */
-        MFARequiredResponse: {
-            /** Challenge Id */
-            challenge_id: string;
-            /** Methods */
-            methods: string[];
-            /**
-             * Status
-             * @default mfa_required
-             * @constant
-             */
-            status: "mfa_required";
-        };
+        MFARequiredResponse: components["schemas"]["CookieMFARequiredResponse"] | components["schemas"]["BodyMFARequiredResponse"];
         /** MFAStatusResponse */
         MFAStatusResponse: {
             /** Organization Enforced */
@@ -2456,16 +2574,9 @@ export interface components {
             resource_type: "organization";
         };
         /** PasskeyAuthBeginRequest */
-        PasskeyAuthBeginRequest: {
-            /** Challenge Id */
-            challenge_id: string;
-        };
+        PasskeyAuthBeginRequest: components["schemas"]["CookiePasskeyAuthBeginRequest"] | components["schemas"]["BodyPasskeyAuthBeginRequest"];
         /** PasskeyAuthCompleteRequest */
-        PasskeyAuthCompleteRequest: {
-            /** Challenge Id */
-            challenge_id: string;
-            credential: components["schemas"]["WebAuthnAuthenticationCredential"];
-        };
+        PasskeyAuthCompleteRequest: components["schemas"]["CookiePasskeyAuthCompleteRequest"] | components["schemas"]["BodyPasskeyAuthCompleteRequest"];
         /** PasskeyListResponse */
         PasskeyListResponse: {
             /** Items */
@@ -2766,10 +2877,26 @@ export interface components {
             profile: components["schemas"]["ProfileResponse"];
             totp: components["schemas"]["TOTPStatusResponse"];
         };
+        /** SessionResponse */
+        SessionResponse: {
+            bootstrap: components["schemas"]["BootstrapResponse"];
+            /**
+             * Status
+             * @default authenticated
+             * @constant
+             */
+            status: "authenticated";
+        };
         /** SignupRequest */
         SignupRequest: {
             /** Confirm Password */
             confirm_password: string;
+            /**
+             * Credential Transport
+             * @default cookie
+             * @enum {string}
+             */
+            credential_transport: "cookie" | "body";
             /** Email */
             email: string;
             /** Password */
@@ -2895,19 +3022,6 @@ export interface components {
             enabled: boolean;
             /** Recovery Codes Remaining */
             recovery_codes_remaining: number;
-        };
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
         };
         /** WebAuthnAuthenticationCredential */
         WebAuthnAuthenticationCredential: {
@@ -3118,13 +3232,13 @@ export interface operations {
                     "application/json": components["schemas"]["APIKeyCreateResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
             /** @description Too Many Requests */
@@ -3167,13 +3281,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3205,13 +3319,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3249,13 +3363,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3376,13 +3490,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3445,13 +3559,13 @@ export interface operations {
                     "application/json": components["schemas"]["MFARequiredResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3503,12 +3617,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
         };
     };
@@ -3541,12 +3657,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
             /** @description Too Many Requests */
             429: {
@@ -3586,12 +3704,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
             /** @description Too Many Requests */
             429: {
@@ -3631,12 +3751,14 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
             /** @description Too Many Requests */
             429: {
@@ -3669,13 +3791,13 @@ export interface operations {
                     "application/json": components["schemas"]["AcceptedResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3700,13 +3822,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3726,7 +3848,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuthenticatedResponse"];
+                    "application/json": components["schemas"]["SessionResponse"];
                 };
             };
         };
@@ -3753,13 +3875,13 @@ export interface operations {
                     "application/json": components["schemas"]["AuthenticatedResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3806,13 +3928,13 @@ export interface operations {
                     "application/json": components["schemas"]["BillingResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3837,13 +3959,13 @@ export interface operations {
                     "application/json": components["schemas"]["BillingResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3866,13 +3988,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3901,13 +4023,13 @@ export interface operations {
                     "application/json": components["schemas"]["BillingResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3932,13 +4054,13 @@ export interface operations {
                     "application/json": components["schemas"]["AttachmentListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -3972,13 +4094,13 @@ export interface operations {
                     "application/json": components["schemas"]["AttachmentResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4015,13 +4137,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4045,13 +4167,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4085,13 +4207,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4148,13 +4270,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4189,13 +4311,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4246,13 +4368,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4309,13 +4431,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4359,13 +4481,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4422,13 +4544,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4472,13 +4594,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4535,13 +4657,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4586,13 +4708,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4644,13 +4766,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4703,13 +4825,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4762,13 +4884,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4821,13 +4943,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4880,13 +5002,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4943,13 +5065,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -4978,13 +5100,13 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationPreviewResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5013,13 +5135,13 @@ export interface operations {
                     "application/json": components["schemas"]["CommunicationSendResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5044,13 +5166,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpenseListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5079,13 +5201,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExpenseResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5109,13 +5231,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5144,13 +5266,13 @@ export interface operations {
                     "application/json": components["schemas"]["ExportCreateResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5179,13 +5301,13 @@ export interface operations {
                     "application/json": components["schemas"]["ContactListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5214,13 +5336,13 @@ export interface operations {
                     "application/json": components["schemas"]["ContactListResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5247,13 +5369,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5338,13 +5460,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5387,13 +5509,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5440,13 +5562,13 @@ export interface operations {
                     "application/json": components["schemas"]["OrganizationResponse"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5480,13 +5602,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5518,13 +5640,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5562,13 +5684,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Problem"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5615,13 +5737,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5668,13 +5790,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5716,13 +5838,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5770,13 +5892,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5814,13 +5936,13 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5907,13 +6029,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -5956,13 +6078,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6009,13 +6131,13 @@ export interface operations {
                     "application/json": components["schemas"]["PasskeyResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6042,13 +6164,13 @@ export interface operations {
                     "application/json": components["schemas"]["PixUpdateResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6095,13 +6217,13 @@ export interface operations {
                     "application/json": components["schemas"]["RecoveryCodesResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6126,13 +6248,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6177,13 +6299,13 @@ export interface operations {
                     "application/json": components["schemas"]["ThemeResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6212,13 +6334,13 @@ export interface operations {
                     "application/json": components["schemas"]["ThemeResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6241,13 +6363,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6272,13 +6394,13 @@ export interface operations {
                     "application/json": components["schemas"]["ThemeResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6307,13 +6429,13 @@ export interface operations {
                     "application/json": components["schemas"]["ThemeResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6336,13 +6458,13 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6369,13 +6491,13 @@ export interface operations {
                     "application/pdf": Blob;
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6422,13 +6544,13 @@ export interface operations {
                     "application/json": components["schemas"]["ThemeResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6492,13 +6614,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6524,13 +6646,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6557,13 +6679,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -6589,13 +6711,13 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
+            /** @description Request validation problem */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["Problem"];
                 };
             };
         };

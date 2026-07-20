@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator, model_validator
 
 
 class _StrictModel(BaseModel):
@@ -13,7 +13,29 @@ class _AuthRequest(_StrictModel):
     pass
 
 
-class SignupRequest(_AuthRequest):
+CredentialTransport = Literal["cookie", "body"]
+
+
+def _with_default_cookie_transport(value: object) -> object:
+    if isinstance(value, dict) and "credential_transport" not in value:
+        return {**value, "credential_transport": "cookie"}
+    return value
+
+
+class _CredentialTransportRequest(_AuthRequest):
+    credential_transport: CredentialTransport = "cookie"
+
+
+class _CookieMFAChallengeRequest(_AuthRequest):
+    credential_transport: Literal["cookie"] = "cookie"
+
+
+class _BodyMFAChallengeRequest(_AuthRequest):
+    credential_transport: Literal["body"]
+    challenge_token: str = Field(min_length=1)
+
+
+class SignupRequest(_CredentialTransportRequest):
     email: str
     password: str = Field(min_length=1)
     confirm_password: str = Field(min_length=1)
@@ -34,7 +56,7 @@ class SignupRequest(_AuthRequest):
         return self
 
 
-class LoginRequest(_AuthRequest):
+class LoginRequest(_CredentialTransportRequest):
     email: str
     password: str = Field(min_length=1)
     turnstile_token: str = ""
@@ -73,13 +95,78 @@ class PasswordResetRequest(_AuthRequest):
         return self
 
 
-class MFACodeVerifyRequest(_AuthRequest):
+class CookieMFACodeVerifyRequest(_CookieMFAChallengeRequest):
     challenge_id: str = Field(min_length=1)
     code: str = Field(min_length=1)
 
 
-class PasskeyAuthBeginRequest(_AuthRequest):
+class BodyMFACodeVerifyRequest(_BodyMFAChallengeRequest):
     challenge_id: str = Field(min_length=1)
+    code: str = Field(min_length=1)
+
+
+class MFACodeVerifyRequest(
+    RootModel[
+        Annotated[
+            CookieMFACodeVerifyRequest | BodyMFACodeVerifyRequest,
+            Field(discriminator="credential_transport"),
+        ]
+    ]
+):
+    @model_validator(mode="before")
+    @classmethod
+    def default_cookie_transport(cls, value: object) -> object:
+        return _with_default_cookie_transport(value)
+
+    @property
+    def challenge_id(self) -> str:
+        return self.root.challenge_id
+
+    @property
+    def challenge_token(self) -> str | None:
+        return getattr(self.root, "challenge_token", None)
+
+    @property
+    def code(self) -> str:
+        return self.root.code
+
+    @property
+    def credential_transport(self) -> CredentialTransport:
+        return self.root.credential_transport
+
+
+class CookiePasskeyAuthBeginRequest(_CookieMFAChallengeRequest):
+    challenge_id: str = Field(min_length=1)
+
+
+class BodyPasskeyAuthBeginRequest(_BodyMFAChallengeRequest):
+    challenge_id: str = Field(min_length=1)
+
+
+class PasskeyAuthBeginRequest(
+    RootModel[
+        Annotated[
+            CookiePasskeyAuthBeginRequest | BodyPasskeyAuthBeginRequest,
+            Field(discriminator="credential_transport"),
+        ]
+    ]
+):
+    @model_validator(mode="before")
+    @classmethod
+    def default_cookie_transport(cls, value: object) -> object:
+        return _with_default_cookie_transport(value)
+
+    @property
+    def challenge_id(self) -> str:
+        return self.root.challenge_id
+
+    @property
+    def challenge_token(self) -> str | None:
+        return getattr(self.root, "challenge_token", None)
+
+    @property
+    def credential_transport(self) -> CredentialTransport:
+        return self.root.credential_transport
 
 
 class WebAuthnModel(_StrictModel):
@@ -132,9 +219,44 @@ class WebAuthnAuthenticationCredential(WebAuthnModel):
     )
 
 
-class PasskeyAuthCompleteRequest(_AuthRequest):
+class CookiePasskeyAuthCompleteRequest(_CookieMFAChallengeRequest):
     challenge_id: str = Field(min_length=1)
     credential: WebAuthnAuthenticationCredential
+
+
+class BodyPasskeyAuthCompleteRequest(_BodyMFAChallengeRequest):
+    challenge_id: str = Field(min_length=1)
+    credential: WebAuthnAuthenticationCredential
+
+
+class PasskeyAuthCompleteRequest(
+    RootModel[
+        Annotated[
+            CookiePasskeyAuthCompleteRequest | BodyPasskeyAuthCompleteRequest,
+            Field(discriminator="credential_transport"),
+        ]
+    ]
+):
+    @model_validator(mode="before")
+    @classmethod
+    def default_cookie_transport(cls, value: object) -> object:
+        return _with_default_cookie_transport(value)
+
+    @property
+    def challenge_id(self) -> str:
+        return self.root.challenge_id
+
+    @property
+    def challenge_token(self) -> str | None:
+        return getattr(self.root, "challenge_token", None)
+
+    @property
+    def credential(self) -> WebAuthnAuthenticationCredential:
+        return self.root.credential
+
+    @property
+    def credential_transport(self) -> CredentialTransport:
+        return self.root.credential_transport
 
 
 class AnalyticsEvent(_StrictModel):
@@ -176,15 +298,61 @@ class BootstrapResponse(_StrictModel):
     csrf_token: str
 
 
-class AuthenticatedResponse(_StrictModel):
+class _AuthenticatedResponseBase(_StrictModel):
     status: Literal["authenticated"] = "authenticated"
     bootstrap: BootstrapResponse
 
 
-class MFARequiredResponse(_StrictModel):
+class CookieAuthenticatedResponse(_AuthenticatedResponseBase):
+    credential_transport: Literal["cookie"]
+
+
+class BodyAuthenticatedResponse(_AuthenticatedResponseBase):
+    credential_transport: Literal["body"]
+    access_token: str = Field(min_length=1)
+    token_type: Literal["Bearer"]
+    expires_in: int = Field(gt=0)
+
+
+class AuthenticatedResponse(
+    RootModel[
+        Annotated[
+            CookieAuthenticatedResponse | BodyAuthenticatedResponse,
+            Field(discriminator="credential_transport"),
+        ]
+    ]
+):
+    pass
+
+
+class SessionResponse(_AuthenticatedResponseBase):
+    pass
+
+
+class _MFARequiredResponseBase(_StrictModel):
     status: Literal["mfa_required"] = "mfa_required"
     challenge_id: str
     methods: tuple[str, ...]
+
+
+class CookieMFARequiredResponse(_MFARequiredResponseBase):
+    credential_transport: Literal["cookie"]
+
+
+class BodyMFARequiredResponse(_MFARequiredResponseBase):
+    credential_transport: Literal["body"]
+    challenge_token: str = Field(min_length=1)
+
+
+class MFARequiredResponse(
+    RootModel[
+        Annotated[
+            CookieMFARequiredResponse | BodyMFARequiredResponse,
+            Field(discriminator="credential_transport"),
+        ]
+    ]
+):
+    pass
 
 
 class AcceptedResponse(_StrictModel):
