@@ -97,32 +97,33 @@ class TestMFAServiceTOTP:
     def test_confirm_totp_success(self, mock_pyotp):
         totp_record = UserTOTP(id=1, user_id=10, secret="SECRET", confirmed=False)
         self.totp_repo.get_by_user_id.return_value = totp_record
+        self.factor_repo.confirm_totp_and_replace_recovery_codes.return_value = True
 
         mock_totp_instance = MagicMock()
         mock_totp_instance.verify.return_value = True
         mock_pyotp.TOTP.return_value = mock_totp_instance
 
-        result = self.service.confirm_totp(10, "123456")
+        result = self.service.confirm_totp(10, "123456", "current-login")
 
         assert isinstance(result, list)
         assert len(result) == 10  # RECOVERY_CODE_COUNT
-        self.totp_repo.confirm.assert_called_once_with(10)
-        self.recovery_repo.delete_all_by_user.assert_called_once_with(10)
-        self.recovery_repo.create_batch.assert_called_once()
-        # Verify create_batch received 10 hashes
-        batch_call_args = self.recovery_repo.create_batch.call_args
-        assert batch_call_args[0][0] == 10  # user_id
-        assert len(batch_call_args[0][1]) == 10  # 10 hashes
+        self.totp_repo.confirm.assert_not_called()
+        self.recovery_repo.delete_all_by_user.assert_not_called()
+        self.recovery_repo.create_batch.assert_not_called()
+        transaction_args = self.factor_repo.confirm_totp_and_replace_recovery_codes.call_args.args
+        assert transaction_args[0] == 10
+        assert len(transaction_args[1]) == 10
+        assert transaction_args[2] == "current-login"
 
     def test_confirm_totp_raises_no_totp(self):
         self.totp_repo.get_by_user_id.return_value = None
         with pytest.raises(ValueError, match="Nenhuma configuração TOTP"):
-            self.service.confirm_totp(10, "123456")
+            self.service.confirm_totp(10, "123456", "current-login")
 
     def test_confirm_totp_raises_already_confirmed(self):
         self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
         with pytest.raises(ValueError, match="já está confirmado"):
-            self.service.confirm_totp(10, "123456")
+            self.service.confirm_totp(10, "123456", "current-login")
 
     @patch("rentivo.services.mfa_service.pyotp")
     def test_confirm_totp_raises_invalid_code(self, mock_pyotp):
@@ -132,7 +133,21 @@ class TestMFAServiceTOTP:
         mock_pyotp.TOTP.return_value = mock_totp_instance
 
         with pytest.raises(ValueError, match="Código TOTP inválido"):
-            self.service.confirm_totp(10, "000000")
+            self.service.confirm_totp(10, "000000", "current-login")
+
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_confirm_totp_reports_a_concurrent_state_change(self, mock_pyotp):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(
+            id=1,
+            user_id=10,
+            secret="SECRET",
+            confirmed=False,
+        )
+        mock_pyotp.TOTP.return_value.verify.return_value = True
+        self.factor_repo.confirm_totp_and_replace_recovery_codes.return_value = False
+
+        with pytest.raises(ValueError, match="Nenhuma configuração TOTP"):
+            self.service.confirm_totp(10, "123456", "current-login")
 
     @patch("rentivo.services.mfa_service.pyotp")
     def test_verify_totp_success(self, mock_pyotp):
@@ -256,11 +271,15 @@ class TestMFAServiceRecoveryCodes:
 
     def test_regenerate_recovery_codes_success(self):
         self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        self.factor_repo.replace_recovery_codes.return_value = True
         result = self.service.regenerate_recovery_codes(10)
         assert isinstance(result, list)
         assert len(result) == 10
-        self.recovery_repo.delete_all_by_user.assert_called_once_with(10)
-        self.recovery_repo.create_batch.assert_called_once()
+        self.recovery_repo.delete_all_by_user.assert_not_called()
+        self.recovery_repo.create_batch.assert_not_called()
+        transaction_args = self.factor_repo.replace_recovery_codes.call_args.args
+        assert transaction_args[0] == 10
+        assert len(transaction_args[1]) == 10
 
     def test_regenerate_recovery_codes_raises_no_totp(self):
         self.totp_repo.get_by_user_id.return_value = None
@@ -269,6 +288,13 @@ class TestMFAServiceRecoveryCodes:
 
     def test_regenerate_recovery_codes_raises_unconfirmed(self):
         self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=False)
+        with pytest.raises(ValueError, match="TOTP não está ativado"):
+            self.service.regenerate_recovery_codes(10)
+
+    def test_regenerate_recovery_codes_reports_a_concurrent_totp_removal(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        self.factor_repo.replace_recovery_codes.return_value = False
+
         with pytest.raises(ValueError, match="TOTP não está ativado"):
             self.service.regenerate_recovery_codes(10)
 
@@ -314,10 +340,14 @@ class TestMFAServicePasskeys:
     def test_register_passkey(self):
         passkey = UserPasskey(user_id=10, name="MyKey", credential_id="cred1", public_key="pk1")
         created = UserPasskey(id=1, user_id=10, name="MyKey", credential_id="cred1", public_key="pk1")
-        self.passkey_repo.create.return_value = created
-        result = self.service.register_passkey(passkey)
+        self.factor_repo.add_passkey_and_revoke_other_logins.return_value = created
+        result = self.service.register_passkey(passkey, "current-login")
         assert result.id == 1
-        self.passkey_repo.create.assert_called_once_with(passkey)
+        self.factor_repo.add_passkey_and_revoke_other_logins.assert_called_once_with(
+            passkey,
+            "current-login",
+        )
+        self.passkey_repo.create.assert_not_called()
 
     def test_get_passkey_by_credential_id(self):
         passkey = UserPasskey(id=1, user_id=10, credential_id="cred1")

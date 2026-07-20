@@ -85,7 +85,7 @@ class MFAService:
         return created, provisioning_uri, qr_base64
 
     @traced("mfa.confirm_totp")
-    def confirm_totp(self, user_id: int, code: str) -> list[str]:
+    def confirm_totp(self, user_id: int, code: str, current_login_token_uuid: str) -> list[str]:
         """Confirm TOTP with a valid code. Returns list of plaintext recovery codes."""
         totp_record = self.totp_repo.get_by_user_id(user_id)
         if totp_record is None:
@@ -97,10 +97,16 @@ class MFAService:
         if not totp.verify(code, valid_window=1):
             raise ValueError("Código TOTP inválido")
 
-        self.totp_repo.confirm(user_id)
-        recovery_codes = self._generate_recovery_codes(user_id)
+        recovery_codes, code_hashes = self._generate_recovery_codes()
+        if not self.factor_repo.confirm_totp_and_replace_recovery_codes(
+            user_id,
+            code_hashes,
+            current_login_token_uuid,
+        ):
+            raise ValueError("Nenhuma configuração TOTP em andamento")
 
         logger.info("totp_confirmed", user_id=user_id)
+        logger.info("recovery_codes_generated", user_id=user_id, count=len(recovery_codes))
         return recovery_codes
 
     @traced("mfa.verify_totp")
@@ -124,18 +130,14 @@ class MFAService:
 
     # --- Recovery Codes ---
 
-    def _generate_recovery_codes(self, user_id: int) -> list[str]:
-        """Generate new recovery codes, replacing any existing ones."""
-        self.recovery_repo.delete_all_by_user(user_id)
+    def _generate_recovery_codes(self) -> tuple[list[str], list[str]]:
         codes: list[str] = []
         hashes: list[str] = []
         for _ in range(RECOVERY_CODE_COUNT):
             code = secrets.token_hex(RECOVERY_CODE_LENGTH // 2)
             codes.append(code)
             hashes.append(bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode())
-        self.recovery_repo.create_batch(user_id, hashes)
-        logger.info("recovery_codes_generated", user_id=user_id, count=len(codes))
-        return codes
+        return codes, hashes
 
     @traced("mfa.regenerate_recovery_codes")
     def regenerate_recovery_codes(self, user_id: int) -> list[str]:
@@ -143,7 +145,11 @@ class MFAService:
         totp = self.totp_repo.get_by_user_id(user_id)
         if totp is None or not totp.confirmed:
             raise ValueError("TOTP não está ativado")
-        return self._generate_recovery_codes(user_id)
+        recovery_codes, code_hashes = self._generate_recovery_codes()
+        if not self.factor_repo.replace_recovery_codes(user_id, code_hashes):
+            raise ValueError("TOTP não está ativado")
+        logger.info("recovery_codes_generated", user_id=user_id, count=len(recovery_codes))
+        return recovery_codes
 
     @traced("mfa.verify_recovery_code")
     def verify_recovery_code(self, user_id: int, code: str) -> bool:
@@ -168,8 +174,8 @@ class MFAService:
         return self.passkey_repo.list_by_user(user_id)
 
     @traced("mfa.register_passkey")
-    def register_passkey(self, passkey: UserPasskey) -> UserPasskey:
-        created = self.passkey_repo.create(passkey)
+    def register_passkey(self, passkey: UserPasskey, current_login_token_uuid: str) -> UserPasskey:
+        created = self.factor_repo.add_passkey_and_revoke_other_logins(passkey, current_login_token_uuid)
         logger.info("passkey_registered", user_id=passkey.user_id, name=passkey.name)
         return created
 

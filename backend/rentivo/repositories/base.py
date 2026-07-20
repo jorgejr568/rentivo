@@ -456,6 +456,24 @@ class PasskeyRepository(ABC):
 
 class MFAFactorRepository(ABC):
     @abstractmethod
+    def confirm_totp_and_replace_recovery_codes(
+        self,
+        user_id: int,
+        code_hashes: list[str],
+        current_login_token_uuid: str,
+    ) -> bool: ...
+
+    @abstractmethod
+    def replace_recovery_codes(self, user_id: int, code_hashes: list[str]) -> bool: ...
+
+    @abstractmethod
+    def add_passkey_and_revoke_other_logins(
+        self,
+        passkey: UserPasskey,
+        current_login_token_uuid: str,
+    ) -> UserPasskey: ...
+
+    @abstractmethod
     def remove_totp_and_revoke_logins(self, user_id: int) -> MFAFactorRemovalResult: ...
 
     @abstractmethod

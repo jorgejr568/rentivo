@@ -59,7 +59,7 @@ def _next_usage_time(expected: datetime | None) -> datetime:
 
 
 class SQLAlchemyMFAFactorRepository(MFAFactorRepository):
-    """Serializes factor removal and session revocation on the owning user row."""
+    """Serializes MFA factor transitions and session revocation on the owning user row."""
 
     def __init__(self, conn: Connection) -> None:
         self.conn = conn
@@ -75,6 +75,129 @@ class SQLAlchemyMFAFactorRepository(MFAFactorRepository):
             text("DELETE FROM api_keys WHERE user_id = :user_id AND is_login_token = 1"),
             {"user_id": user_id},
         )
+
+    def _revoke_other_login_tokens(self, user_id: int, current_login_token_uuid: str) -> None:
+        self.conn.execute(
+            text(
+                "DELETE FROM api_keys WHERE user_id = :user_id AND is_login_token = 1 "
+                "AND uuid != :current_login_token_uuid"
+            ),
+            {
+                "user_id": user_id,
+                "current_login_token_uuid": current_login_token_uuid,
+            },
+        )
+
+    def _replace_recovery_codes(self, user_id: int, code_hashes: list[str]) -> None:
+        self.conn.execute(
+            text("DELETE FROM user_recovery_codes WHERE user_id = :user_id"),
+            {"user_id": user_id},
+        )
+        now = _now()
+        for code_hash in code_hashes:
+            self.conn.execute(
+                text(
+                    "INSERT INTO user_recovery_codes (user_id, code_hash, created_at) "
+                    "VALUES (:user_id, :code_hash, :created_at)"
+                ),
+                {"user_id": user_id, "code_hash": code_hash, "created_at": now},
+            )
+
+    @traced("mfa_factor_repo.confirm_totp_and_replace_recovery_codes")
+    def confirm_totp_and_replace_recovery_codes(
+        self,
+        user_id: int,
+        code_hashes: list[str],
+        current_login_token_uuid: str,
+    ) -> bool:
+        self.conn.rollback()
+        try:
+            if not self._lock_user(user_id):
+                self.conn.rollback()
+                return False
+            totp = self.conn.execute(_TOTP_FACTOR_LOCK, {"user_id": user_id}).fetchone()
+            passkeys = self.conn.execute(_PASSKEY_FACTORS_LOCK, {"user_id": user_id}).fetchall()
+            if totp is None or bool(totp[0]):
+                self.conn.rollback()
+                return False
+            self.conn.execute(
+                text("UPDATE user_totp SET confirmed = 1, confirmed_at = :now WHERE user_id = :user_id"),
+                {"now": _now(), "user_id": user_id},
+            )
+            self._replace_recovery_codes(user_id, code_hashes)
+            if not passkeys:
+                self._revoke_other_login_tokens(user_id, current_login_token_uuid)
+            self.conn.commit()
+            return True
+        except BaseException:
+            self.conn.rollback()
+            raise
+
+    @traced("mfa_factor_repo.replace_recovery_codes")
+    def replace_recovery_codes(self, user_id: int, code_hashes: list[str]) -> bool:
+        self.conn.rollback()
+        try:
+            if not self._lock_user(user_id):
+                self.conn.rollback()
+                return False
+            totp = self.conn.execute(_TOTP_FACTOR_LOCK, {"user_id": user_id}).fetchone()
+            if totp is None or not bool(totp[0]):
+                self.conn.rollback()
+                return False
+            self._replace_recovery_codes(user_id, code_hashes)
+            self.conn.commit()
+            return True
+        except BaseException:
+            self.conn.rollback()
+            raise
+
+    @traced("mfa_factor_repo.add_passkey_and_revoke_other_logins")
+    def add_passkey_and_revoke_other_logins(
+        self,
+        passkey: UserPasskey,
+        current_login_token_uuid: str,
+    ) -> UserPasskey:
+        self.conn.rollback()
+        try:
+            if not self._lock_user(passkey.user_id):
+                raise ValueError("MFA user not found")
+            totp = self.conn.execute(_TOTP_FACTOR_LOCK, {"user_id": passkey.user_id}).fetchone()
+            passkeys = self.conn.execute(_PASSKEY_FACTORS_LOCK, {"user_id": passkey.user_id}).fetchall()
+            first_factor = (totp is None or not bool(totp[0])) and not passkeys
+            passkey_uuid = str(ULID())
+            now = _now()
+            result = self.conn.execute(
+                text(
+                    "INSERT INTO user_passkeys (uuid, user_id, credential_id, public_key, "
+                    "sign_count, name, transports, created_at) "
+                    "VALUES (:uuid, :user_id, :credential_id, :public_key, "
+                    ":sign_count, :name, :transports, :created_at)"
+                ),
+                {
+                    "uuid": passkey_uuid,
+                    "user_id": passkey.user_id,
+                    "credential_id": passkey.credential_id,
+                    "public_key": passkey.public_key,
+                    "sign_count": passkey.sign_count,
+                    "name": passkey.name,
+                    "transports": passkey.transports,
+                    "created_at": now,
+                },
+            )
+            created = passkey.model_copy(
+                update={
+                    "id": int(result.lastrowid),
+                    "uuid": passkey_uuid,
+                    "created_at": now,
+                }
+            )
+            if first_factor:
+                self._revoke_other_login_tokens(passkey.user_id, current_login_token_uuid)
+            self.conn.commit()
+            return created
+        except BaseException:
+            self.conn.rollback()
+            raise
 
     @traced("mfa_factor_repo.remove_totp_and_revoke_logins")
     def remove_totp_and_revoke_logins(self, user_id: int) -> MFAFactorRemovalResult:

@@ -267,7 +267,11 @@ async def confirm_totp(
     services: RequestServices = Depends(get_services),
 ) -> JSONResponse:
     try:
-        recovery_codes = services.mfa.confirm_totp(principal.user.id, payload.code)
+        recovery_codes = services.mfa.confirm_totp(
+            principal.user.id,
+            payload.code,
+            principal.api_key.uuid,
+        )
     except ValueError as exc:
         raise ProblemException.bad_request("invalid_totp_code", str(exc)) from None
     services.audit.safe_log_for(
@@ -357,6 +361,7 @@ async def list_passkeys(
 
 @router.post("/passkeys/register/begin", response_model=PasskeyRegistrationBeginResponse)
 async def begin_passkey_registration(
+    _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_security_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -399,6 +404,7 @@ async def begin_passkey_registration(
 async def complete_passkey_registration(
     payload: PasskeyRegistrationCompleteRequest,
     request: Request,
+    _allow_mfa_setup: None = Depends(allow_mfa_setup),
     principal: Principal = Depends(_security_principal),
     _csrf: None = Depends(require_csrf),
     services: RequestServices = Depends(get_services),
@@ -447,7 +453,8 @@ async def complete_passkey_registration(
             public_key=base64.urlsafe_b64encode(verification.credential_public_key).rstrip(b"=").decode(),
             sign_count=verification.sign_count,
             name=name,
-        )
+        ),
+        principal.api_key.uuid,
     )
     services.audit.safe_log_for(
         principal.actor,

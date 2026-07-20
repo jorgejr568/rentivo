@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.dialects import mysql
+from sqlalchemy.exc import IntegrityError
 
 from rentivo.models.mfa import MFAFactorRemovalResult, RecoveryCode, UserPasskey, UserTOTP
 from rentivo.models.user import User
@@ -117,6 +118,257 @@ class TestMFAFactorRepository:
     )
     def test_policy_and_factor_reads_are_current_locking_reads_on_mysql(self, statement):
         assert "FOR UPDATE" in str(statement.compile(dialect=mysql.dialect()))
+
+    def test_confirm_first_totp_replaces_codes_and_preserves_only_current_login(
+        self,
+        factor_repo,
+        totp_repo,
+        recovery_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "confirm-first-totp@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=False))
+        recovery_repo.create_batch(user.id, ["old-recovery"])
+        _insert_key(db_connection, user.id, "current-login", is_login_token=True)
+        _insert_key(db_connection, user.id, "other-login", is_login_token=True)
+        _insert_key(db_connection, user.id, "integration", is_login_token=False)
+
+        confirmed = factor_repo.confirm_totp_and_replace_recovery_codes(
+            user.id,
+            ["new-recovery-1", "new-recovery-2"],
+            "current-login",
+        )
+
+        assert confirmed is True
+        assert totp_repo.get_by_user_id(user.id).confirmed is True
+        assert [code.code_hash for code in recovery_repo.list_unused_by_user(user.id)] == [
+            "new-recovery-1",
+            "new-recovery-2",
+        ]
+        keys = db_connection.execute(text("SELECT uuid FROM api_keys ORDER BY uuid")).scalars().all()
+        assert keys == ["current-login", "integration"]
+
+    def test_confirm_totp_with_existing_passkey_preserves_other_logins(
+        self,
+        factor_repo,
+        totp_repo,
+        passkey_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "confirm-later-totp@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=False))
+        passkey_repo.create(
+            UserPasskey(user_id=user.id, credential_id="existing", public_key="public", name="Existing")
+        )
+        _insert_key(db_connection, user.id, "current-login", is_login_token=True)
+        _insert_key(db_connection, user.id, "other-login", is_login_token=True)
+
+        confirmed = factor_repo.confirm_totp_and_replace_recovery_codes(
+            user.id,
+            ["new-recovery"],
+            "current-login",
+        )
+
+        assert confirmed is True
+        keys = db_connection.execute(text("SELECT uuid FROM api_keys ORDER BY uuid")).scalars().all()
+        assert keys == ["current-login", "other-login"]
+
+    def test_enrollment_transitions_handle_missing_users_and_invalid_totp_state(
+        self,
+        factor_repo,
+        totp_repo,
+        user_repo,
+    ):
+        assert factor_repo.confirm_totp_and_replace_recovery_codes(404, ["new"], "current") is False
+        assert factor_repo.replace_recovery_codes(404, ["new"]) is False
+        with pytest.raises(ValueError, match="MFA user not found"):
+            factor_repo.add_passkey_and_revoke_other_logins(UserPasskey(user_id=404), "current")
+
+        user = _create_user(user_repo, "invalid-totp-state@example.com")
+        assert factor_repo.confirm_totp_and_replace_recovery_codes(user.id, ["new"], "current") is False
+        assert factor_repo.replace_recovery_codes(user.id, ["new"]) is False
+
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=True))
+        assert factor_repo.confirm_totp_and_replace_recovery_codes(user.id, ["new"], "current") is False
+
+    def test_replace_recovery_codes_commits_all_new_codes(
+        self,
+        factor_repo,
+        totp_repo,
+        recovery_repo,
+        user_repo,
+    ):
+        user = _create_user(user_repo, "replace-recovery-codes@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=True))
+        recovery_repo.create_batch(user.id, ["old-recovery"])
+
+        replaced = factor_repo.replace_recovery_codes(user.id, ["new-recovery-1", "new-recovery-2"])
+
+        assert replaced is True
+        assert [code.code_hash for code in recovery_repo.list_unused_by_user(user.id)] == [
+            "new-recovery-1",
+            "new-recovery-2",
+        ]
+
+    def test_add_first_passkey_preserves_current_login_and_later_factor_preserves_all_logins(
+        self,
+        factor_repo,
+        totp_repo,
+        passkey_repo,
+        user_repo,
+        db_connection,
+    ):
+        first_user = _create_user(user_repo, "first-passkey@example.com")
+        _insert_key(db_connection, first_user.id, "first-current", is_login_token=True)
+        _insert_key(db_connection, first_user.id, "first-other", is_login_token=True)
+        _insert_key(db_connection, first_user.id, "first-integration", is_login_token=False)
+
+        first = factor_repo.add_passkey_and_revoke_other_logins(
+            UserPasskey(
+                user_id=first_user.id,
+                credential_id="first-credential",
+                public_key="first-public-key",
+                name="First",
+            ),
+            "first-current",
+        )
+
+        assert passkey_repo.get_by_uuid(first.uuid) == first
+        first_keys = (
+            db_connection.execute(
+                text("SELECT uuid FROM api_keys WHERE user_id = :user_id ORDER BY uuid"),
+                {"user_id": first_user.id},
+            )
+            .scalars()
+            .all()
+        )
+        assert first_keys == ["first-current", "first-integration"]
+
+        later_user = _create_user(user_repo, "later-passkey@example.com")
+        totp_repo.create(UserTOTP(user_id=later_user.id, secret="SECRET", confirmed=True))
+        _insert_key(db_connection, later_user.id, "later-current", is_login_token=True)
+        _insert_key(db_connection, later_user.id, "later-other", is_login_token=True)
+
+        factor_repo.add_passkey_and_revoke_other_logins(
+            UserPasskey(
+                user_id=later_user.id,
+                credential_id="later-credential",
+                public_key="later-public-key",
+                name="Later",
+            ),
+            "later-current",
+        )
+
+        later_keys = (
+            db_connection.execute(
+                text("SELECT uuid FROM api_keys WHERE user_id = :user_id ORDER BY uuid"),
+                {"user_id": later_user.id},
+            )
+            .scalars()
+            .all()
+        )
+        assert later_keys == ["later-current", "later-other"]
+
+    def test_totp_confirmation_failure_preserves_unconfirmed_totp_codes_and_logins(
+        self,
+        factor_repo,
+        totp_repo,
+        recovery_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "failed-totp-confirmation@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=False))
+        recovery_repo.create_batch(user.id, ["old-recovery"])
+        _insert_key(db_connection, user.id, "current-login", is_login_token=True)
+        _insert_key(db_connection, user.id, "other-login", is_login_token=True)
+        db_connection.execute(
+            text(
+                "CREATE TRIGGER fail_recovery_insert BEFORE INSERT ON user_recovery_codes "
+                "WHEN NEW.code_hash = 'injected-failure' "
+                "BEGIN SELECT RAISE(FAIL, 'injected recovery failure'); END"
+            )
+        )
+        db_connection.commit()
+
+        with pytest.raises(IntegrityError, match="injected recovery failure"):
+            factor_repo.confirm_totp_and_replace_recovery_codes(
+                user.id,
+                ["new-recovery", "injected-failure"],
+                "current-login",
+            )
+
+        assert totp_repo.get_by_user_id(user.id).confirmed is False
+        assert [code.code_hash for code in recovery_repo.list_unused_by_user(user.id)] == ["old-recovery"]
+        keys = db_connection.execute(text("SELECT uuid FROM api_keys ORDER BY uuid")).scalars().all()
+        assert keys == ["current-login", "other-login"]
+
+    def test_recovery_code_replacement_failure_preserves_prior_valid_codes(
+        self,
+        factor_repo,
+        totp_repo,
+        recovery_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "failed-recovery-replacement@example.com")
+        totp_repo.create(UserTOTP(user_id=user.id, secret="SECRET", confirmed=True))
+        recovery_repo.create_batch(user.id, ["old-recovery-1", "old-recovery-2"])
+        db_connection.execute(
+            text(
+                "CREATE TRIGGER fail_recovery_insert BEFORE INSERT ON user_recovery_codes "
+                "WHEN NEW.code_hash = 'injected-failure' "
+                "BEGIN SELECT RAISE(FAIL, 'injected recovery failure'); END"
+            )
+        )
+        db_connection.commit()
+
+        with pytest.raises(IntegrityError, match="injected recovery failure"):
+            factor_repo.replace_recovery_codes(
+                user.id,
+                ["new-recovery", "injected-failure"],
+            )
+
+        assert [code.code_hash for code in recovery_repo.list_unused_by_user(user.id)] == [
+            "old-recovery-1",
+            "old-recovery-2",
+        ]
+
+    def test_first_passkey_rolls_back_when_other_login_revocation_fails(
+        self,
+        factor_repo,
+        passkey_repo,
+        user_repo,
+        db_connection,
+    ):
+        user = _create_user(user_repo, "failed-first-passkey@example.com")
+        _insert_key(db_connection, user.id, "current-login", is_login_token=True)
+        _insert_key(db_connection, user.id, "other-login", is_login_token=True)
+        db_connection.execute(
+            text(
+                "CREATE TRIGGER fail_login_delete BEFORE DELETE ON api_keys "
+                "WHEN OLD.uuid = 'other-login' "
+                "BEGIN SELECT RAISE(FAIL, 'injected login revocation failure'); END"
+            )
+        )
+        db_connection.commit()
+
+        with pytest.raises(IntegrityError, match="injected login revocation failure"):
+            factor_repo.add_passkey_and_revoke_other_logins(
+                UserPasskey(
+                    user_id=user.id,
+                    credential_id="failed-credential",
+                    public_key="failed-public-key",
+                    name="Failed",
+                ),
+                "current-login",
+            )
+
+        assert passkey_repo.list_by_user(user.id) == []
+        keys = db_connection.execute(text("SELECT uuid FROM api_keys ORDER BY uuid")).scalars().all()
+        assert keys == ["current-login", "other-login"]
 
     def test_remove_totp_cleans_recovery_and_login_tokens_atomically(
         self,

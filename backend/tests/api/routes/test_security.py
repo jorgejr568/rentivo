@@ -245,10 +245,11 @@ class FakeMFAService:
         self.organization_enforced = True
         self.setup_required = False
         self.setup_calls: list[tuple[int, str]] = []
-        self.confirm_calls: list[tuple[int, str]] = []
+        self.confirm_calls: list[tuple[int, str, str]] = []
         self.disable_calls: list[int] = []
         self.regenerate_calls: list[int] = []
         self.register_calls: list[UserPasskey] = []
+        self.register_login_tokens: list[str] = []
         self.delete_calls: list[tuple[str, int]] = []
 
     def get_totp(self, user_id: int) -> UserTOTP | None:
@@ -265,15 +266,18 @@ class FakeMFAService:
         self.totp = UserTOTP(id=31, user_id=user_id, secret=TOTP_SECRET, confirmed=False, created_at=NOW)
         return self.totp, f"otpauth://totp/Rentivo:{username}?secret={TOTP_SECRET}", "cXItcG5n"
 
-    def confirm_totp(self, user_id: int, code: str) -> list[str]:
-        self.confirm_calls.append((user_id, code))
+    def confirm_totp(self, user_id: int, code: str, current_login_token_uuid: str) -> list[str]:
+        self.confirm_calls.append((user_id, code, current_login_token_uuid))
         if self.totp is None:
             raise ValueError("Nenhuma configuração TOTP em andamento")
         if code != "123456":
             raise ValueError("Código TOTP inválido")
+        first_factor = not self.has_confirmed_totp(user_id) and not self.list_passkeys(user_id)
         self.totp = self.totp.model_copy(update={"confirmed": True, "confirmed_at": NOW})
         self.recovery_codes = list(RECOVERY_CODES)
         self.setup_required = False
+        if first_factor:
+            self.api_key.revoke_other_logins(user_id, current_login_token_uuid)
         return list(self.recovery_codes)
 
     def disable_totp(self, user_id: int) -> None:
@@ -299,7 +303,8 @@ class FakeMFAService:
     def list_passkeys(self, user_id: int) -> list[UserPasskey]:
         return [passkey for passkey in self.passkeys if passkey.user_id == user_id]
 
-    def register_passkey(self, passkey: UserPasskey) -> UserPasskey:
+    def register_passkey(self, passkey: UserPasskey, current_login_token_uuid: str) -> UserPasskey:
+        first_factor = not self.has_confirmed_totp(passkey.user_id) and not self.list_passkeys(passkey.user_id)
         created = passkey.model_copy(
             update={
                 "id": 23,
@@ -309,7 +314,10 @@ class FakeMFAService:
         )
         self.passkeys.append(created)
         self.register_calls.append(created)
+        self.register_login_tokens.append(current_login_token_uuid)
         self.setup_required = False
+        if first_factor:
+            self.api_key.revoke_other_logins(passkey.user_id, current_login_token_uuid)
         return created
 
     def delete_passkey(self, passkey_uuid: str, user_id: int) -> None:
@@ -1023,7 +1031,7 @@ def test_totp_confirm_returns_recovery_codes_once_and_preserves_effects(
     assert response.headers["x-rentivo-analytics-event"] == "rentivo_mfa_enabled"
     assert response.headers["x-rentivo-analytics-method"] == "totp"
     assert response.json() == {"recovery_codes": RECOVERY_CODES}
-    assert security_harness.mfa.confirm_calls == [(USER.id, "123456")]
+    assert security_harness.mfa.confirm_calls == [(USER.id, "123456", LOGIN_KEY.uuid)]
     assert security_harness.mfa.setup_required is False
     assert _audit_events(security_harness) == [AuditEventType.MFA_TOTP_ENABLED]
     payloads = _job_payloads(security_harness)
@@ -1039,6 +1047,37 @@ def test_totp_confirm_returns_recovery_codes_once_and_preserves_effects(
     }
     for recovery_code in RECOVERY_CODES:
         assert recovery_code not in summary.text
+
+
+def test_first_totp_factor_revokes_other_logins_but_preserves_enrollment_session(
+    security_harness: SecurityHarness,
+) -> None:
+    security_harness.mfa.totp = UserTOTP(id=31, user_id=USER.id, secret=TOTP_SECRET, confirmed=False)
+    security_harness.mfa.passkeys = [OTHER_PASSKEY]
+    security_harness.mfa.recovery_codes = []
+    security_harness.mfa.setup_required = True
+
+    response = security_harness.request(
+        "POST",
+        "/api/v1/security/totp/confirm",
+        json={"code": "123456"},
+    )
+
+    assert response.status_code == 200
+    assert security_harness.api_key.revoke_other_calls == [(USER.id, LOGIN_KEY.uuid)]
+    assert LOGIN_SECRET in security_harness.api_key.keys
+    assert SECOND_LOGIN_SECRET not in security_harness.api_key.keys
+    assert INTEGRATION_SECRET in security_harness.api_key.keys
+    assert security_harness.request("GET", "/api/v1/security").status_code == 200
+    assert (
+        security_harness.request(
+            "GET",
+            "/api/v1/security",
+            secret=SECOND_LOGIN_SECRET,
+            bearer=True,
+        ).status_code
+        == 401
+    )
 
 
 def test_totp_confirm_still_returns_one_time_codes_when_notification_dispatch_fails(
@@ -1247,6 +1286,22 @@ def test_passkey_registration_begin_uses_server_state_and_excludes_existing_cred
     assert LOGIN_SECRET not in response.text
 
 
+def test_passkey_registration_begin_is_allowed_during_enforced_mfa_setup(
+    security_harness: SecurityHarness,
+) -> None:
+    security_harness.mfa.totp = None
+    security_harness.mfa.passkeys = [OTHER_PASSKEY]
+    security_harness.mfa.setup_required = True
+
+    response = security_harness.request(
+        "POST",
+        "/api/v1/security/passkeys/register/begin",
+    )
+
+    assert response.status_code == 200
+    assert security_harness.challenge.issue_calls[0]["user_id"] == USER.id
+
+
 def test_passkey_registration_user_handle_is_stable_and_opaque(
     security_harness: SecurityHarness,
 ) -> None:
@@ -1316,6 +1371,33 @@ def test_passkey_registration_complete_returns_metadata_and_preserves_effects(
         CREDENTIAL_ID,
         PUBLIC_KEY,
     )
+
+
+def test_passkey_registration_complete_is_allowed_during_enforced_mfa_setup(
+    security_harness: SecurityHarness,
+) -> None:
+    security_harness.mfa.totp = None
+    security_harness.mfa.passkeys = [OTHER_PASSKEY]
+    security_harness.mfa.setup_required = True
+
+    response = security_harness.request(
+        "POST",
+        "/api/v1/security/passkeys/register/complete",
+        challenge_nonce=REGISTRATION_NONCE,
+        json={
+            "challenge_id": REGISTRATION_CHALLENGE_ID,
+            "credential": REGISTRATION_CREDENTIAL,
+            "name": "Primeira passkey",
+        },
+    )
+
+    assert response.status_code == 200
+    assert security_harness.mfa.setup_required is False
+    assert security_harness.mfa.register_login_tokens == [LOGIN_KEY.uuid]
+    assert security_harness.api_key.revoke_other_calls == [(USER.id, LOGIN_KEY.uuid)]
+    assert LOGIN_SECRET in security_harness.api_key.keys
+    assert SECOND_LOGIN_SECRET not in security_harness.api_key.keys
+    assert INTEGRATION_SECRET in security_harness.api_key.keys
 
 
 def test_passkey_registration_succeeds_when_notification_dispatch_fails(
