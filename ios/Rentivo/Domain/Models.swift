@@ -33,6 +33,15 @@ public struct DemoError: Error, Equatable, LocalizedError, Sendable {
   public static let operationFailed = DemoError(
     message: "Não foi possível concluir esta ação de demonstração."
   )
+  public static let invalidBillTransition = DemoError(
+    message: "Esta mudança de status não é permitida."
+  )
+  public static let resourceNotFound = DemoError(
+    message: "O item solicitado não foi encontrado."
+  )
+  public static let permissionDenied = DemoError(
+    message: "Seu perfil de demonstração não permite esta ação."
+  )
 }
 
 public enum StableID {
