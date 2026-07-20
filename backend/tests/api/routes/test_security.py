@@ -586,7 +586,7 @@ def _assert_problem(response: Any, *, status: int, code: str, detail: str) -> No
     payload = response.json()
     assert payload["code"] == code
     assert payload["detail"] == detail
-    assert payload["type"] == f"https://rentivo.app/problems/{code}"
+    assert payload["type"] == f"https://rentivo.com.br/problems/{code}"
     assert payload["request_id"]
 
 

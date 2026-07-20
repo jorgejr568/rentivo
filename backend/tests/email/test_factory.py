@@ -18,7 +18,7 @@ def test_factory_returns_ses_when_configured(monkeypatch):
     monkeypatch.setattr(settings, "ses_region", "us-east-1")
     monkeypatch.setattr(settings, "ses_access_key_id", "k")
     monkeypatch.setattr(settings, "ses_secret_access_key", "s")
-    monkeypatch.setattr(settings, "ses_from_email", "noreply@rentivo.app")
+    monkeypatch.setattr(settings, "ses_from_email", "noreply@rentivo.com.br")
     with patch("rentivo.email.ses.boto3"):
         backend = get_email_backend()
     assert isinstance(backend, SESEmailBackend)

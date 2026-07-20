@@ -17,7 +17,7 @@ def test_problem_response_uses_rfc_7807_content_type():
     assert response.status_code == 403
     assert response.media_type == "application/problem+json"
     assert json.loads(response.body) == {
-        "type": "https://rentivo.app/problems/forbidden",
+        "type": "https://rentivo.com.br/problems/forbidden",
         "title": "Acesso negado",
         "status": 403,
         "code": "forbidden",

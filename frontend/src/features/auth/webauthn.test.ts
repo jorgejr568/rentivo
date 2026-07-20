@@ -6,7 +6,7 @@ import { authenticateWithPasskey } from "./webauthn";
 const options: components["schemas"]["WebAuthnAuthenticationOptions"] = {
   allowCredentials: [{ id: "AQI", transports: ["internal"], type: "public-key" }],
   challenge: "AwQ",
-  rpId: "rentivo.app",
+  rpId: "rentivo.com.br",
   timeout: 60000,
   userVerification: "preferred"
 };

@@ -90,7 +90,7 @@ describe("ResetPasswordPage", () => {
             request_id: "request-id",
             status: 400,
             title: "Requisição inválida",
-            type: "https://rentivo.app/problems/invalid_or_expired_reset_token"
+            type: "https://rentivo.com.br/problems/invalid_or_expired_reset_token"
           })
       },
       path: "/reset-password?token=expired-token"
@@ -121,7 +121,7 @@ describe("ResetPasswordPage", () => {
               request_id: "request-id",
               status: 400,
               title: "Requisição inválida",
-              type: "https://rentivo.app/problems/password_rejected"
+              type: "https://rentivo.com.br/problems/password_rejected"
             });
           }
           throw new TypeError("network unavailable");

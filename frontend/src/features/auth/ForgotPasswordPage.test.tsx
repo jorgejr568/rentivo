@@ -86,7 +86,7 @@ describe("ForgotPasswordPage", () => {
             request_id: "request-id",
             status: 400,
             title: "Requisição inválida",
-            type: "https://rentivo.app/problems/turnstile_failed"
+            type: "https://rentivo.com.br/problems/turnstile_failed"
           })
       },
       path: "/forgot-password"

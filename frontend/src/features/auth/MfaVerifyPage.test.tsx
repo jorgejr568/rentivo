@@ -106,7 +106,7 @@ describe("MfaVerifyPage", () => {
                   request_id: "request-id",
                   status: 401,
                   title: "Não autenticado",
-                  type: "https://rentivo.app/problems/invalid_mfa_code"
+                  type: "https://rentivo.com.br/problems/invalid_mfa_code"
                 }
               : {
                   code: "mfa_rate_limited",
@@ -115,7 +115,7 @@ describe("MfaVerifyPage", () => {
                   request_id: "request-id",
                   status: 429,
                   title: "Muitas tentativas",
-                  type: "https://rentivo.app/problems/mfa_rate_limited"
+                  type: "https://rentivo.com.br/problems/mfa_rate_limited"
                 }
           );
         }
@@ -166,7 +166,7 @@ describe("MfaVerifyPage", () => {
           return jsonResponse({
             allowCredentials: [{ id: "AQI", type: "public-key" }],
             challenge: "AwQ",
-            rpId: "rentivo.app",
+            rpId: "rentivo.com.br",
             timeout: 60000,
             userVerification: "preferred"
           });
@@ -205,7 +205,7 @@ describe("MfaVerifyPage", () => {
           jsonResponse({
             allowCredentials: [],
             challenge: "AwQ",
-            rpId: "rentivo.app",
+            rpId: "rentivo.com.br",
             timeout: 60000,
             userVerification: "preferred"
           })
@@ -237,7 +237,7 @@ describe("MfaVerifyPage", () => {
             request_id: "request-id",
             status: 401,
             title: "Não autenticado",
-            type: "https://rentivo.app/problems/challenge_expired"
+            type: "https://rentivo.com.br/problems/challenge_expired"
           })
       },
       path: "/mfa-verify?challenge=challenge-1"
@@ -308,7 +308,7 @@ describe("MfaVerifyPage", () => {
           return jsonResponse({
             allowCredentials: [],
             challenge: "AwQ",
-            rpId: "rentivo.app",
+            rpId: "rentivo.com.br",
             timeout: 60000,
             userVerification: "preferred"
           });
@@ -321,7 +321,7 @@ describe("MfaVerifyPage", () => {
             request_id: "request-id",
             status: 401,
             title: "Não autenticado",
-            type: "https://rentivo.app/problems/passkey_verification_failed"
+            type: "https://rentivo.com.br/problems/passkey_verification_failed"
           })
       },
       path: "/mfa-verify?challenge=challenge-1"

@@ -113,7 +113,7 @@ describe("LoginPage", () => {
               request_id: "request-id",
               status: 401,
               title: "Não autenticado",
-              type: "https://rentivo.app/problems/invalid_credentials"
+              type: "https://rentivo.com.br/problems/invalid_credentials"
             },
             {
               "X-Rentivo-Analytics-Event": "rentivo_login_failed",

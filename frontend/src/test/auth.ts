@@ -82,7 +82,7 @@ export const PROBLEM_401 = {
   request_id: "request-id",
   status: 401,
   title: "Não autenticado",
-  type: "https://rentivo.app/problems/authentication_required"
+  type: "https://rentivo.com.br/problems/authentication_required"
 };
 
 export function jsonResponse(body: unknown, status = 200, headers: HeadersInit = {}) {

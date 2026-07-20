@@ -6,7 +6,7 @@ from rentivo.services.email_service import EmailService
 def _service():
     backend = MagicMock()
     backend.send.return_value = "id"
-    return EmailService(backend, from_address="noreply@rentivo.app"), backend
+    return EmailService(backend, from_address="noreply@rentivo.com.br"), backend
 
 
 def test_send_welcome_renders_email_and_pix_url():

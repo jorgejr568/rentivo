@@ -88,7 +88,7 @@ def test_stale_legacy_form_posts_return_gone_problem(
     assert response.status_code == 410
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
-        "type": "https://rentivo.app/problems/legacy_route_gone",
+        "type": "https://rentivo.com.br/problems/legacy_route_gone",
         "title": "Rota removida",
         "status": 410,
         "code": "legacy_route_gone",

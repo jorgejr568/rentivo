@@ -58,7 +58,7 @@ def test_ready_database_failure_is_problem_json(client: TestClient, monkeypatch:
     assert response.status_code == 503
     assert response.headers["content-type"] == "application/problem+json"
     assert response.json() == {
-        "type": "https://rentivo.app/problems/not_ready",
+        "type": "https://rentivo.com.br/problems/not_ready",
         "title": "Serviço indisponível",
         "status": 503,
         "code": "not_ready",

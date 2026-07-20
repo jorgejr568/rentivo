@@ -26,7 +26,7 @@ def problem(
     fields: dict[str, str] | None = None,
 ) -> Problem:
     return Problem(
-        type=f"https://rentivo.app/problems/{code}",
+        type=f"https://rentivo.com.br/problems/{code}",
         title=title,
         status=status,
         code=code,

@@ -9,7 +9,7 @@ def test_email_message_holds_fields():
         subject="Recuperação de senha",
         text_body="link plain",
         html_body="<a href=''>link</a>",
-        from_address="noreply@rentivo.app",
+        from_address="noreply@rentivo.com.br",
     )
     payload = asdict(msg)
     assert payload["to"] == "alice@example.com"

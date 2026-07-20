@@ -72,7 +72,7 @@ describe("GoogleCallbackPage", () => {
             request_id: "request-id",
             status: 401,
             title: "Não autenticado",
-            type: "https://rentivo.app/problems/google_auth_failed"
+            type: "https://rentivo.com.br/problems/google_auth_failed"
           })
       },
       path: "/auth/google/callback?error=access_denied&state=oauth-state"

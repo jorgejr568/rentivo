@@ -15,7 +15,7 @@ const problem = {
   request_id: "problem-request-id",
   status: 401,
   title: "Não autenticado",
-  type: "https://rentivo.app/problems/authentication_required"
+  type: "https://rentivo.com.br/problems/authentication_required"
 };
 
 afterEach(() => {

@@ -253,7 +253,7 @@ async function fulfillAnonymous(route: Route) {
       request_id: "e2e-request-id",
       status: 401,
       title: "Não autenticado",
-      type: "https://rentivo.app/problems/authentication_required"
+      type: "https://rentivo.com.br/problems/authentication_required"
     }),
     contentType: "application/problem+json; charset=utf-8",
     status: 401

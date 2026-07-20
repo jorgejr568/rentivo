@@ -13,7 +13,7 @@ def msg():
         subject="Olá",
         text_body="Texto",
         html_body="<p>Texto</p>",
-        from_address="noreply@rentivo.app",
+        from_address="noreply@rentivo.com.br",
     )
 
 

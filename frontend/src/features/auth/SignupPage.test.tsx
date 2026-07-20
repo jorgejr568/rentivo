@@ -81,7 +81,7 @@ describe("SignupPage", () => {
             request_id: "request-id",
             status: 400,
             title: "Requisição inválida",
-            type: "https://rentivo.app/problems/email_already_registered"
+            type: "https://rentivo.com.br/problems/email_already_registered"
           })
       },
       path: "/signup"

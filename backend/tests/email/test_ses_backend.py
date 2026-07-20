@@ -15,7 +15,7 @@ def test_send_calls_ses_with_expected_payload(boto3_mock):
         region="us-east-1",
         access_key_id="AKIA",
         secret_access_key="secret",
-        from_address="noreply@rentivo.app",
+        from_address="noreply@rentivo.com.br",
         configuration_set="rentivo-prod",
     )
     msg = EmailMessage(
@@ -23,7 +23,7 @@ def test_send_calls_ses_with_expected_payload(boto3_mock):
         subject="Test",
         text_body="hello",
         html_body="<p>hello</p>",
-        from_address="noreply@rentivo.app",
+        from_address="noreply@rentivo.com.br",
     )
     result = backend.send(msg)
     assert result == "amazon-msg-id"
@@ -35,7 +35,7 @@ def test_send_calls_ses_with_expected_payload(boto3_mock):
         aws_secret_access_key="secret",
     )
     sent_kwargs = client.send_email.call_args.kwargs
-    assert sent_kwargs["Source"] == "noreply@rentivo.app"
+    assert sent_kwargs["Source"] == "noreply@rentivo.com.br"
     assert sent_kwargs["Destination"] == {"ToAddresses": ["alice@example.com"]}
     assert sent_kwargs["Message"]["Subject"]["Data"] == "Test"
     assert sent_kwargs["Message"]["Body"]["Text"]["Data"] == "hello"

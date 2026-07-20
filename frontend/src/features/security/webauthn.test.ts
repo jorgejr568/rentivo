@@ -15,7 +15,7 @@ const options: components["schemas"]["WebAuthnRegistrationOptions"] = {
   excludeCredentials: [{ id: "AQI", transports: ["internal"], type: "public-key" }],
   hints: ["client-device"],
   pubKeyCredParams: [{ alg: -7, type: "public-key" }],
-  rp: { id: "rentivo.app", name: "Rentivo" },
+  rp: { id: "rentivo.com.br", name: "Rentivo" },
   timeout: 60000,
   user: { displayName: "User", id: "BQ", name: "user@example.com" }
 };
