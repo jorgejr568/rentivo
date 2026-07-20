@@ -210,6 +210,55 @@ public struct BillingDraft: Hashable, Sendable {
     self.recipients = recipients
     self.replyTo = replyTo
   }
+
+  public static let empty = BillingDraft(
+    name: "",
+    description: "",
+    owner: .user(id: StableID.userAna, name: "Pessoal"),
+    items: []
+  )
+
+  public func validate() -> [ValidationIssue] {
+    var issues: [ValidationIssue] = []
+    if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      issues.append(ValidationIssue(field: .name, message: "Informe o nome da cobrança."))
+    }
+    if items.isEmpty {
+      issues.append(
+        ValidationIssue(field: .items, message: "Adicione ao menos um item recorrente.")
+      )
+    }
+    if items.contains(where: {
+      $0.description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }) {
+      issues.append(
+        ValidationIssue(field: .itemDescription, message: "Descreva todos os itens.")
+      )
+    }
+    if items.contains(where: { $0.amount.centavos < 0 }) {
+      issues.append(
+        ValidationIssue(field: .itemAmount, message: "Os valores não podem ser negativos.")
+      )
+    }
+    return issues
+  }
+}
+
+public enum ValidationField: Hashable, Sendable {
+  case name
+  case items
+  case itemDescription
+  case itemAmount
+}
+
+public struct ValidationIssue: Hashable, Sendable {
+  public let field: ValidationField
+  public let message: String
+
+  public init(field: ValidationField, message: String) {
+    self.field = field
+    self.message = message
+  }
 }
 
 public enum BillLineItemKind: String, CaseIterable, Codable, Sendable {

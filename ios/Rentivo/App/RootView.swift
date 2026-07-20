@@ -33,21 +33,13 @@ struct AuthenticatedTabView: View {
     @Bindable var app = app
     TabView(selection: $app.selectedTab) {
       NavigationStack {
-        FeaturePlaceholder(
-          title: "Início",
-          message: "Sua visão financeira aparecerá aqui.",
-          symbol: "house.fill"
-        )
+        HomeView()
       }
       .tag(AppTab.home)
       .tabItem { Label("Início", systemImage: "house") }
 
       NavigationStack {
-        FeaturePlaceholder(
-          title: "Cobranças",
-          message: "Gerencie imóveis, faturas e despesas.",
-          symbol: "doc.text.fill"
-        )
+        BillingListView()
       }
       .tag(AppTab.billings)
       .tabItem { Label("Cobranças", systemImage: "doc.text") }

@@ -15,6 +15,7 @@ let package = Package(
     .target(
       name: "RentivoCore",
       path: "Rentivo",
+      exclude: ["App", "DesignSystem", "Features", "Resources"],
       sources: ["Domain", "Data"]
     ),
     .testTarget(
