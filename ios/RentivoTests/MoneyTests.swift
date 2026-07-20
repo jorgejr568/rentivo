@@ -1,7 +1,11 @@
 import Foundation
 import Testing
 
-@testable import RentivoCore
+#if canImport(RentivoCore)
+  @testable import RentivoCore
+#else
+  @testable import Rentivo
+#endif
 
 @Test func moneyAddsCentavosWithoutFloatingPoint() {
   #expect(Money(centavos: 180_000) + Money(centavos: 65_000) == Money(centavos: 245_000))

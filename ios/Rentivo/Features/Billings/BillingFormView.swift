@@ -130,6 +130,7 @@ struct BillingFormView: View {
           ForEach(validationIssues, id: \.self) { issue in
             Label(issue.message, systemImage: "exclamationmark.circle.fill")
               .foregroundStyle(RentivoColors.coral)
+              .accessibilityIdentifier("billing.form.validation")
           }
         }
       }
