@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { expect, request as playwrightRequest, test, type Request } from "@playwright/test";
 
 const productionStackMode = process.env.PLAYWRIGHT_PRODUCTION_STACK === "1";
+const ULID_PATH_SEGMENT = "[0-9A-HJKMNP-TV-Z]{26}";
 
 function decodeBase32(value: string): Buffer {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
@@ -96,7 +97,7 @@ test("exercises the replacement stack without network interception", async ({ ba
     await page.goto("/organizations/create");
     await page.getByLabel("Nome da organização", { exact: true }).fill(`Organização ${unique}`);
     await page.getByRole("button", { name: "Criar organização" }).click();
-    await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
+    await expect(page).toHaveURL(new RegExp(`/organizations/${ULID_PATH_SEGMENT}$`));
     organizationUuid = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)!;
 
     await page.goto("/security");
@@ -174,7 +175,7 @@ test("exercises the replacement stack without network interception", async ({ ba
     await page.getByRole("button", { name: "Confirmar e Ativar" }).click();
 
     await expect(page).toHaveURL(/\/security\/recovery-codes$/);
-    await expect(page.getByRole("heading", { name: "Códigos de Recuperação" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Códigos de Recuperação", exact: true })).toBeVisible();
     expect(await page.locator("#recovery-codes code").count()).toBeGreaterThan(0);
     await page.getByRole("button", { name: "Continuar" }).click();
     await expect(page).toHaveURL(/\/security$/);
@@ -194,14 +195,14 @@ test("exercises the replacement stack without network interception", async ({ ba
     await page.getByLabel("Valor do item 1 (R$)").fill("1.250,00");
     await page.getByRole("button", { name: "Criar cobrança" }).click();
 
-    await expect(page).toHaveURL(/\/billings\/[0-9a-f-]+$/);
+    await expect(page).toHaveURL(new RegExp(`/billings/${ULID_PATH_SEGMENT}$`));
     await expect(page.getByText("Nenhuma fatura gerada para este imóvel.")).toBeVisible();
     await page.getByRole("link", { name: "Gerar primeira fatura" }).click();
     await page.getByLabel("Mês de Referência").fill("2030-12");
     await page.getByLabel("Vencimento").fill("10/12/2030");
     await page.getByRole("button", { name: "Gerar Fatura" }).click();
 
-    await expect(page).toHaveURL(/\/billings\/[0-9a-f-]+\/bills\/[0-9a-f-]+$/);
+    await expect(page).toHaveURL(new RegExp(`/billings/${ULID_PATH_SEGMENT}/bills/${ULID_PATH_SEGMENT}$`));
     const billPath = new URL(page.url()).pathname;
     const [billingUuid, billUuid] = billPath.split("/").filter(Boolean).filter((part) => part !== "billings" && part !== "bills");
     await expect.poll(
@@ -214,7 +215,7 @@ test("exercises the replacement stack without network interception", async ({ ba
     ).toBe("succeeded");
 
     await page.reload();
-    await expect(page.getByRole("heading", { level: 1, name: "Fatura · Dezembro 2030" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Fatura · Dezembro/2030" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Abrir PDF com QR" })).toBeVisible();
     const invoice = await page.request.get(`/api/v1/billings/${billingUuid}/bills/${billUuid}/invoice`);
     expect(invoice.status()).toBe(200);
@@ -237,7 +238,7 @@ test("exercises the replacement stack without network interception", async ({ ba
     try {
       const revoked = await replay.get("/api/v1/auth/session");
       expect(revoked.status()).toBe(401);
-      expect(await revoked.json()).toMatchObject({ code: "authentication_required", status: 401 });
+      expect(await revoked.json()).toMatchObject({ code: "invalid_credentials", status: 401 });
     } finally {
       await replay.dispose();
     }

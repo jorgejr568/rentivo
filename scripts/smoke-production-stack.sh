@@ -41,6 +41,10 @@ expect_body() {
   grep -Fq -- "$1" "$BODY" || fail "response body did not contain expected marker: $1"
 }
 
+csrf_token_from_body() {
+  sed -n 's/.*"csrf_token":"\([^"]*\)".*/\1/p' "$BODY"
+}
+
 main() {
   if [[ $# -ne 1 || -z "${1:-}" ]]; then
     printf 'Usage: %s BASE_URL\n' "$0" >&2
@@ -95,12 +99,14 @@ status=$(request POST /api/v1/auth/signup \
   --data "$signup_payload")
 expect_response 200 application/json "$status"
 expect_body '"status":"authenticated"'
-csrf_token=$(sed -n 's/.*"csrf_token":"\([^"]*\)".*/\1/p' "$BODY")
+csrf_token=$(csrf_token_from_body)
 [[ -n "$csrf_token" ]] || fail "signup response did not contain a CSRF token"
 
 status=$(request GET /api/v1/auth/session --cookie "$COOKIE_JAR" --cookie-jar "$COOKIE_JAR")
 expect_response 200 application/json "$status"
 expect_body "\"email\":\"$email\""
+csrf_token=$(csrf_token_from_body)
+[[ -n "$csrf_token" ]] || fail "session response did not contain a CSRF token"
 
 access_cookie=$(awk '$0 !~ /^#/ && $6 ~ /rentivo_access$/ { value=$6 "=" $7 } END { print value }' "$COOKIE_JAR")
 if [[ -z "$access_cookie" ]]; then
@@ -118,7 +124,7 @@ status=$(request POST /api/v1/auth/logout \
 
 status=$(request GET /api/v1/auth/session --header "Cookie: $access_cookie")
 expect_response 401 application/problem+json "$status"
-expect_body '"code":"authentication_required"'
+expect_body '"code":"invalid_credentials"'
 
 stage "password login after logout"
 login_payload=$(printf '{"email":"%s","password":"%s","turnstile_token":""}' "$email" "$password")

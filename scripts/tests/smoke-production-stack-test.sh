@@ -27,4 +27,12 @@ assert_media_type text/plain $'HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\n\r
 assert_media_type application/xml $'HTTP/1.1 200 OK\r\nCoNtEnT-TyPe: application/xml; charset=utf-8\r\n\r\n'
 assert_media_type application/problem+json $'HTTP/1.1 302 Found\r\nContent-Type: text/html\r\nLocation: /final\r\n\r\nHTTP/1.1 401 Unauthorized\r\ncontent-type: application/problem+json; charset=utf-8\r\n\r\n'
 
+BODY="$WORK_DIR/body.txt"
+printf '%s' '{"bootstrap":{"csrf_token":"rotated-session-token"}}' > "$BODY"
+actual_csrf_token=$(csrf_token_from_body)
+if [[ "$actual_csrf_token" != "rotated-session-token" ]]; then
+  printf 'expected rotated-session-token, got %s\n' "${actual_csrf_token:-<missing>}" >&2
+  exit 1
+fi
+
 printf 'smoke production stack shell tests passed\n'
