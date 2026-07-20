@@ -90,6 +90,7 @@ class FakeAuthChallengeService:
         return bool(
             challenge is not None
             and not self.consumed
+            and challenge.consumed_at is None
             and challenge.expires_at > NOW
             and uuid == challenge.uuid
             and nonce == self.nonce
@@ -119,7 +120,17 @@ class FakeAuthChallengeService:
         expected_method: str | None,
     ) -> bool:
         self.failure_calls.append((uuid, nonce, expected_phase, expected_method))
-        return self._matches(uuid, nonce, expected_phase, expected_method)
+        if not self._matches(uuid, nonce, expected_phase, expected_method):
+            return False
+        assert self.challenge is not None
+        failures = self.challenge.failures + 1
+        self.challenge = self.challenge.model_copy(
+            update={
+                "failures": failures,
+                "consumed_at": NOW if failures >= 5 else None,
+            }
+        )
+        return True
 
     def consume(
         self,
@@ -261,9 +272,11 @@ def _verify(
     nonce: str | None = CHALLENGE_NONCE,
     challenge_id: str = CHALLENGE_ID,
     code: str = "123456",
+    client: TestClient | None = None,
 ):
     headers = {} if nonce is None else {"Cookie": f"{settings.challenge_cookie_name}={nonce}"}
-    return harness.client.post(
+    active_client = client or harness.client
+    return active_client.post(
         f"/api/v1/auth/mfa/{method}/verify",
         json={"challenge_id": challenge_id, "code": code},
         headers=headers,
@@ -356,7 +369,7 @@ def test_invalid_code_counts_challenge_failure_and_writes_failure_audit(
     assert mfa_harness.audit.calls[0][1]["metadata"] == {"ip": "testclient", "method": method}
 
 
-def test_sixth_invalid_mfa_attempt_is_rate_limited_without_rechecking_the_code(
+def test_sixth_invalid_mfa_attempt_rejects_the_exhausted_challenge_without_rechecking_the_code(
     mfa_harness: MFAHarness,
 ) -> None:
     mfa_harness.mfa.totp_result = False
@@ -364,12 +377,36 @@ def test_sixth_invalid_mfa_attempt_is_rate_limited_without_rechecking_the_code(
     responses = [_verify(mfa_harness, "totp", code="000000") for _ in range(6)]
 
     assert [response.status_code for response in responses[:5]] == [401] * 5
-    assert responses[5].status_code == 429
-    assert responses[5].json()["code"] == "mfa_rate_limited"
+    assert responses[5].status_code == 401
+    assert responses[5].json()["code"] == "invalid_or_expired_challenge"
     assert len(mfa_harness.mfa.totp_calls) == 5
     assert len(mfa_harness.challenge.failure_calls) == 5
     assert len(mfa_harness.audit.calls) == 5
+    assert len(mfa_harness.rate_limit.reserve_calls) == 5
     assert mfa_harness.login.calls == []
+
+
+def test_rotating_client_ips_exhausts_and_invalidates_the_persisted_challenge(
+    mfa_harness: MFAHarness,
+) -> None:
+    mfa_harness.mfa.totp_result = False
+    responses = []
+
+    for attempt in range(1, 7):
+        client = TestClient(mfa_harness.app, client=(f"198.51.100.{attempt}", 50000))
+        try:
+            responses.append(_verify(mfa_harness, "totp", code="000000", client=client))
+        finally:
+            client.close()
+
+    assert [response.json()["code"] for response in responses[:5]] == ["invalid_mfa_code"] * 5
+    assert responses[5].status_code == 401
+    assert responses[5].json()["code"] == "invalid_or_expired_challenge"
+    assert len(mfa_harness.mfa.totp_calls) == 5
+    assert len(mfa_harness.challenge.failure_calls) == 5
+    assert [call["identity"] for call in mfa_harness.rate_limit.reserve_calls] == [
+        f"{USER.id}:198.51.100.{attempt}" for attempt in range(1, 6)
+    ]
 
 
 def test_fresh_challenge_does_not_reset_the_per_user_and_ip_mfa_rate_limit(

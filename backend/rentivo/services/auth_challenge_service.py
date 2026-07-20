@@ -12,6 +12,7 @@ from rentivo.observability import traced
 from rentivo.repositories.base import AuthChallengeRepository
 
 _DEFAULT_TTL = timedelta(minutes=5)
+MFA_CHALLENGE_FAILURE_LIMIT = 5
 
 
 def _utcnow() -> datetime:
@@ -82,16 +83,23 @@ class AuthChallengeService:
     ) -> AuthChallenge | None:
         challenge = self.repository.get_by_uuid(uuid)
         now = _as_aware_utc(self.now())
+        failure_limit = MFA_CHALLENGE_FAILURE_LIMIT if expected_phase == "login" else None
         if (
             challenge is None
             or challenge.consumed_at is not None
             or _as_aware_utc(challenge.expires_at) <= now
             or challenge.phase != expected_phase
             or (expected_method is not None and expected_method not in challenge.allowed_methods)
+            or (failure_limit is not None and challenge.failures >= failure_limit)
         ):
             return None
         if not compare_digest(challenge.nonce_hash, self._digest(nonce)):
-            self.repository.increment_failures(uuid, expected_phase, now)
+            self.repository.increment_failures(
+                uuid,
+                expected_phase,
+                now,
+                failure_limit=failure_limit,
+            )
             return None
         return challenge
 
@@ -112,7 +120,13 @@ class AuthChallengeService:
         )
         if challenge is None:
             return False
-        return self.repository.increment_failures(uuid, expected_phase, _as_aware_utc(self.now()))
+        failure_limit = MFA_CHALLENGE_FAILURE_LIMIT if expected_phase == "login" else None
+        return self.repository.increment_failures(
+            uuid,
+            expected_phase,
+            _as_aware_utc(self.now()),
+            failure_limit=failure_limit,
+        )
 
     @traced("auth_challenge.set_webauthn", record_exception_details=False)
     def set_webauthn_challenge(

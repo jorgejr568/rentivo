@@ -150,6 +150,22 @@ def test_repository_failure_count_is_an_atomic_increment(
     assert loaded.consumed_at is None
 
 
+def test_repository_failure_budget_atomically_consumes_challenge_at_limit(
+    auth_challenge_repo: SQLAlchemyAuthChallengeRepository,
+    challenge_owner: User,
+) -> None:
+    saved = auth_challenge_repo.create(make_challenge(challenge_owner.id, phase="login"))
+
+    for _attempt in range(5):
+        assert auth_challenge_repo.increment_failures(saved.uuid, "login", NOW, failure_limit=5) is True
+
+    assert auth_challenge_repo.increment_failures(saved.uuid, "login", NOW, failure_limit=5) is False
+    loaded = auth_challenge_repo.get_by_uuid(saved.uuid)
+    assert loaded is not None
+    assert loaded.failures == 5
+    assert loaded.consumed_at == NOW
+
+
 def test_repository_consume_is_single_use_before_expiry(
     auth_challenge_repo: SQLAlchemyAuthChallengeRepository,
     challenge_owner: User,

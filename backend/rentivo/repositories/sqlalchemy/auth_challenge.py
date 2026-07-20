@@ -115,20 +115,32 @@ class SQLAlchemyAuthChallengeRepository(AuthChallengeRepository):
         return None if row is None else self._hydrate(row)
 
     @traced("auth_challenge_repo.increment_failures", record_exception_details=False)
-    def increment_failures(self, uuid: str, phase: str, failed_at: datetime) -> bool:
+    def increment_failures(
+        self,
+        uuid: str,
+        phase: str,
+        failed_at: datetime,
+        *,
+        failure_limit: int | None = None,
+    ) -> bool:
         persistence_error: AuthChallengePersistenceError | None = None
         updated = False
         try:
             result = self.conn.execute(
                 text(
-                    "UPDATE auth_challenges SET failures = failures + 1 "
+                    "UPDATE auth_challenges SET consumed_at = CASE "
+                    "WHEN :failure_limit IS NOT NULL AND failures + 1 >= :failure_limit THEN :failed_at "
+                    "ELSE consumed_at END, "
+                    "failures = failures + 1 "
                     "WHERE uuid = :uuid AND phase = :phase AND consumed_at IS NULL "
-                    "AND expires_at > :failed_at"
+                    "AND expires_at > :failed_at "
+                    "AND (:failure_limit IS NULL OR failures < :failure_limit)"
                 ),
                 {
                     "uuid": uuid,
                     "phase": phase,
                     "failed_at": _to_storage(failed_at),
+                    "failure_limit": failure_limit,
                 },
             )
             self.conn.commit()

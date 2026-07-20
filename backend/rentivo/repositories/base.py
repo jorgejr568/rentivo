@@ -592,7 +592,14 @@ class AuthChallengeRepository(ABC):
     def get_by_uuid(self, uuid: str) -> AuthChallenge | None: ...
 
     @abstractmethod
-    def increment_failures(self, uuid: str, phase: str, failed_at: datetime) -> bool: ...
+    def increment_failures(
+        self,
+        uuid: str,
+        phase: str,
+        failed_at: datetime,
+        *,
+        failure_limit: int | None = None,
+    ) -> bool: ...
 
     @abstractmethod
     def set_webauthn_challenge(

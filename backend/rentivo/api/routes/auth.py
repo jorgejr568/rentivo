@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 
 import structlog
@@ -48,6 +49,10 @@ router = APIRouter(
 
 def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+def _login_rate_identity(*, email: str, client_ip: str) -> str:
+    return json.dumps((email, client_ip), separators=(",", ":"))
 
 
 async def _verify_turnstile(request: Request, services: RequestServices, token: str) -> None:
@@ -218,10 +223,11 @@ async def login(
     services: RequestServices = Depends(get_services),
 ) -> JSONResponse:
     client_ip = _client_ip(request)
+    rate_identity = _login_rate_identity(email=payload.email, client_ip=client_ip)
     await _verify_turnstile(request, services, payload.turnstile_token)
     if not services.auth_rate_limit.reserve(
         action="login",
-        identity=client_ip,
+        identity=rate_identity,
         limit=5,
         window_seconds=60,
     ):
@@ -241,7 +247,7 @@ async def login(
     if result is None:
         _audit_login_failure(services, email=payload.email, client_ip=client_ip)
         raise _login_failure_problem(rate_limited=False)
-    services.auth_rate_limit.clear(action="login", identity=client_ip)
+    services.auth_rate_limit.clear(action="login", identity=rate_identity)
     if result.status == "mfa_required":
         return _mfa_response(result)
     return _authenticated_response(result, set_access_cookie=True)

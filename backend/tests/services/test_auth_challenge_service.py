@@ -60,17 +60,27 @@ class FakeAuthChallengeRepository(AuthChallengeRepository):
     def get_by_uuid(self, uuid: str) -> AuthChallenge | None:
         return self.challenges.get(uuid)
 
-    def increment_failures(self, uuid: str, phase: str, failed_at: datetime) -> bool:
+    def increment_failures(
+        self,
+        uuid: str,
+        phase: str,
+        failed_at: datetime,
+        *,
+        failure_limit: int | None = None,
+    ) -> bool:
         challenge = self.challenges.get(uuid)
         if (
             challenge is None
             or challenge.phase != phase
             or challenge.consumed_at is not None
             or challenge.expires_at <= failed_at
+            or (failure_limit is not None and challenge.failures >= failure_limit)
         ):
             return False
         self.failure_calls.append((uuid, phase, failed_at))
-        self.challenges[uuid] = challenge.model_copy(update={"failures": challenge.failures + 1})
+        failures = challenge.failures + 1
+        consumed_at = failed_at if failure_limit is not None and failures >= failure_limit else None
+        self.challenges[uuid] = challenge.model_copy(update={"failures": failures, "consumed_at": consumed_at})
         return True
 
     def set_webauthn_challenge(
@@ -418,6 +428,46 @@ def test_record_failure_exposes_invalid_mfa_attempt_through_service(
     )
     assert repository.failure_calls == [(issued.challenge.uuid, "mfa", NOW)]
     assert repository.challenges[issued.challenge.uuid].failures == 1
+
+
+def test_login_challenge_is_invalidated_after_five_persisted_failures(
+    service: AuthChallengeService,
+    repository: FakeAuthChallengeRepository,
+) -> None:
+    issued = issue_mfa(service, phase="login")
+
+    for _attempt in range(5):
+        assert (
+            service.record_failure(
+                issued.challenge.uuid,
+                issued.nonce,
+                expected_phase="login",
+                expected_method="totp",
+            )
+            is True
+        )
+
+    persisted = repository.challenges[issued.challenge.uuid]
+    assert persisted.failures == 5
+    assert persisted.consumed_at == NOW
+    assert (
+        service.get_valid(
+            issued.challenge.uuid,
+            issued.nonce,
+            expected_phase="login",
+            expected_method="totp",
+        )
+        is None
+    )
+    assert (
+        service.record_failure(
+            issued.challenge.uuid,
+            issued.nonce,
+            expected_phase="login",
+            expected_method="totp",
+        )
+        is False
+    )
 
 
 def test_record_failure_rejects_invalid_challenge(

@@ -827,6 +827,37 @@ def test_login_rate_limit_is_preserved_for_none_results(auth_harness: AuthHarnes
     assert limited.headers["X-Rentivo-Analytics-Reason"] == "rate_limited"
 
 
+def test_successful_login_does_not_clear_another_accounts_failed_login_budget(
+    auth_harness: AuthHarness,
+) -> None:
+    victim_payload = {
+        "email": "victim@example.com",
+        "password": "wrong",
+        "turnstile_token": "turnstile",
+    }
+    auth_harness.login.login_result = None
+    initial_failures = [auth_harness.client.post("/api/v1/auth/login", json=victim_payload) for _ in range(4)]
+
+    auth_harness.login.login_result = AUTHENTICATED_RESULT
+    other_account = auth_harness.client.post(
+        "/api/v1/auth/login",
+        json={"email": USER.email, "password": "correct", "turnstile_token": "turnstile"},
+    )
+
+    auth_harness.login.login_result = None
+    final_failure = auth_harness.client.post("/api/v1/auth/login", json=victim_payload)
+    limited = auth_harness.client.post("/api/v1/auth/login", json=victim_payload)
+
+    assert [response.status_code for response in initial_failures] == [401] * 4
+    assert other_account.status_code == 200
+    assert final_failure.status_code == 401
+    assert limited.status_code == 429
+    identities = [identity for action, identity in auth_harness.rate_limit.calls if action == "login"]
+    assert identities[:4] == [identities[0]] * 4
+    assert identities[4] != identities[0]
+    assert identities[5:] == [identities[0]] * 2
+
+
 def test_login_preserves_noncredential_problem_exceptions(auth_harness: AuthHarness) -> None:
     from rentivo.api.errors import ProblemException
 
