@@ -90,20 +90,18 @@ export function Topbar({ currentPath, currentUser, onLogout, pendingInviteCount 
               <CircleUserRound aria-hidden="true" className="topbar-icon" size={18} />
               {currentUser.email}
             </button>
-            {isAccountMenuOpen ? (
-              <div className="topbar-dropdown-menu">
-                <Link className="topbar-dropdown-item" to="/invites/">
-                  Convites
-                  {pendingInviteCount > 0 ? <span className="topbar-badge">{pendingInviteCount}</span> : null}
-                </Link>
-                <Link className="topbar-dropdown-item" to="/themes/user">Tema</Link>
-                <Link className="topbar-dropdown-item" to="/security">Segurança</Link>
-                <div className="topbar-dropdown-divider" />
-                <button className="topbar-dropdown-item topbar-dropdown-item--danger" onClick={onLogout} type="button">
-                  Sair
-                </button>
-              </div>
-            ) : null}
+            <div className="topbar-dropdown-menu">
+              <Link className="topbar-dropdown-item" to="/invites/">
+                Convites
+                {pendingInviteCount > 0 ? <span className="topbar-badge">{pendingInviteCount}</span> : null}
+              </Link>
+              <Link className="topbar-dropdown-item" to="/themes/user">Tema</Link>
+              <Link className="topbar-dropdown-item" to="/security">Segurança</Link>
+              <div className="topbar-dropdown-divider" />
+              <button className="topbar-dropdown-item topbar-dropdown-item--danger" onClick={onLogout} type="button">
+                Sair
+              </button>
+            </div>
           </div>
         </div>
       </div>

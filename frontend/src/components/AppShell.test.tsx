@@ -81,12 +81,16 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "Organizações" })).toHaveClass("is-active");
     expect(screen.getByRole("link", { name: "Minhas Cobranças" })).not.toHaveClass("is-active");
     expect(screen.getByRole("alert")).toHaveClass("toast--info");
+    expect(screen.getByRole("link", { name: "Segurança" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Tema" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sair" })).toBeInTheDocument();
 
     const accountTrigger = screen.getByRole("button", { name: /user@example.com/i });
     await user.click(accountTrigger);
     expect(screen.getByText("2")).toBeVisible();
     await user.click(screen.getByText("Conteúdo da página"));
-    expect(screen.queryByRole("link", { name: "Segurança" })).not.toBeInTheDocument();
+    expect(accountTrigger).toHaveAttribute("aria-expanded", "false");
+    expect(accountTrigger.closest(".topbar-dropdown")).not.toHaveClass("open");
 
     await user.click(accountTrigger);
     await user.click(screen.getByRole("button", { name: "Sair" }));
