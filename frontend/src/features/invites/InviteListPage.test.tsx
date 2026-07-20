@@ -8,7 +8,9 @@ import { jsonResponse, problemResponse } from "../../test/auth";
 import { InviteListPage } from "./InviteListPage";
 
 const analytics = vi.hoisted(() => ({ pushAnalyticsFromResponse: vi.fn() }));
+const auth = vi.hoisted(() => ({ refreshSession: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }));
 vi.mock("../auth/analytics", () => analytics);
+vi.mock("../auth/AuthProvider", () => ({ useAuth: () => auth }));
 
 type Invite = components["schemas"]["PendingInviteLoginResponse"];
 
@@ -41,6 +43,7 @@ const betaInvite: Invite = {
 afterEach(() => {
   cleanup();
   analytics.pushAnalyticsFromResponse.mockReset();
+  auth.refreshSession.mockReset().mockResolvedValue(undefined);
   vi.unstubAllGlobals();
 });
 
@@ -148,6 +151,7 @@ it("accepts an invite, forwards analytics, and routes enforced MFA setup", async
   await user.click(screen.getByRole("button", { name: "Aceitar convite" }));
 
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/security/totp/setup"));
+  expect(auth.refreshSession).toHaveBeenCalledOnce();
   expect(analytics.pushAnalyticsFromResponse).toHaveBeenCalledOnce();
 });
 
@@ -197,6 +201,7 @@ it("accepts without MFA, declines with confirmation, and keeps actions usable af
 
 it("removes a successfully declined invite and reports analytics", async () => {
   const user = userEvent.setup();
+  auth.refreshSession.mockRejectedValueOnce(new Error("offline"));
   installFetch({
     "GET /api/v1/invites": () => jsonResponse({ items: [acmeInvite, betaInvite] }),
     "POST /api/v1/invites/invite-public-uuid/decline": () => jsonResponse({
@@ -211,6 +216,7 @@ it("removes a successfully declined invite and reports analytics", async () => {
   expect(screen.queryByText("Acme")).not.toBeInTheDocument();
   expect(screen.getByText("Beta")).toBeVisible();
   await waitFor(() => expect(screen.getByRole("button", { name: "Recusar" })).toHaveFocus());
+  expect(auth.refreshSession).toHaveBeenCalledOnce();
   expect(analytics.pushAnalyticsFromResponse).toHaveBeenCalledOnce();
 });
 
@@ -307,6 +313,29 @@ it("aborts an accept request and ignores stale navigation after leaving the invi
   await act(async () => {
     acceptResponse.resolve(jsonResponse({ mfa_setup_required: true, organization_uuid: "org-acme", status: "accepted" }));
   });
+  expect(screen.getByTestId("location")).toHaveTextContent("/away");
+});
+
+it("ignores navigation after leaving while the accepted invite refreshes the session", async () => {
+  const user = userEvent.setup();
+  const sessionRefresh = deferred<void>();
+  auth.refreshSession.mockReturnValueOnce(sessionRefresh.promise);
+  installFetch({
+    "GET /api/v1/invites": () => jsonResponse({ items: [acmeInvite] }),
+    "POST /api/v1/invites/invite-public-uuid/accept": () => jsonResponse({
+      mfa_setup_required: true,
+      organization_uuid: "org-acme",
+      status: "accepted"
+    })
+  });
+  renderPageWithAway();
+  await user.click(await screen.findByRole("button", { name: "Aceitar" }));
+  await user.click(screen.getByRole("button", { name: "Aceitar convite" }));
+  await waitFor(() => expect(auth.refreshSession).toHaveBeenCalledOnce());
+
+  await user.click(screen.getByRole("button", { name: "Sair da página" }));
+  await act(async () => { sessionRefresh.resolve(undefined); });
+
   expect(screen.getByTestId("location")).toHaveTextContent("/away");
 });
 

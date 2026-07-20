@@ -13,7 +13,9 @@ import {
 import { OrganizationDetailPage } from "./OrganizationDetailPage";
 
 const analytics = vi.hoisted(() => ({ pushAnalyticsFromResponse: vi.fn() }));
+const auth = vi.hoisted(() => ({ refreshSession: vi.fn<() => Promise<void>>().mockResolvedValue(undefined) }));
 vi.mock("../auth/analytics", () => analytics);
+vi.mock("../auth/AuthProvider", () => ({ useAuth: () => auth }));
 
 type Detail = components["schemas"]["OrganizationLoginDetailResponse"];
 type BillingList = components["schemas"]["BillingListResponse"];
@@ -134,6 +136,7 @@ const billings: BillingList = {
 afterEach(() => {
   cleanup();
   analytics.pushAnalyticsFromResponse.mockReset();
+  auth.refreshSession.mockReset().mockResolvedValue(undefined);
   vi.unstubAllGlobals();
 });
 
@@ -219,6 +222,7 @@ it("renders the populated legacy detail from complete organization and billing p
   expect(screen.getByText("Recusado")).toHaveClass("tag--overdue");
   expect(screen.getByText("manager@example.com")).toBeVisible();
   expect(screen.getByRole("combobox", { name: "Papel de manager@example.com" })).toHaveValue("manager");
+  expect(screen.getByRole("heading", { name: "Membros" }).closest(".organization-detail-grid")).not.toBeNull();
   await waitFor(() => expect(document.title).toBe("Acme Imóveis - Rentivo"));
   view.unmount();
   expect(document.title).toBe("Anterior");
@@ -380,6 +384,7 @@ it("updates MFA policy, routes required setup, and deletes with confirmation", a
 
   await user.click(screen.getByRole("switch", { name: "Ativar exigência de MFA" }));
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/security/totp/setup"));
+  expect(auth.refreshSession).toHaveBeenCalledOnce();
   view.unmount();
 
   cleanup();
@@ -387,9 +392,11 @@ it("updates MFA policy, routes required setup, and deletes with confirmation", a
     "DELETE /api/v1/organizations/org-public-uuid": () => new Response(null, { headers: { "X-Rentivo-Analytics-Event": "rentivo_organization_deleted" }, status: 204 }),
     "PUT /api/v1/organizations/org-public-uuid/mfa-policy": () => jsonResponse({ enforce_mfa: true, mfa_setup_required: false })
   }));
+  auth.refreshSession.mockRejectedValueOnce(new Error("offline"));
   renderPage();
   await user.click(await screen.findByRole("switch", { name: "Ativar exigência de MFA" }));
   expect(await screen.findByText("Política de MFA atualizada.")).toBeVisible();
+  expect(auth.refreshSession).toHaveBeenCalledTimes(2);
   expect(screen.getByRole("switch", { name: "Desativar exigência de MFA" })).toHaveAttribute("aria-checked", "true");
 
   await user.click(screen.getByRole("button", { name: "Excluir organização" }));

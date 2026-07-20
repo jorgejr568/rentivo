@@ -95,6 +95,7 @@ it("guards direct navigation while preserving setup, recovery, and logout access
   window.history.pushState({}, "", "/private");
   const router = createAppRouter([
     { element: <h1>Conteúdo privado</h1>, path: "/private" },
+    { element: <h1>Segurança permitida</h1>, path: "/security" },
     { element: <h1>Configuração permitida</h1>, path: "/security/totp/setup" },
     { element: <h1>Recuperação permitida</h1>, path: "/security/recovery-codes" }
   ]);
@@ -105,6 +106,9 @@ it("guards direct navigation while preserving setup, recovery, and logout access
   expect(screen.getByRole("heading", { name: "Configuração permitida" })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "user@example.com" }));
   expect(screen.getByRole("button", { name: "Sair" })).toBeVisible();
+
+  await act(async () => router.navigate("/security"));
+  expect(screen.getByRole("heading", { name: "Segurança permitida" })).toBeVisible();
 
   await act(async () => router.navigate("/security/recovery-codes"));
   expect(screen.getByRole("heading", { name: "Recuperação permitida" })).toBeVisible();

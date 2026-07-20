@@ -157,6 +157,7 @@ it("populates a new-account user theme from effective defaults and previews it",
   expect(screen.getByLabelText("Secundária Escura")).toHaveValue("#357b7c");
   expect(screen.getByLabelText("Texto")).toHaveValue("#282830");
   expect(screen.getByLabelText("Contraste")).toHaveValue("#ffffff");
+  expect(screen.getByLabelText("Primária").closest(".theme-color-grid")).not.toBeNull();
   expect(screen.queryByText("Tema efetivo atual:")).not.toBeInTheDocument();
   expect(screen.getByLabelText("Primária")).not.toHaveAttribute("aria-describedby");
   expect(screen.getByLabelText("Fonte do Cabeçalho")).not.toHaveAttribute("aria-describedby");

@@ -39,3 +39,21 @@ it("copies the secret and resets its state after being closed", async () => {
   rerender(<ApiKeySecretDialog onClose={vi.fn()} open={false} secret="rntv-v1-secret" />);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+it("announces clipboard failures and clears the error after a successful retry", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText")
+    .mockRejectedValueOnce(new Error("clipboard denied"))
+    .mockResolvedValueOnce(undefined);
+  render(<ApiKeySecretDialog onClose={vi.fn()} open secret="rntv-v1-secret" />);
+
+  const copy = screen.getByRole("button", { name: "Copiar chave" });
+  await user.click(copy);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível copiar a chave.");
+  expect(copy).toHaveAttribute("aria-describedby", "api-key-copy-error");
+
+  await user.click(copy);
+  expect(writeText).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Copiada!" })).not.toHaveAttribute("aria-describedby");
+});

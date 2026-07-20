@@ -51,10 +51,14 @@ it("creates an integration key and gates its one-time secret", async () => {
 
 it("edits and idempotently revokes an active key", async () => {
   const user = userEvent.setup();
+  const updateBodies: unknown[] = [];
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url === "/api/v1/api-keys/options") return jsonResponse(options);
-    if (url === "/api/v1/api-keys/key-uuid" && init?.method === "PATCH") return jsonResponse({ ...key, name: "Atualizada" });
+    if (url === "/api/v1/api-keys/key-uuid" && init?.method === "PATCH") {
+      updateBodies.push(JSON.parse(String(init.body)));
+      return jsonResponse({ ...key, name: "Atualizada" });
+    }
     if (url === "/api/v1/api-keys/key-uuid" && init?.method === "DELETE") return new Response(null, { status: 204 });
     if (url === "/api/v1/api-keys") return jsonResponse({ items: [key, { ...key, name: "Outra", uuid: "other-uuid" }] });
     throw new Error(`Unexpected request: ${url}`);
@@ -66,6 +70,19 @@ it("edits and idempotently revokes an active key", async () => {
   await user.type(screen.getByLabelText("Nome"), "Atualizada");
   await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
   expect(await screen.findByText("Chave de integração atualizada.")).toBeVisible();
+  expect(updateBodies[0]).toEqual({ name: "Atualizada", scopes: ["profile:read"] });
+  await user.click(screen.getByRole("button", { name: "Editar Atualizada" }));
+  await user.click(screen.getByLabelText("Acme"));
+  await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+  await waitFor(() => expect(updateBodies).toHaveLength(2));
+  expect(updateBodies[1]).toEqual({
+    grants: [
+      { resource_id: "personal", resource_type: "user" },
+      { resource_id: "org-uuid", resource_type: "organization" }
+    ],
+    name: "Atualizada",
+    scopes: ["profile:read"]
+  });
   expect(screen.getByText("Outra")).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Revogar Atualizada" }));
   await user.click(screen.getByRole("button", { name: "Revogar chave" }));

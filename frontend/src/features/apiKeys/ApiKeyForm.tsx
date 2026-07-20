@@ -6,7 +6,9 @@ type ApiKey = components["schemas"]["APIKeyResponse"];
 type ApiKeyCreate = components["schemas"]["APIKeyCreateRequest"];
 type ApiKeyOptions = components["schemas"]["APIKeyOptionsResponse"];
 
-export type ApiKeyFormPayload = ApiKeyCreate;
+export type ApiKeyFormPayload = Omit<ApiKeyCreate, "grants"> & {
+  grants?: ApiKeyCreate["grants"];
+};
 
 interface ApiKeyFormProps {
   initialKey?: ApiKey;
@@ -53,11 +55,14 @@ export function scopeLabel(scope: string): string {
 
 export function ApiKeyForm({ initialKey, loading = false, onCancel, onSubmit, options }: ApiKeyFormProps) {
   const initialOrganizations = useMemo(
-    () =>
-      initialKey?.grants
+    () => {
+      const selectable = new Set(options.organizations.map((organization) => organization.resource_id));
+      return initialKey?.grants
         .filter((grant) => grant.available && grant.resource_type === "organization" && grant.resource_id)
-        .map((grant) => grant.resource_id as string) ?? [],
-    [initialKey]
+        .filter((grant) => selectable.has(grant.resource_id as string))
+        .map((grant) => grant.resource_id as string) ?? [];
+    },
+    [initialKey, options.organizations]
   );
   const [name, setName] = useState(initialKey?.name ?? "");
   const [scopes, setScopes] = useState<string[]>(initialKey?.scopes ?? []);
@@ -67,6 +72,7 @@ export function ApiKeyForm({ initialKey, loading = false, onCancel, onSubmit, op
   const [organizations, setOrganizations] = useState<string[]>(initialOrganizations);
   const [expiresAt, setExpiresAt] = useState(defaultExpiration(options.default_expiration_days));
   const [expirationChanged, setExpirationChanged] = useState(false);
+  const [grantsChanged, setGrantsChanged] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
   function toggle(values: string[], value: string): string[] {
@@ -77,17 +83,20 @@ export function ApiKeyForm({ initialKey, loading = false, onCancel, onSubmit, op
     event.preventDefault();
     setSubmitted(true);
     const normalizedName = name.trim();
-    if (!normalizedName || scopes.length === 0 || (!personal && organizations.length === 0)) {
+    const hasWorkspace = personal || organizations.length > 0 || Boolean(initialKey && !grantsChanged);
+    if (!normalizedName || scopes.length === 0 || !hasWorkspace) {
       return;
     }
     await onSubmit({
       ...(!initialKey && expirationChanged
         ? { expires_at: explicitExpiration(expiresAt, options.max_expiration_days) }
         : {}),
-      grants: [
-        ...(personal ? [{ resource_id: "personal", resource_type: "user" as const }] : []),
-        ...organizations.map((resourceId) => ({ resource_id: resourceId, resource_type: "organization" as const }))
-      ],
+      ...(!initialKey || grantsChanged ? {
+        grants: [
+          ...(personal ? [{ resource_id: "personal", resource_type: "user" as const }] : []),
+          ...organizations.map((resourceId) => ({ resource_id: resourceId, resource_type: "organization" as const }))
+        ]
+      } : {}),
       name: normalizedName,
       scopes
     });
@@ -115,20 +124,20 @@ export function ApiKeyForm({ initialKey, loading = false, onCancel, onSubmit, op
       <fieldset className="field" style={{ border: 0, margin: "0 0 1.1rem", padding: 0 }}>
         <legend className="field-label">Espaços de trabalho</legend>
         <label style={{ alignItems: "center", display: "flex", gap: "0.5rem", marginBottom: "0.65rem" }}>
-          <input checked={personal} onChange={(event) => setPersonal(event.target.checked)} type="checkbox" />
+          <input checked={personal} onChange={(event) => { setPersonal(event.target.checked); setGrantsChanged(true); }} type="checkbox" />
           Pessoal
         </label>
         {options.organizations.map((organization) => (
           <label key={organization.resource_id} style={{ alignItems: "center", display: "flex", gap: "0.5rem", marginBottom: "0.65rem" }}>
             <input
               checked={organizations.includes(organization.resource_id)}
-              onChange={() => setOrganizations(toggle(organizations, organization.resource_id))}
+              onChange={() => { setOrganizations(toggle(organizations, organization.resource_id)); setGrantsChanged(true); }}
               type="checkbox"
             />
             {organization.name}
           </label>
         ))}
-        {submitted && !personal && organizations.length === 0 ? <span className="field-hint" style={{ color: "var(--danger)" }}>Selecione pelo menos um espaço de trabalho.</span> : null}
+        {submitted && !personal && organizations.length === 0 && (!initialKey || grantsChanged) ? <span className="field-hint" style={{ color: "var(--danger)" }}>Selecione pelo menos um espaço de trabalho.</span> : null}
       </fieldset>
       {!initialKey ? (
         <div className="field" style={{ maxWidth: "350px" }}>

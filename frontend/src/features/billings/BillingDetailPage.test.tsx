@@ -112,6 +112,7 @@ it("renders the populated legacy detail with PIX warning, every status, stats, e
   expect(screen.getByText("por fatura")).toBeVisible();
   expect(screen.getByText("pix@example.com")).toBeVisible();
   expect(screen.getByText("PIX pendente")).toHaveClass("tag--draft");
+  expect(screen.getByRole("heading", { name: "Itens da cobrança" }).closest(".billing-detail-grid")).not.toBeNull();
   for (const status of ["Rascunho", "Publicado", "Enviado", "Pago", "Cancelado", "Pag. Atrasado"]) expect(screen.getByText(status)).toBeVisible();
   expect(screen.getByText("6 geradas")).toBeVisible();
   expect(screen.getByText("Recebido (ano)").nextSibling).toHaveTextContent("R$ 3.000,00");

@@ -125,7 +125,7 @@ it("generates a typed invoice with variable values, extras, dates, notes, and re
     variable_amounts: { [VARIABLE_ITEM_UUID]: 12345 }
   });
   expect(submitted?.getAll("receipt_files")).toEqual([receipt]);
-  expect(screen.getByTestId("location")).toHaveTextContent("/billings/billing-public-uuid/bills/bill-public-uuid");
+  await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/billings/billing-public-uuid/bills/bill-public-uuid"));
   expect(analytics.pushAnalyticsFromResponse).toHaveBeenCalledOnce();
   view.unmount();
   expect(document.title).toBe("Anterior");

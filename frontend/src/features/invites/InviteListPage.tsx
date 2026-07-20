@@ -5,6 +5,7 @@ import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { LoadError, LoadingState } from "../../components/PageState";
 import { ApiError, apiClient, apiRequest } from "../../lib/api/client";
 import type { components } from "../../lib/api/schema";
+import { useAuth } from "../auth/AuthProvider";
 import { pushAnalyticsFromResponse } from "../auth/analytics";
 
 type Invite = components["schemas"]["PendingInviteLoginResponse"];
@@ -20,6 +21,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export function InviteListPage() {
   const navigate = useNavigate();
+  const { refreshSession } = useAuth();
   const [invites, setInvites] = useState<Invite[] | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
   const [loadError, setLoadError] = useState("");
@@ -91,6 +93,8 @@ export function InviteListPage() {
       }
       if (!isCurrent()) return;
       pushAnalyticsFromResponse(outcome.response);
+      await refreshSession().catch(() => undefined);
+      if (!isCurrent()) return;
       if (outcome.action === "accept") {
         navigate(outcome.data.mfa_setup_required ? "/security/totp/setup" : `/organizations/${outcome.data.organization_uuid}`);
         return;

@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 
 const MFA_SETUP_PATHS = new Set([
+  "/security",
   "/security/recovery-codes",
   "/security/totp/setup"
 ]);

@@ -134,6 +134,47 @@ it("hydrates an existing key without changing expiration", () => {
   expect(screen.getByRole("button", { name: "Cancelar" })).toBeDisabled();
 });
 
+it("omits dormant grants for metadata-only edits and sends selectable grant changes", async () => {
+  const user = userEvent.setup();
+  const onSubmit = vi.fn();
+  render(
+    <ApiKeyForm
+      initialKey={{
+        created_at: "2026-01-01T00:00:00Z",
+        expires_at: "2026-12-01T00:00:00Z",
+        grants: [{ available: false, resource_id: null, resource_type: "organization" }],
+        hint: "rntv-v1-abcd••••yz",
+        last_used_at: null,
+        name: "Atual",
+        revoked_at: null,
+        scopes: ["profile:read"],
+        uuid: "key-uuid"
+      }}
+      onCancel={vi.fn()}
+      onSubmit={onSubmit}
+      options={options}
+    />
+  );
+
+  await user.clear(screen.getByLabelText("Nome"));
+  await user.type(screen.getByLabelText("Nome"), "Atualizada");
+  await user.click(screen.getByLabelText("Consultar cobranças"));
+  await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+
+  expect(onSubmit).toHaveBeenLastCalledWith({
+    name: "Atualizada",
+    scopes: ["profile:read", "billings:read"]
+  });
+
+  await user.click(screen.getByLabelText("Acme"));
+  await user.click(screen.getByRole("button", { name: "Salvar alterações" }));
+  expect(onSubmit).toHaveBeenLastCalledWith({
+    grants: [{ resource_id: "org-uuid", resource_type: "organization" }],
+    name: "Atualizada",
+    scopes: ["profile:read", "billings:read"]
+  });
+});
+
 it("uses readable known scope labels and preserves an unknown safe scope", () => {
   expect(scopeLabel("billings:read")).toBe("Consultar cobranças");
   expect(scopeLabel("future:read")).toBe("future:read");

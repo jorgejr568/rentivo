@@ -8,6 +8,7 @@ import { LoadError, LoadingState } from "../../components/PageState";
 import { ApiError, apiClient, apiRequest } from "../../lib/api/client";
 import type { components } from "../../lib/api/schema";
 import { formatBrl } from "../../lib/format";
+import { useAuth } from "../auth/AuthProvider";
 import { pushAnalyticsFromResponse } from "../auth/analytics";
 import { OrganizationMembers } from "./OrganizationMembers";
 
@@ -102,6 +103,7 @@ function BillingTable({ billings }: { billings: Billing[] }) {
 export function OrganizationDetailPage() {
   const { orgUuid = "" } = useParams<{ orgUuid: string }>();
   const navigate = useNavigate();
+  const { refreshSession } = useAuth();
   const previousTitle = useRef(document.title);
   const [detail, setDetail] = useState<Detail | null>(null);
   const [billingList, setBillingList] = useState<BillingList | null>(null);
@@ -293,11 +295,15 @@ export function OrganizationDetailPage() {
   const updateMfa = async () => {
     await runAction(
       "mfa",
-      (signal) => apiRequest(apiClient.PUT("/api/v1/organizations/{organization_uuid}/mfa-policy", {
-        body: { enforce_mfa: !(detail as Detail).enforce_mfa },
-        params: { path: { organization_uuid: orgUuid } },
-        signal
-      })),
+      async (signal) => {
+        const result = await apiRequest(apiClient.PUT("/api/v1/organizations/{organization_uuid}/mfa-policy", {
+          body: { enforce_mfa: !(detail as Detail).enforce_mfa },
+          params: { path: { organization_uuid: orgUuid } },
+          signal
+        }));
+        await refreshSession().catch(() => undefined);
+        return result;
+      },
       ({ data, response }) => {
         pushAnalyticsFromResponse(response);
         setDetail((current) => ({ ...current as Detail, enforce_mfa: data.enforce_mfa }));
@@ -380,7 +386,7 @@ export function OrganizationDetailPage() {
         <div className="panel__head"><h3>Cobranças da organização</h3>{detail.capabilities.can_create_billing ? <Link className="btn btn--sm btn--primary" to="/billings/create">+ Nova cobrança</Link> : <span className="panel__title-eyebrow">Status da fatura atual</span>}</div>
         {organizationBillings.length ? <BillingTable billings={organizationBillings} /> : <div className="empty-state" style={{ padding: "2.5rem 1.5rem" }}><p>Nenhuma cobrança nesta organização ainda.</p><p className="muted" style={{ fontSize: "0.85rem", marginTop: "-0.6rem" }}>Crie uma cobrança ou transfira uma das suas para cá.</p>{detail.capabilities.can_create_billing ? <Link className="btn btn--primary" to="/billings/create">+ Nova cobrança</Link> : null}</div>}
       </div>
-      <div className="grid-2" style={{ alignItems: "start", gridTemplateColumns: "1.5fr 1fr" }}>
+      <div className="organization-detail-grid">
         <div className="stack gap">
           <OrganizationMembers canManageMembers={canManageMembers} disabled={activeAction !== ""} headingRef={membersHeadingRef} members={detail.members} onRemove={(member) => setConfirmation({ body: "Remover este membro?", confirm: () => void removeMember(member), label: "Remover membro", title: "Remover membro?" })} onRoleChange={(member, role, control) => void changeRole(member, role, control)} />
           {canManageMembers && detail.invites.length ? <div className="panel"><div className="panel__head"><h3>Convites enviados</h3></div><div className="table-wrap"><table className="table"><thead><tr><th>E-mail</th><th className="center">Papel</th><th className="center">Status</th></tr></thead><tbody>{detail.invites.map((invite) => { const status = INVITE_META[invite.status]; return <tr key={invite.uuid}><td className="mono" style={{ fontSize: "0.85rem" }}>{invite.invited_email}</td><td className="center"><span className={`tag ${ROLE_TAGS[invite.role]}`}>{ROLE_LABELS[invite.role]}</span></td><td className="center"><span className={`tag ${status.className}`}><span className="dot" />{status.label}</span></td></tr>; })}</tbody></table></div></div> : null}

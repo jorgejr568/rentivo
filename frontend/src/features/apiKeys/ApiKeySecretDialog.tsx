@@ -10,6 +10,7 @@ interface ApiKeySecretDialogProps {
 export function ApiKeySecretDialog({ onClose, open, secret }: ApiKeySecretDialogProps) {
   const [acknowledged, setAcknowledged] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
   const checkboxRef = useRef<HTMLInputElement>(null);
   const copyRef = useRef<HTMLButtonElement>(null);
   const doneRef = useRef<HTMLButtonElement>(null);
@@ -18,6 +19,7 @@ export function ApiKeySecretDialog({ onClose, open, secret }: ApiKeySecretDialog
     if (!open) {
       setAcknowledged(false);
       setCopied(false);
+      setCopyFailed(false);
       return;
     }
     const previousOverflow = document.body.style.overflow;
@@ -59,8 +61,14 @@ export function ApiKeySecretDialog({ onClose, open, secret }: ApiKeySecretDialog
   }
 
   async function copySecret() {
-    await navigator.clipboard.writeText(secret);
-    setCopied(true);
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopied(true);
+      setCopyFailed(false);
+    } catch {
+      setCopied(false);
+      setCopyFailed(true);
+    }
   }
 
   return (
@@ -77,10 +85,11 @@ export function ApiKeySecretDialog({ onClose, open, secret }: ApiKeySecretDialog
             Esta chave será exibida apenas uma vez. Guarde-a agora.
           </div>
           <div className="secret-key">{secret}</div>
-          <button className="btn btn--sm" onClick={() => void copySecret()} ref={copyRef} style={{ marginTop: "0.75rem" }} type="button">
+          <button aria-describedby={copyFailed ? "api-key-copy-error" : undefined} className="btn btn--sm" onClick={() => void copySecret()} ref={copyRef} style={{ marginTop: "0.75rem" }} type="button">
             <Copy aria-hidden="true" size={15} style={{ marginRight: "0.35rem", verticalAlign: "text-bottom" }} />
             {copied ? "Copiada!" : "Copiar chave"}
           </button>
+          {copyFailed ? <div className="toast toast--danger mt-2" id="api-key-copy-error" role="alert">Não foi possível copiar a chave. Selecione e copie manualmente.</div> : null}
           <label style={{ alignItems: "flex-start", display: "flex", gap: "0.55rem", marginTop: "1rem" }}>
             <input
               checked={acknowledged}

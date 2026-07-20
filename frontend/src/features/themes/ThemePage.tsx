@@ -504,7 +504,7 @@ export function ThemePage({ backUrl, ownerLabel, target, targetUuid }: ThemePage
             <div className="panel">
               <div className="panel-head"><h2 style={SECTION_HEADING_STYLE}>Cores</h2></div>
               <div className="panel-body">
-                <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(3, 1fr)" }}>
+                <div className="theme-color-grid">
                   {COLOR_FIELDS.map(({ key, label }) => (
                     <div className="field mb-0" key={key}>
                       <label className="field-label" htmlFor={key}>{label}</label>

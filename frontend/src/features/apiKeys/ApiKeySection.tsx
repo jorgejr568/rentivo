@@ -8,6 +8,7 @@ import { ApiKeyList } from "./ApiKeyList";
 import { ApiKeySecretDialog } from "./ApiKeySecretDialog";
 
 type ApiKey = components["schemas"]["APIKeyResponse"];
+type ApiKeyCreate = components["schemas"]["APIKeyCreateRequest"];
 type ApiKeyOptions = components["schemas"]["APIKeyOptionsResponse"];
 
 export function ApiKeySection() {
@@ -48,7 +49,11 @@ export function ApiKeySection() {
       if (editing) {
         const { data } = await apiRequest(
           apiClient.PATCH("/api/v1/api-keys/{key_uuid}", {
-            body: { grants: payload.grants, name: payload.name, scopes: payload.scopes },
+            body: {
+              ...(payload.grants ? { grants: payload.grants } : {}),
+              name: payload.name,
+              scopes: payload.scopes
+            },
             params: { path: { key_uuid: editing.uuid } }
           })
         );
@@ -57,7 +62,7 @@ export function ApiKeySection() {
         setMessage("Chave de integração atualizada.");
       } else {
         const { data } = await apiRequest(
-          apiClient.POST("/api/v1/api-keys", { body: payload })
+          apiClient.POST("/api/v1/api-keys", { body: payload as ApiKeyCreate })
         );
         const { secret: issuedSecret, ...visibleKey } = data;
         setItems((current) => [visibleKey, ...current]);
