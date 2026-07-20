@@ -85,6 +85,7 @@ ios/
 - [ ] **Step 1: Write failing money tests**
 
 ```swift
+import Foundation
 import Testing
 @testable import RentivoCore
 
@@ -118,8 +119,7 @@ let package = Package(
         .target(
             name: "RentivoCore",
             path: "Rentivo",
-            exclude: ["App", "DesignSystem", "Features", "Resources"],
-            sources: ["Domain", "Data"]
+            sources: ["Domain"]
         ),
         .testTarget(name: "RentivoCoreTests", dependencies: ["RentivoCore"], path: "RentivoTests")
     ]
@@ -234,6 +234,7 @@ git commit -m "feat(ios): model Rentivo domain contract"
 ### Task 3: Repository protocols, fixtures, and coherent mutable store
 
 **Files:**
+- Modify: `ios/Package.swift`
 - Create: `ios/Rentivo/Data/Repositories.swift`
 - Create: `ios/Rentivo/Data/MockFixtures.swift`
 - Create: `ios/Rentivo/Data/MockRentivoStore.swift`
@@ -275,6 +276,12 @@ Run: `swift test --package-path ios --filter MockRentivoStoreTests`
 Expected: FAIL because repository and fixture types are absent.
 
 - [ ] **Step 3: Implement protocols, canonical fixtures, and store**
+
+Update the package target when the data directory is created:
+
+```swift
+.target(name: "RentivoCore", path: "Rentivo", sources: ["Domain", "Data"])
+```
 
 ```swift
 @MainActor
