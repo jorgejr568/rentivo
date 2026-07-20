@@ -1289,7 +1289,7 @@ wheels = [
 
 [[package]]
 name = "rentivo"
-version = "4.0.0"
+version = "5.0.0"
 source = { editable = "backend" }
 dependencies = [
     { name = "alembic" },

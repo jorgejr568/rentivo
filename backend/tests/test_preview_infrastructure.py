@@ -1,3 +1,4 @@
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -10,6 +11,11 @@ COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
 NGINX_CONFIG = REPO_ROOT / "infra" / "proxy" / "nginx.conf"
 PREVIEW_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "ci.yml"
 PR_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "test-pr.yaml"
+DEPLOY_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "deploy.yml"
+RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
+DOCKER_BUILD_ACTION = REPO_ROOT / ".github" / "actions" / "docker-build" / "action.yml"
+DEPENDABOT_CONFIG = REPO_ROOT / ".github" / "dependabot.yml"
+BACKEND_PYPROJECT = REPO_ROOT / "backend" / "pyproject.toml"
 
 
 def _yaml(path: Path) -> dict:
@@ -153,7 +159,7 @@ def test_frontend_runs_unprivileged_and_read_only_on_port_8080():
     assert frontend["healthcheck"]["test"][-1] == "http://localhost:8080/"
 
 
-def test_preview_ci_is_consolidated_under_existing_required_gate():
+def test_image_builds_are_consolidated_under_the_complete_release_gate():
     assert not PREVIEW_WORKFLOW.exists()
     workflow = _yaml(PR_WORKFLOW)
     jobs = workflow["jobs"]
@@ -164,11 +170,11 @@ def test_preview_ci_is_consolidated_under_existing_required_gate():
         "frontend",
         "migrations",
         "compose-config",
-        "preview-images",
+        "production-stack",
     }
-    assert required_jobs <= jobs.keys()
-    assert set(jobs["all-checks-pass"]["needs"]) == required_jobs
-    assert {item["name"] for item in jobs["preview-images"]["strategy"]["matrix"]["include"]} == {
+    assert set(jobs["release-gate"]["needs"]) == required_jobs
+    assert set(jobs["all-checks-pass"]["needs"]) == {"release-gate", "production-images"}
+    assert {item["name"] for item in jobs["production-images"]["strategy"]["matrix"]["include"]} == {
         "api",
         "worker",
         "frontend",
@@ -213,7 +219,7 @@ def test_compose_ci_renders_the_promoted_production_and_development_topologies()
         "docker compose -f docker-compose.yml -f docker-compose.dev.yml config --quiet"
     )
     assert "docker-compose.next" not in PR_WORKFLOW.read_text()
-    assert "compose-config" in workflow["jobs"]["all-checks-pass"]["needs"]
+    assert "compose-config" in workflow["jobs"]["release-gate"]["needs"]
 
 
 def test_api_runtime_source_and_virtualenv_are_read_only_to_appuser():
@@ -222,3 +228,130 @@ def test_api_runtime_source_and_virtualenv_are_read_only_to_appuser():
     assert "chown -R appuser:appuser /app" not in dockerfile
     assert "chmod -R a-w /app/.venv /app/backend" in dockerfile
     assert "chown appuser:appuser /app/invoices /app/outbox" in dockerfile
+
+
+def test_pr_gate_boots_and_exercises_the_promoted_production_stack():
+    workflow = _yaml(PR_WORKFLOW)
+    jobs = workflow["jobs"]
+    stack = jobs["production-stack"]
+    steps = {step["name"]: step for step in stack["steps"] if "name" in step}
+
+    assert {
+        "backend",
+        "frontend",
+        "e2e",
+        "migrations",
+        "compose-config",
+        "production-stack",
+    } <= set(jobs["release-gate"]["needs"])
+    assert jobs["production-images"]["needs"] == "release-gate"
+    assert set(jobs["all-checks-pass"]["needs"]) == {"release-gate", "production-images"}
+    assert "Create secure disposable stack environment" in steps
+    assert "Start promoted production stack" in steps
+    assert "Run production stack smoke" in steps
+    assert "Run real-stack Playwright project" in steps
+    assert steps["Run real-stack Playwright project"]["env"]["PLAYWRIGHT_PRODUCTION_STACK"] == "1"
+    assert "--project=production-stack" in steps["Run real-stack Playwright project"]["run"]
+    assert "route(" not in steps["Run real-stack Playwright project"]["run"]
+    assert steps["Capture production stack logs"]["if"] == "always()"
+    assert steps["Stop production stack"]["if"] == "always()"
+
+
+def test_docker_build_action_supports_exact_immutable_publication():
+    action = _yaml(DOCKER_BUILD_ACTION)
+    build = action["runs"]["steps"][-1]
+    inputs = action["inputs"]
+
+    assert {"dockerfile", "image-name", "image-tag", "cache-scope", "push"} <= inputs.keys()
+    assert inputs["push"]["default"] == "false"
+    assert build["id"] == "build"
+    assert build["with"]["push"] == "${{ inputs.push }}"
+    assert build["with"]["tags"] == "${{ inputs.image-name }}:${{ inputs.image-tag }}"
+    assert action["outputs"]["digest"]["value"] == "${{ steps.build.outputs.digest }}"
+    assert action["outputs"]["image-ref"]["value"].endswith("@${{ steps.build.outputs.digest }}")
+    assert ":latest" not in DOCKER_BUILD_ACTION.read_text()
+    assert ":ci" not in DOCKER_BUILD_ACTION.read_text()
+
+
+def test_dependabot_covers_the_frontend_npm_lockfile():
+    updates = _yaml(DEPENDABOT_CONFIG)["updates"]
+
+    assert any(update["package-ecosystem"] == "npm" and update["directory"] == "/frontend" for update in updates)
+
+
+def test_deploy_runs_one_protected_atomic_webhook_for_the_tested_sha():
+    workflow = _yaml(DEPLOY_WORKFLOW)
+    jobs = workflow["jobs"]
+    deploy = jobs["deploy"]
+    publish = jobs["publish-images"]
+    deploy_script = next(step["run"] for step in deploy["steps"] if step.get("name") == "Deploy tested images once")
+
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    assert jobs["gate"]["uses"] == "./.github/workflows/test-pr.yaml"
+    assert publish["needs"] == "gate"
+    assert publish["permissions"] == {"contents": "read", "packages": "write"}
+    assert publish["outputs"] == {
+        "api-digest": "${{ steps.api.outputs.digest }}",
+        "api-ref": "${{ steps.api.outputs.image-ref }}",
+        "frontend-digest": "${{ steps.frontend.outputs.digest }}",
+        "frontend-ref": "${{ steps.frontend.outputs.image-ref }}",
+        "worker-digest": "${{ steps.worker.outputs.digest }}",
+        "worker-ref": "${{ steps.worker.outputs.image-ref }}",
+    }
+    assert "matrix" not in publish.get("strategy", {})
+    build_steps = [step for step in publish["steps"] if step.get("uses") == "./.github/actions/docker-build"]
+    assert {step["id"] for step in build_steps} == {"api", "worker", "frontend"}
+    assert all(step["with"]["image-tag"] == "${{ github.sha }}" for step in build_steps)
+    assert all(step["with"]["push"] == "true" for step in build_steps)
+    assert deploy["needs"] == "publish-images"
+    assert deploy["permissions"] == {"contents": "read"}
+    assert deploy["environment"]["name"] == "production"
+    assert deploy_script.count("curl ") == 1
+    assert "X-Idempotency-Key" in deploy_script
+    assert "Authorization: Bearer" in deploy_script
+    assert "schema_version" in deploy_script
+    for field in ("migration", "rollout", "smoke", "deployment_count"):
+        assert field in deploy_script
+    for image in ("api", "worker", "frontend"):
+        assert f".images.{image}.reference == ${image}_ref" in deploy_script
+        assert f".images.{image}.digest == ${image}_digest" in deploy_script
+    assert "sha256:[0-9a-f]" in deploy_script
+    assert "for " not in deploy_script
+    assert "sleep " not in deploy_script
+    assert "DEPLOY_TRIGGER_URL" not in DEPLOY_WORKFLOW.read_text()
+
+
+def test_release_requires_the_exact_commit_gate_and_published_images():
+    workflow = _yaml(RELEASE_WORKFLOW)
+    jobs = workflow["jobs"]
+    verification = jobs["verify-images"]
+    release = jobs["release"]
+    verification_script = next(
+        step["run"] for step in verification["steps"] if step.get("name") == "Require exact commit images"
+    )
+
+    assert workflow["permissions"] == {"contents": "read", "packages": "read"}
+    assert jobs["gate"]["uses"] == "./.github/workflows/test-pr.yaml"
+    assert verification["needs"] == "gate"
+    assert verification_script.count("docker buildx imagetools inspect") == 3
+    assert verification_script.count("${GITHUB_SHA}") == 3
+    assert ":latest" not in verification_script
+    assert set(release["needs"]) == {"gate", "verify-images"}
+    assert release["permissions"] == {"contents": "write"}
+
+
+def test_release_contract_has_no_deleted_preview_or_legacy_paths():
+    contract = "\n".join(
+        path.read_text()
+        for path in (DOCKER_BUILD_ACTION, PR_WORKFLOW, DEPLOY_WORKFLOW, RELEASE_WORKFLOW, DEPENDABOT_CONFIG)
+    )
+
+    for deleted_path in ("docker-compose.next", "Dockerfile.legacy", "legacy_web", ".env.preview"):
+        assert deleted_path not in contract
+
+
+def test_backend_version_matches_the_breaking_release():
+    metadata = tomllib.loads(BACKEND_PYPROJECT.read_text())
+
+    assert metadata["project"]["version"] == "5.0.0"

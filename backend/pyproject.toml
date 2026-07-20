@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rentivo"
-version = "4.0.0"
+version = "5.0.0"
 description = "Apartment billing management and invoice generation"
 requires-python = ">=3.14"
 dependencies = [

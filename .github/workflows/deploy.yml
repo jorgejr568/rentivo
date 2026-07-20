@@ -1,66 +1,173 @@
-name: Deploy
+name: Deploy Tested Production SHA
 
 on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
-  group: deploy-${{ github.ref }}
-  cancel-in-progress: true
+  group: rentivo-production
+  cancel-in-progress: false
 
 jobs:
-  test:
+  gate:
+    name: Test exact production SHA
+    uses: ./.github/workflows/test-pr.yaml
+    secrets: inherit
+
+  publish-images:
+    name: Publish immutable production images
     runs-on: ubuntu-latest
+    needs: gate
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api-digest: ${{ steps.api.outputs.digest }}
+      api-ref: ${{ steps.api.outputs.image-ref }}
+      frontend-digest: ${{ steps.frontend.outputs.digest }}
+      frontend-ref: ${{ steps.frontend.outputs.image-ref }}
+      worker-digest: ${{ steps.worker.outputs.digest }}
+      worker-ref: ${{ steps.worker.outputs.image-ref }}
     steps:
       - uses: actions/checkout@v7
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
         with:
-          enable-cache: true
-
-      - name: Sync dependencies
-        run: uv sync --all-extras --frozen
-
-      - name: Run tests
-        run: uv run --project backend --no-sync pytest -c backend/pyproject.toml -n auto -v --cov --cov-config=backend/pyproject.toml --cov-report=term-missing --cov-report=xml
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v7
+          ref: ${{ github.sha }}
+      - name: Authenticate to GHCR
+        uses: docker/login-action@v3
         with:
-          files: coverage.xml
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: api
+        name: Publish API image
+        uses: ./.github/actions/docker-build
+        with:
+          dockerfile: backend/Dockerfile.api
+          image-name: ghcr.io/${{ github.repository }}/api
+          image-tag: ${{ github.sha }}
+          cache-scope: production-api
+          push: "true"
+      - id: worker
+        name: Publish worker image
+        uses: ./.github/actions/docker-build
+        with:
+          dockerfile: backend/Dockerfile.worker
+          image-name: ghcr.io/${{ github.repository }}/worker
+          image-tag: ${{ github.sha }}
+          cache-scope: production-worker
+          push: "true"
+      - id: frontend
+        name: Publish frontend image
+        uses: ./.github/actions/docker-build
+        with:
+          dockerfile: frontend/Dockerfile
+          image-name: ghcr.io/${{ github.repository }}/frontend
+          image-tag: ${{ github.sha }}
+          cache-scope: production-frontend
+          push: "true"
 
   deploy:
+    name: Atomic production deployment
     runs-on: ubuntu-latest
-    needs: test
+    needs: publish-images
+    permissions:
+      contents: read
+    timeout-minutes: 35
+    environment:
+      name: production
+    env:
+      API_DIGEST: ${{ needs.publish-images.outputs.api-digest }}
+      API_REF: ${{ needs.publish-images.outputs.api-ref }}
+      FRONTEND_DIGEST: ${{ needs.publish-images.outputs.frontend-digest }}
+      FRONTEND_REF: ${{ needs.publish-images.outputs.frontend-ref }}
+      PRODUCTION_DEPLOY_WEBHOOK_TOKEN: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_TOKEN }}
+      PRODUCTION_DEPLOY_WEBHOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_WEBHOOK_URL }}
+      WORKER_DIGEST: ${{ needs.publish-images.outputs.worker-digest }}
+      WORKER_REF: ${{ needs.publish-images.outputs.worker-ref }}
     steps:
-      - name: Trigger deploy
-        env:
-          DEPLOY_TRIGGER_URL: ${{ secrets.DEPLOY_TRIGGER_URL }}
+      - name: Deploy tested images once
+        shell: bash
         run: |
-          overall=0
-          # DEPLOY_TRIGGER_URL may hold multiple comma-separated endpoints.
-          IFS=',' read -ra urls <<< "$DEPLOY_TRIGGER_URL"
-          for raw in "${urls[@]}"; do
-            # Trim surrounding whitespace and skip empty entries.
-            url="$(echo "$raw" | xargs)"
-            [ -z "$url" ] && continue
-            success=0
-            for i in 1 2 3 4 5; do
-              status=$(curl -s -o /dev/null -w "%{http_code}" "$url")
-              echo "$url attempt $i: HTTP $status"
-              if [ "$status" = "200" ]; then
-                echo "Deploy triggered successfully: $url"
-                success=1
-                break
-              fi
-              [ "$i" -lt 5 ] && sleep 5
-            done
-            if [ "$success" -ne 1 ]; then
-              echo "Deploy failed after 5 attempts: $url"
-              overall=1
-            fi
-          done
-          exit "$overall"
+          set -euo pipefail
+          : "${PRODUCTION_DEPLOY_WEBHOOK_URL:?Configure the protected production webhook URL}"
+          : "${PRODUCTION_DEPLOY_WEBHOOK_TOKEN:?Configure the protected production webhook token}"
+          require_digest() {
+            local name="$1" ref="$2" digest="$3"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "$name image digest is invalid."; exit 1; }
+            [[ "$ref" == *@"$digest" ]] || { echo "$name image reference does not match its digest."; exit 1; }
+          }
+          require_digest api "$API_REF" "$API_DIGEST"
+          require_digest worker "$WORKER_REF" "$WORKER_DIGEST"
+          require_digest frontend "$FRONTEND_REF" "$FRONTEND_DIGEST"
+          idempotency_key="rentivo-production-${GITHUB_SHA}"
+          payload_file="$RUNNER_TEMP/deploy-request.json"
+          response_file="$RUNNER_TEMP/deploy-response.json"
+
+          jq -n \
+            --arg schema_version "rentivo.deploy.v1" \
+            --arg idempotency_key "$idempotency_key" \
+            --arg sha "$GITHUB_SHA" \
+            --arg api_ref "$API_REF" \
+            --arg api_digest "$API_DIGEST" \
+            --arg worker_ref "$WORKER_REF" \
+            --arg worker_digest "$WORKER_DIGEST" \
+            --arg frontend_ref "$FRONTEND_REF" \
+            --arg frontend_digest "$FRONTEND_DIGEST" \
+            '{
+              schema_version: $schema_version,
+              idempotency_key: $idempotency_key,
+              environment: "production",
+              sha: $sha,
+              images: {
+                api: {reference: $api_ref, digest: $api_digest},
+                worker: {reference: $worker_ref, digest: $worker_digest},
+                frontend: {reference: $frontend_ref, digest: $frontend_digest}
+              },
+              required_stages: ["migration", "rollout", "smoke"]
+            }' > "$payload_file"
+
+          http_status="$(curl --silent --show-error --fail-with-body \
+            --max-time 1800 \
+            --output "$response_file" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header 'Content-Type: application/json' \
+            --header 'Accept: application/json' \
+            --header "Authorization: Bearer ${PRODUCTION_DEPLOY_WEBHOOK_TOKEN}" \
+            --header "X-Idempotency-Key: ${idempotency_key}" \
+            --data-binary "@$payload_file" \
+            "$PRODUCTION_DEPLOY_WEBHOOK_URL")"
+          [ "$http_status" = "200" ] || { echo "Deployment webhook returned HTTP $http_status."; exit 1; }
+
+          jq -e \
+            --arg schema_version "rentivo.deploy.v1" \
+            --arg idempotency_key "$idempotency_key" \
+            --arg sha "$GITHUB_SHA" \
+            --arg api_ref "$API_REF" \
+            --arg api_digest "$API_DIGEST" \
+            --arg worker_ref "$WORKER_REF" \
+            --arg worker_digest "$WORKER_DIGEST" \
+            --arg frontend_ref "$FRONTEND_REF" \
+            --arg frontend_digest "$FRONTEND_DIGEST" \
+            '.schema_version == $schema_version
+             and .idempotency_key == $idempotency_key
+             and .sha == $sha
+             and .status == "succeeded"
+             and .deployment_count == 1
+             and .images.api.reference == $api_ref
+             and .images.api.digest == $api_digest
+             and .images.worker.reference == $worker_ref
+             and .images.worker.digest == $worker_digest
+             and .images.frontend.reference == $frontend_ref
+             and .images.frontend.digest == $frontend_digest
+             and .migration.status == "succeeded"
+             and .rollout.status == "succeeded"
+             and .smoke.status == "succeeded"' \
+            "$response_file" >/dev/null || {
+              echo "Deployment receiver did not acknowledge the tested SHA and all atomic stages."
+              exit 1
+            }
+          echo "Production receiver atomically deployed and verified ${GITHUB_SHA}."
