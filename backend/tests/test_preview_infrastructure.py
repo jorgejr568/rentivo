@@ -1,3 +1,4 @@
+import re
 import tomllib
 from pathlib import Path
 
@@ -308,6 +309,7 @@ def test_pr_gate_starts_services_with_validated_production_settings():
     ):
         assert variable in environment
     assert "RENTIVO_ENVIRONMENT: dev" not in environment
+    assert re.search(r"\bAKIA[A-Z0-9]{16}\b", environment) is None
     assert "validate_production_settings" in startup
     assert "up --build -d db migrate api worker" in startup
     assert "/api/v1/ready" in startup
