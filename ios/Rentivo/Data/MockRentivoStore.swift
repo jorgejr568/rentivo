@@ -452,6 +452,170 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return organization
   }
 
+  public func createOrganization(_ draft: OrganizationDraft) async throws -> Organization {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard draft.isValid else { throw DemoError.operationFailed }
+    let organization = Organization(
+      id: UUID(),
+      name: draft.name,
+      pix: draft.pix,
+      members: [
+        OrganizationMember(
+          userID: snapshot.profile.id,
+          email: snapshot.profile.email,
+          role: .owner
+        )
+      ],
+      requiresMFA: false,
+      currentUserRole: .owner
+    )
+    snapshot.organizations.insert(organization, at: 0)
+    recordActivity(kind: .organization, title: "Organização criada", detail: organization.name)
+    return organization
+  }
+
+  public func updateOrganization(id: UUID, draft: OrganizationDraft) async throws -> Organization {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard draft.isValid else { throw DemoError.operationFailed }
+    guard let index = organizationIndex(id) else { throw DemoError.resourceNotFound }
+    snapshot.organizations[index].name = draft.name
+    snapshot.organizations[index].pix = draft.pix
+    for billingIndex in snapshot.billings.indices {
+      if case .organization(let ownerID, _) = snapshot.billings[billingIndex].owner,
+        ownerID == id
+      {
+        snapshot.billings[billingIndex].owner = .organization(id: id, name: draft.name)
+      }
+    }
+    recordActivity(kind: .organization, title: "Organização atualizada", detail: draft.name)
+    return snapshot.organizations[index]
+  }
+
+  public func deleteOrganization(id: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = organizationIndex(id) else { throw DemoError.resourceNotFound }
+    let hasBillings = snapshot.billings.contains { billing in
+      if case .organization(let ownerID, _) = billing.owner { return ownerID == id }
+      return false
+    }
+    guard !hasBillings else { throw DemoError.operationFailed }
+    let name = snapshot.organizations[index].name
+    snapshot.organizations.remove(at: index)
+    snapshot.themes[.organization(id)] = nil
+    recordActivity(kind: .organization, title: "Organização excluída", detail: name)
+  }
+
+  public func updateMemberRole(
+    organizationID: UUID,
+    userID: UUID,
+    role: OrganizationRole
+  ) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let organizationIndex = organizationIndex(organizationID),
+      let memberIndex = snapshot.organizations[organizationIndex].members.firstIndex(where: {
+        $0.userID == userID
+      })
+    else {
+      throw DemoError.resourceNotFound
+    }
+    guard snapshot.organizations[organizationIndex].members[memberIndex].role != .owner else {
+      throw DemoError.permissionDenied
+    }
+    snapshot.organizations[organizationIndex].members[memberIndex].role = role
+    recordActivity(
+      kind: .organization,
+      title: "Função atualizada",
+      detail: snapshot.organizations[organizationIndex].members[memberIndex].email
+    )
+  }
+
+  public func removeMember(organizationID: UUID, userID: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = organizationIndex(organizationID),
+      let member = snapshot.organizations[index].members.first(where: { $0.userID == userID })
+    else {
+      throw DemoError.resourceNotFound
+    }
+    guard member.role != .owner else { throw DemoError.permissionDenied }
+    snapshot.organizations[index].members.removeAll { $0.userID == userID }
+    recordActivity(kind: .organization, title: "Membro removido", detail: member.email)
+  }
+
+  public func inviteMember(
+    organizationID: UUID,
+    email: String,
+    role: OrganizationRole
+  ) async throws -> Invitation {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = organizationIndex(organizationID), email.contains("@") else {
+      throw DemoError.operationFailed
+    }
+    let invitation = Invitation(
+      id: UUID(),
+      organizationID: organizationID,
+      organizationName: snapshot.organizations[index].name,
+      email: email,
+      role: role,
+      status: .pending
+    )
+    snapshot.invitations.insert(invitation, at: 0)
+    recordActivity(kind: .invitation, title: "Convite criado", detail: email)
+    return invitation
+  }
+
+  public func setOrganizationMFA(organizationID: UUID, required: Bool) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = organizationIndex(organizationID) else {
+      throw DemoError.resourceNotFound
+    }
+    snapshot.organizations[index].requiresMFA = required
+    recordActivity(
+      kind: .security,
+      title: required ? "MFA obrigatório" : "MFA opcional",
+      detail: snapshot.organizations[index].name
+    )
+  }
+
+  public func transferBilling(billingID: UUID, toOrganizationID: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let billingIndex = snapshot.billings.firstIndex(where: { $0.id == billingID }),
+      let organizationIndex = organizationIndex(toOrganizationID)
+    else {
+      throw DemoError.resourceNotFound
+    }
+    let organization = snapshot.organizations[organizationIndex]
+    guard organization.members.contains(where: { $0.userID == snapshot.profile.id }) else {
+      throw DemoError.permissionDenied
+    }
+    snapshot.billings[billingIndex].owner = .organization(
+      id: organization.id,
+      name: organization.name
+    )
+    recordActivity(
+      kind: .billing,
+      title: "Cobrança transferida",
+      detail: organization.name
+    )
+  }
+
+  public func transferBillingToPersonal(billingID: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = snapshot.billings.firstIndex(where: { $0.id == billingID }) else {
+      throw DemoError.resourceNotFound
+    }
+    snapshot.billings[index].owner = .user(id: snapshot.profile.id, name: "Pessoal")
+    recordActivity(kind: .billing, title: "Cobrança transferida", detail: "Pessoal")
+  }
+
   public func listPendingInvitations() async throws -> [Invitation] {
     try await prepareOperation()
     guard !emptyMode else { return [] }
@@ -562,6 +726,10 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
 
   private func billIndex(billingID: UUID, billID: UUID) -> Int? {
     snapshot.bills.firstIndex { $0.billingID == billingID && $0.id == billID }
+  }
+
+  private func organizationIndex(_ id: UUID) -> Int? {
+    snapshot.organizations.firstIndex { $0.id == id }
   }
 
   private func recordActivity(kind: ActivityKind, title: String, detail: String) {

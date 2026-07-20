@@ -68,6 +68,20 @@ public protocol CommunicationRepository: AnyObject {
 public protocol OrganizationRepository: AnyObject {
   func listOrganizations() async throws -> [Organization]
   func organization(id: UUID) async throws -> Organization
+  func createOrganization(_ draft: OrganizationDraft) async throws -> Organization
+  func updateOrganization(id: UUID, draft: OrganizationDraft) async throws -> Organization
+  func deleteOrganization(id: UUID) async throws
+  func updateMemberRole(
+    organizationID: UUID,
+    userID: UUID,
+    role: OrganizationRole
+  ) async throws
+  func removeMember(organizationID: UUID, userID: UUID) async throws
+  func inviteMember(organizationID: UUID, email: String, role: OrganizationRole) async throws
+    -> Invitation
+  func setOrganizationMFA(organizationID: UUID, required: Bool) async throws
+  func transferBilling(billingID: UUID, toOrganizationID: UUID) async throws
+  func transferBillingToPersonal(billingID: UUID) async throws
 }
 
 @MainActor

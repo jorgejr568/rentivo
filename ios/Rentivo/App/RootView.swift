@@ -45,11 +45,7 @@ struct AuthenticatedTabView: View {
       .tabItem { Label("Cobranças", systemImage: "doc.text") }
 
       NavigationStack {
-        FeaturePlaceholder(
-          title: "Organizações",
-          message: "Colabore com sua equipe e seus imóveis.",
-          symbol: "building.2.fill"
-        )
+        OrganizationListView()
       }
       .tag(AppTab.organizations)
       .tabItem { Label("Organizações", systemImage: "building.2") }

@@ -184,3 +184,33 @@ import Testing
   #expect(after.expenses == before.expenses - expense.amount)
   #expect(after.netIncome == before.netIncome + expense.amount)
 }
+
+@Test @MainActor func transferringBillingChangesOwnerAcrossRepositoryReads() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+
+  try await store.transferBilling(
+    billingID: StableID.billingAurora101,
+    toOrganizationID: StableID.organizationHorizonte
+  )
+
+  let billing = try await store.billing(id: StableID.billingAurora101)
+  #expect(billing.owner.id == StableID.organizationHorizonte)
+  #expect(billing.owner.isOrganization)
+}
+
+@Test @MainActor func memberRoleAndMFAPolicyMutationsPersist() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let organization = try await store.organization(id: StableID.organizationHorizonte)
+  let member = try #require(organization.members.first { $0.role == .viewer })
+
+  try await store.updateMemberRole(
+    organizationID: organization.id,
+    userID: member.userID,
+    role: .manager
+  )
+  try await store.setOrganizationMFA(organizationID: organization.id, required: false)
+
+  let updated = try await store.organization(id: organization.id)
+  #expect(updated.members.first { $0.userID == member.userID }?.role == .manager)
+  #expect(!updated.requiresMFA)
+}

@@ -75,6 +75,20 @@ public struct Organization: Identifiable, Hashable, Codable, Sendable {
   }
 }
 
+public struct OrganizationDraft: Hashable, Sendable {
+  public var name: String
+  public var pix: PixConfiguration?
+
+  public init(name: String, pix: PixConfiguration?) {
+    self.name = name
+    self.pix = pix
+  }
+
+  public var isValid: Bool {
+    !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+  }
+}
+
 public enum InvitationStatus: String, CaseIterable, Codable, Sendable {
   case pending
   case accepted
