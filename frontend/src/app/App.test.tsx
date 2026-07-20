@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { RouterProvider } from "react-router-dom";
 import { afterEach, beforeEach, vi } from "vitest";
 
@@ -24,7 +24,9 @@ describe("App", () => {
   it("renders the application providers and shell after session authentication", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("main")).toHaveClass("wrapper", "main-content");
+    await waitFor(() => expect(window.location.pathname).toBe("/billings/"));
+    expect(await screen.findByRole("button", { name: "user@example.com" })).toBeVisible();
+    expect(screen.getByRole("main")).toHaveClass("wrapper", "main-content");
   });
 
   it("renders feature routes through the shell outlet", async () => {

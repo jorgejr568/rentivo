@@ -1,6 +1,37 @@
-import { expect, request as playwrightRequest, test } from "@playwright/test";
+import { createHmac } from "node:crypto";
+
+import { expect, request as playwrightRequest, test, type Request } from "@playwright/test";
 
 const productionStackMode = process.env.PLAYWRIGHT_PRODUCTION_STACK === "1";
+
+function decodeBase32(value: string): Buffer {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = 0;
+  let accumulator = 0;
+  const bytes: number[] = [];
+
+  for (const character of value.replace(/=+$/, "").toUpperCase()) {
+    const digit = alphabet.indexOf(character);
+    if (digit < 0) throw new Error("The TOTP secret is not valid base32.");
+    accumulator = (accumulator << 5) | digit;
+    bits += 5;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes.push((accumulator >>> bits) & 0xff);
+      accumulator &= (1 << bits) - 1;
+    }
+  }
+  return Buffer.from(bytes);
+}
+
+function totpCode(secret: string, now = Date.now()): string {
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(now / 30_000)));
+  const digest = createHmac("sha1", decodeBase32(secret)).update(counter).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const value = (digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000;
+  return value.toString().padStart(6, "0");
+}
 
 test.skip(
   !productionStackMode,
@@ -56,15 +87,14 @@ test("exercises the replacement stack without network interception", async ({ ba
     await page.goto("/security");
     await expect(page.getByRole("heading", { name: "Segurança" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chaves de Integração" })).toBeVisible();
-    await page.getByRole("link", { name: "Configurar TOTP" }).click();
-    await expect(page).toHaveURL(/\/security\/totp\/setup$/);
-    await expect(page.getByRole("heading", { name: /Configurar TOTP/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Configurar TOTP" })).toBeVisible();
   });
 
   let organizationUuid = "";
+  let totpSecret = "";
   await test.step("deny an organization outside an integration key grant", async () => {
     await page.goto("/organizations/create");
-    await page.getByLabel("Nome", { exact: true }).fill(`Organização ${unique}`);
+    await page.getByLabel("Nome da organização", { exact: true }).fill(`Organização ${unique}`);
     await page.getByRole("button", { name: "Criar organização" }).click();
     await expect(page).toHaveURL(/\/organizations\/[0-9a-f-]+$/);
     organizationUuid = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)!;
@@ -96,6 +126,62 @@ test("exercises the replacement stack without network interception", async ({ ba
 
     await dialog.getByRole("checkbox", { name: /Guardei esta chave/i }).check();
     await dialog.getByRole("button", { name: "Concluir" }).click();
+  });
+
+  await test.step("enforce organization MFA continuously and complete the exempt setup path", async () => {
+    await page.goto(`/organizations/${organizationUuid}`);
+    await expect(page.getByRole("heading", { level: 1, name: `Organização ${unique}` })).toBeVisible();
+    const policyResponsePromise = page.waitForResponse((response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname === `/api/v1/organizations/${organizationUuid}/mfa-policy`
+    );
+    await page.getByRole("switch", { name: "Ativar exigência de MFA" }).click();
+    const policyResponse = await policyResponsePromise;
+    expect(policyResponse.status()).toBe(200);
+    expect(policyResponse.headers()["content-type"]).toMatch(/^application\/json(?:;|$)/);
+    expect(await policyResponse.json()).toMatchObject({ enforce_mfa: true, mfa_setup_required: true });
+
+    await expect(page).toHaveURL(/\/security\/totp\/setup$/);
+    await expect(page.getByRole("heading", { name: "Configurar Autenticação TOTP" })).toBeVisible();
+
+    const blocked = await page.request.get("/api/v1/billings");
+    expect(blocked.status()).toBe(403);
+    expect(blocked.headers()["content-type"]).toMatch(/^application\/problem\+json(?:;|$)/);
+    expect(await blocked.json()).toMatchObject({ code: "mfa_setup_required", status: 403 });
+
+    const guardedBillingRequests: string[] = [];
+    const capturePrivateRequest = (request: Request) => {
+      if (new URL(request.url()).pathname === "/api/v1/billings") {
+        guardedBillingRequests.push(request.url());
+      }
+    };
+    page.on("request", capturePrivateRequest);
+    try {
+      await page.goto("/billings/");
+      await expect(page).toHaveURL(/\/security\/totp\/setup$/);
+      await expect(page.getByText(/Sua organização exige autenticação multifator/i)).toBeVisible();
+      expect(guardedBillingRequests).toEqual([]);
+    } finally {
+      page.off("request", capturePrivateRequest);
+    }
+
+    await page.getByText("Inserir manualmente", { exact: true }).click();
+    const secret = page.locator(".secret-key");
+    await expect(secret).toBeVisible();
+    totpSecret = (await secret.innerText()).trim();
+    expect(totpSecret).toMatch(/^[A-Z2-7]+$/);
+    await page.getByLabel("Código de verificação").fill(totpCode(totpSecret));
+    await page.getByRole("button", { name: "Confirmar e Ativar" }).click();
+
+    await expect(page).toHaveURL(/\/security\/recovery-codes$/);
+    await expect(page.getByRole("heading", { name: "Códigos de Recuperação" })).toBeVisible();
+    expect(await page.locator("#recovery-codes code").count()).toBeGreaterThan(0);
+    await page.getByRole("button", { name: "Continuar" }).click();
+    await expect(page).toHaveURL(/\/security$/);
+    await expect(page.getByRole("heading", { name: "Segurança" })).toBeVisible();
+
+    const allowed = await page.request.get("/api/v1/billings");
+    expect(allowed.status()).toBe(200);
   });
 
   await test.step("create a billing and its first real invoice", async () => {
@@ -159,6 +245,10 @@ test("exercises the replacement stack without network interception", async ({ ba
     await page.getByLabel("E-mail").fill(email);
     await page.getByLabel("Senha", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Entrar" }).click();
+    await expect(page).toHaveURL(/\/mfa-verify\?challenge=/);
+    await expect(page.getByRole("heading", { name: "Verificação MFA" })).toBeVisible();
+    await page.getByLabel("Código de autenticação").fill(totpCode(totpSecret));
+    await page.getByRole("button", { name: "Verificar" }).click();
     await expect(page).toHaveURL(/\/billings\/$/);
   });
 });

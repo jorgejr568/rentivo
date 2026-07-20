@@ -52,7 +52,7 @@ test("completes TOTP setup and registers a passkey through browser credentials",
   await page.getByRole("button", { name: "Confirmar e Ativar" }).click();
   await expect(page.getByText("RECOVERY-BRAVO")).toBeVisible();
 
-  await page.getByRole("link", { name: "Continuar" }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await page.getByLabel("Nome da passkey").fill("Celular E2E");
   await page.getByRole("button", { name: "Adicionar Passkey" }).click();
   await expect(page.getByRole("status")).toContainText("Passkey cadastrada.");

@@ -1,18 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -ne 1 || -z "${1:-}" ]]; then
-  printf 'Usage: %s BASE_URL\n' "$0" >&2
-  exit 2
-fi
-
-BASE_URL=${1%/}
-WORK_DIR=$(mktemp -d)
-COOKIE_JAR="$WORK_DIR/cookies.txt"
-HEADERS="$WORK_DIR/headers.txt"
-BODY="$WORK_DIR/body.txt"
-trap 'rm -rf "$WORK_DIR"' EXIT
-
 stage() {
   printf '\n==> %s\n' "$1"
 }
@@ -36,7 +24,7 @@ request() {
 }
 
 media_type() {
-  awk 'BEGIN { IGNORECASE=1 } /^content-type:/ { value=$0 } END { sub(/^[^:]*:[[:space:]]*/, "", value); sub(/;.*/, "", value); sub(/\r$/, "", value); print tolower(value) }' "$HEADERS"
+  awk '{ normalized=tolower($0); if (normalized ~ /^content-type:[[:space:]]*/) value=$0 } END { sub(/^[^:]*:[[:space:]]*/, "", value); sub(/;.*/, "", value); sub(/\r$/, "", value); print tolower(value) }' "$HEADERS"
 }
 
 expect_response() {
@@ -52,6 +40,19 @@ expect_response() {
 expect_body() {
   grep -Fq -- "$1" "$BODY" || fail "response body did not contain expected marker: $1"
 }
+
+main() {
+  if [[ $# -ne 1 || -z "${1:-}" ]]; then
+    printf 'Usage: %s BASE_URL\n' "$0" >&2
+    return 2
+  fi
+
+  BASE_URL=${1%/}
+  WORK_DIR=$(mktemp -d)
+  COOKIE_JAR="$WORK_DIR/cookies.txt"
+  HEADERS="$WORK_DIR/headers.txt"
+  BODY="$WORK_DIR/body.txt"
+  trap 'rm -rf "$WORK_DIR"' EXIT
 
 stage "health"
 status=$(request GET /health)
@@ -129,3 +130,8 @@ expect_response 200 application/json "$status"
 expect_body '"status":"authenticated"'
 
 printf '\nProduction stack smoke checks passed.\n'
+}
+
+if [[ "${RENTIVO_SMOKE_LIB_ONLY:-0}" != "1" ]]; then
+  main "$@"
+fi

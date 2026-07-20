@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "e2e": "playwright test",
     "e2e:update": "playwright test --update-snapshots",
+    "pretest": "../scripts/tests/smoke-production-stack-test.sh",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
