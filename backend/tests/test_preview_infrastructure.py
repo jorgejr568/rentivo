@@ -53,12 +53,15 @@ def test_api_runtime_trusts_only_the_production_proxy():
     assert compose["services"]["proxy"]["networks"]["app-edge"]["ipv4_address"] == ("${RENTIVO_PROXY_IP:-172.30.0.10}")
 
 
-def test_api_readiness_checks_the_database_and_http_endpoint():
+def test_api_healthcheck_uses_liveness_while_proxy_checks_readiness():
     compose = _yaml(COMPOSE_FILE)
     api = compose["services"]["api"]
     health_command = " ".join(api["healthcheck"]["test"])
+    dockerfile = API_DOCKERFILE.read_text()
 
-    assert "http://localhost:8000/api/v1/ready" in health_command
+    assert "http://localhost:8000/api/v1/health" in health_command
+    assert "http://localhost:8000/api/v1/health" in dockerfile
+    assert "get_engine" not in dockerfile.split("HEALTHCHECK", maxsplit=1)[1]
     assert api["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
     assert compose["services"]["proxy"]["healthcheck"]["test"][-1] == ("http://localhost/api/v1/ready")
 

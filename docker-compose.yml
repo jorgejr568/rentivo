@@ -88,7 +88,7 @@ services:
           "python",
           "-c",
           "import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=2).close()",
-          "http://localhost:8000/api/v1/ready",
+          "http://localhost:8000/api/v1/health",
         ]
       interval: 10s
       timeout: 3s

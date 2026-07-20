@@ -171,10 +171,10 @@ def test_proxy_and_database_publish_only_on_loopback():
     assert "ports" not in services["frontend"]
 
 
-def test_api_healthcheck_uses_database_readiness_endpoint():
+def test_api_healthcheck_uses_liveness_endpoint():
     healthcheck = _yaml(COMPOSE_FILE)["services"]["api"]["healthcheck"]["test"]
 
-    assert healthcheck[-1] == "http://localhost:8000/api/v1/ready"
+    assert healthcheck[-1] == "http://localhost:8000/api/v1/health"
 
 
 def test_compose_sets_explicit_production_web_security_environment():
