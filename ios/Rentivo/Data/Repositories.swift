@@ -94,6 +94,11 @@ public protocol InvitationRepository: AnyObject {
 @MainActor
 public protocol SecurityRepository: AnyObject {
   func securitySummary() async throws -> SecuritySummary
+  func setTOTPEnabled(_ enabled: Bool) async throws
+  func regenerateRecoveryCodes() async throws -> [String]
+  func addPasskey(name: String) async throws -> Passkey
+  func renamePasskey(id: UUID, name: String) async throws
+  func deletePasskey(id: UUID) async throws
 }
 
 @MainActor

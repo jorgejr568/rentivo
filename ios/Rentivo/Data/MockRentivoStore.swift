@@ -635,6 +635,63 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.security
   }
 
+  public func setTOTPEnabled(_ enabled: Bool) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    snapshot.security.totpEnabled = enabled
+    recordActivity(
+      kind: .security,
+      title: enabled ? "TOTP ativado" : "TOTP desativado",
+      detail: snapshot.profile.email
+    )
+  }
+
+  public func regenerateRecoveryCodes() async throws -> [String] {
+    try await prepareOperation()
+    try requireWriteAccess()
+    let codes = [
+      "RNTV-7K2P", "RNTV-4M9Q", "RNTV-8X3L", "RNTV-2N6C",
+      "RNTV-5B1W", "RNTV-9J4R", "RNTV-3F8T", "RNTV-6D2H",
+    ]
+    snapshot.security.recoveryCodeCount = codes.count
+    recordActivity(kind: .security, title: "Códigos renovados", detail: "\(codes.count) códigos")
+    return codes
+  }
+
+  public func addPasskey(name: String) async throws -> Passkey {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw DemoError.operationFailed
+    }
+    let passkey = Passkey(id: UUID(), name: name, createdAt: Date(), lastUsedAt: nil)
+    snapshot.security.passkeys.append(passkey)
+    recordActivity(kind: .security, title: "Chave de acesso criada", detail: name)
+    return passkey
+  }
+
+  public func renamePasskey(id: UUID, name: String) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard let index = snapshot.security.passkeys.firstIndex(where: { $0.id == id }),
+      !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+      throw DemoError.resourceNotFound
+    }
+    snapshot.security.passkeys[index].name = name
+  }
+
+  public func deletePasskey(id: UUID) async throws {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard snapshot.security.passkeys.contains(where: { $0.id == id }) else {
+      throw DemoError.resourceNotFound
+    }
+    snapshot.security.passkeys.removeAll { $0.id == id }
+    recordActivity(
+      kind: .security, title: "Chave de acesso removida", detail: snapshot.profile.email)
+  }
+
   public func listAPIKeys() async throws -> [APIKeyMetadata] {
     try await prepareOperation()
     guard !emptyMode else { return [] }

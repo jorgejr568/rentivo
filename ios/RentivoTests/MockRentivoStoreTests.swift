@@ -214,3 +214,42 @@ import Testing
   #expect(updated.members.first { $0.userID == member.userID }?.role == .manager)
   #expect(!updated.requiresMFA)
 }
+
+@Test @MainActor func createdKeySecretIsSeparateFromMetadata() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+
+  let created = try await store.createAPIKey(.demo)
+  let metadata = try await store.listAPIKeys()
+
+  #expect(created.secret.hasPrefix("rntv-v1-"))
+  #expect(metadata.contains { $0.id == created.metadata.id })
+  #expect(!String(describing: metadata).contains(created.secret))
+}
+
+@Test @MainActor func themeResetRestoresUserInheritance() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let target = ThemeTarget.billing(StableID.billingAurora101)
+
+  try await store.updateTheme(target: target, values: .sunset)
+  try await store.resetTheme(target: target)
+
+  let theme = try await store.theme(target: target)
+  #expect(theme.stored == nil)
+  #expect(theme.effectiveSource == .user)
+  #expect(theme.effective == .rentivo)
+}
+
+@Test @MainActor func securityMutationsUpdateTOTPRecoveryCodesAndPasskeys() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+
+  try await store.setTOTPEnabled(false)
+  let codes = try await store.regenerateRecoveryCodes()
+  let passkey = try await store.addPasskey(name: "iPhone de demonstração")
+  try await store.renamePasskey(id: passkey.id, name: "iPhone pessoal")
+
+  let summary = try await store.securitySummary()
+  #expect(!summary.totpEnabled)
+  #expect(codes.count == 8)
+  #expect(summary.recoveryCodeCount == 8)
+  #expect(summary.passkeys.contains { $0.id == passkey.id && $0.name == "iPhone pessoal" })
+}

@@ -51,39 +51,10 @@ struct AuthenticatedTabView: View {
       .tabItem { Label("Organizações", systemImage: "building.2") }
 
       NavigationStack {
-        FeaturePlaceholder(
-          title: "Conta",
-          message: "Configure PIX, segurança e integrações.",
-          symbol: "person.crop.circle.fill"
-        )
-        .toolbar {
-          Button("Sair") { app.signOut() }
-        }
+        AccountView()
       }
       .tag(AppTab.account)
       .tabItem { Label("Conta", systemImage: "person.crop.circle") }
     }
-  }
-}
-
-private struct FeaturePlaceholder: View {
-  let title: String
-  let message: String
-  let symbol: String
-
-  var body: some View {
-    VStack(spacing: RentivoSpacing.large) {
-      Image(systemName: symbol)
-        .font(.system(size: 44, weight: .bold))
-        .foregroundStyle(RentivoColors.emerald)
-      Text(message)
-        .font(.title3.weight(.semibold))
-        .multilineTextAlignment(.center)
-        .foregroundStyle(RentivoColors.ink)
-    }
-    .padding(RentivoSpacing.page)
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(RentivoColors.paper)
-    .navigationTitle(title)
   }
 }
