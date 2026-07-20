@@ -322,3 +322,13 @@ def test_makefile_selects_separate_env_files_and_terminating_migration_command()
     assert 'RENTIVO_APP_ENV_FILE="$(RENTIVO_APP_ENV_FILE)"' in makefile
     assert "$(STACK_COMPOSE) run --rm migrate" in makefile
     assert "$(STACK_COMPOSE) up --build migrate" not in makefile
+
+
+def test_makefile_exposes_the_complete_frontend_release_gate():
+    makefile = MAKEFILE.read_text()
+
+    assert ".PHONY: frontend-check" in makefile
+    assert "frontend-check: frontend-test-cov" in makefile
+    assert "\t$(NPM_FRONTEND) run typecheck" in makefile
+    assert "\t$(NPM_FRONTEND) run lint" in makefile
+    assert "\t$(NPM_FRONTEND) run build" in makefile

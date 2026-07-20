@@ -125,6 +125,12 @@ frontend-build:
 frontend-test-cov:
 	$(NPM_FRONTEND) test -- --run --coverage
 
+.PHONY: frontend-check
+frontend-check: frontend-test-cov
+	$(NPM_FRONTEND) run typecheck
+	$(NPM_FRONTEND) run lint
+	$(NPM_FRONTEND) run build
+
 .PHONY: openapi-export
 openapi-export:
 	$(NPM_FRONTEND) run api:snapshot
