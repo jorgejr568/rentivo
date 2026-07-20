@@ -65,6 +65,16 @@ public protocol CommunicationRepository: AnyObject {
 }
 
 @MainActor
+public protocol DashboardRepository: AnyObject {
+  func dashboardSummary() async throws -> DashboardSummary
+}
+
+@MainActor
+public protocol ActivityRepository: AnyObject {
+  var recentActivities: [RecentActivity] { get }
+}
+
+@MainActor
 public protocol OrganizationRepository: AnyObject {
   func listOrganizations() async throws -> [Organization]
   func organization(id: UUID) async throws -> Organization
@@ -105,6 +115,7 @@ public protocol SecurityRepository: AnyObject {
 public protocol APIKeyRepository: AnyObject {
   func listAPIKeys() async throws -> [APIKeyMetadata]
   func createAPIKey(_ draft: APIKeyDraft) async throws -> CreatedAPIKeySecret
+  func updateAPIKey(id: UUID, draft: APIKeyDraft) async throws -> APIKeyMetadata
   func revokeAPIKey(id: UUID) async throws
 }
 
@@ -113,6 +124,105 @@ public protocol ThemeRepository: AnyObject {
   func theme(target: ThemeTarget) async throws -> ThemeRecord
   func updateTheme(target: ThemeTarget, values: ThemeValues) async throws
   func resetTheme(target: ThemeTarget) async throws
+}
+
+public struct DemoSettings: Hashable, Sendable {
+  public var delayEnabled: Bool
+  public var emptyMode: Bool
+  public var viewerMode: Bool
+
+  public init(delayEnabled: Bool, emptyMode: Bool, viewerMode: Bool) {
+    self.delayEnabled = delayEnabled
+    self.emptyMode = emptyMode
+    self.viewerMode = viewerMode
+  }
+
+  public static let standard = DemoSettings(
+    delayEnabled: false, emptyMode: false, viewerMode: false
+  )
+}
+
+@MainActor
+public protocol DemoRepository: AnyObject {
+  var demoSettings: DemoSettings { get }
+  func failNextOperation()
+  func setEmptyMode(_ enabled: Bool)
+  func setViewerMode(_ enabled: Bool)
+  func setDelayEnabled(_ enabled: Bool)
+  func reset()
+}
+
+@MainActor
+public struct AppDependencies {
+  public let auth: any AuthRepository
+  public let profile: any ProfileRepository
+  public let billings: any BillingRepository
+  public let bills: any BillRepository
+  public let expenses: any ExpenseRepository
+  public let attachments: any AttachmentRepository
+  public let communications: any CommunicationRepository
+  public let dashboard: any DashboardRepository
+  public let activities: any ActivityRepository
+  public let organizations: any OrganizationRepository
+  public let invitations: any InvitationRepository
+  public let security: any SecurityRepository
+  public let apiKeys: any APIKeyRepository
+  public let themes: any ThemeRepository
+  public let demo: any DemoRepository
+
+  public init(
+    auth: any AuthRepository,
+    profile: any ProfileRepository,
+    billings: any BillingRepository,
+    bills: any BillRepository,
+    expenses: any ExpenseRepository,
+    attachments: any AttachmentRepository,
+    communications: any CommunicationRepository,
+    dashboard: any DashboardRepository,
+    activities: any ActivityRepository,
+    organizations: any OrganizationRepository,
+    invitations: any InvitationRepository,
+    security: any SecurityRepository,
+    apiKeys: any APIKeyRepository,
+    themes: any ThemeRepository,
+    demo: any DemoRepository
+  ) {
+    self.auth = auth
+    self.profile = profile
+    self.billings = billings
+    self.bills = bills
+    self.expenses = expenses
+    self.attachments = attachments
+    self.communications = communications
+    self.dashboard = dashboard
+    self.activities = activities
+    self.organizations = organizations
+    self.invitations = invitations
+    self.security = security
+    self.apiKeys = apiKeys
+    self.themes = themes
+    self.demo = demo
+  }
+
+  public static func mock(store: MockRentivoStore = MockRentivoStore()) -> AppDependencies {
+    AppDependencies(
+      auth: store,
+      profile: store,
+      billings: store,
+      bills: store,
+      expenses: store,
+      attachments: store,
+      communications: store,
+      dashboard: store,
+      activities: store,
+      organizations: store,
+      invitations: store,
+      security: store,
+      apiKeys: store,
+      themes: store,
+      demo: store
+    )
+  }
 }
 
 public struct DashboardSummary: Hashable, Sendable {

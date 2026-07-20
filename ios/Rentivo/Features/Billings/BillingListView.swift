@@ -32,12 +32,14 @@ struct BillingListView: View {
     .searchable(text: $searchText, prompt: "Buscar por nome ou responsável")
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
-        Button {
-          showingCreate = true
-        } label: {
-          Label("Nova cobrança", systemImage: "plus")
+        if !app.demoSettings.viewerMode {
+          Button {
+            showingCreate = true
+          } label: {
+            Label("Nova cobrança", systemImage: "plus")
+          }
+          .accessibilityIdentifier("billing.create")
         }
-        .accessibilityIdentifier("billing.create")
       }
     }
     .sheet(isPresented: $showingCreate) {
@@ -48,7 +50,7 @@ struct BillingListView: View {
     .navigationDestination(for: UUID.self) { id in
       BillingDetailView(billingID: id) { await load() }
     }
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
     .refreshable { await load() }
   }
 
@@ -101,13 +103,13 @@ struct BillingListView: View {
   private func load() async {
     state = .loading
     do {
-      let billings = try await app.store.listBillings()
+      let billings = try await app.dependencies.billings.listBillings()
       var items: [BillingPortfolioItem] = []
       for billing in billings {
         items.append(
           BillingPortfolioItem(
             billing: billing,
-            bills: try await app.store.listBills(billingID: billing.id)
+            bills: try await app.dependencies.bills.listBills(billingID: billing.id)
           )
         )
       }

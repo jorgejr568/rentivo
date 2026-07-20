@@ -111,6 +111,19 @@ import Testing
   #expect(restricted.capabilities == .viewer)
 }
 
+@Test @MainActor func viewerModeRestrictsOrganizationManagementCapabilities() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  store.setViewerMode(true)
+
+  let organization = try await store.organization(id: StableID.organizationHorizonte)
+
+  #expect(organization.currentUserRole == .viewer)
+  #expect(!organization.capabilities.canManage)
+  #expect(!organization.capabilities.canInvite)
+  #expect(!organization.capabilities.canCreateBilling)
+  #expect(organization.capabilities.canViewBillingStats)
+}
+
 @Test @MainActor func acceptingInvitationCreatesMembershipAndClearsPendingCount() async throws {
   let store = MockRentivoStore(fixtures: .canonical)
   let invitation = try #require(try await store.listPendingInvitations().first)
@@ -120,6 +133,41 @@ import Testing
   #expect(try await store.listPendingInvitations().isEmpty)
   let organization = try await store.organization(id: invitation.organizationID)
   #expect(organization.members.contains { $0.userID == store.currentUser.id })
+}
+
+@Test @MainActor func acceptedManagerCannotMutateOrganizationPolicy() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let invitation = try #require(try await store.listPendingInvitations().first)
+  try await store.acceptInvitation(id: invitation.id)
+
+  do {
+    try await store.setOrganizationMFA(
+      organizationID: invitation.organizationID,
+      required: true
+    )
+    Issue.record("Expected manager policy mutation to be denied")
+  } catch let error as DemoError {
+    #expect(error == .permissionDenied)
+  }
+}
+
+@Test @MainActor func acceptedManagerCannotMutateOrganizationTheme() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let invitation = try #require(try await store.listPendingInvitations().first)
+  try await store.acceptInvitation(id: invitation.id)
+
+  let theme = try await store.theme(target: .organization(invitation.organizationID))
+  #expect(!theme.canEdit)
+
+  do {
+    try await store.updateTheme(
+      target: .organization(invitation.organizationID),
+      values: .sunset
+    )
+    Issue.record("Expected manager theme mutation to be denied")
+  } catch let error as DemoError {
+    #expect(error == .permissionDenied)
+  }
 }
 
 @Test @MainActor func resetRestoresCanonicalSnapshotAndBehavior() async throws {
@@ -228,6 +276,53 @@ import Testing
   #expect(created.secret.hasPrefix("rntv-v1-"))
   #expect(metadata.contains { $0.id == created.metadata.id })
   #expect(!String(describing: metadata).contains(created.secret))
+}
+
+@Test @MainActor func apiKeyMetadataCanBeUpdatedWithoutRotatingSecret() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let key = try #require(try await store.listAPIKeys().first)
+  let updatedDraft = APIKeyDraft(
+    name: "Integração contábil",
+    scopes: [.profileRead, .expensesRead],
+    grants: [APIKeyGrant(resourceType: .user, resourceID: StableID.userAna)],
+    expiresAt: Date(timeIntervalSince1970: 1_830_297_600)
+  )
+
+  let updated = try await store.updateAPIKey(id: key.id, draft: updatedDraft)
+
+  #expect(updated.id == key.id)
+  #expect(updated.hint == key.hint)
+  #expect(updated.name == updatedDraft.name)
+  #expect(updated.scopes == updatedDraft.scopes)
+  #expect(updated.grants == updatedDraft.grants)
+  #expect(updated.expiresAt == updatedDraft.expiresAt)
+}
+
+@Test @MainActor func demoSettingsAreAuthoritativeAndResetTogether() async throws {
+  let store = MockRentivoStore(fixtures: .canonical)
+
+  store.setDelayEnabled(true)
+  store.setEmptyMode(true)
+  store.setViewerMode(true)
+
+  #expect(
+    store.demoSettings
+      == DemoSettings(delayEnabled: true, emptyMode: true, viewerMode: true)
+  )
+
+  store.reset()
+  #expect(store.demoSettings == .standard)
+}
+
+@Test @MainActor func appDependenciesExposeFocusedRepositoryBoundary() {
+  let store = MockRentivoStore(fixtures: .canonical)
+  let dependencies = AppDependencies.mock(store: store)
+
+  #expect(dependencies.auth === store)
+  #expect(dependencies.billings === store)
+  #expect(dependencies.bills === store)
+  #expect(dependencies.organizations === store)
+  #expect(dependencies.demo === store)
 }
 
 @Test @MainActor func themeResetRestoresUserInheritance() async throws {

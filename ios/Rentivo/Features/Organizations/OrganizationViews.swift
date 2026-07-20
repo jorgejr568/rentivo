@@ -11,11 +11,31 @@ struct OrganizationListView: View {
   @State private var state: LoadState<[OrganizationListItem]> = .idle
   @State private var pendingCount = 0
   @State private var showingCreate = false
+  @State private var showingInvitations = false
 
   var body: some View {
     PageStateView(state: state) { organizations in
       ScrollView {
         LazyVStack(spacing: RentivoSpacing.large) {
+          if pendingCount > 0 {
+            Button {
+              showingInvitations = true
+            } label: {
+              RentivoCard {
+                HStack {
+                  Label(
+                    "\(pendingCount) convite pendente",
+                    systemImage: "envelope.badge.fill"
+                  )
+                  .font(.headline)
+                  Spacer()
+                  Image(systemName: "chevron.right")
+                }
+              }
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("organization.invitations.open")
+          }
           ForEach(organizations) { item in
             NavigationLink {
               OrganizationDetailView(organizationID: item.id) { await load() }
@@ -33,17 +53,13 @@ struct OrganizationListView: View {
     .background(RentivoColors.paper)
     .navigationTitle("Organizações")
     .toolbar {
-      ToolbarItemGroup(placement: .topBarTrailing) {
-        NavigationLink {
-          InvitationListView { await load() }
-        } label: {
-          Label("Convites", systemImage: pendingCount > 0 ? "envelope.badge.fill" : "envelope")
-        }
-        .accessibilityValue("\(pendingCount) pendentes")
-        Button {
-          showingCreate = true
-        } label: {
-          Label("Criar", systemImage: "plus")
+      ToolbarItem(placement: .topBarTrailing) {
+        if !app.demoSettings.viewerMode {
+          Button {
+            showingCreate = true
+          } label: {
+            Label("Criar", systemImage: "plus")
+          }
         }
       }
     }
@@ -52,22 +68,27 @@ struct OrganizationListView: View {
         OrganizationFormView { await load() }
       }
     }
-    .task { await load() }
+    .sheet(isPresented: $showingInvitations) {
+      NavigationStack {
+        InvitationListView { await load() }
+      }
+    }
+    .task(id: app.dataRevision) { await load() }
     .refreshable { await load() }
   }
 
   private func load() async {
     state = .loading
     do {
-      let organizations = try await app.store.listOrganizations()
-      let billings = try await app.store.listBillings()
+      let organizations = try await app.dependencies.organizations.listOrganizations()
+      let billings = try await app.dependencies.billings.listBillings()
       let values = organizations.map { organization in
         OrganizationListItem(
           organization: organization,
           billingCount: billings.filter { $0.owner.id == organization.id }.count
         )
       }
-      pendingCount = try await app.store.listPendingInvitations().count
+      pendingCount = try await app.dependencies.invitations.listPendingInvitations().count
       state = values.isEmpty ? .empty : .loaded(values)
     } catch { state = .failed(DemoError(error)) }
   }
@@ -164,9 +185,10 @@ struct OrganizationFormView: View {
     let draft = OrganizationDraft(name: name, pix: pix)
     do {
       if let organization {
-        _ = try await app.store.updateOrganization(id: organization.id, draft: draft)
+        _ = try await app.dependencies.organizations.updateOrganization(
+          id: organization.id, draft: draft)
       } else {
-        _ = try await app.store.createOrganization(draft)
+        _ = try await app.dependencies.organizations.createOrganization(draft)
       }
       await onSaved()
       dismiss()
@@ -196,7 +218,11 @@ struct OrganizationDetailView: View {
     .background(RentivoColors.paper)
     .navigationTitle("Organização")
     .navigationBarTitleDisplayMode(.inline)
-    .toolbar { Button("Editar") { showingEdit = true } }
+    .toolbar {
+      if state.value?.capabilities.canManage == true {
+        Button("Editar") { showingEdit = true }
+      }
+    }
     .sheet(isPresented: $showingEdit) {
       if let organization = state.value {
         NavigationStack {
@@ -226,7 +252,7 @@ struct OrganizationDetailView: View {
     } message: {
       Text("Primeiro transfira todas as cobranças vinculadas.")
     }
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
   }
 
   private func content(_ organization: Organization) -> some View {
@@ -247,12 +273,30 @@ struct OrganizationDetailView: View {
         policySection(organization)
         billingSection(organization)
 
-        Button(role: .destructive) {
-          confirmingDelete = true
+        NavigationLink {
+          ThemeEditorView(target: .organization(organizationID))
         } label: {
-          Label("Excluir organização", systemImage: "trash").frame(maxWidth: .infinity)
+          Label("Aparência da organização", systemImage: "paintpalette.fill")
+            .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
+        .accessibilityIdentifier("organization.theme")
+
+        if organization.capabilities.canManage {
+          Button(role: .destructive) {
+            confirmingDelete = true
+          } label: {
+            Label("Excluir organização", systemImage: "trash").frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.bordered)
+        } else {
+          Label(
+            "Seu papel permite consultar esta organização, sem alterar sua configuração.",
+            systemImage: "eye.fill"
+          )
+          .font(.footnote.weight(.semibold))
+          .foregroundStyle(RentivoColors.secondaryInk)
+        }
       }
       .padding(RentivoSpacing.page)
     }
@@ -263,12 +307,14 @@ struct OrganizationDetailView: View {
       HStack {
         SectionTitle(title: "Membros", symbol: "person.2.fill")
         Spacer()
-        Button {
-          showingInvite = true
-        } label: {
-          Image(systemName: "person.badge.plus")
+        if organization.capabilities.canInvite {
+          Button {
+            showingInvite = true
+          } label: {
+            Image(systemName: "person.badge.plus")
+          }
+          .accessibilityLabel("Convidar membro")
         }
-        .accessibilityLabel("Convidar membro")
       }
       RentivoCard {
         VStack(spacing: RentivoSpacing.medium) {
@@ -281,7 +327,9 @@ struct OrganizationDetailView: View {
                   .foregroundStyle(RentivoColors.secondaryInk)
               }
               Spacer()
-              if member.role != .owner {
+              if member.role == .owner {
+                Image(systemName: "crown.fill").foregroundStyle(RentivoColors.amber)
+              } else if organization.capabilities.canManage {
                 Menu {
                   ForEach(OrganizationRole.allCases.filter { $0 != .owner }, id: \.self) { role in
                     Button(role.label) { Task { await changeRole(member, to: role) } }
@@ -291,8 +339,6 @@ struct OrganizationDetailView: View {
                 } label: {
                   Image(systemName: "ellipsis.circle")
                 }
-              } else {
-                Image(systemName: "crown.fill").foregroundStyle(RentivoColors.amber)
               }
             }
           }
@@ -319,6 +365,7 @@ struct OrganizationDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { confirmingMFA = true }
+        .allowsHitTesting(organization.capabilities.canManage)
       }
     }
   }
@@ -336,14 +383,16 @@ struct OrganizationDetailView: View {
             HStack {
               Text(billing.name).font(.subheadline.weight(.semibold))
               Spacer()
-              Button("Tornar pessoal") { Task { await makePersonal(billing) } }
-                .font(.caption)
+              if organization.capabilities.canCreateBilling && billing.capabilities.canTransfer {
+                Button("Tornar pessoal") { Task { await makePersonal(billing) } }
+                  .font(.caption)
+              }
             }
           }
         }
       }
       let personal = billings.filter { !$0.owner.isOrganization }
-      if !personal.isEmpty {
+      if !personal.isEmpty && organization.capabilities.canCreateBilling {
         Menu {
           ForEach(personal) { billing in
             Button(billing.name) { Task { await transfer(billing, to: organization) } }
@@ -359,9 +408,10 @@ struct OrganizationDetailView: View {
   private func load() async {
     state = .loading
     do {
-      async let organization = app.store.organization(id: organizationID)
-      async let values = app.store.listBillings()
-      let (loadedOrganization, loadedBillings) = try await (organization, values)
+      let loadedOrganization = try await app.dependencies.organizations.organization(
+        id: organizationID
+      )
+      let loadedBillings = try await app.dependencies.billings.listBillings()
       billings = loadedBillings
       state = .loaded(loadedOrganization)
     } catch { state = .failed(DemoError(error)) }
@@ -374,7 +424,7 @@ struct OrganizationDetailView: View {
 
   private func changeRole(_ member: OrganizationMember, to role: OrganizationRole) async {
     do {
-      try await app.store.updateMemberRole(
+      try await app.dependencies.organizations.updateMemberRole(
         organizationID: organizationID,
         userID: member.userID,
         role: role
@@ -385,7 +435,8 @@ struct OrganizationDetailView: View {
 
   private func remove(_ member: OrganizationMember) async {
     do {
-      try await app.store.removeMember(organizationID: organizationID, userID: member.userID)
+      try await app.dependencies.organizations.removeMember(
+        organizationID: organizationID, userID: member.userID)
       await refreshAll()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
@@ -393,7 +444,7 @@ struct OrganizationDetailView: View {
   private func toggleMFA() async {
     guard let organization = state.value else { return }
     do {
-      try await app.store.setOrganizationMFA(
+      try await app.dependencies.organizations.setOrganizationMFA(
         organizationID: organizationID,
         required: !organization.requiresMFA
       )
@@ -403,7 +454,7 @@ struct OrganizationDetailView: View {
 
   private func transfer(_ billing: Billing, to organization: Organization) async {
     do {
-      try await app.store.transferBilling(
+      try await app.dependencies.organizations.transferBilling(
         billingID: billing.id,
         toOrganizationID: organization.id
       )
@@ -413,14 +464,14 @@ struct OrganizationDetailView: View {
 
   private func makePersonal(_ billing: Billing) async {
     do {
-      try await app.store.transferBillingToPersonal(billingID: billing.id)
+      try await app.dependencies.organizations.transferBillingToPersonal(billingID: billing.id)
       await refreshAll()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
   private func deleteOrganization() async {
     do {
-      try await app.store.deleteOrganization(id: organizationID)
+      try await app.dependencies.organizations.deleteOrganization(id: organizationID)
       await onMutation()
       dismiss()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }

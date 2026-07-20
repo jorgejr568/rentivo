@@ -13,13 +13,19 @@ struct InvitationListView: View {
             Text(invitation.organizationName).font(.headline)
             Label(invitation.role.label, systemImage: "person.badge.shield.checkmark")
               .font(.caption)
-            HStack {
-              Button("Aceitar") { Task { await respond(invitation, accept: true) } }
-                .buttonStyle(.borderedProminent)
-              Button("Recusar", role: .destructive) {
-                Task { await respond(invitation, accept: false) }
+            if app.demoSettings.viewerMode {
+              Label("Ações indisponíveis no modo visualizador.", systemImage: "eye.fill")
+                .font(.caption)
+                .foregroundStyle(RentivoColors.secondaryInk)
+            } else {
+              HStack {
+                Button("Aceitar") { Task { await respond(invitation, accept: true) } }
+                  .buttonStyle(.borderedProminent)
+                Button("Recusar", role: .destructive) {
+                  Task { await respond(invitation, accept: false) }
+                }
+                .buttonStyle(.bordered)
               }
-              .buttonStyle(.bordered)
             }
           }
           .padding(.vertical, RentivoSpacing.small)
@@ -31,13 +37,13 @@ struct InvitationListView: View {
     }
     .background(RentivoColors.paper)
     .navigationTitle("Convites")
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
   }
 
   private func load() async {
     state = .loading
     do {
-      let invitations = try await app.store.listPendingInvitations()
+      let invitations = try await app.dependencies.invitations.listPendingInvitations()
       state = invitations.isEmpty ? .empty : .loaded(invitations)
     } catch { state = .failed(DemoError(error)) }
   }
@@ -45,9 +51,9 @@ struct InvitationListView: View {
   private func respond(_ invitation: Invitation, accept: Bool) async {
     do {
       if accept {
-        try await app.store.acceptInvitation(id: invitation.id)
+        try await app.dependencies.invitations.acceptInvitation(id: invitation.id)
       } else {
-        try await app.store.declineInvitation(id: invitation.id)
+        try await app.dependencies.invitations.declineInvitation(id: invitation.id)
       }
       await load()
       await onMutation()
@@ -88,7 +94,7 @@ struct InviteMemberView: View {
 
   private func invite() async {
     do {
-      _ = try await app.store.inviteMember(
+      _ = try await app.dependencies.organizations.inviteMember(
         organizationID: organization.id,
         email: email,
         role: role

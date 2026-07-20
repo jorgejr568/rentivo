@@ -25,18 +25,18 @@ struct HomeView: View {
         BrandMark(compact: true)
       }
     }
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
     .refreshable { await load() }
   }
 
   private func load() async {
     state = .loading
     do {
-      let summary = try await app.store.dashboardSummary()
-      let billings = try await app.store.listBillings()
+      let summary = try await app.dependencies.dashboard.dashboardSummary()
+      let billings = try await app.dependencies.billings.listBillings()
       var bills: [Bill] = []
       for billing in billings {
-        bills.append(contentsOf: try await app.store.listBills(billingID: billing.id))
+        bills.append(contentsOf: try await app.dependencies.bills.listBills(billingID: billing.id))
       }
       let names = Dictionary(uniqueKeysWithValues: billings.map { ($0.id, $0.name) })
       let upcomingStatuses: Set<BillStatus> = [.draft, .published, .sent]
@@ -47,7 +47,7 @@ struct HomeView: View {
           $0.dueDate < $1.dueDate
         },
         billingNames: names,
-        activities: app.store.recentActivities
+        activities: app.dependencies.activities.recentActivities
       )
       state = billings.isEmpty ? .empty : .loaded(data)
     } catch {
@@ -108,7 +108,7 @@ private struct HomeContent: View {
 
   private var greeting: some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.small) {
-      Text("Olá, Ana")
+      Text("Olá, \(app.currentUser.email.split(separator: "@").first?.capitalized ?? "usuária")")
         .font(RentivoTypography.display)
         .foregroundStyle(RentivoColors.ink)
       Text("Seu portfólio está pronto para a demonstração.")

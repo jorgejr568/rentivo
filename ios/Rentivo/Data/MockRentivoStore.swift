@@ -4,12 +4,19 @@ import Foundation
 public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingRepository,
   BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository,
   OrganizationRepository, InvitationRepository, SecurityRepository, APIKeyRepository,
-  ThemeRepository
+  ThemeRepository, DemoRepository, DashboardRepository, ActivityRepository
 {
   public private(set) var snapshot: StoreSnapshot
 
   public var currentUser: UserProfile { snapshot.profile }
   public var recentActivities: [RecentActivity] { snapshot.activities }
+  public var demoSettings: DemoSettings {
+    DemoSettings(
+      delayEnabled: delayEnabled,
+      emptyMode: emptyMode,
+      viewerMode: viewerMode
+    )
+  }
 
   private let baseline: StoreSnapshot
   private var emptyMode = false
@@ -229,7 +236,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     let billingName = snapshot.billings.first(where: { $0.id == billingID })?.name ?? "Cobrança"
     recordActivity(
       kind: .bill,
-      title: "Fatura (status.label.lowercased())",
+      title: "Fatura \(status.label.lowercased())",
       detail: billingName
     )
   }
@@ -439,9 +446,11 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   public func listOrganizations() async throws -> [Organization] {
     try await prepareOperation()
     guard !emptyMode else { return [] }
-    return snapshot.organizations.filter { organization in
-      organization.members.contains { $0.userID == snapshot.profile.id }
-    }
+    return snapshot.organizations
+      .filter { organization in
+        organization.members.contains { $0.userID == snapshot.profile.id }
+      }
+      .map(restrictIfNeeded)
   }
 
   public func organization(id: UUID) async throws -> Organization {
@@ -449,7 +458,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     guard let organization = snapshot.organizations.first(where: { $0.id == id }) else {
       throw DemoError.resourceNotFound
     }
-    return organization
+    return restrictIfNeeded(organization)
   }
 
   public func createOrganization(_ draft: OrganizationDraft) async throws -> Organization {
@@ -478,6 +487,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   public func updateOrganization(id: UUID, draft: OrganizationDraft) async throws -> Organization {
     try await prepareOperation()
     try requireWriteAccess()
+    try requireOrganizationCapability(id: id, \.canManage)
     guard draft.isValid else { throw DemoError.operationFailed }
     guard let index = organizationIndex(id) else { throw DemoError.resourceNotFound }
     snapshot.organizations[index].name = draft.name
@@ -496,6 +506,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   public func deleteOrganization(id: UUID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
+    try requireOrganizationCapability(id: id, \.canManage)
     guard let index = organizationIndex(id) else { throw DemoError.resourceNotFound }
     let hasBillings = snapshot.billings.contains { billing in
       if case .organization(let ownerID, _) = billing.owner { return ownerID == id }
@@ -515,6 +526,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   ) async throws {
     try await prepareOperation()
     try requireWriteAccess()
+    try requireOrganizationCapability(id: organizationID, \.canManage)
     guard let organizationIndex = organizationIndex(organizationID),
       let memberIndex = snapshot.organizations[organizationIndex].members.firstIndex(where: {
         $0.userID == userID
@@ -536,6 +548,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   public func removeMember(organizationID: UUID, userID: UUID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
+    try requireOrganizationCapability(id: organizationID, \.canManage)
     guard let index = organizationIndex(organizationID),
       let member = snapshot.organizations[index].members.first(where: { $0.userID == userID })
     else {
@@ -553,6 +566,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   ) async throws -> Invitation {
     try await prepareOperation()
     try requireWriteAccess()
+    try requireOrganizationCapability(id: organizationID, \.canInvite)
     guard let index = organizationIndex(organizationID), email.contains("@") else {
       throw DemoError.operationFailed
     }
@@ -572,6 +586,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   public func setOrganizationMFA(organizationID: UUID, required: Bool) async throws {
     try await prepareOperation()
     try requireWriteAccess()
+    try requireOrganizationCapability(id: organizationID, \.canManage)
     guard let index = organizationIndex(organizationID) else {
       throw DemoError.resourceNotFound
     }
@@ -586,6 +601,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   public func transferBilling(billingID: UUID, toOrganizationID: UUID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
+    try requireOrganizationCapability(id: toOrganizationID, \.canCreateBilling)
     guard let billingIndex = snapshot.billings.firstIndex(where: { $0.id == billingID }),
       let organizationIndex = organizationIndex(toOrganizationID)
     else {
@@ -611,6 +627,9 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     try requireWriteAccess()
     guard let index = snapshot.billings.firstIndex(where: { $0.id == billingID }) else {
       throw DemoError.resourceNotFound
+    }
+    if case .organization(let organizationID, _) = snapshot.billings[index].owner {
+      try requireOrganizationCapability(id: organizationID, \.canCreateBilling)
     }
     snapshot.billings[index].owner = .user(id: snapshot.profile.id, name: "Pessoal")
     recordActivity(kind: .billing, title: "Cobrança transferida", detail: "Pessoal")
@@ -717,6 +736,29 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return CreatedAPIKeySecret(metadata: metadata, secret: "rntv-v1-demo-8K2P-N4M7-X9Q3")
   }
 
+  public func updateAPIKey(id: UUID, draft: APIKeyDraft) async throws -> APIKeyMetadata {
+    try await prepareOperation()
+    try requireWriteAccess()
+    guard !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      !draft.scopes.isEmpty,
+      !draft.grants.isEmpty
+    else {
+      throw DemoError.operationFailed
+    }
+    guard let index = snapshot.apiKeys.firstIndex(where: { $0.id == id && $0.revokedAt == nil })
+    else {
+      throw DemoError.resourceNotFound
+    }
+    snapshot.apiKeys[index].name = draft.name
+    snapshot.apiKeys[index].scopes = draft.scopes
+    snapshot.apiKeys[index].grants = draft.grants
+    snapshot.apiKeys[index].expiresAt = draft.expiresAt
+    recordActivity(
+      kind: .apiKey, title: "Chave de API atualizada", detail: snapshot.apiKeys[index].name
+    )
+    return snapshot.apiKeys[index]
+  }
+
   public func revokeAPIKey(id: UUID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
@@ -732,26 +774,27 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     try await prepareOperation()
     let stored = snapshot.themes[target]
     let inherited = inheritedTheme(for: target)
+    let canEdit = canEditTheme(target)
     return ThemeRecord(
       ownerName: ownerName(for: target),
       stored: stored,
       effective: stored ?? inherited.values,
       effectiveSource: stored.map { _ in source(for: target) } ?? inherited.source,
-      canEdit: !viewerMode,
-      canReset: !viewerMode && stored != nil
+      canEdit: canEdit,
+      canReset: canEdit && stored != nil
     )
   }
 
   public func updateTheme(target: ThemeTarget, values: ThemeValues) async throws {
     try await prepareOperation()
-    try requireWriteAccess()
+    guard canEditTheme(target) else { throw DemoError.permissionDenied }
     snapshot.themes[target] = values
     recordActivity(kind: .theme, title: "Tema atualizado", detail: ownerName(for: target))
   }
 
   public func resetTheme(target: ThemeTarget) async throws {
     try await prepareOperation()
-    try requireWriteAccess()
+    guard canEditTheme(target) else { throw DemoError.permissionDenied }
     snapshot.themes[target] = nil
     recordActivity(kind: .theme, title: "Tema restaurado", detail: ownerName(for: target))
   }
@@ -770,10 +813,47 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     if viewerMode { throw DemoError.permissionDenied }
   }
 
+  private func requireOrganizationCapability(
+    id: UUID,
+    _ capability: KeyPath<OrganizationCapabilities, Bool>
+  ) throws {
+    guard let organization = snapshot.organizations.first(where: { $0.id == id }) else {
+      throw DemoError.resourceNotFound
+    }
+    let capabilities = OrganizationCapabilities.forRole(organization.currentUserRole)
+    guard capabilities[keyPath: capability] else { throw DemoError.permissionDenied }
+  }
+
+  private func canEditTheme(_ target: ThemeTarget) -> Bool {
+    guard !viewerMode else { return false }
+    switch target {
+    case .user:
+      return true
+    case .organization(let id):
+      guard let organization = snapshot.organizations.first(where: { $0.id == id }) else {
+        return false
+      }
+      return OrganizationCapabilities.forRole(organization.currentUserRole).canManage
+    case .billing(let id):
+      return snapshot.billings.first(where: { $0.id == id })?.capabilities.canManageTheme == true
+    }
+  }
+
   private func restrictIfNeeded(_ billing: Billing) -> Billing {
     guard viewerMode else { return billing }
     var restricted = billing
     restricted.capabilities = .viewer
+    return restricted
+  }
+
+  private func restrictIfNeeded(_ organization: Organization) -> Organization {
+    var restricted = organization
+    if viewerMode {
+      restricted.currentUserRole = .viewer
+      restricted.capabilities = .viewer
+    } else {
+      restricted.capabilities = .forRole(restricted.currentUserRole)
+    }
     return restricted
   }
 
@@ -820,6 +900,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       )
       snapshot.organizations[organizationIndex].members.append(membership)
       snapshot.organizations[organizationIndex].currentUserRole = invitation.role
+      snapshot.organizations[organizationIndex].capabilities = .forRole(invitation.role)
     }
     recordActivity(
       kind: .invitation,

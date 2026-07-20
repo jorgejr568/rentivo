@@ -3,6 +3,7 @@ import SwiftUI
 struct BillingOperationsLinks: View {
   let billingID: UUID
   let recipients: [String]
+  let capabilities: BillingCapabilities
   let onMutation: () async -> Void
 
   var body: some View {
@@ -10,32 +11,47 @@ struct BillingOperationsLinks: View {
       SectionTitle(title: "Operações", symbol: "square.grid.2x2.fill")
       RentivoCard {
         VStack(spacing: RentivoSpacing.small) {
-          NavigationLink {
-            ExpenseListView(billingID: billingID, onMutation: onMutation)
-          } label: {
-            OperationRow(title: "Despesas", symbol: "wrench.and.screwdriver.fill")
+          if capabilities.canReadExpenses {
+            NavigationLink {
+              ExpenseListView(
+                billingID: billingID,
+                canWrite: capabilities.canWriteExpenses,
+                onMutation: onMutation
+              )
+            } label: {
+              OperationRow(title: "Despesas", symbol: "wrench.and.screwdriver.fill")
+            }
           }
-          Divider()
-          NavigationLink {
-            AttachmentListView(billingID: billingID)
-          } label: {
-            OperationRow(title: "Arquivos", symbol: "folder.fill")
+          if capabilities.canReadAttachments {
+            Divider()
+            NavigationLink {
+              AttachmentListView(
+                billingID: billingID,
+                canWrite: capabilities.canWriteAttachments
+              )
+            } label: {
+              OperationRow(title: "Arquivos", symbol: "folder.fill")
+            }
           }
-          Divider()
-          NavigationLink {
-            CommunicationComposerView(
-              billingID: billingID,
-              billID: nil,
-              initialRecipients: recipients
-            )
-          } label: {
-            OperationRow(title: "Comunicação", symbol: "paperplane.fill")
+          if capabilities.canManageBills {
+            Divider()
+            NavigationLink {
+              CommunicationComposerView(
+                billingID: billingID,
+                billID: nil,
+                initialRecipients: recipients
+              )
+            } label: {
+              OperationRow(title: "Comunicação", symbol: "paperplane.fill")
+            }
           }
-          Divider()
-          NavigationLink {
-            ExportSimulationView(billingID: billingID)
-          } label: {
-            OperationRow(title: "Exportar dados", symbol: "square.and.arrow.up.fill")
+          if capabilities.canCreateExports {
+            Divider()
+            NavigationLink {
+              ExportSimulationView(billingID: billingID)
+            } label: {
+              OperationRow(title: "Exportar dados", symbol: "square.and.arrow.up.fill")
+            }
           }
         }
       }
@@ -64,6 +80,7 @@ private struct OperationRow: View {
 struct ExpenseListView: View {
   @Environment(AppModel.self) private var app
   let billingID: UUID
+  let canWrite: Bool
   let onMutation: () async -> Void
   @State private var state: LoadState<[Expense]> = .idle
   @State private var showingAdd = false
@@ -83,7 +100,9 @@ struct ExpenseListView: View {
               .foregroundStyle(RentivoColors.secondaryInk)
           }
           .swipeActions {
-            Button("Excluir", role: .destructive) { Task { await remove(expense) } }
+            if canWrite {
+              Button("Excluir", role: .destructive) { Task { await remove(expense) } }
+            }
           }
         }
       }
@@ -94,10 +113,12 @@ struct ExpenseListView: View {
     .background(RentivoColors.paper)
     .navigationTitle("Despesas")
     .toolbar {
-      Button {
-        showingAdd = true
-      } label: {
-        Label("Adicionar", systemImage: "plus")
+      if canWrite {
+        Button {
+          showingAdd = true
+        } label: {
+          Label("Adicionar", systemImage: "plus")
+        }
       }
     }
     .sheet(isPresented: $showingAdd) {
@@ -108,20 +129,20 @@ struct ExpenseListView: View {
         }
       }
     }
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
   }
 
   private func load() async {
     state = .loading
     do {
-      let expenses = try await app.store.listExpenses(billingID: billingID)
+      let expenses = try await app.dependencies.expenses.listExpenses(billingID: billingID)
       state = expenses.isEmpty ? .empty : .loaded(expenses)
     } catch { state = .failed(DemoError(error)) }
   }
 
   private func remove(_ expense: Expense) async {
     do {
-      try await app.store.deleteExpense(billingID: billingID, expenseID: expense.id)
+      try await app.dependencies.expenses.deleteExpense(billingID: billingID, expenseID: expense.id)
       await load()
       await onMutation()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
@@ -162,7 +183,7 @@ private struct ExpenseFormView: View {
 
   private func save() async {
     do {
-      _ = try await app.store.createExpense(
+      _ = try await app.dependencies.expenses.createExpense(
         billingID: billingID,
         description: description,
         category: category,
@@ -178,26 +199,41 @@ private struct ExpenseFormView: View {
 struct AttachmentListView: View {
   @Environment(AppModel.self) private var app
   let billingID: UUID
+  let canWrite: Bool
   @State private var state: LoadState<[Attachment]> = .idle
+  @State private var previewingAttachment: Attachment?
 
   var body: some View {
     PageStateView(state: state) { attachments in
       List {
         ForEach(attachments) { attachment in
-          Label {
-            VStack(alignment: .leading) {
-              Text(attachment.name).font(.headline)
-              Text(
-                ByteCountFormatter.string(
-                  fromByteCount: Int64(attachment.byteCount), countStyle: .file)
-              )
-              .font(.caption)
+          HStack {
+            Label {
+              VStack(alignment: .leading) {
+                Text(attachment.name).font(.headline)
+                Text(
+                  ByteCountFormatter.string(
+                    fromByteCount: Int64(attachment.byteCount), countStyle: .file)
+                )
+                .font(.caption)
+              }
+            } icon: {
+              Image(systemName: "doc.fill")
             }
-          } icon: {
-            Image(systemName: "doc.fill")
+            Spacer()
+            Menu {
+              Button("Visualizar") { previewingAttachment = attachment }
+              Button("Simular download") {
+                app.showNotice("Download local de \(attachment.name) simulado.")
+              }
+            } label: {
+              Image(systemName: "ellipsis.circle")
+            }
           }
           .swipeActions {
-            Button("Excluir", role: .destructive) { Task { await remove(attachment) } }
+            if canWrite {
+              Button("Excluir", role: .destructive) { Task { await remove(attachment) } }
+            }
           }
         }
       }
@@ -208,26 +244,31 @@ struct AttachmentListView: View {
     .background(RentivoColors.paper)
     .navigationTitle("Arquivos")
     .toolbar {
-      Button {
-        Task { await add() }
-      } label: {
-        Label("Adicionar", systemImage: "plus")
+      if canWrite {
+        Button {
+          Task { await add() }
+        } label: {
+          Label("Adicionar", systemImage: "plus")
+        }
       }
     }
-    .task { await load() }
+    .sheet(item: $previewingAttachment) { attachment in
+      LocalFilePreview(title: attachment.name, detail: "Arquivo da cobrança")
+    }
+    .task(id: app.dataRevision) { await load() }
   }
 
   private func load() async {
     state = .loading
     do {
-      let values = try await app.store.listAttachments(billingID: billingID)
+      let values = try await app.dependencies.attachments.listAttachments(billingID: billingID)
       state = values.isEmpty ? .empty : .loaded(values)
     } catch { state = .failed(DemoError(error)) }
   }
 
   private func add() async {
     do {
-      _ = try await app.store.addAttachment(
+      _ = try await app.dependencies.attachments.addAttachment(
         billingID: billingID,
         name: "vistoria-demo.pdf",
         mediaType: "application/pdf"
@@ -239,9 +280,34 @@ struct AttachmentListView: View {
 
   private func remove(_ attachment: Attachment) async {
     do {
-      try await app.store.deleteAttachment(billingID: billingID, attachmentID: attachment.id)
+      try await app.dependencies.attachments.deleteAttachment(
+        billingID: billingID, attachmentID: attachment.id)
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+}
+
+private struct LocalFilePreview: View {
+  @Environment(\.dismiss) private var dismiss
+  let title: String
+  let detail: String
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: RentivoSpacing.large) {
+        Image(systemName: "doc.text.magnifyingglass")
+          .font(.system(size: 64))
+          .foregroundStyle(RentivoColors.blue)
+        Text(title).font(RentivoTypography.title)
+        Text(detail).foregroundStyle(RentivoColors.secondaryInk)
+        Label("Prévia local — nenhum arquivo foi baixado.", systemImage: "info.circle")
+          .font(.footnote)
+        Spacer()
+      }
+      .padding(RentivoSpacing.page)
+      .navigationTitle("Prévia")
+      .toolbar { Button("Concluir") { dismiss() } }
+    }
   }
 }
 
@@ -300,7 +366,7 @@ struct CommunicationComposerView: View {
 
   private func send() async {
     do {
-      _ = try await app.store.sendCommunication(
+      _ = try await app.dependencies.communications.sendCommunication(
         billingID: billingID,
         billID: billID,
         recipients: recipients.split(separator: ",").map {

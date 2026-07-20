@@ -31,11 +31,21 @@ final class AppModel {
   var session: Session = .anonymous
   var selectedTab: AppTab = .home
   var notice: AppNotice?
-  let store: MockRentivoStore
+  var demoSettings: DemoSettings
+  var dataRevision = 0
+  let dependencies: AppDependencies
 
   init(store: MockRentivoStore = MockRentivoStore(fixtures: .canonical)) {
-    self.store = store
+    dependencies = .mock(store: store)
+    demoSettings = store.demoSettings
   }
+
+  init(dependencies: AppDependencies) {
+    self.dependencies = dependencies
+    demoSettings = dependencies.demo.demoSettings
+  }
+
+  var currentUser: UserProfile { dependencies.auth.currentUser }
 
   var isAuthenticated: Bool {
     if case .authenticated = session { return true }
@@ -43,7 +53,7 @@ final class AppModel {
   }
 
   func signIn() {
-    session = .authenticated(store.currentUser)
+    session = .authenticated(currentUser)
     selectedTab = .home
     notice = AppNotice(kind: .success, message: "Bem-vinda à demonstração do Rentivo.")
   }
@@ -56,5 +66,34 @@ final class AppModel {
 
   func showNotice(_ message: String, kind: AppNotice.Kind = .success) {
     notice = AppNotice(kind: kind, message: message)
+  }
+
+  func setDelayEnabled(_ enabled: Bool) {
+    dependencies.demo.setDelayEnabled(enabled)
+    refreshDemoState(reloadContent: false)
+  }
+
+  func setEmptyMode(_ enabled: Bool) {
+    dependencies.demo.setEmptyMode(enabled)
+    refreshDemoState(reloadContent: true)
+  }
+
+  func setViewerMode(_ enabled: Bool) {
+    dependencies.demo.setViewerMode(enabled)
+    refreshDemoState(reloadContent: true)
+  }
+
+  func failNextOperation() {
+    dependencies.demo.failNextOperation()
+  }
+
+  func resetDemo() {
+    dependencies.demo.reset()
+    refreshDemoState(reloadContent: true)
+  }
+
+  private func refreshDemoState(reloadContent: Bool) {
+    demoSettings = dependencies.demo.demoSettings
+    if reloadContent { dataRevision += 1 }
   }
 }

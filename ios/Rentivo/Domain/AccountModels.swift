@@ -32,6 +32,22 @@ public struct OrganizationCapabilities: Hashable, Codable, Sendable {
   public static let full = OrganizationCapabilities(
     canManage: true, canInvite: true, canCreateBilling: true, canViewBillingStats: true
   )
+
+  public static let manager = OrganizationCapabilities(
+    canManage: false, canInvite: true, canCreateBilling: true, canViewBillingStats: true
+  )
+
+  public static let viewer = OrganizationCapabilities(
+    canManage: false, canInvite: false, canCreateBilling: false, canViewBillingStats: true
+  )
+
+  public static func forRole(_ role: OrganizationRole) -> OrganizationCapabilities {
+    switch role {
+    case .owner, .admin: .full
+    case .manager: .manager
+    case .viewer: .viewer
+    }
+  }
 }
 
 public struct OrganizationMember: Identifiable, Hashable, Codable, Sendable {

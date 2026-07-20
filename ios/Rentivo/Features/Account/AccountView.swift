@@ -10,7 +10,7 @@ struct AccountView: View {
           BrandMark(compact: true)
           VStack(alignment: .leading, spacing: RentivoSpacing.tiny) {
             Text("Conta de demonstração").font(.headline)
-            Text(app.store.currentUser.email)
+            Text(app.currentUser.email)
               .font(.subheadline)
               .foregroundStyle(RentivoColors.secondaryInk)
           }
@@ -58,6 +58,7 @@ struct AccountView: View {
             symbol: "slider.horizontal.3"
           )
         }
+        .accessibilityIdentifier("account.demo")
       }
 
       Section {
@@ -109,7 +110,7 @@ struct ProfilePixView: View {
   var body: some View {
     Form {
       Section("Conta") {
-        LabeledContent("E-mail", value: app.store.currentUser.email)
+        LabeledContent("E-mail", value: app.currentUser.email)
         LabeledContent("Ambiente", value: "Demonstração local")
       }
       Section("PIX pessoal") {
@@ -119,6 +120,7 @@ struct ProfilePixView: View {
         TextField("Cidade", text: $city)
           .textInputAutocapitalization(.characters)
       }
+      .disabled(app.demoSettings.viewerMode)
       Section {
         Label(
           "Cobranças pessoais sem PIX próprio herdam esta configuração.",
@@ -129,12 +131,16 @@ struct ProfilePixView: View {
     }
     .navigationTitle("Dados e PIX")
     .toolbar {
-      Button("Salvar") { Task { await save() } }
-        .disabled(
-          !PixConfiguration(key: key, merchantName: merchantName, merchantCity: city).isComplete)
+      if !app.demoSettings.viewerMode {
+        Button("Salvar") { Task { await save() } }
+          .disabled(
+            !PixConfiguration(key: key, merchantName: merchantName, merchantCity: city).isComplete
+          )
+          .accessibilityIdentifier("profile.pix.save")
+      }
     }
     .task {
-      guard let pix = app.store.currentUser.pix else { return }
+      guard let pix = app.currentUser.pix else { return }
       key = pix.key
       merchantName = pix.merchantName
       city = pix.merchantCity
@@ -143,7 +149,7 @@ struct ProfilePixView: View {
 
   private func save() async {
     do {
-      _ = try await app.store.updatePix(
+      _ = try await app.dependencies.profile.updatePix(
         PixConfiguration(key: key, merchantName: merchantName, merchantCity: city)
       )
       app.showNotice("PIX pessoal atualizado.")

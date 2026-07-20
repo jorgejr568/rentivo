@@ -11,7 +11,9 @@ struct SecurityView: View {
     PageStateView(state: state) { summary in
       List {
         Section("Senha") {
-          Button("Simular alteração de senha") { showingPassword = true }
+          if !app.demoSettings.viewerMode {
+            Button("Simular alteração de senha") { showingPassword = true }
+          }
         }
         Section("Autenticação em duas etapas") {
           Toggle(
@@ -21,8 +23,11 @@ struct SecurityView: View {
               set: { value in Task { await setTOTP(value) } }
             )
           )
-          Button("Gerar novos códigos de recuperação") {
-            Task { await regenerateCodes() }
+          .disabled(app.demoSettings.viewerMode)
+          if !app.demoSettings.viewerMode {
+            Button("Gerar novos códigos de recuperação") {
+              Task { await regenerateCodes() }
+            }
           }
           LabeledContent("Códigos disponíveis", value: "\(summary.recoveryCodeCount)")
         }
@@ -33,17 +38,22 @@ struct SecurityView: View {
               Text("Criada para esta demonstração")
                 .font(.caption)
                 .foregroundStyle(RentivoColors.secondaryInk)
-              HStack {
-                Button("Renomear") { Task { await rename(passkey) } }
-                Button("Excluir", role: .destructive) { Task { await remove(passkey) } }
+              if !app.demoSettings.viewerMode {
+                HStack {
+                  Button("Renomear") { Task { await rename(passkey) } }
+                  Button("Excluir", role: .destructive) { Task { await remove(passkey) } }
+                }
+                .font(.caption.weight(.semibold))
               }
-              .font(.caption.weight(.semibold))
             }
           }
-          Button {
-            Task { await addPasskey() }
-          } label: {
-            Label("Registrar chave simulada", systemImage: "plus")
+          if !app.demoSettings.viewerMode {
+            Button {
+              Task { await addPasskey() }
+            } label: {
+              Label("Registrar chave simulada", systemImage: "plus")
+            }
+            .accessibilityIdentifier("security.passkey.add")
           }
         }
       }
@@ -53,7 +63,7 @@ struct SecurityView: View {
     }
     .background(RentivoColors.paper)
     .navigationTitle("Segurança")
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
     .sheet(isPresented: $showingRecoveryCodes) {
       RecoveryCodeView(codes: recoveryCodes)
     }
@@ -66,21 +76,21 @@ struct SecurityView: View {
 
   private func load() async {
     state = .loading
-    do { state = .loaded(try await app.store.securitySummary()) } catch {
+    do { state = .loaded(try await app.dependencies.security.securitySummary()) } catch {
       state = .failed(DemoError(error))
     }
   }
 
   private func setTOTP(_ enabled: Bool) async {
     do {
-      try await app.store.setTOTPEnabled(enabled)
+      try await app.dependencies.security.setTOTPEnabled(enabled)
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
   private func regenerateCodes() async {
     do {
-      recoveryCodes = try await app.store.regenerateRecoveryCodes()
+      recoveryCodes = try await app.dependencies.security.regenerateRecoveryCodes()
       await load()
       showingRecoveryCodes = true
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
@@ -88,21 +98,22 @@ struct SecurityView: View {
 
   private func addPasskey() async {
     do {
-      _ = try await app.store.addPasskey(name: "iPhone de demonstração")
+      _ = try await app.dependencies.security.addPasskey(name: "iPhone de demonstração")
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
   private func rename(_ passkey: Passkey) async {
     do {
-      try await app.store.renamePasskey(id: passkey.id, name: "\(passkey.name) — pessoal")
+      try await app.dependencies.security.renamePasskey(
+        id: passkey.id, name: "\(passkey.name) — pessoal")
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
   private func remove(_ passkey: Passkey) async {
     do {
-      try await app.store.deletePasskey(id: passkey.id)
+      try await app.dependencies.security.deletePasskey(id: passkey.id)
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }

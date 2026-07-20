@@ -2,9 +2,6 @@ import SwiftUI
 
 struct DemoScenariosView: View {
   @Environment(AppModel.self) private var app
-  @State private var delayEnabled = false
-  @State private var emptyMode = false
-  @State private var viewerMode = false
   @State private var confirmingReset = false
 
   var body: some View {
@@ -17,26 +14,43 @@ struct DemoScenariosView: View {
         .font(.footnote)
       }
       Section("Estados de leitura") {
-        Toggle("Atraso de 350 ms", isOn: $delayEnabled)
-          .onChange(of: delayEnabled) { _, value in app.store.setDelayEnabled(value) }
-        Toggle("Conteúdo vazio", isOn: $emptyMode)
-          .onChange(of: emptyMode) { _, value in app.store.setEmptyMode(value) }
-        Toggle("Permissões de visualizador", isOn: $viewerMode)
-          .onChange(of: viewerMode) { _, value in app.store.setViewerMode(value) }
+        settingButton(
+          title: "Atraso de 350 ms",
+          enabled: app.demoSettings.delayEnabled,
+          identifier: "demo.delay-mode"
+        ) {
+          app.setDelayEnabled(!app.demoSettings.delayEnabled)
+        }
+        settingButton(
+          title: "Conteúdo vazio",
+          enabled: app.demoSettings.emptyMode,
+          identifier: "demo.empty-mode"
+        ) {
+          app.setEmptyMode(!app.demoSettings.emptyMode)
+        }
+        settingButton(
+          title: "Permissões de visualizador",
+          enabled: app.demoSettings.viewerMode,
+          identifier: "demo.viewer-mode"
+        ) {
+          app.setViewerMode(!app.demoSettings.viewerMode)
+        }
       }
       Section("Falhas recuperáveis") {
         Button {
-          app.store.failNextOperation()
+          app.failNextOperation()
           app.showNotice("A próxima operação falhará de forma controlada.", kind: .information)
         } label: {
           Label(
             "Falhar a próxima operação", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
         }
+        .accessibilityIdentifier("demo.fail-next")
       }
       Section("Dados canônicos") {
         Button("Restaurar toda a demonstração", role: .destructive) {
           confirmingReset = true
         }
+        .accessibilityIdentifier("demo.reset")
       }
     }
     .navigationTitle("Cenários")
@@ -49,10 +63,29 @@ struct DemoScenariosView: View {
   }
 
   private func reset() {
-    app.store.reset()
-    delayEnabled = false
-    emptyMode = false
-    viewerMode = false
+    app.resetDemo()
     app.showNotice("Demonstração restaurada.")
+  }
+
+  private func settingButton(
+    title: String,
+    enabled: Bool,
+    identifier: String,
+    action: @escaping () -> Void
+  ) -> some View {
+    Button(action: action) {
+      HStack {
+        Text(title)
+        Spacer()
+        Label(
+          enabled ? "Ativo" : "Inativo",
+          systemImage: enabled ? "checkmark.circle.fill" : "circle"
+        )
+        .foregroundStyle(enabled ? RentivoColors.emerald : RentivoColors.secondaryInk)
+      }
+    }
+    .foregroundStyle(RentivoColors.ink)
+    .accessibilityIdentifier(identifier)
+    .accessibilityValue(enabled ? "Ativo" : "Inativo")
   }
 }

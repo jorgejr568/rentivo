@@ -13,6 +13,7 @@ struct ThemeEditorView: View {
         Section("Herança") {
           LabeledContent("Responsável", value: record.ownerName)
           LabeledContent("Origem efetiva", value: record.effectiveSource.label)
+            .accessibilityIdentifier("theme.source")
           if record.stored == nil {
             Label(
               "Este nível herda o tema de \(record.effectiveSource.label.lowercased()).",
@@ -52,8 +53,13 @@ struct ThemeEditorView: View {
       }
     }
     .navigationTitle("Aparência")
-    .toolbar { Button("Salvar") { Task { await save() } } }
-    .task { await load() }
+    .toolbar {
+      if record?.canEdit == true {
+        Button("Salvar") { Task { await save() } }
+          .accessibilityIdentifier("theme.save")
+      }
+    }
+    .task(id: app.dataRevision) { await load() }
     .alert("Não foi possível atualizar", isPresented: .constant(error != nil)) {
       Button("OK") { error = nil }
     } message: {
@@ -63,7 +69,7 @@ struct ThemeEditorView: View {
 
   private func load() async {
     do {
-      let loaded = try await app.store.theme(target: target)
+      let loaded = try await app.dependencies.themes.theme(target: target)
       record = loaded
       values = loaded.stored ?? loaded.effective
     } catch { self.error = DemoError(error) }
@@ -71,7 +77,7 @@ struct ThemeEditorView: View {
 
   private func save() async {
     do {
-      try await app.store.updateTheme(target: target, values: values)
+      try await app.dependencies.themes.updateTheme(target: target, values: values)
       await load()
       app.showNotice("Tema atualizado.")
     } catch { self.error = DemoError(error) }
@@ -79,7 +85,7 @@ struct ThemeEditorView: View {
 
   private func reset() async {
     do {
-      try await app.store.resetTheme(target: target)
+      try await app.dependencies.themes.resetTheme(target: target)
       await load()
       app.showNotice("Herança de tema restaurada.")
     } catch { self.error = DemoError(error) }
@@ -139,7 +145,7 @@ extension ThemeSource {
 }
 
 extension Color {
-  fileprivate init?(hex: String) {
+  init?(hex: String) {
     let value = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
     guard value.count == 6, let rgb = Int(value, radix: 16) else { return nil }
     self.init(

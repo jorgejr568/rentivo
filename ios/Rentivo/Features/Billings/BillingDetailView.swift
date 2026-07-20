@@ -30,6 +30,7 @@ struct BillingDetailView: View {
       ToolbarItem(placement: .topBarTrailing) {
         if state.value?.billing.capabilities.canEdit == true {
           Button("Editar") { showingEdit = true }
+            .accessibilityIdentifier("billing.edit")
         }
       }
     }
@@ -65,7 +66,7 @@ struct BillingDetailView: View {
     } message: {
       Text("Faturas, despesas e arquivos locais desta demonstração também serão removidos.")
     }
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
   }
 
   private func detail(_ data: BillingDetailData) -> some View {
@@ -95,12 +96,24 @@ struct BillingDetailView: View {
         financialSummary(data)
         BillingOperationsLinks(
           billingID: billingID,
-          recipients: data.billing.recipients.map(\.email)
+          recipients: data.billing.recipients.map(\.email),
+          capabilities: data.billing.capabilities
         ) {
           await load()
           await onMutation()
         }
         recipients(data.billing)
+
+        if data.billing.capabilities.canReadTheme {
+          NavigationLink {
+            ThemeEditorView(target: .billing(billingID))
+          } label: {
+            Label("Aparência dos documentos", systemImage: "paintpalette.fill")
+              .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
+          .accessibilityIdentifier("billing.theme")
+        }
 
         if data.billing.capabilities.canDelete {
           Button(role: .destructive) {
@@ -191,6 +204,7 @@ struct BillingDetailView: View {
             }
           }
           .buttonStyle(.plain)
+          .accessibilityIdentifier("bill.card.\(bill.id.uuidString)")
         }
       }
     }
@@ -246,9 +260,9 @@ struct BillingDetailView: View {
     state = .loading
     do {
       let data = BillingDetailData(
-        billing: try await app.store.billing(id: billingID),
-        bills: try await app.store.listBills(billingID: billingID),
-        expenses: try await app.store.listExpenses(billingID: billingID)
+        billing: try await app.dependencies.billings.billing(id: billingID),
+        bills: try await app.dependencies.bills.listBills(billingID: billingID),
+        expenses: try await app.dependencies.expenses.listExpenses(billingID: billingID)
       )
       state = .loaded(data)
     } catch {
@@ -258,7 +272,7 @@ struct BillingDetailView: View {
 
   private func deleteBilling() async {
     do {
-      try await app.store.deleteBilling(id: billingID)
+      try await app.dependencies.billings.deleteBilling(id: billingID)
       await onMutation()
       app.showNotice("Cobrança excluída da demonstração.")
       dismiss()

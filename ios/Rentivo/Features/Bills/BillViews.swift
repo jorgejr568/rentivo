@@ -146,13 +146,13 @@ struct BillFormView: View {
     defer { saving = false }
     do {
       if let bill {
-        _ = try await app.store.updateBill(
+        _ = try await app.dependencies.bills.updateBill(
           billingID: billing.id,
           billID: bill.id,
           draft: draft
         )
       } else {
-        _ = try await app.store.createBill(draft)
+        _ = try await app.dependencies.bills.createBill(draft)
       }
       await onSaved()
       app.showNotice(bill == nil ? "Fatura criada como rascunho." : "Fatura atualizada.")
@@ -180,8 +180,10 @@ struct BillDetailView: View {
   @State private var billing: Billing?
   @State private var showingEdit = false
   @State private var showingDocument = false
+  @State private var showingPaymentReceipt = false
   @State private var showingCommunication = false
   @State private var confirmingDelete = false
+  @State private var documentTheme = ThemeValues.rentivo
 
   var body: some View {
     PageStateView(state: state) { bill in
@@ -193,7 +195,7 @@ struct BillDetailView: View {
     .navigationTitle("Fatura")
     .navigationBarTitleDisplayMode(.inline)
     .toolbar {
-      if state.value?.status == .draft {
+      if state.value?.status == .draft && billing?.capabilities.canManageBills == true {
         Button("Editar") { showingEdit = true }
       }
     }
@@ -208,7 +210,22 @@ struct BillDetailView: View {
     }
     .sheet(isPresented: $showingDocument) {
       if let bill = state.value {
-        BillDocumentPreview(bill: bill, billingName: billing?.name ?? "Cobrança")
+        BillDocumentPreview(
+          title: "FATURA",
+          bill: bill,
+          billingName: billing?.name ?? "Cobrança",
+          theme: documentTheme
+        )
+      }
+    }
+    .sheet(isPresented: $showingPaymentReceipt) {
+      if let bill = state.value {
+        BillDocumentPreview(
+          title: "RECIBO DE PAGAMENTO",
+          bill: bill,
+          billingName: billing?.name ?? "Cobrança",
+          theme: documentTheme
+        )
       }
     }
     .sheet(isPresented: $showingCommunication) {
@@ -226,7 +243,7 @@ struct BillDetailView: View {
       Button("Excluir fatura", role: .destructive) { Task { await deleteBill() } }
       Button("Cancelar", role: .cancel) {}
     }
-    .task { await load() }
+    .task(id: app.dataRevision) { await load() }
   }
 
   private func content(_ bill: Bill) -> some View {
@@ -257,7 +274,13 @@ struct BillDetailView: View {
         }
 
         lineItems(bill)
-        lifecycle(bill)
+        if billing?.capabilities.canManageBills == true {
+          lifecycle(bill)
+        } else {
+          Label("Ciclo disponível somente para quem pode gerenciar faturas.", systemImage: "eye")
+            .font(.footnote)
+            .foregroundStyle(RentivoColors.secondaryInk)
+        }
 
         VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
           SectionTitle(title: "Documento", symbol: "doc.richtext.fill")
@@ -267,24 +290,40 @@ struct BillDetailView: View {
             Label("Visualizar PDF simulado", systemImage: "doc.text.magnifyingglass")
           }
           .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
+          HStack {
+            Button("Regenerar rascunho") { Task { await regenerate(bill) } }
+              .disabled(billing?.capabilities.canManageBills != true)
+            if bill.status == .paid {
+              Button("Visualizar recibo") { showingPaymentReceipt = true }
+            }
+          }
+          .buttonStyle(.bordered)
         }
 
-        ReceiptManagerView(billingID: billingID, bill: bill) { await refreshAll() }
+        ReceiptManagerView(
+          billingID: billingID,
+          bill: bill,
+          canWrite: billing?.capabilities.canUploadBillReceipts == true
+        ) { await refreshAll() }
 
-        Button {
-          showingCommunication = true
-        } label: {
-          Label("Enviar comunicação simulada", systemImage: "paperplane.fill")
+        if billing?.capabilities.canManageBills == true {
+          Button {
+            showingCommunication = true
+          } label: {
+            Label("Enviar comunicação simulada", systemImage: "paperplane.fill")
+          }
+          .buttonStyle(RentivoButtonStyle())
         }
-        .buttonStyle(RentivoButtonStyle())
 
-        Button(role: .destructive) {
-          confirmingDelete = true
-        } label: {
-          Label("Excluir fatura", systemImage: "trash")
-            .frame(maxWidth: .infinity)
+        if billing?.capabilities.canManageBills == true {
+          Button(role: .destructive) {
+            confirmingDelete = true
+          } label: {
+            Label("Excluir fatura", systemImage: "trash")
+              .frame(maxWidth: .infinity)
+          }
+          .buttonStyle(.bordered)
         }
-        .buttonStyle(.bordered)
       }
       .padding(RentivoSpacing.page)
     }
@@ -336,6 +375,7 @@ struct BillDetailView: View {
               .frame(maxWidth: .infinity)
           }
           .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("bill.transition.\(status.rawValue)")
         }
       }
     }
@@ -344,8 +384,9 @@ struct BillDetailView: View {
   private func load() async {
     state = .loading
     do {
-      billing = try await app.store.billing(id: billingID)
-      state = .loaded(try await app.store.bill(billingID: billingID, id: billID))
+      billing = try await app.dependencies.billings.billing(id: billingID)
+      documentTheme = try await app.dependencies.themes.theme(target: .billing(billingID)).effective
+      state = .loaded(try await app.dependencies.bills.bill(billingID: billingID, id: billID))
     } catch {
       state = .failed(DemoError(error))
     }
@@ -358,7 +399,8 @@ struct BillDetailView: View {
 
   private func transition(to status: BillStatus) async {
     do {
-      try await app.store.transitionBill(billingID: billingID, billID: billID, to: status)
+      try await app.dependencies.bills.transitionBill(
+        billingID: billingID, billID: billID, to: status)
       await refreshAll()
       app.showNotice("Fatura marcada como \(status.label.lowercased()).")
     } catch {
@@ -368,12 +410,28 @@ struct BillDetailView: View {
 
   private func deleteBill() async {
     do {
-      try await app.store.deleteBill(billingID: billingID, billID: billID)
+      try await app.dependencies.bills.deleteBill(billingID: billingID, billID: billID)
       await onMutation()
       dismiss()
     } catch {
       app.showNotice(DemoError(error).message, kind: .warning)
     }
+  }
+
+  private func regenerate(_ bill: Bill) async {
+    do {
+      _ = try await app.dependencies.bills.createBill(
+        BillDraft(
+          billingID: billingID,
+          referenceMonth: bill.referenceMonth,
+          dueDate: bill.dueDate,
+          notes: "Regenerada localmente a partir da fatura \(bill.referenceMonth.label).",
+          lineItems: bill.lineItems
+        )
+      )
+      await onMutation()
+      app.showNotice("Novo rascunho regenerado localmente.")
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 }
 
@@ -381,7 +439,9 @@ private struct ReceiptManagerView: View {
   @Environment(AppModel.self) private var app
   let billingID: UUID
   let bill: Bill
+  let canWrite: Bool
   let onMutation: () async -> Void
+  @State private var previewingReceipt: Receipt?
 
   var body: some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
@@ -397,32 +457,43 @@ private struct ReceiptManagerView: View {
                 Label(receipt.name, systemImage: "doc.fill")
                   .font(.subheadline)
                 Spacer()
-                Button(role: .destructive) {
-                  Task { await remove(receipt) }
+                Menu {
+                  Button("Visualizar") { previewingReceipt = receipt }
+                  Button("Simular download") {
+                    app.showNotice("Download de \(receipt.name) simulado.")
+                  }
+                  if canWrite {
+                    Button("Excluir", role: .destructive) { Task { await remove(receipt) } }
+                  }
                 } label: {
-                  Image(systemName: "trash")
+                  Image(systemName: "ellipsis.circle")
                 }
               }
             }
-            if bill.receipts.count > 1 {
+            if bill.receipts.count > 1 && canWrite {
               Button("Inverter ordem") { Task { await reverse() } }
                 .buttonStyle(.bordered)
             }
           }
         }
       }
-      Button {
-        Task { await add() }
-      } label: {
-        Label("Adicionar comprovante simulado", systemImage: "plus")
+      if canWrite {
+        Button {
+          Task { await add() }
+        } label: {
+          Label("Adicionar comprovante simulado", systemImage: "plus")
+        }
+        .buttonStyle(.bordered)
       }
-      .buttonStyle(.bordered)
+    }
+    .sheet(item: $previewingReceipt) { receipt in
+      ReceiptPreview(receipt: receipt)
     }
   }
 
   private func add() async {
     do {
-      _ = try await app.store.addReceipt(
+      _ = try await app.dependencies.bills.addReceipt(
         billingID: billingID,
         billID: bill.id,
         name: "comprovante-demo.pdf"
@@ -433,7 +504,7 @@ private struct ReceiptManagerView: View {
 
   private func remove(_ receipt: Receipt) async {
     do {
-      try await app.store.deleteReceipt(
+      try await app.dependencies.bills.deleteReceipt(
         billingID: billingID,
         billID: bill.id,
         receiptID: receipt.id
@@ -444,7 +515,7 @@ private struct ReceiptManagerView: View {
 
   private func reverse() async {
     do {
-      try await app.store.reorderReceipts(
+      try await app.dependencies.bills.reorderReceipts(
         billingID: billingID,
         billID: bill.id,
         receiptIDs: Array(bill.receipts.map(\.id).reversed())
@@ -454,18 +525,44 @@ private struct ReceiptManagerView: View {
   }
 }
 
-struct BillDocumentPreview: View {
+private struct ReceiptPreview: View {
   @Environment(\.dismiss) private var dismiss
+  let receipt: Receipt
+
+  var body: some View {
+    NavigationStack {
+      VStack(spacing: RentivoSpacing.large) {
+        Image(systemName: "checkmark.seal.fill")
+          .font(.system(size: 64))
+          .foregroundStyle(RentivoColors.emerald)
+        Text(receipt.name).font(RentivoTypography.title)
+        Text("Comprovante local de demonstração")
+          .foregroundStyle(RentivoColors.secondaryInk)
+        Spacer()
+      }
+      .padding(RentivoSpacing.page)
+      .navigationTitle("Comprovante")
+      .toolbar { Button("Concluir") { dismiss() } }
+    }
+  }
+}
+
+struct BillDocumentPreview: View {
+  @Environment(AppModel.self) private var app
+  @Environment(\.dismiss) private var dismiss
+  let title: String
   let bill: Bill
   let billingName: String
+  let theme: ThemeValues
 
   var body: some View {
     NavigationStack {
       ScrollView {
         VStack(alignment: .leading, spacing: RentivoSpacing.large) {
           BrandMark()
-          Text("FATURA")
+          Text(title)
             .font(.system(.largeTitle, design: .monospaced, weight: .black))
+            .foregroundStyle(Color(hex: theme.textColor) ?? RentivoColors.ink)
           Text(billingName).font(RentivoTypography.title)
           Text(bill.referenceMonth.label.capitalized)
           Divider()
@@ -485,9 +582,18 @@ struct BillDocumentPreview: View {
           Label("Prévia local — nenhum PDF foi gerado.", systemImage: "info.circle.fill")
             .font(.footnote)
             .foregroundStyle(RentivoColors.blue)
+          HStack {
+            Button("Simular download") {
+              app.showNotice("Download do documento simulado.")
+            }
+            Button("Simular compartilhamento") {
+              app.showNotice("Compartilhamento do documento simulado.")
+            }
+          }
+          .buttonStyle(.bordered)
         }
         .padding(RentivoSpacing.page)
-        .background(RentivoColors.surface)
+        .background(Color(hex: theme.primaryLight) ?? RentivoColors.surface)
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .padding(RentivoSpacing.page)
       }

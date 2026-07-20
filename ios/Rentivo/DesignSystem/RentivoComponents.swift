@@ -144,6 +144,7 @@ struct PageStateView<Value: Sendable, Content: View>: View {
         systemImage: "sparkles",
         description: Text("Crie o primeiro item para começar.")
       )
+      .accessibilityIdentifier("page.empty")
     case .failed(let error):
       ContentUnavailableView {
         Label("Não foi possível carregar", systemImage: "exclamationmark.triangle")
@@ -152,6 +153,7 @@ struct PageStateView<Value: Sendable, Content: View>: View {
       } actions: {
         Button("Tentar novamente") { Task { await retry() } }
           .buttonStyle(.borderedProminent)
+          .accessibilityIdentifier("page.retry")
       }
       .accessibilityIdentifier("page.error")
     }

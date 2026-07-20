@@ -47,6 +47,8 @@ struct BillingFormView: View {
   @State private var replyTo: String
   @State private var validationIssues: [ValidationIssue] = []
   @State private var saving = false
+  @State private var organizations: [Organization] = []
+  @State private var organizationsLoaded = false
 
   init(billing: Billing? = nil, onSaved: @escaping () async -> Void) {
     self.billing = billing
@@ -143,29 +145,40 @@ struct BillingFormView: View {
       }
       ToolbarItem(placement: .confirmationAction) {
         Button("Salvar") { Task { await save() } }
-          .disabled(saving)
+          .disabled(saving || !organizationsLoaded)
           .accessibilityIdentifier("billing.form.save")
       }
     }
     .interactiveDismissDisabled(saving)
+    .task {
+      organizations = (try? await app.dependencies.organizations.listOrganizations()) ?? []
+      organizationsLoaded = true
+    }
   }
 
   private var ownerChoices: [BillingOwner] {
     var owners: [BillingOwner] = [
-      .user(id: app.store.currentUser.id, name: "Pessoal")
+      .user(id: app.currentUser.id, name: "Pessoal")
     ]
-    owners.append(
-      contentsOf: app.store.snapshot.organizations
-        .filter { organization in
-          organization.members.contains { $0.userID == app.store.currentUser.id }
-        }
-        .map { .organization(id: $0.id, name: $0.name) }
-    )
+    if let currentOwner = billing?.owner,
+      !owners.contains(where: { $0.id == currentOwner.id })
+    {
+      owners.append(currentOwner)
+    }
+    let existingIDs = Set(owners.map(\.id))
+    let organizationOwners =
+      organizations
+      .map { BillingOwner.organization(id: $0.id, name: $0.name) }
+      .filter { !existingIDs.contains($0.id) }
+    owners.append(contentsOf: organizationOwners)
     return owners
   }
 
   private func save() async {
-    let owner = ownerChoices.first(where: { $0.id == ownerID }) ?? ownerChoices[0]
+    guard let owner = ownerChoices.first(where: { $0.id == ownerID }) else {
+      app.showNotice("Não foi possível confirmar o responsável.", kind: .warning)
+      return
+    }
     let recipients: [BillingRecipient]
     if recipientName.isEmpty && recipientEmail.isEmpty {
       recipients = []
@@ -196,9 +209,9 @@ struct BillingFormView: View {
     defer { saving = false }
     do {
       if let billing {
-        _ = try await app.store.updateBilling(id: billing.id, draft: draft)
+        _ = try await app.dependencies.billings.updateBilling(id: billing.id, draft: draft)
       } else {
-        _ = try await app.store.createBilling(draft)
+        _ = try await app.dependencies.billings.createBilling(draft)
       }
       await onSaved()
       app.showNotice(billing == nil ? "Cobrança criada." : "Cobrança atualizada.")
