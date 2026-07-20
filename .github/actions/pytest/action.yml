@@ -8,4 +8,4 @@ runs:
 
     - name: Run pytest
       shell: bash
-      run: uv run --no-sync python -m pytest -n auto -q
+      run: uv run --project backend --no-sync pytest -c backend/pyproject.toml -n auto -q

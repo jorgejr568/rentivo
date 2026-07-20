@@ -1,10 +1,26 @@
+x-backend-environment: &backend-environment
+  RENTIVO_ENVIRONMENT: production
+
+x-backend-runtime: &backend-runtime
+  restart: unless-stopped
+  env_file:
+    - path: ${RENTIVO_APP_ENV_FILE:-.env}
+      required: true
+  environment: *backend-environment
+  volumes:
+    - invoices:/app/invoices
+
 services:
   db:
     image: mariadb:11
     restart: unless-stopped
-    env_file: .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set the database root password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:?Set the database name}
+      MYSQL_USER: ${MYSQL_USER:?Set the database user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set the database password}
     ports:
-      - "${MYSQL_PORT:-3306}:3306"
+      - "127.0.0.1:${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -13,52 +29,142 @@ services:
       timeout: 5s
       retries: 5
 
-  rentivo:
+  validate:
+    <<: *backend-runtime
     build:
       context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      # Inside the compose network the database host is always the `db`
-      # service, regardless of the RENTIVO_DB_URL configured in .env for
-      # processes running on the host machine.
-      RENTIVO_DB_URL: mysql+pymysql://${MYSQL_USER:-rentivo}:${MYSQL_PASSWORD:-rentivo}@db:3306/${MYSQL_DATABASE:-rentivo}
-    ports:
-      - "8000:8000"
-    volumes:
-      - invoices:/app/invoices
+      dockerfile: backend/Dockerfile.api
+    command:
+      - python
+      - -c
+      - from rentivo.settings import validate_production_settings; validate_production_settings()
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
 
-  worker:
+  migrate:
+    <<: *backend-runtime
     build:
       context: .
-      dockerfile: Dockerfile.worker
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      RENTIVO_DB_URL: mysql+pymysql://${MYSQL_USER:-rentivo}:${MYSQL_PASSWORD:-rentivo}@db:3306/${MYSQL_DATABASE:-rentivo}
-    volumes:
-      # The pdf.render job writes invoices through the storage backend;
-      # with local storage this MUST be the same volume the web app serves.
-      - invoices:/app/invoices
+      dockerfile: backend/Dockerfile.api
+    command: ["alembic", "-c", "backend/alembic.ini", "upgrade", "head"]
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
+      validate:
+        condition: service_completed_successfully
+
+  api:
+    <<: *backend-runtime
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.api
+    environment:
+      <<: *backend-environment
+      RENTIVO_PUBLIC_URL: &public-origin ${RENTIVO_PUBLIC_ORIGIN:?Set the public HTTPS origin}
+      RENTIVO_PUBLIC_APP_URL: *public-origin
+      RENTIVO_WEBAUTHN_ORIGIN: *public-origin
+      RENTIVO_WEBAUTHN_RP_ID: ${RENTIVO_WEBAUTHN_RP_ID:?Set the public hostname}
+      RENTIVO_COOKIE_SECURE: "true"
+      RENTIVO_ACCESS_COOKIE_NAME: __Host-rentivo_access
+      RENTIVO_CHALLENGE_COOKIE_NAME: __Host-rentivo_challenge
+      RENTIVO_CSRF_COOKIE_NAME: __Host-rentivo_csrf
+    command:
+      - uvicorn
+      - rentivo.api.app:create_app
+      - --factory
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --proxy-headers
+      - --forwarded-allow-ips=${RENTIVO_PROXY_IP:-172.30.0.10}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=2).close()",
+          "http://localhost:8000/api/v1/health",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - default
+      - app-edge
+
+  worker:
+    <<: *backend-runtime
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.worker
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app-edge
+
+  proxy:
+    image: nginx:1.28-alpine
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${RENTIVO_PORT:-8080}:80"
+    environment:
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR: ${RENTIVO_TRUSTED_TLS_TERMINATOR_CIDR:?Set the TLS terminator IP or CIDR}
+    volumes:
+      - ./infra/proxy/nginx.conf:/etc/nginx/templates/nginx.conf.template:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost/api/v1/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      ingress:
+      app-edge:
+        ipv4_address: ${RENTIVO_PROXY_IP:-172.30.0.10}
 
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
     profiles: ["observability"]
     restart: unless-stopped
     environment:
-      # all-in-one exposes an OTLP receiver; the app sends OTLP/HTTP on 4318.
       COLLECTOR_OTLP_ENABLED: "true"
     ports:
-      - "16686:16686"  # web UI
-      - "4318:4318"     # OTLP/HTTP
-      - "4317:4317"     # OTLP/gRPC
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:4317:4317"
 
   temporal:
     image: temporalio/auto-setup:1.25.2
@@ -67,7 +173,7 @@ services:
     environment:
       DB: sqlite3
     ports:
-      - "7233:7233"  # frontend gRPC
+      - "127.0.0.1:7233:7233"
 
   temporal-ui:
     image: temporalio/ui:2.34.0
@@ -76,10 +182,19 @@ services:
     environment:
       TEMPORAL_ADDRESS: temporal:7233
     ports:
-      - "8233:8080"  # web UI at http://localhost:8233
+      - "127.0.0.1:8233:8080"
     depends_on:
       - temporal
 
 volumes:
   mysql-data:
   invoices:
+
+networks:
+  ingress:
+    driver: bridge
+  app-edge:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${RENTIVO_APP_SUBNET:-172.30.0.0/24}

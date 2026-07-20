@@ -1,6 +1,6 @@
 # Configuration Reference
 
-All application settings are environment variables with the `RENTIVO_` prefix, defined in [`rentivo/settings.py`](../rentivo/settings.py) (Pydantic Settings). They can also be placed in a `.env` file at the repo root — copy [`.env.example`](../.env.example) to get started. A test (`tests/test_env_example.py`) keeps `.env.example` in sync with the settings class.
+All application settings are environment variables with the `RENTIVO_` prefix, defined in [`backend/rentivo/settings.py`](../backend/rentivo/settings.py) (Pydantic Settings). They can also be placed in a `.env` file at the repo root — copy [`.env.example`](../.env.example) to get started. A test (`backend/tests/test_env_example.py`) keeps `.env.example` in sync with the settings class.
 
 Invalid values fail fast at process startup with a clear error.
 
@@ -20,6 +20,15 @@ The `MYSQL_ROOT_PASSWORD`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MY
 | `RENTIVO_PUBLIC_URL` | *(empty)* | Canonical public origin (no trailing slash) for `robots.txt` / `sitemap.xml` / OG tags. Empty = derive from the incoming request. |
 | `RENTIVO_PUBLIC_APP_URL` | `http://localhost:8000` | Canonical app URL used inside transactional emails (links, CTAs). |
 | `RENTIVO_ENVIRONMENT` | `production` | One of `production` / `staging` / `dev`. Populates the analytics environment dimension. |
+| `RENTIVO_ACCESS_COOKIE_NAME` | `__Host-rentivo_access` | Browser login-key cookie. Staging/production require a `__Host-` name. |
+| `RENTIVO_CHALLENGE_COOKIE_NAME` | `__Host-rentivo_challenge` | Short-lived authentication challenge cookie. |
+| `RENTIVO_CSRF_COOKIE_NAME` | `__Host-rentivo_csrf` | Non-HttpOnly double-submit CSRF cookie. |
+| `RENTIVO_COOKIE_SECURE` | `true` | Must remain enabled in staging/production; local HTTP development may disable it. |
+| `RENTIVO_API_KEY_LOGIN_TTL_SECONDS` | `86400` | Absolute browser login-key lifetime (24 hours). |
+| `RENTIVO_AUTH_CHALLENGE_TTL_SECONDS` | `300` | Authentication challenge lifetime (5 minutes). |
+| `RENTIVO_API_KEY_INTEGRATION_DEFAULT_TTL_DAYS` | `90` | Default integration-key lifetime. |
+| `RENTIVO_API_KEY_INTEGRATION_MAX_TTL_DAYS` | `365` | Maximum integration-key lifetime. |
+| `RENTIVO_API_KEY_LAST_USED_THROTTLE_SECONDS` | `300` | Minimum interval between usage timestamp writes. |
 
 ## Observability (OpenTelemetry)
 

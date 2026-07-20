@@ -1,0 +1,51 @@
+{
+  "name": "rentivo-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "api:snapshot": "node scripts/export-openapi.mjs",
+    "api:generate": "node scripts/generate-api.mjs",
+    "api:check": "node scripts/export-openapi.mjs --check && node scripts/generate-api.mjs --check",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "e2e": "playwright test",
+    "e2e:update": "playwright test --update-snapshots",
+    "pretest": "../scripts/tests/smoke-production-stack-test.sh",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.87.1",
+    "lucide-react": "^0.544.0",
+    "openapi-fetch": "^0.14.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-router-dom": "^7.8.2",
+    "sortablejs": "^1.15.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.34.0",
+    "@playwright/test": "^1.55.0",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^24.3.0",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@types/sortablejs": "^1.15.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^9.34.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "globals": "^16.3.0",
+    "jsdom": "^26.1.0",
+    "openapi-typescript": "^7.8.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0",
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4"
+  }
+}

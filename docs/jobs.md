@@ -1,13 +1,18 @@
 # Job Drivers
 
-Rentivo runs background work — `email.send`, `communication.send`, `pdf.render`, and `s3.delete` — through a pluggable **job driver** selected by `RENTIVO_JOB_BACKEND`. State-changing web flows enqueue work; the worker process executes it. Two drivers are available: `database` (the default) and `temporal` (optional).
+Rentivo runs background work such as `email.send`, `communication.send`,
+`pdf.render`, `recibo.render`, `export.generate`, `export.send`, `s3.delete`, and
+`auth.cleanup` through a pluggable **job driver** selected by
+`RENTIVO_JOB_BACKEND`. State-changing API flows enqueue work; the worker process
+executes it. Two drivers are available: `database` (the default) and `temporal`
+(optional).
 
 ## Database driver (`database`, default)
 
 The default and fully supported production driver. It needs **zero extra dependencies** beyond what Rentivo already requires — no message broker, no external cluster.
 
 - Enqueue inserts a row into the `jobs` table (`DatabaseJobBackend` over `SQLAlchemyJobRepository`).
-- A polling `Worker` (`rentivo/jobs/worker.py`) claims due jobs in batches, runs the registered handler, and updates the row.
+- A polling `Worker` (`backend/rentivo/jobs/worker.py`) claims due jobs in batches, runs the registered handler, and updates the row.
 - Retries use an exponential backoff schedule (see the parity table below); on exhaustion or a `PermanentJobError` the job is dead-lettered.
 
 Tunables (see [`configuration.md`](configuration.md) for the full reference):
@@ -22,10 +27,10 @@ Run the worker:
 
 ```bash
 make worker            # local
-python -m rentivo.workers
+uv run --project backend python -m rentivo.workers
 ```
 
-In production this is the `Dockerfile.worker` image.
+In production this is the `backend/Dockerfile.worker` image.
 
 ## Temporal driver (`temporal`, optional)
 
@@ -34,11 +39,11 @@ In production this is the `Dockerfile.worker` image.
 The Temporal driver offloads job execution to a Temporal cluster instead of the `jobs` table. It requires the optional `temporal` extra and a reachable cluster:
 
 ```bash
-uv sync --extra temporal
+uv sync --project backend --extra temporal
 ```
 
-- Enqueue starts one workflow per job — `TemporalJobBackend.enqueue()` (`rentivo/jobs/temporal/backend.py`) calls the Temporal client's `start_workflow(...)`.
-- A per-job-type workflow (`rentivo/jobs/temporal/workflows.py`) wraps the **unchanged** registry handler in an activity (`rentivo/jobs/temporal/activities.py`).
+- Enqueue starts one workflow per job — `TemporalJobBackend.enqueue()` (`backend/rentivo/jobs/temporal/backend.py`) calls the Temporal client's `start_workflow(...)`.
+- A per-job-type workflow (`backend/rentivo/jobs/temporal/workflows.py`) wraps the **unchanged** registry handler in an activity (`backend/rentivo/jobs/temporal/activities.py`).
 - The workflow owns the retry loop, mirroring the database backoff exactly.
 
 Settings (only read when `RENTIVO_JOB_BACKEND=temporal`):
@@ -61,19 +66,19 @@ Both drivers present the same `JobBackend.enqueue(...)` seam and the same observ
 |---|---|---|
 | Enqueue | `INSERT` a `jobs` row | `start_workflow` (one workflow per job) |
 | Retries | Polling worker re-claims with backoff | Workflow retry loop |
-| Backoff schedule | `60s / 5m / 15m / 1h / 6h`, max 5 attempts (`rentivo/jobs/backoff.py`) | Identical — same `rentivo/jobs/backoff.py` |
+| Backoff schedule | `60s / 5m / 15m / 1h / 6h`, max 5 attempts (`backend/rentivo/jobs/backoff.py`) | Identical — same `backend/rentivo/jobs/backoff.py` |
 | `PermanentJobError` | Dead-letter immediately (no retry) | Mapped to a non-retryable failure, dead-lettered immediately |
 | Fail hooks + audit events | `JOB_SUCCEEDED` / `JOB_RETRY_SCHEDULED` / `JOB_FAILED` fire | Same events fire via the `rentivo.finalize_job` activity |
 | OTel context | `_otel` carrier propagated from enqueue to handler | `_otel` carrier propagated identically |
 
 ## Handlers are shared
 
-The same registry handlers (`rentivo/jobs/handlers/`) run under **both** drivers — the handler code is identical and unaware of the driver. Adding a new background job:
+The same registry handlers (`backend/rentivo/jobs/handlers/`) run under **both** drivers — the handler code is identical and unaware of the driver. Adding a new background job:
 
-1. **Always:** register the handler with `@register("job.type")` in `rentivo/jobs/handlers/`. This is all the database driver needs.
-2. **For Temporal as well:** add a `@workflow.defn` workflow class plus its activity in `rentivo/jobs/temporal/`, and add a `_WORKFLOW_BY_TYPE` entry mapping the job type to that workflow (`rentivo/jobs/temporal/backend.py`).
+1. **Always:** register the handler with `@register("job.type")` in `backend/rentivo/jobs/handlers/`. This is all the database driver needs.
+2. **For Temporal as well:** add a `@workflow.defn` workflow class plus its activity in `backend/rentivo/jobs/temporal/`, and add a `_WORKFLOW_BY_TYPE` entry mapping the job type to that workflow (`backend/rentivo/jobs/temporal/backend.py`).
 
-The shared backoff schedule lives once in `rentivo/jobs/backoff.py` and is reused by both drivers, so retry semantics stay in lockstep.
+The shared backoff schedule lives once in `backend/rentivo/jobs/backoff.py` and is reused by both drivers, so retry semantics stay in lockstep.
 
 ## Local development with Temporal
 
@@ -82,6 +87,11 @@ A local Temporal cluster ships as an **opt-in** docker-compose profile, so it is
 ```bash
 make temporal-up      # start the `temporal` compose profile (cluster + UI)
 ```
+
+The target uses the development Compose contract: application settings from
+`.env`, database/interpolation values from `.env.db`, and both the base and
+development override manifests. Create those files from their checked-in
+examples as described in [development.md](development.md).
 
 The Temporal Web UI is at <http://localhost:8233>. Point Rentivo at the local cluster:
 
@@ -94,8 +104,8 @@ RENTIVO_TEMPORAL_HOST=localhost:7233   # use temporal:7233 from inside the compo
 Then run the worker — the same entrypoint dispatches on the backend:
 
 ```bash
-uv sync --extra temporal
-python -m rentivo.workers     # logs `temporal_worker_boot` and serves the task queue
+uv sync --project backend --extra temporal
+uv run --project backend python -m rentivo.workers  # logs `temporal_worker_boot` and serves the task queue
 ```
 
 Trigger an enqueue from the app (for example, request a password reset) and watch the workflow appear and complete in the Temporal UI. Stop the cluster when done:
@@ -104,25 +114,50 @@ Trigger an enqueue from the app (for example, request a password reset) and watc
 make temporal-down
 ```
 
-## Docker
+## Containers and Compose profiles
 
-Both project images — web (`Dockerfile`) and worker (`Dockerfile.worker`) — **bundle the `temporal` extra by default**, so you can switch `RENTIVO_JOB_BACKEND` between `database` and `temporal` at runtime without rebuilding. This is just a packaging convenience: the database driver is still the default and Temporal is still optional — the bundled `temporalio` is dormant until you point the app at a Temporal cluster.
+The default production topology has separate FastAPI and worker images:
 
-Each image exposes a build arg to override the extras (e.g. to slim a database-only deployment by dropping `temporal`):
-
-| Image | Build arg | Default |
+| Image | Build file | Runtime |
 |---|---|---|
-| `Dockerfile` (web) | `APP_EXTRAS` | `cache otel temporal` |
-| `Dockerfile.worker` | `WORKER_EXTRAS` | `cache otel temporal` |
+| API and migration | `backend/Dockerfile.api` | FastAPI or one-shot Alembic |
+| Worker | `backend/Dockerfile.worker` | Selected job driver |
+
+Both runtime images include the optional cache, OpenTelemetry, and Temporal
+extras by default. Selecting `database` keeps Temporal dormant; selecting
+`temporal` requires a reachable cluster.
+
+The production default starts one `worker` service. Local Temporal is an
+opt-in Compose profile and is never started with the base stack:
 
 ```bash
-# Default build — Temporal-capable out of the box:
-docker build -f Dockerfile -t rentivo-web .
-
-# Slim, database-only build (drop temporal):
-docker build -f Dockerfile --build-arg APP_EXTRAS="cache otel" -t rentivo-web .
+make temporal-up       # temporal:7233 and UI at localhost:8233
+make temporal-down
 ```
 
-## Known limitations
+The profile is for development. Production Temporal must use a durable,
+operated cluster rather than the profile's local SQLite service.
 
-Neither the database worker nor the Temporal worker performs graceful SIGTERM draining yet: a job in flight when the process is signalled is interrupted and re-claimed/retried rather than being allowed to finish first. Job execution is idempotent-friendly (handlers re-run safely), but a graceful-drain shutdown is future work for both drivers.
+## Operations and draining
+
+Monitor the database driver by status (`pending`, `running`, `succeeded`, and
+`failed`), oldest due `pending` age, attempts, job type, and worker heartbeat.
+Alert when the heartbeat is absent for two minutes, a running claim exceeds
+`RENTIVO_JOB_WORKER_STUCK_AFTER_SECONDS`, failures increase, or oldest queue age
+exceeds five minutes. For Temporal, monitor the same job outcomes plus task-queue
+pollers, workflow failures, and schedule-to-start latency.
+
+Neither driver currently performs graceful `SIGTERM` draining. Before a
+production rollout:
+
+1. Put the application in edge maintenance mode and stop schedules/integrations
+   that can enqueue jobs.
+2. Wait for running database jobs or Temporal workflows to reach zero.
+3. Record outstanding pending/failed work and oldest queue age.
+4. Stop the worker only after the queue is quiescent.
+
+If a worker is interrupted, the database driver reclaims the job after the
+stuck threshold and Temporal retries according to workflow semantics. Handlers
+are designed for at-least-once execution, but operators must investigate any
+uncertain external side effect before resuming. The full release procedure is
+in the [production release runbook](runbooks/production-release.md).

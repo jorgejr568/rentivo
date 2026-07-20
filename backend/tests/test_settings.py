@@ -1,0 +1,668 @@
+import pytest
+from pydantic import ValidationError
+
+import rentivo.settings as settings_module
+from rentivo.settings import _INSECURE_DEFAULT_KEY, Settings
+
+
+def _secure_production_settings(**overrides):
+    values = {
+        "environment": "production",
+        "db_url": "mysql+pymysql://app:strong-password@db:3306/rentivo",
+        "secret_key": "stable-production-secret",
+        "public_url": "https://rentivo.example.com",
+        "public_app_url": "https://rentivo.example.com",
+        "webauthn_origin": "https://rentivo.example.com",
+        "webauthn_rp_id": "rentivo.example.com",
+        "email_backend": "ses",
+        "ses_region": "us-east-1",
+        "ses_from_email": "noreply@rentivo.example.com",
+        "storage_backend": "s3",
+        "s3_bucket": "rentivo-production",
+        "s3_region": "us-east-1",
+        "encryption_backend": "kms",
+        "kms_key_id": "alias/rentivo",
+        "kms_region": "us-east-1",
+        "log_json": True,
+    }
+    values.update(overrides)
+    return Settings(_env_file=None, **values)
+
+
+class TestSettings:
+    def test_defaults(self, monkeypatch):
+        # Clear any RENTIVO_ env vars that might interfere
+        import os
+
+        for key in list(os.environ):
+            if key.startswith("RENTIVO_"):
+                monkeypatch.delenv(key, raising=False)
+        s = Settings(_env_file=None)
+        assert s.db_url == "mysql+pymysql://rentivo:rentivo@db:3306/rentivo"
+        assert s.storage_backend == "local"
+        assert s.storage_prefix == "bills"
+        assert s.s3_presigned_expiry == 604800
+        assert s.secret_key == _INSECURE_DEFAULT_KEY
+
+    def test_env_override(self, monkeypatch):
+        monkeypatch.setenv("RENTIVO_DB_URL", "mysql://user:pass@host/db")
+        monkeypatch.setenv("RENTIVO_STORAGE_BACKEND", "s3")
+        s = Settings(_env_file=None)
+        assert s.db_url == "mysql://user:pass@host/db"
+        assert s.storage_backend == "s3"
+
+    def test_get_secret_key_generates_random_when_default(self, monkeypatch):
+        import os
+
+        for key in list(os.environ):
+            if key.startswith("RENTIVO_"):
+                monkeypatch.delenv(key, raising=False)
+        s = Settings(_env_file=None)
+        key = s.get_secret_key()
+        assert key != _INSECURE_DEFAULT_KEY
+        assert len(key) > 20
+        # Second call returns the same generated key
+        assert s.get_secret_key() == key
+
+    def test_get_secret_key_uses_custom_when_set(self, monkeypatch):
+        monkeypatch.setenv("RENTIVO_SECRET_KEY", "my-production-key")
+        s = Settings(_env_file=None)
+        assert s.get_secret_key() == "my-production-key"
+
+
+def test_gtm_container_id_default_is_empty():
+    s = Settings(_env_file=None)
+    assert s.gtm_container_id == ""
+
+
+def test_gtm_container_id_accepts_valid():
+    s = Settings(_env_file=None, gtm_container_id="GTM-ABC1234")
+    assert s.gtm_container_id == "GTM-ABC1234"
+
+
+def test_gtm_container_id_rejects_invalid_prefix():
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None, gtm_container_id="UA-12345")
+    assert "must match GTM-[A-Z0-9]+" in str(exc_info.value)
+
+
+def test_gtm_container_id_rejects_bad_chars():
+    """Defense-in-depth: reject any char outside [A-Z0-9] in the suffix."""
+    bad_values = [
+        "GTM-abc123",  # lowercase
+        "GTM-ABC');x()//",  # XSS-style payload
+        "GTM-AB C",  # space
+        "GTM-AB-C",  # dash
+        "GTM-",  # empty suffix
+    ]
+    for val in bad_values:
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, gtm_container_id=val)
+
+
+def test_environment_default_is_production():
+    s = Settings(_env_file=None)
+    assert s.environment == "production"
+
+
+def test_environment_accepts_known_values():
+    for value in ("production", "staging", "dev"):
+        s = Settings(_env_file=None, environment=value)
+        assert s.environment == value
+
+
+def test_environment_rejects_unknown():
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=None, environment="qa")
+    assert "must be one of" in str(exc_info.value)
+
+
+def test_production_settings_accept_hardened_configuration(monkeypatch):
+    monkeypatch.setattr(settings_module, "settings", _secure_production_settings())
+
+    settings_module.validate_production_settings()
+
+
+def test_production_settings_validation_is_disabled_outside_production(monkeypatch):
+    monkeypatch.setattr(settings_module, "settings", Settings(_env_file=None, environment="dev"))
+
+    settings_module.validate_production_settings()
+
+
+def test_production_settings_require_a_fixed_24_hour_login_key_ttl(monkeypatch):
+    monkeypatch.setattr(
+        settings_module,
+        "settings",
+        _secure_production_settings(api_key_login_ttl_seconds=60 * 60),
+    )
+
+    with pytest.raises(ValueError, match="RENTIVO_API_KEY_LOGIN_TTL_SECONDS"):
+        settings_module.validate_production_settings()
+
+
+def test_production_settings_do_not_report_matching_rp_id_as_mismatched(monkeypatch):
+    insecure = _secure_production_settings(webauthn_origin="http://rentivo.example.com")
+    monkeypatch.setattr(settings_module, "settings", insecure)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    assert "RENTIVO_WEBAUTHN_ORIGIN" in str(exc_info.value)
+    assert "RENTIVO_WEBAUTHN_RP_ID" not in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://user@rentivo.example.com",
+        "https://rentivo.example.com/path",
+        "https://rentivo.example.com?query=yes",
+        "https://rentivo.example.com#fragment",
+        "https://rentivo.example.com/",
+        "https://rentivo.example.com:",
+        "https://rentivo.example.com:not-a-port",
+        "https://[invalid",
+        " https://rentivo.example.com",
+        "https://rentivo.example.com\n",
+        "https://rentivo.\texample.com",
+    ],
+)
+@pytest.mark.parametrize(
+    ("field", "variable"),
+    [
+        ("public_url", "RENTIVO_PUBLIC_URL"),
+        ("public_app_url", "RENTIVO_PUBLIC_APP_URL"),
+        ("webauthn_origin", "RENTIVO_WEBAUTHN_ORIGIN"),
+    ],
+)
+def test_production_settings_reject_non_origin_https_values(monkeypatch, field, variable, value):
+    configured = _secure_production_settings().model_copy(update={field: value})
+    monkeypatch.setattr(settings_module, "settings", configured)
+
+    with pytest.raises(ValueError, match="Insecure production settings") as exc_info:
+        settings_module.validate_production_settings()
+
+    assert variable in str(exc_info.value)
+
+
+def test_production_settings_aggregate_invalid_cloud_backend_names(monkeypatch):
+    configured = _secure_production_settings().model_copy(
+        update={
+            "storage_backend": "s33",
+            "email_backend": "sez",
+            "encryption_backend": "kmz",
+        }
+    )
+    monkeypatch.setattr(settings_module, "settings", configured)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    message = str(exc_info.value)
+    assert "RENTIVO_STORAGE_BACKEND" in message
+    assert "RENTIVO_EMAIL_BACKEND" in message
+    assert "RENTIVO_ENCRYPTION_BACKEND" in message
+
+
+@pytest.mark.parametrize(
+    ("override", "variable"),
+    [
+        ({"s3_bucket": ""}, "RENTIVO_S3_BUCKET"),
+        ({"s3_region": ""}, "RENTIVO_S3_REGION"),
+        ({"ses_region": ""}, "RENTIVO_SES_REGION"),
+        ({"ses_from_email": ""}, "RENTIVO_SES_FROM_EMAIL"),
+        ({"kms_key_id": ""}, "RENTIVO_KMS_KEY_ID"),
+        ({"kms_region": ""}, "RENTIVO_KMS_REGION"),
+    ],
+)
+def test_production_settings_require_selected_cloud_backend_fields(monkeypatch, override, variable):
+    configured = _secure_production_settings().model_copy(update=override)
+    monkeypatch.setattr(settings_module, "settings", configured)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    assert variable in str(exc_info.value)
+
+
+def test_production_settings_report_every_insecure_value_together(monkeypatch):
+    insecure = _secure_production_settings(
+        db_url="mysql+pymysql://rentivo:rentivo@db:3306/rentivo",
+        secret_key=_INSECURE_DEFAULT_KEY,
+        public_url="",
+        public_app_url="http://localhost:8000",
+        webauthn_origin="http://auth.example.com",
+        webauthn_rp_id="wrong.example.com",
+        cookie_secure=False,
+        access_cookie_name="rentivo_access",
+        challenge_cookie_name="rentivo_challenge",
+        csrf_cookie_name="rentivo_csrf",
+        email_backend="local",
+        storage_backend="local",
+        encryption_backend="base64",
+        log_json=False,
+    )
+    monkeypatch.setattr(settings_module, "settings", insecure)
+
+    with pytest.raises(ValueError) as exc_info:
+        settings_module.validate_production_settings()
+
+    message = str(exc_info.value)
+    for variable in (
+        "RENTIVO_DB_URL",
+        "RENTIVO_SECRET_KEY",
+        "RENTIVO_PUBLIC_URL",
+        "RENTIVO_PUBLIC_APP_URL",
+        "RENTIVO_WEBAUTHN_ORIGIN",
+        "RENTIVO_WEBAUTHN_RP_ID",
+        "RENTIVO_COOKIE_SECURE",
+        "RENTIVO_ACCESS_COOKIE_NAME",
+        "RENTIVO_CHALLENGE_COOKIE_NAME",
+        "RENTIVO_CSRF_COOKIE_NAME",
+        "RENTIVO_EMAIL_BACKEND",
+        "RENTIVO_STORAGE_BACKEND",
+        "RENTIVO_ENCRYPTION_BACKEND",
+        "RENTIVO_LOG_JSON",
+    ):
+        assert variable in message
+
+
+def test_settings_email_defaults(monkeypatch):
+    for k in (
+        "RENTIVO_EMAIL_BACKEND",
+        "RENTIVO_SES_REGION",
+        "RENTIVO_SES_ACCESS_KEY_ID",
+        "RENTIVO_SES_SECRET_ACCESS_KEY",
+        "RENTIVO_SES_FROM_EMAIL",
+        "RENTIVO_SES_CONFIGURATION_SET",
+        "RENTIVO_EMAIL_LOCAL_PATH",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.email_backend == "local"
+    assert s.email_local_path == "./outbox"
+    assert s.ses_region == ""
+    assert s.ses_from_email == ""
+
+
+def test_settings_email_backend_validation(monkeypatch):
+    monkeypatch.setenv("RENTIVO_EMAIL_BACKEND", "smoke-signals")
+    import pytest as _pytest
+
+    from rentivo.settings import Settings
+
+    with _pytest.raises(ValueError):
+        Settings()
+
+
+def test_settings_storage_backend_validation(monkeypatch):
+    monkeypatch.setenv("RENTIVO_STORAGE_BACKEND", "s33")
+
+    with pytest.raises(ValueError, match="must be one of: local, s3"):
+        Settings()
+
+
+def test_settings_turnstile_defaults(monkeypatch):
+    for k in ("RENTIVO_TURNSTILE_SITE_KEY", "RENTIVO_TURNSTILE_SECRET_KEY", "RENTIVO_TURNSTILE_VERIFY_URL"):
+        monkeypatch.delenv(k, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.turnstile_site_key == ""
+    assert s.turnstile_secret_key == ""
+    assert s.turnstile_verify_url == "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+
+def test_settings_turnstile_requires_both_keys(monkeypatch):
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+    monkeypatch.delenv("RENTIVO_TURNSTILE_SECRET_KEY", raising=False)
+    import pytest as _pytest
+
+    from rentivo.settings import Settings
+
+    with _pytest.raises(ValueError, match="both .* set or both empty"):
+        Settings()
+
+
+def test_settings_turnstile_accepts_paired_keys(monkeypatch):
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SITE_KEY", "1x00000000000000000000AA")
+    monkeypatch.setenv("RENTIVO_TURNSTILE_SECRET_KEY", "1x0000000000000000000000000000000AA")
+    from rentivo.settings import Settings
+
+    s = Settings()
+    assert s.turnstile_site_key == "1x00000000000000000000AA"
+    assert s.turnstile_secret_key == "1x0000000000000000000000000000000AA"
+
+
+def test_default_job_worker_settings():
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.job_worker_batch_size == 10
+    assert s.job_worker_idle_sleep_seconds == 5.0
+    assert s.job_worker_stuck_after_seconds == 600
+
+
+def test_job_worker_settings_overrides_via_env(monkeypatch):
+    monkeypatch.setenv("RENTIVO_JOB_WORKER_BATCH_SIZE", "25")
+    monkeypatch.setenv("RENTIVO_JOB_WORKER_IDLE_SLEEP_SECONDS", "1.5")
+    monkeypatch.setenv("RENTIVO_JOB_WORKER_STUCK_AFTER_SECONDS", "120")
+
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.job_worker_batch_size == 25
+    assert s.job_worker_idle_sleep_seconds == 1.5
+    assert s.job_worker_stuck_after_seconds == 120
+
+
+def test_encryption_backend_default_is_base64(monkeypatch):
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("RENTIVO_"):
+            monkeypatch.delenv(key, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.encryption_backend == "base64"
+    assert s.kms_key_id == ""
+    assert s.kms_region == ""
+
+
+def test_encryption_backend_accepts_kms_when_configured(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "kms")
+    monkeypatch.setenv("RENTIVO_KMS_KEY_ID", "alias/rentivo")
+    monkeypatch.setenv("RENTIVO_KMS_REGION", "us-east-1")
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.encryption_backend == "kms"
+    assert s.kms_key_id == "alias/rentivo"
+    assert s.kms_region == "us-east-1"
+
+
+def test_encryption_backend_rejects_unknown(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "rot13")
+    from rentivo.settings import Settings
+
+    with pytest.raises(ValueError, match="must be one of: base64, kms"):
+        Settings(_env_file=None)
+
+
+def test_encryption_kms_requires_key_id(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "kms")
+    monkeypatch.delenv("RENTIVO_KMS_KEY_ID", raising=False)
+    monkeypatch.setenv("RENTIVO_KMS_REGION", "us-east-1")
+    from rentivo.settings import Settings
+
+    with pytest.raises(ValueError, match="RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION"):
+        Settings(_env_file=None)
+
+
+def test_encryption_kms_requires_region(monkeypatch):
+    monkeypatch.setenv("RENTIVO_ENCRYPTION_BACKEND", "kms")
+    monkeypatch.setenv("RENTIVO_KMS_KEY_ID", "alias/rentivo")
+    monkeypatch.delenv("RENTIVO_KMS_REGION", raising=False)
+    from rentivo.settings import Settings
+
+    with pytest.raises(ValueError, match="RENTIVO_KMS_KEY_ID and RENTIVO_KMS_REGION"):
+        Settings(_env_file=None)
+
+
+def test_encryption_base64_does_not_require_kms_fields(monkeypatch):
+    """Default 'base64' backend ignores empty KMS settings."""
+    import os
+
+    for key in list(os.environ):
+        if key.startswith("RENTIVO_"):
+            monkeypatch.delenv(key, raising=False)
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.encryption_backend == "base64"
+    assert s.kms_key_id == ""
+
+
+class TestEncryptionCacheSettings:
+    def test_cache_backend_defaults_to_none(self):
+        s = Settings(_env_file=None)
+        assert s.encryption_cache_backend == "none"
+        assert s.encryption_cache_ttl_seconds == 60
+        assert s.encryption_cache_max_entries == 10_000
+        assert s.redis_url == ""
+
+    def test_cache_backend_accepts_memory(self):
+        s = Settings(_env_file=None, encryption_cache_backend="memory")
+        assert s.encryption_cache_backend == "memory"
+
+    def test_cache_backend_accepts_redis_with_url(self):
+        s = Settings(
+            _env_file=None,
+            encryption_cache_backend="redis",
+            redis_url="redis://localhost:6379/0",
+        )
+        assert s.encryption_cache_backend == "redis"
+        assert s.redis_url == "redis://localhost:6379/0"
+
+    def test_cache_backend_rejects_unknown(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, encryption_cache_backend="memcached")
+        assert "RENTIVO_ENCRYPTION_CACHE_BACKEND" in str(exc.value)
+
+    def test_cache_backend_redis_requires_url(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, encryption_cache_backend="redis", redis_url="")
+        assert "RENTIVO_REDIS_URL" in str(exc.value)
+
+    def test_cache_ttl_rejects_zero(self):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, encryption_cache_ttl_seconds=0)
+
+    def test_cache_max_entries_rejects_zero(self):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, encryption_cache_max_entries=0)
+
+
+class TestCacheSettings:
+    def test_defaults_to_memory(self):
+        s = Settings(_env_file=None)
+        assert s.cache_backend == "memory"
+        assert s.cache_ttl_seconds == 60
+        assert s.cache_max_entries == 2_048
+
+    def test_accepts_none_and_redis_with_url(self):
+        assert Settings(_env_file=None, cache_backend="none").cache_backend == "none"
+        s = Settings(_env_file=None, cache_backend="redis", redis_url="redis://localhost:6379/0")
+        assert s.cache_backend == "redis"
+
+    def test_rejects_unknown_backend(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, cache_backend="memcached")
+        assert "RENTIVO_CACHE_BACKEND" in str(exc.value)
+
+    def test_redis_requires_url(self):
+        with pytest.raises(ValidationError) as exc:
+            Settings(_env_file=None, cache_backend="redis", redis_url="")
+        assert "RENTIVO_CACHE_BACKEND=redis" in str(exc.value)
+
+    def test_ttl_and_max_entries_reject_zero(self):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, cache_ttl_seconds=0)
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, cache_max_entries=0)
+
+
+def test_google_auth_defaults():
+    s = Settings(_env_file=None)
+    assert s.google_auth_enabled is False
+    assert s.google_client_id == ""
+    assert s.google_client_secret == ""
+
+
+def test_google_auth_enabled_requires_credentials():
+    with pytest.raises(ValidationError) as exc:
+        Settings(_env_file=None, google_auth_enabled=True)
+    assert "RENTIVO_GOOGLE_CLIENT_ID" in str(exc.value)
+
+
+def test_communications_from_email_defaults_empty(monkeypatch):
+    monkeypatch.delenv("RENTIVO_COMMUNICATIONS_FROM_EMAIL", raising=False)
+    s = Settings(_env_file=None)
+    assert s.communications_from_email == ""
+
+
+def test_communications_from_email_reads_env(monkeypatch):
+    monkeypatch.setenv("RENTIVO_COMMUNICATIONS_FROM_EMAIL", "cobranca@example.com")
+    s = Settings(_env_file=None)
+    assert s.communications_from_email == "cobranca@example.com"
+
+
+def test_ses_from_name_defaults_empty_and_reads_env(monkeypatch):
+    monkeypatch.delenv("RENTIVO_SES_FROM_NAME", raising=False)
+    assert Settings(_env_file=None).ses_from_name == ""
+    monkeypatch.setenv("RENTIVO_SES_FROM_NAME", "Rentivo")
+    assert Settings(_env_file=None).ses_from_name == "Rentivo"
+
+
+def test_communications_from_name_defaults_empty_and_reads_env(monkeypatch):
+    monkeypatch.delenv("RENTIVO_COMMUNICATIONS_FROM_NAME", raising=False)
+    assert Settings(_env_file=None).communications_from_name == ""
+    monkeypatch.setenv("RENTIVO_COMMUNICATIONS_FROM_NAME", "Cobranças Aurora")
+    assert Settings(_env_file=None).communications_from_name == "Cobranças Aurora"
+
+
+def test_google_auth_enabled_requires_secret_too():
+    with pytest.raises(ValidationError) as exc:
+        Settings(_env_file=None, google_auth_enabled=True, google_client_id="cid")
+    assert "RENTIVO_GOOGLE_CLIENT_SECRET" in str(exc.value)
+
+
+def test_google_auth_enabled_with_credentials():
+    s = Settings(
+        _env_file=None,
+        google_auth_enabled=True,
+        google_client_id="cid",
+        google_client_secret="cs",
+    )
+    assert s.google_auth_enabled is True
+    assert s.google_client_id == "cid"
+    assert s.google_client_secret == "cs"
+
+
+def test_google_credentials_allowed_while_disabled():
+    s = Settings(_env_file=None, google_client_id="cid", google_client_secret="cs")
+    assert s.google_auth_enabled is False
+
+
+def test_job_backend_defaults_to_database():
+    s = Settings(_env_file=None)
+    assert s.job_backend == "database"
+
+
+def test_job_backend_rejects_unknown_value():
+    with pytest.raises(ValueError, match="RENTIVO_JOB_BACKEND"):
+        Settings(_env_file=None, job_backend="rabbitmq")
+
+
+def test_temporal_defaults():
+    s = Settings(_env_file=None)
+    assert s.temporal_host == "localhost:7233"
+    assert s.temporal_namespace == "default"
+    assert s.temporal_task_queue == "rentivo-jobs"
+    assert s.temporal_tls is False
+    assert s.temporal_activity_start_to_close_timeout_seconds == 600
+
+
+def test_temporal_backend_requires_host():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_HOST"):
+        Settings(_env_file=None, job_backend="temporal", temporal_host="")
+
+
+def test_temporal_backend_requires_namespace():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_NAMESPACE"):
+        Settings(_env_file=None, job_backend="temporal", temporal_namespace="")
+
+
+def test_temporal_backend_requires_task_queue():
+    with pytest.raises(ValueError, match="RENTIVO_TEMPORAL_TASK_QUEUE"):
+        Settings(_env_file=None, job_backend="temporal", temporal_task_queue="")
+
+
+def test_api_key_and_auth_cookie_defaults():
+    settings = Settings(_env_file=None)
+
+    assert settings.access_cookie_name == "__Host-rentivo_access"
+    assert settings.challenge_cookie_name == "__Host-rentivo_challenge"
+    assert settings.csrf_cookie_name == "__Host-rentivo_csrf"
+    assert settings.cookie_secure is True
+    assert settings.api_key_login_ttl_seconds == 24 * 60 * 60
+    assert settings.auth_challenge_ttl_seconds == 5 * 60
+    assert settings.api_key_integration_default_ttl_days == 90
+    assert settings.api_key_integration_max_ttl_days == 365
+    assert settings.api_key_last_used_throttle_seconds == 5 * 60
+
+
+def test_staging_rejects_insecure_auth_cookies():
+    with pytest.raises(ValidationError, match="RENTIVO_COOKIE_SECURE"):
+        Settings(_env_file=None, environment="staging", cookie_secure=False)
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"access_cookie_name": "rentivo_access"},
+        {"challenge_cookie_name": "rentivo_challenge"},
+        {"csrf_cookie_name": "rentivo_csrf"},
+    ],
+)
+def test_staging_requires_host_prefixed_auth_cookie_names(override):
+    with pytest.raises(ValidationError, match="__Host-"):
+        Settings(_env_file=None, environment="staging", **override)
+
+
+def test_dev_allows_plain_http_auth_cookie_settings():
+    settings = Settings(
+        _env_file=None,
+        environment="dev",
+        cookie_secure=False,
+        access_cookie_name="rentivo_access",
+        challenge_cookie_name="rentivo_challenge",
+        csrf_cookie_name="rentivo_csrf",
+    )
+
+    assert settings.cookie_secure is False
+    assert settings.access_cookie_name == "rentivo_access"
+    assert settings.challenge_cookie_name == "rentivo_challenge"
+    assert settings.csrf_cookie_name == "rentivo_csrf"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "api_key_login_ttl_seconds",
+        "auth_challenge_ttl_seconds",
+        "api_key_integration_default_ttl_days",
+        "api_key_integration_max_ttl_days",
+        "api_key_last_used_throttle_seconds",
+    ],
+)
+def test_auth_durations_must_be_positive(field):
+    with pytest.raises(ValidationError, match="positive"):
+        Settings(_env_file=None, **{field: 0})
+
+
+def test_integration_default_ttl_cannot_exceed_maximum():
+    with pytest.raises(ValidationError, match="default TTL"):
+        Settings(
+            _env_file=None,
+            api_key_integration_default_ttl_days=366,
+            api_key_integration_max_ttl_days=365,
+        )
+
+
+def test_integration_maximum_ttl_cannot_exceed_one_year():
+    with pytest.raises(ValidationError, match="365 days"):
+        Settings(_env_file=None, api_key_integration_max_ttl_days=366)

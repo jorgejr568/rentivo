@@ -1,0 +1,226 @@
+from unittest.mock import patch
+
+import pytest
+
+from rentivo.models.invite import Invite
+from rentivo.models.organization import Organization
+from rentivo.models.user import User
+
+
+def _setup(user_repo, org_repo):
+    """Create two users and an org for testing."""
+    user1 = user_repo.create(User(email="alice@example.com", password_hash="h"))
+    user2 = user_repo.create(User(email="bob@example.com", password_hash="h"))
+    org = org_repo.create(Organization(name="TestOrg", created_by=user1.id))
+    return user1, user2, org
+
+
+class TestInviteRepoCRUD:
+    def test_create_and_get(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        invite = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        assert invite.id is not None
+        assert invite.uuid != ""
+        assert invite.organization_name == "TestOrg"
+        assert invite.invited_email == "bob@example.com"
+        assert invite.invited_by_email == "alice@example.com"
+
+    def test_get_by_uuid(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        created = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        fetched = invite_repo.get_by_uuid(created.uuid)
+        assert fetched is not None
+        assert fetched.id == created.id
+
+    def test_get_by_uuid_not_found(self, invite_repo):
+        assert invite_repo.get_by_uuid("nonexistent") is None
+
+    def test_list_pending_for_user(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        pending = invite_repo.list_pending_for_user(user2.id)
+        assert len(pending) == 1
+        assert pending[0].invited_user_id == user2.id
+
+    def test_list_pending_excludes_accepted(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        invite_repo.update_status(inv.id, "accepted")
+        pending = invite_repo.list_pending_for_user(user2.id)
+        assert len(pending) == 0
+
+    def test_list_by_organization(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        invites = invite_repo.list_by_organization(org.id)
+        assert len(invites) == 1
+
+    def test_update_status(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        invite_repo.update_status(inv.id, "accepted")
+        fetched = invite_repo.get_by_uuid(inv.uuid)
+        assert fetched.status == "accepted"
+        assert fetched.responded_at is not None
+
+    def test_accept_if_pending_is_atomic_and_conditional(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+
+        assert invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer") is True
+        assert invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer") is False
+        assert org_repo.get_member(org.id, user2.id) is not None
+        assert invite_repo.get_by_uuid(inv.uuid).status == "accepted"
+
+    def test_accept_if_pending_rolls_back_when_membership_exists(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        org_repo.add_member(org.id, user2.id, "viewer")
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+
+        assert invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer") is False
+        assert invite_repo.get_by_uuid(inv.uuid).status == "pending"
+
+    def test_decline_if_pending_is_compare_and_set(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+
+        assert invite_repo.decline_if_pending(inv.id, org.id, user2.id) is True
+        assert invite_repo.decline_if_pending(inv.id, org.id, user2.id) is False
+        assert invite_repo.get_by_uuid(inv.uuid).status == "declined"
+
+    @pytest.mark.parametrize("transition", ["accept", "decline"])
+    def test_pending_transition_rejects_deleted_organization(self, invite_repo, user_repo, org_repo, transition):
+        user1, user2, org = _setup(user_repo, org_repo)
+        inv = invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        org_repo.delete(org.id)
+
+        if transition == "accept":
+            changed = invite_repo.accept_if_pending(inv.id, org.id, user2.id, "viewer")
+        else:
+            changed = invite_repo.decline_if_pending(inv.id, org.id, user2.id)
+
+        assert changed is False
+
+    def test_count_pending_for_user(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        assert invite_repo.count_pending_for_user(user2.id) == 1
+        assert invite_repo.count_pending_for_user(user1.id) == 0
+
+    def test_has_pending_invite(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        assert invite_repo.has_pending_invite(org.id, user2.id) is False
+        invite_repo.create(
+            Invite(
+                organization_id=org.id,
+                invited_user_id=user2.id,
+                invited_by_user_id=user1.id,
+                role="viewer",
+                status="pending",
+            )
+        )
+        assert invite_repo.has_pending_invite(org.id, user2.id) is True
+
+
+class TestInviteRepoEdgeCases:
+    def test_create_runtime_error(self, invite_repo, user_repo, org_repo):
+        user1, user2, org = _setup(user_repo, org_repo)
+        with patch.object(invite_repo, "get_by_uuid", return_value=None):
+            with pytest.raises(RuntimeError, match="Failed to retrieve invite after create"):
+                invite_repo.create(
+                    Invite(
+                        organization_id=org.id,
+                        invited_user_id=user2.id,
+                        invited_by_user_id=user1.id,
+                        role="viewer",
+                        status="pending",
+                    )
+                )

@@ -1,0 +1,483 @@
+from unittest.mock import MagicMock, patch
+
+import bcrypt
+import pytest
+
+from rentivo.models.mfa import MFAFactorRemovalResult, RecoveryCode, UserPasskey, UserTOTP
+from rentivo.services.mfa_service import LastMFAFactorError, MFAService
+
+
+class TestMFAServiceTOTP:
+    def setup_method(self):
+        self.totp_repo = MagicMock()
+        self.recovery_repo = MagicMock()
+        self.passkey_repo = MagicMock()
+        self.org_repo = MagicMock()
+        self.factor_repo = MagicMock()
+        self.service = MFAService(
+            totp_repo=self.totp_repo,
+            recovery_repo=self.recovery_repo,
+            passkey_repo=self.passkey_repo,
+            org_repo=self.org_repo,
+            factor_repo=self.factor_repo,
+        )
+
+    def test_get_totp(self):
+        totp = UserTOTP(id=1, user_id=10, secret="SECRET", confirmed=True)
+        self.totp_repo.get_by_user_id.return_value = totp
+        result = self.service.get_totp(10)
+        assert result == totp
+        self.totp_repo.get_by_user_id.assert_called_once_with(10)
+
+    def test_get_totp_none(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        result = self.service.get_totp(10)
+        assert result is None
+
+    def test_has_confirmed_totp_true(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        assert self.service.has_confirmed_totp(10) is True
+
+    def test_has_confirmed_totp_false_unconfirmed(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=False)
+        assert self.service.has_confirmed_totp(10) is False
+
+    def test_has_confirmed_totp_false_none(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        assert self.service.has_confirmed_totp(10) is False
+
+    @patch("rentivo.services.mfa_service.qrcode")
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_setup_totp_no_existing(self, mock_pyotp, mock_qrcode):
+        self.totp_repo.get_by_user_id.return_value = None
+        mock_pyotp.random_base32.return_value = "FAKESECRET"
+        created_totp = UserTOTP(id=1, user_id=10, secret="FAKESECRET", confirmed=False)
+        self.totp_repo.create.return_value = created_totp
+
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.provisioning_uri.return_value = "otpauth://totp/Rentivo:user?secret=FAKESECRET"
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+
+        mock_qr_img = MagicMock()
+        mock_qrcode.make.return_value = mock_qr_img
+
+        record, uri, qr_b64 = self.service.setup_totp(10, "user")
+
+        assert record == created_totp
+        assert uri == "otpauth://totp/Rentivo:user?secret=FAKESECRET"
+        assert isinstance(qr_b64, str)
+        self.totp_repo.delete_by_user_id.assert_not_called()
+        self.totp_repo.create.assert_called_once()
+
+    @patch("rentivo.services.mfa_service.qrcode")
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_setup_totp_replaces_unconfirmed(self, mock_pyotp, mock_qrcode):
+        existing = UserTOTP(id=1, user_id=10, secret="OLD", confirmed=False)
+        self.totp_repo.get_by_user_id.return_value = existing
+        mock_pyotp.random_base32.return_value = "NEWSECRET"
+        self.totp_repo.create.return_value = UserTOTP(id=2, user_id=10, secret="NEWSECRET", confirmed=False)
+
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.provisioning_uri.return_value = "otpauth://..."
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+        mock_qrcode.make.return_value = MagicMock()
+
+        self.service.setup_totp(10, "user")
+
+        self.totp_repo.delete_by_user_id.assert_called_once_with(10)
+        self.totp_repo.create.assert_called_once()
+
+    def test_setup_totp_raises_if_already_confirmed(self):
+        existing = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        self.totp_repo.get_by_user_id.return_value = existing
+        with pytest.raises(ValueError, match="já está ativado"):
+            self.service.setup_totp(10, "user")
+
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_confirm_totp_success(self, mock_pyotp):
+        totp_record = UserTOTP(id=1, user_id=10, secret="SECRET", confirmed=False)
+        self.totp_repo.get_by_user_id.return_value = totp_record
+        self.factor_repo.confirm_totp_and_replace_recovery_codes.return_value = True
+
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.verify.return_value = True
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+
+        result = self.service.confirm_totp(10, "123456", "current-login")
+
+        assert isinstance(result, list)
+        assert len(result) == 10  # RECOVERY_CODE_COUNT
+        self.totp_repo.confirm.assert_not_called()
+        self.recovery_repo.delete_all_by_user.assert_not_called()
+        self.recovery_repo.create_batch.assert_not_called()
+        transaction_args = self.factor_repo.confirm_totp_and_replace_recovery_codes.call_args.args
+        assert transaction_args[0] == 10
+        assert len(transaction_args[1]) == 10
+        assert transaction_args[2] == "current-login"
+
+    def test_confirm_totp_raises_no_totp(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        with pytest.raises(ValueError, match="Nenhuma configuração TOTP"):
+            self.service.confirm_totp(10, "123456", "current-login")
+
+    def test_confirm_totp_raises_already_confirmed(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        with pytest.raises(ValueError, match="já está confirmado"):
+            self.service.confirm_totp(10, "123456", "current-login")
+
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_confirm_totp_raises_invalid_code(self, mock_pyotp):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="SECRET", confirmed=False)
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.verify.return_value = False
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+
+        with pytest.raises(ValueError, match="Código TOTP inválido"):
+            self.service.confirm_totp(10, "000000", "current-login")
+
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_confirm_totp_reports_a_concurrent_state_change(self, mock_pyotp):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(
+            id=1,
+            user_id=10,
+            secret="SECRET",
+            confirmed=False,
+        )
+        mock_pyotp.TOTP.return_value.verify.return_value = True
+        self.factor_repo.confirm_totp_and_replace_recovery_codes.return_value = False
+
+        with pytest.raises(ValueError, match="Nenhuma configuração TOTP"):
+            self.service.confirm_totp(10, "123456", "current-login")
+
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_verify_totp_success(self, mock_pyotp):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="SECRET", confirmed=True)
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.verify.return_value = True
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+
+        assert self.service.verify_totp(10, "123456") is True
+        mock_totp_instance.verify.assert_called_once_with("123456", valid_window=1)
+
+    @patch("rentivo.services.mfa_service.pyotp")
+    def test_verify_totp_invalid_code(self, mock_pyotp):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="SECRET", confirmed=True)
+        mock_totp_instance = MagicMock()
+        mock_totp_instance.verify.return_value = False
+        mock_pyotp.TOTP.return_value = mock_totp_instance
+
+        assert self.service.verify_totp(10, "000000") is False
+
+    def test_verify_totp_no_totp(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        assert self.service.verify_totp(10, "123456") is False
+
+    def test_verify_totp_unconfirmed(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=False)
+        assert self.service.verify_totp(10, "123456") is False
+
+    def test_disable_totp(self):
+        self.factor_repo.remove_totp_and_revoke_logins.return_value = MFAFactorRemovalResult.REMOVED
+        self.service.disable_totp(10)
+        self.factor_repo.remove_totp_and_revoke_logins.assert_called_once_with(10)
+        self.totp_repo.delete_by_user_id.assert_not_called()
+        self.recovery_repo.delete_all_by_user.assert_not_called()
+
+    def test_disable_totp_rejects_last_factor_for_enforcing_organization(self):
+        self.factor_repo.remove_totp_and_revoke_logins.return_value = MFAFactorRemovalResult.LAST_FACTOR
+
+        with pytest.raises(LastMFAFactorError):
+            self.service.disable_totp(10)
+
+        self.factor_repo.remove_totp_and_revoke_logins.assert_called_once_with(10)
+
+    def test_disable_totp_allows_removal_when_passkey_remains(self):
+        self.factor_repo.remove_totp_and_revoke_logins.return_value = MFAFactorRemovalResult.REMOVED
+
+        self.service.disable_totp(10)
+
+        self.factor_repo.remove_totp_and_revoke_logins.assert_called_once_with(10)
+
+    def test_disable_totp_reports_missing_factor(self):
+        self.factor_repo.remove_totp_and_revoke_logins.return_value = MFAFactorRemovalResult.NOT_FOUND
+
+        with pytest.raises(ValueError, match="TOTP não encontrado"):
+            self.service.disable_totp(10)
+
+
+class TestMFAServiceRecoveryCodes:
+    def setup_method(self):
+        self.totp_repo = MagicMock()
+        self.recovery_repo = MagicMock()
+        self.passkey_repo = MagicMock()
+        self.org_repo = MagicMock()
+        self.factor_repo = MagicMock()
+        self.service = MFAService(
+            totp_repo=self.totp_repo,
+            recovery_repo=self.recovery_repo,
+            passkey_repo=self.passkey_repo,
+            org_repo=self.org_repo,
+            factor_repo=self.factor_repo,
+        )
+
+    def test_verify_recovery_code_success(self):
+        code = "abcd1234"
+        hashed = bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode()
+        rc = RecoveryCode(id=5, user_id=10, code_hash=hashed)
+        self.recovery_repo.list_unused_by_user.return_value = [rc]
+        self.recovery_repo.mark_used.return_value = True
+
+        result = self.service.verify_recovery_code(10, code)
+        assert result is True
+        self.recovery_repo.mark_used.assert_called_once_with(5)
+
+    def test_verify_recovery_code_wrong_code(self):
+        hashed = bcrypt.hashpw(b"abcd1234", bcrypt.gensalt()).decode()
+        rc = RecoveryCode(id=5, user_id=10, code_hash=hashed)
+        self.recovery_repo.list_unused_by_user.return_value = [rc]
+
+        result = self.service.verify_recovery_code(10, "wrongcode")
+        assert result is False
+        self.recovery_repo.mark_used.assert_not_called()
+
+    def test_verify_recovery_code_no_codes(self):
+        self.recovery_repo.list_unused_by_user.return_value = []
+        result = self.service.verify_recovery_code(10, "anything")
+        assert result is False
+
+    def test_verify_recovery_code_matches_second_code(self):
+        code = "match1234"
+        hashed_wrong = bcrypt.hashpw(b"other1234", bcrypt.gensalt()).decode()
+        hashed_right = bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode()
+        rc1 = RecoveryCode(id=1, user_id=10, code_hash=hashed_wrong)
+        rc2 = RecoveryCode(id=2, user_id=10, code_hash=hashed_right)
+        self.recovery_repo.list_unused_by_user.return_value = [rc1, rc2]
+        self.recovery_repo.mark_used.return_value = True
+
+        result = self.service.verify_recovery_code(10, code)
+        assert result is True
+        self.recovery_repo.mark_used.assert_called_once_with(2)
+
+    def test_verify_recovery_code_fails_when_another_consumer_wins(self):
+        code = "abcd1234"
+        hashed = bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode()
+        self.recovery_repo.list_unused_by_user.return_value = [RecoveryCode(id=5, user_id=10, code_hash=hashed)]
+        self.recovery_repo.mark_used.return_value = False
+
+        result = self.service.verify_recovery_code(10, code)
+
+        assert result is False
+        self.recovery_repo.mark_used.assert_called_once_with(5)
+
+    def test_regenerate_recovery_codes_success(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        self.factor_repo.replace_recovery_codes.return_value = True
+        result = self.service.regenerate_recovery_codes(10)
+        assert isinstance(result, list)
+        assert len(result) == 10
+        self.recovery_repo.delete_all_by_user.assert_not_called()
+        self.recovery_repo.create_batch.assert_not_called()
+        transaction_args = self.factor_repo.replace_recovery_codes.call_args.args
+        assert transaction_args[0] == 10
+        assert len(transaction_args[1]) == 10
+
+    def test_regenerate_recovery_codes_raises_no_totp(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        with pytest.raises(ValueError, match="TOTP não está ativado"):
+            self.service.regenerate_recovery_codes(10)
+
+    def test_regenerate_recovery_codes_raises_unconfirmed(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=False)
+        with pytest.raises(ValueError, match="TOTP não está ativado"):
+            self.service.regenerate_recovery_codes(10)
+
+    def test_regenerate_recovery_codes_reports_a_concurrent_totp_removal(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        self.factor_repo.replace_recovery_codes.return_value = False
+
+        with pytest.raises(ValueError, match="TOTP não está ativado"):
+            self.service.regenerate_recovery_codes(10)
+
+    def test_count_unused_recovery_codes(self):
+        self.recovery_repo.list_unused_by_user.return_value = [
+            RecoveryCode(id=1, user_id=10, code_hash="h1"),
+            RecoveryCode(id=2, user_id=10, code_hash="h2"),
+            RecoveryCode(id=3, user_id=10, code_hash="h3"),
+        ]
+        assert self.service.count_unused_recovery_codes(10) == 3
+        self.recovery_repo.list_unused_by_user.assert_called_once_with(10)
+
+    def test_count_unused_recovery_codes_zero(self):
+        self.recovery_repo.list_unused_by_user.return_value = []
+        assert self.service.count_unused_recovery_codes(10) == 0
+
+
+class TestMFAServicePasskeys:
+    def setup_method(self):
+        self.totp_repo = MagicMock()
+        self.recovery_repo = MagicMock()
+        self.passkey_repo = MagicMock()
+        self.org_repo = MagicMock()
+        self.factor_repo = MagicMock()
+        self.service = MFAService(
+            totp_repo=self.totp_repo,
+            recovery_repo=self.recovery_repo,
+            passkey_repo=self.passkey_repo,
+            org_repo=self.org_repo,
+            factor_repo=self.factor_repo,
+        )
+
+    def test_list_passkeys(self):
+        passkeys = [
+            UserPasskey(id=1, user_id=10, name="Key1"),
+            UserPasskey(id=2, user_id=10, name="Key2"),
+        ]
+        self.passkey_repo.list_by_user.return_value = passkeys
+        result = self.service.list_passkeys(10)
+        assert len(result) == 2
+        self.passkey_repo.list_by_user.assert_called_once_with(10)
+
+    def test_register_passkey(self):
+        passkey = UserPasskey(user_id=10, name="MyKey", credential_id="cred1", public_key="pk1")
+        created = UserPasskey(id=1, user_id=10, name="MyKey", credential_id="cred1", public_key="pk1")
+        self.factor_repo.add_passkey_and_revoke_other_logins.return_value = created
+        result = self.service.register_passkey(passkey, "current-login")
+        assert result.id == 1
+        self.factor_repo.add_passkey_and_revoke_other_logins.assert_called_once_with(
+            passkey,
+            "current-login",
+        )
+        self.passkey_repo.create.assert_not_called()
+
+    def test_get_passkey_by_credential_id(self):
+        passkey = UserPasskey(id=1, user_id=10, credential_id="cred1")
+        self.passkey_repo.get_by_credential_id.return_value = passkey
+        result = self.service.get_passkey_by_credential_id("cred1")
+        assert result == passkey
+        self.passkey_repo.get_by_credential_id.assert_called_once_with("cred1")
+
+    def test_get_passkey_by_credential_id_not_found(self):
+        self.passkey_repo.get_by_credential_id.return_value = None
+        result = self.service.get_passkey_by_credential_id("nonexistent")
+        assert result is None
+
+    def test_update_passkey_sign_count(self):
+        self.passkey_repo.update_sign_count.return_value = True
+
+        result = self.service.update_passkey_sign_count(1, 41, None, 42)
+
+        assert result is True
+        self.passkey_repo.update_sign_count.assert_called_once_with(1, 41, None, 42)
+        self.passkey_repo.update_last_used.assert_not_called()
+
+    def test_update_passkey_sign_count_reports_compare_and_set_loss(self):
+        self.passkey_repo.update_sign_count.return_value = False
+
+        result = self.service.update_passkey_sign_count(1, 0, None, 0)
+
+        assert result is False
+        self.passkey_repo.update_sign_count.assert_called_once_with(1, 0, None, 0)
+        self.passkey_repo.update_last_used.assert_not_called()
+
+    def test_delete_passkey_success(self):
+        self.factor_repo.remove_passkey_and_revoke_logins.return_value = MFAFactorRemovalResult.REMOVED
+        self.service.delete_passkey("pk-uuid", 10)
+        self.factor_repo.remove_passkey_and_revoke_logins.assert_called_once_with("pk-uuid", 10)
+        self.passkey_repo.delete.assert_not_called()
+
+    def test_delete_passkey_rejects_last_factor_for_enforcing_organization(self):
+        self.factor_repo.remove_passkey_and_revoke_logins.return_value = MFAFactorRemovalResult.LAST_FACTOR
+
+        with pytest.raises(LastMFAFactorError):
+            self.service.delete_passkey("pk-uuid", 10)
+
+        self.factor_repo.remove_passkey_and_revoke_logins.assert_called_once_with("pk-uuid", 10)
+
+    @pytest.mark.parametrize(
+        ("totp", "passkeys"),
+        [
+            (UserTOTP(id=1, user_id=10, secret="S", confirmed=True), []),
+            (None, [UserPasskey(id=5, uuid="pk-uuid", user_id=10), UserPasskey(id=6, user_id=10)]),
+        ],
+    )
+    def test_delete_passkey_allows_removal_when_another_factor_remains(self, totp, passkeys):
+        self.factor_repo.remove_passkey_and_revoke_logins.return_value = MFAFactorRemovalResult.REMOVED
+
+        self.service.delete_passkey("pk-uuid", 10)
+
+        self.factor_repo.remove_passkey_and_revoke_logins.assert_called_once_with("pk-uuid", 10)
+
+    def test_delete_passkey_not_found(self):
+        self.factor_repo.remove_passkey_and_revoke_logins.return_value = MFAFactorRemovalResult.NOT_FOUND
+        with pytest.raises(ValueError, match="Passkey não encontrada"):
+            self.service.delete_passkey("nonexistent", 10)
+
+    def test_delete_passkey_wrong_user(self):
+        self.factor_repo.remove_passkey_and_revoke_logins.return_value = MFAFactorRemovalResult.NOT_FOUND
+        with pytest.raises(ValueError, match="Passkey não encontrada"):
+            self.service.delete_passkey("pk-uuid", 10)
+
+
+class TestMFAServiceStatus:
+    def setup_method(self):
+        self.totp_repo = MagicMock()
+        self.recovery_repo = MagicMock()
+        self.passkey_repo = MagicMock()
+        self.org_repo = MagicMock()
+        self.factor_repo = MagicMock()
+        self.service = MFAService(
+            totp_repo=self.totp_repo,
+            recovery_repo=self.recovery_repo,
+            passkey_repo=self.passkey_repo,
+            org_repo=self.org_repo,
+            factor_repo=self.factor_repo,
+        )
+
+    def test_has_any_mfa_with_totp(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        assert self.service.has_any_mfa(10) is True
+        # Should not need to check passkeys when TOTP is confirmed
+        self.passkey_repo.list_by_user.assert_not_called()
+
+    def test_has_any_mfa_with_passkeys(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        self.passkey_repo.list_by_user.return_value = [UserPasskey(id=1, user_id=10, name="Key")]
+        assert self.service.has_any_mfa(10) is True
+
+    def test_has_any_mfa_false(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        self.passkey_repo.list_by_user.return_value = []
+        assert self.service.has_any_mfa(10) is False
+
+    def test_has_any_mfa_unconfirmed_totp_no_passkeys(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=False)
+        self.passkey_repo.list_by_user.return_value = []
+        assert self.service.has_any_mfa(10) is False
+
+    def test_user_requires_mfa_setup_has_mfa(self):
+        self.totp_repo.get_by_user_id.return_value = UserTOTP(id=1, user_id=10, secret="S", confirmed=True)
+        assert self.service.user_requires_mfa_setup(10) is False
+        # Should not check org enforcement when MFA exists
+        self.org_repo.user_has_enforcing_org.assert_not_called()
+
+    def test_user_requires_mfa_setup_no_mfa_enforcing_org(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        self.passkey_repo.list_by_user.return_value = []
+        self.org_repo.user_has_enforcing_org.return_value = True
+        assert self.service.user_requires_mfa_setup(10) is True
+
+    def test_user_requires_mfa_setup_no_mfa_no_enforcing_org(self):
+        self.totp_repo.get_by_user_id.return_value = None
+        self.passkey_repo.list_by_user.return_value = []
+        self.org_repo.user_has_enforcing_org.return_value = False
+        assert self.service.user_requires_mfa_setup(10) is False
+
+    def test_user_in_enforcing_org_true(self):
+        self.org_repo.user_has_enforcing_org.return_value = True
+        assert self.service.user_in_enforcing_org(10) is True
+        self.org_repo.user_has_enforcing_org.assert_called_once_with(10)
+
+    def test_user_in_enforcing_org_false(self):
+        self.org_repo.user_has_enforcing_org.return_value = False
+        assert self.service.user_in_enforcing_org(10) is False
+        self.org_repo.user_has_enforcing_org.assert_called_once_with(10)

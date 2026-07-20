@@ -1,26 +1,57 @@
-# Development override: bind-mount the source into the containers and run
-# the web server with auto-reload, so you can develop with Docker only.
-#
-# Usage:
-#   make compose-dev        # up with this override
-#   make compose-dev-down   # down
-#
-# Notes:
-# - Only ./rentivo and ./web are mounted (NOT the repo root) so the
-#   image's /app/.venv is not shadowed by a host directory.
-# - The worker has no auto-reload; after editing job/handler code run:
-#   docker compose restart worker
-# - With the local email backend, sent emails live INSIDE the worker
-#   container (not bind-mounted, to avoid uid-10001 write issues on
-#   Linux hosts): docker compose exec worker ls outbox
+# Development override for the production service topology.
+# Usage: make compose-dev
+x-development-backend-environment: &development-backend-environment
+  RENTIVO_ENVIRONMENT: dev
+  RENTIVO_DB_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+
 services:
-  rentivo:
-    command: uvicorn web.app:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips=*
+  validate:
+    environment:
+      RENTIVO_ENVIRONMENT: dev
+
+  migrate:
+    environment: *development-backend-environment
+
+  api:
+    environment:
+      <<: *development-backend-environment
+      RENTIVO_PUBLIC_URL: http://localhost:8080
+      RENTIVO_PUBLIC_APP_URL: http://localhost:8080
+      RENTIVO_WEBAUTHN_ORIGIN: http://localhost:8080
+      RENTIVO_WEBAUTHN_RP_ID: localhost
+      RENTIVO_COOKIE_SECURE: "false"
+      RENTIVO_ACCESS_COOKIE_NAME: rentivo_access
+      RENTIVO_CHALLENGE_COOKIE_NAME: rentivo_challenge
+      RENTIVO_CSRF_COOKIE_NAME: rentivo_csrf
+    command:
+      - uvicorn
+      - rentivo.api.app:create_app
+      - --factory
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --reload
+      - --proxy-headers
+      - --forwarded-allow-ips=${RENTIVO_PROXY_IP:-172.30.0.10}
     volumes:
-      - ./rentivo:/app/rentivo
-      - ./web:/app/web
+      - ./backend/rentivo:/app/backend/rentivo
 
   worker:
+    environment: *development-backend-environment
     volumes:
-      - ./rentivo:/app/rentivo
-      - ./web:/app/web
+      - ./backend/rentivo:/app/backend/rentivo
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: builder
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "8080"]
+    read_only: false
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+
+volumes:
+  frontend-node-modules:

@@ -8,4 +8,4 @@ runs:
 
     - name: Run ruff check
       shell: bash
-      run: uv run --no-sync ruff check .
+      run: uv run --project backend --no-sync ruff check .

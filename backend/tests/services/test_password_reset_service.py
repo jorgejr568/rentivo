@@ -1,0 +1,160 @@
+import hashlib
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock
+
+from rentivo.models.password_reset_token import PasswordResetToken
+from rentivo.models.user import User
+from rentivo.services.job_service import JobService
+from rentivo.services.password_reset_service import PasswordResetService
+
+
+class _Frozen:
+    def __init__(self, now: datetime):
+        self.now = now
+
+    def __call__(self) -> datetime:
+        return self.now
+
+
+def _build():
+    user_repo = MagicMock()
+    token_repo = MagicMock()
+    job_service = MagicMock(spec=JobService)
+    job_service.enqueue.return_value = MagicMock(ulid="01HXYZ")
+    user_service = MagicMock()
+    user_service.hash_password.return_value = "hashed-password"
+    token_repo.complete_password_reset.return_value = True
+    now = datetime(2026, 4, 30, 12, 0, 0)
+    service = PasswordResetService(
+        user_repo=user_repo,
+        token_repo=token_repo,
+        job_service=job_service,
+        user_service=user_service,
+        public_app_url="http://example.com",
+        now=_Frozen(now),
+        ttl_seconds=3600,
+    )
+    return service, user_repo, token_repo, job_service, user_service, now
+
+
+def test_request_reset_with_unknown_email_is_silent_success():
+    service, user_repo, token_repo, job_service, _, _ = _build()
+    user_repo.get_by_email.return_value = None
+    service.request_reset("ghost@example.com")
+    token_repo.create.assert_not_called()
+    job_service.enqueue.assert_not_called()
+
+
+def test_request_reset_creates_token_and_sends_email():
+    service, user_repo, token_repo, job_service, _, now = _build()
+    user_repo.get_by_email.return_value = User(id=1, email="a@b.com")
+    raw = service.request_reset("a@b.com")
+    assert raw is not None and len(raw) >= 32
+    created_token = token_repo.create.call_args[0][0]
+    assert created_token.user_id == 1
+    assert created_token.token_hash == hashlib.sha256(raw.encode()).hexdigest()
+    assert created_token.expires_at == now + timedelta(seconds=3600)
+    job_service.enqueue.assert_called_once()
+    args = job_service.enqueue.call_args
+    assert args.args[0] == "email.send"
+    payload = args.args[1]
+    assert payload["event"] == "password_reset"
+    assert payload["to_email"] == "a@b.com"
+    assert payload["ctx"]["email"] == "a@b.com"
+    assert raw in payload["ctx"]["reset_url"]
+    assert args.kwargs["source"] == "web"
+    assert args.kwargs["actor_id"] == 1
+    assert args.kwargs["actor_username"] == "a@b.com"
+
+
+def test_consume_rejects_unknown_token():
+    service, _, token_repo, _, _, _ = _build()
+    token_repo.get_by_hash.return_value = None
+    assert service.consume("bogus", new_password="np") is None
+
+
+def test_consume_rejects_expired_token():
+    service, _, token_repo, _, _, now = _build()
+    token_repo.get_by_hash.return_value = PasswordResetToken(
+        id=5, user_id=1, token_hash="h", expires_at=now - timedelta(seconds=1)
+    )
+    assert service.consume("any", new_password="np") is None
+
+
+def test_consume_rejects_token_at_exact_expiry():
+    service, _, token_repo, _, _, now = _build()
+    token_repo.get_by_hash.return_value = PasswordResetToken(id=5, user_id=1, token_hash="h", expires_at=now)
+
+    assert service.consume("any", new_password="np") is None
+
+
+def test_consume_rejects_already_used_token():
+    service, _, token_repo, _, _, now = _build()
+    token_repo.get_by_hash.return_value = PasswordResetToken(
+        id=5,
+        user_id=1,
+        token_hash="h",
+        expires_at=now + timedelta(hours=1),
+        used_at=now - timedelta(minutes=1),
+    )
+    assert service.consume("any", new_password="np") is None
+
+
+def test_consume_atomically_resets_password_revokes_logins_and_invalidates_tokens():
+    service, _, token_repo, _, user_service, now = _build()
+    raw = "raw-token-value"
+    token = PasswordResetToken(
+        id=5,
+        user_id=42,
+        token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+        expires_at=now + timedelta(hours=1),
+    )
+    token_repo.get_by_hash.return_value = token
+    user_id = service.consume(raw, new_password="brand-new")
+    assert user_id == 42
+    user_service.hash_password.assert_called_once_with("brand-new")
+    token_repo.complete_password_reset.assert_called_once_with(
+        token_id=5,
+        user_id=42,
+        password_hash="hashed-password",
+        completed_at=now,
+    )
+
+
+def test_default_now_does_not_emit_deprecation_warning():
+    """Regression: default `now` callable must not call deprecated datetime.utcnow."""
+    import warnings
+    from unittest.mock import MagicMock
+
+    user_repo = MagicMock()
+    token_repo = MagicMock()
+    job_service = MagicMock(spec=JobService)
+    user_service = MagicMock()
+
+    service = PasswordResetService(
+        user_repo=user_repo,
+        token_repo=token_repo,
+        job_service=job_service,
+        user_service=user_service,
+        public_app_url="http://example.com",
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        result = service.now()
+
+    assert result.tzinfo is None  # naive datetime preserves DB-column compatibility
+
+
+def test_consume_rejects_a_token_lost_to_a_concurrent_request():
+    service, _, token_repo, _, user_service, now = _build()
+    token_repo.get_by_hash.return_value = PasswordResetToken(
+        id=5,
+        user_id=42,
+        token_hash="h",
+        expires_at=now + timedelta(hours=1),
+    )
+    token_repo.complete_password_reset.return_value = False
+
+    assert service.consume("raw", new_password="new") is None
+    user_service.hash_password.assert_called_once_with("new")
