@@ -85,9 +85,14 @@ services:
       test:
         [
           "CMD",
-          "python",
-          "-c",
-          "import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=2).close()",
+          "curl",
+          "--fail",
+          "--silent",
+          "--show-error",
+          "--max-time",
+          "2",
+          "--output",
+          "/dev/null",
           "http://localhost:8000/api/v1/health",
         ]
       interval: 10s

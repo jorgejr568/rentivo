@@ -59,6 +59,8 @@ def test_api_healthcheck_uses_liveness_while_proxy_checks_readiness():
     health_command = " ".join(api["healthcheck"]["test"])
     dockerfile = API_DOCKERFILE.read_text()
 
+    assert "curl --fail --silent --show-error --max-time 2 --output /dev/null" in health_command
+    assert 'CMD ["curl", "--fail", "--silent", "--show-error", "--max-time", "2", "--output", "/dev/null"' in dockerfile
     assert "http://localhost:8000/api/v1/health" in health_command
     assert "http://localhost:8000/api/v1/health" in dockerfile
     assert "get_engine" not in dockerfile.split("HEALTHCHECK", maxsplit=1)[1]
