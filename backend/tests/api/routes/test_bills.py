@@ -328,6 +328,7 @@ def test_receipt_multipart_openapi_exposes_browser_blob_types() -> None:
     assert set(create_body["content"]) == {"application/json", "multipart/form-data"}
     assert create_body["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/BillCreateRequest"}
     multipart = create_body["content"]["multipart/form-data"]
+    assert "$ref" not in multipart["schema"]
     assert multipart["schema"]["properties"]["payload"] == {"$ref": "#/components/schemas/BillCreateRequest"}
     assert multipart["schema"]["properties"]["receipt_files"]["items"] == {
         "type": "string",

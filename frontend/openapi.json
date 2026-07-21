@@ -6574,7 +6574,6 @@
                 }
               },
               "schema": {
-                "$ref": "#/components/schemas/Body_create_bill_api_v1_billings__billing_uuid__bills_post",
                 "properties": {
                   "payload": {
                     "$ref": "#/components/schemas/BillCreateRequest"
