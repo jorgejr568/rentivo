@@ -35,11 +35,11 @@ jobs:
       worker-ref: ${{ steps.worker.outputs.image-ref }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
       - name: Authenticate to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -54,7 +54,7 @@ jobs:
           cache-scope: production-api
           push: "true"
       - name: Scan API image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@v0
         with:
           image-ref: ${{ steps.api.outputs.image-ref }}
           scanners: vuln
@@ -62,7 +62,7 @@ jobs:
           ignore-unfixed: "true"
           exit-code: "1"
       - name: Attest API image provenance
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@v3
         with:
           subject-name: ghcr.io/${{ github.repository }}/api
           subject-digest: ${{ steps.api.outputs.digest }}
@@ -77,7 +77,7 @@ jobs:
           cache-scope: production-worker
           push: "true"
       - name: Scan worker image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@v0
         with:
           image-ref: ${{ steps.worker.outputs.image-ref }}
           scanners: vuln
@@ -85,7 +85,7 @@ jobs:
           ignore-unfixed: "true"
           exit-code: "1"
       - name: Attest worker image provenance
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@v3
         with:
           subject-name: ghcr.io/${{ github.repository }}/worker
           subject-digest: ${{ steps.worker.outputs.digest }}
@@ -100,7 +100,7 @@ jobs:
           cache-scope: production-frontend
           push: "true"
       - name: Scan frontend image
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@v0
         with:
           image-ref: ${{ steps.frontend.outputs.image-ref }}
           scanners: vuln
@@ -108,7 +108,7 @@ jobs:
           ignore-unfixed: "true"
           exit-code: "1"
       - name: Attest frontend image provenance
-        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        uses: actions/attest-build-provenance@v3
         with:
           subject-name: ghcr.io/${{ github.repository }}/frontend
           subject-digest: ${{ steps.frontend.outputs.digest }}
@@ -138,13 +138,13 @@ jobs:
       worker-ref: ${{ steps.resolve.outputs.worker-ref }}
     steps:
       - name: Authenticate to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Enable Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@v3
       - id: resolve
         name: Resolve and verify images
         shell: bash
@@ -213,17 +213,17 @@ jobs:
       WORKER_REF: ${{ needs.resolve-images.outputs.worker-ref }}
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
       - name: Authenticate to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Install Node.js
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm

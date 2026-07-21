@@ -52,8 +52,8 @@ beforeEach(() => {
   revokeObjectURL = vi.fn();
   const NativeURL = URL;
   class PreviewURL extends NativeURL {
-    static createObjectURL = createObjectURL;
-    static revokeObjectURL = revokeObjectURL;
+    static createObjectURL = createObjectURL as (obj: Blob | MediaSource) => string;
+    static revokeObjectURL = revokeObjectURL as (url: string) => void;
   }
   vi.stubGlobal("URL", PreviewURL);
   analytics.pushAnalyticsFromResponse.mockReset();
