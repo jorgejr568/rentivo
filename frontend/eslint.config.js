@@ -18,6 +18,11 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
+      // These rules are introduced by newer eslint-plugin-react-hooks versions;
+      // enabling them would turn existing, intentionally-tested patterns into
+      // errors during this dependency-only upgrade.
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }]
     }
   }
