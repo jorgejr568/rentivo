@@ -7,6 +7,17 @@ import UIKit
 @MainActor
 final class MobileWebAuthenticator: NSObject, ASWebAuthenticationPresentationContextProviding {
   private var session: ASWebAuthenticationSession?
+  private var requiresFreshAuthentication = false
+
+  var shouldUseEphemeralSession: Bool { requiresFreshAuthentication }
+
+  func requireFreshAuthentication() {
+    requiresFreshAuthentication = true
+  }
+
+  func completeAuthentication() {
+    requiresFreshAuthentication = false
+  }
 
   func authorize() async throws -> String {
     let state = UUID().uuidString
@@ -27,11 +38,9 @@ final class MobileWebAuthenticator: NSObject, ASWebAuthenticationPresentationCon
         continuation.resume(returning: code)
       }
       session.presentationContextProvider = self
-      // Keep the website session between authorization attempts. The native
-      // bearer token is still stored separately in the Keychain, but retaining
-      // this cookie lets a signed-in user reauthorize without re-entering the
-      // password if that token has expired or was cleared.
-      session.prefersEphemeralWebBrowserSession = false
+      // An explicit native logout must not reuse the browser's shared session.
+      // Safari honors this request by isolating the next authentication flow.
+      session.prefersEphemeralWebBrowserSession = shouldUseEphemeralSession
       self.session = session
       session.start()
     }
@@ -47,6 +56,18 @@ final class MobileWebAuthenticator: NSObject, ASWebAuthenticationPresentationCon
 #else
 @MainActor
 final class MobileWebAuthenticator {
+  private var requiresFreshAuthentication = false
+
+  var shouldUseEphemeralSession: Bool { requiresFreshAuthentication }
+
+  func requireFreshAuthentication() {
+    requiresFreshAuthentication = true
+  }
+
+  func completeAuthentication() {
+    requiresFreshAuthentication = false
+  }
+
   func authorize() async throws -> String {
     throw LiveAPIError.server(message: "A autenticação pelo navegador requer o app para iOS.")
   }

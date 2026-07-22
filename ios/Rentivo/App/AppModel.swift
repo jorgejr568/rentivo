@@ -113,12 +113,14 @@ final class AppModel {
     guard let liveStore = dependencies.auth as? APIRentivoStore else { signIn(); return }
     let code = try await mobileWebAuthenticator.authorize()
     session = .authenticated(try await liveStore.exchangeMobileAuthorization(code: code))
+    mobileWebAuthenticator.completeAuthentication()
     selectedTab = .home
     notice = AppNotice(kind: .success, message: "Sessão conectada ao Rentivo.")
   }
 
   func signOut() {
     if let liveStore = dependencies.auth as? APIRentivoStore {
+      mobileWebAuthenticator.requireFreshAuthentication()
       Task { await liveStore.logout() }
     }
     session = .anonymous
