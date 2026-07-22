@@ -109,7 +109,11 @@ export function LoginPage() {
       );
       if (data.status === "mfa_required") {
         saveMfaChallenge({ challengeId: data.challenge_id, methods: data.methods });
-        navigate(`/mfa-verify?challenge=${encodeURIComponent(data.challenge_id)}`);
+        const mfaParams = new URLSearchParams({ challenge: data.challenge_id });
+        if (mobileState) {
+          mfaParams.set("mobile_state", mobileState);
+        }
+        navigate(`/mfa-verify?${mfaParams.toString()}`);
         return;
       }
       if (mobileState) {

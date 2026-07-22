@@ -62,6 +62,26 @@ describe("MfaVerifyPage", () => {
     expect(sessionStorage.getItem("rentivo.auth.mfa")).toBeNull();
   });
 
+  it("returns an authenticated mobile MFA login to the authorization handoff", async () => {
+    const user = userEvent.setup();
+    storeChallenge(["totp"]);
+    renderAuth(<MfaVerifyPage />, {
+      handlers: {
+        "/api/v1/auth/mfa/totp/verify": () => jsonResponse(AUTHENTICATED_RESPONSE)
+      },
+      path: "/mfa-verify?challenge=challenge-1&mobile_state=native-state"
+    });
+
+    await user.type(await screen.findByLabelText("Código de autenticação"), "123456");
+    await user.click(screen.getByRole("button", { name: "Verificar" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/login?mobile_state=native-state"
+      )
+    );
+  });
+
   it("switches to the recovery-code endpoint", async () => {
     const user = userEvent.setup();
     storeChallenge();

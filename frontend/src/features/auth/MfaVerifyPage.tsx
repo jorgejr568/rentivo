@@ -24,6 +24,10 @@ export function MfaVerifyPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const challengeId = searchParams.get("challenge") ?? "";
+  const mobileState = searchParams.get("mobile_state");
+  const mobileLoginPath = mobileState
+    ? `/login?mobile_state=${encodeURIComponent(mobileState)}`
+    : "/login";
   const [challenge] = useState(() => loadMfaChallenge(challengeId));
   const [code, setCode] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
@@ -40,9 +44,9 @@ export function MfaVerifyPage() {
 
   useEffect(() => {
     if (!challenge) {
-      navigate("/login", { replace: true });
+      navigate(mobileLoginPath, { replace: true });
     }
-  }, [challenge, navigate]);
+  }, [challenge, mobileLoginPath, navigate]);
 
   useEffect(() => {
     if (!error) {
@@ -66,7 +70,7 @@ export function MfaVerifyPage() {
 
   function completeAuthentication(response: AuthenticatedResponse) {
     auth.authenticate(response);
-    navigate(postLoginPath(response.bootstrap));
+    navigate(mobileState ? mobileLoginPath : postLoginPath(response.bootstrap));
   }
 
   function handleVerificationError(caught: unknown, method: VerificationMethod) {
