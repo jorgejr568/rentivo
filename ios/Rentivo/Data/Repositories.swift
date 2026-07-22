@@ -28,7 +28,9 @@ public protocol BillRepository: AnyObject {
   func updateBill(billingID: BillingID, billID: BillID, draft: BillDraft) async throws -> Bill
   func deleteBill(billingID: BillingID, billID: BillID) async throws
   func transitionBill(billingID: BillingID, billID: BillID, to status: BillStatus) async throws
+  func regenerateBill(billingID: BillingID, billID: BillID) async throws -> Bill
   func addReceipt(billingID: BillingID, billID: BillID, upload: FileUpload) async throws -> Receipt
+  func reorderReceipts(billingID: BillingID, billID: BillID, receiptIDs: [ReceiptID]) async throws
   func deleteReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws
 }
 
@@ -61,6 +63,19 @@ public protocol CommunicationRepository: AnyObject {
     subject: String,
     message: String
   ) async throws -> CommunicationRecord
+}
+
+@MainActor
+public protocol FileDownloadRepository: AnyObject {
+  func downloadInvoice(billingID: BillingID, billID: BillID) async throws -> DownloadedFile
+  func downloadRecibo(billingID: BillingID, billID: BillID) async throws -> DownloadedFile
+  func downloadReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws -> DownloadedFile
+  func downloadAttachment(billingID: BillingID, attachmentID: AttachmentID) async throws -> DownloadedFile
+}
+
+@MainActor
+public protocol ExportRepository: AnyObject {
+  func requestExport(billingID: BillingID, format: String) async throws
 }
 
 @MainActor
@@ -159,6 +174,8 @@ public struct AppDependencies {
   public let expenses: any ExpenseRepository
   public let attachments: any AttachmentRepository
   public let communications: any CommunicationRepository
+  public let downloads: any FileDownloadRepository
+  public let exports: any ExportRepository
   public let dashboard: any DashboardRepository
   public let activities: any ActivityRepository
   public let organizations: any OrganizationRepository
@@ -176,6 +193,8 @@ public struct AppDependencies {
     expenses: any ExpenseRepository,
     attachments: any AttachmentRepository,
     communications: any CommunicationRepository,
+    downloads: any FileDownloadRepository,
+    exports: any ExportRepository,
     dashboard: any DashboardRepository,
     activities: any ActivityRepository,
     organizations: any OrganizationRepository,
@@ -192,6 +211,8 @@ public struct AppDependencies {
     self.expenses = expenses
     self.attachments = attachments
     self.communications = communications
+    self.downloads = downloads
+    self.exports = exports
     self.dashboard = dashboard
     self.activities = activities
     self.organizations = organizations
@@ -209,8 +230,7 @@ public struct AppDependencies {
       billings: store,
       bills: store,
       expenses: store,
-      attachments: store,
-      communications: store,
+      attachments: store, communications: store, downloads: store, exports: store,
       dashboard: store,
       activities: store,
       organizations: store,
@@ -226,7 +246,7 @@ public struct AppDependencies {
     let demo = LiveDemoRepository()
     return AppDependencies(
       auth: store, profile: store, billings: store, bills: store, expenses: store,
-      attachments: store, communications: store, dashboard: store, activities: store,
+      attachments: store, communications: store, downloads: store, exports: store, dashboard: store, activities: store,
       organizations: store, invitations: store, security: store, apiKeys: store,
       themes: store, demo: demo
     )

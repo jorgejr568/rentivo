@@ -64,7 +64,7 @@ struct BillingDetailView: View {
       }
       Button("Cancelar", role: .cancel) {}
     } message: {
-      Text("Faturas, despesas e arquivos locais desta demonstração também serão removidos.")
+      Text("Faturas, despesas e arquivos desta cobrança também serão removidos.")
     }
     .task(id: app.dataRevision) { await load() }
   }
@@ -274,7 +274,7 @@ struct BillingDetailView: View {
     do {
       try await app.dependencies.billings.deleteBilling(id: billingID)
       await onMutation()
-      app.showNotice("Cobrança excluída da demonstração.")
+      app.showNotice("Cobrança excluída.")
       dismiss()
     } catch {
       app.showNotice(DemoError(error).message, kind: .warning)

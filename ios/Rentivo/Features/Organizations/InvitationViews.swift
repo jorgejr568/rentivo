@@ -101,7 +101,7 @@ struct InviteMemberView: View {
       )
       await onSaved()
       dismiss()
-      app.showNotice("Convite simulado criado.")
+      app.showNotice("Convite enviado.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 }

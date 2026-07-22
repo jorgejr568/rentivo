@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingRepository,
-  BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository,
+  BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository, FileDownloadRepository, ExportRepository,
   OrganizationRepository, InvitationRepository, SecurityRepository, APIKeyRepository,
   ThemeRepository, DemoRepository, DashboardRepository, ActivityRepository
 {
@@ -241,6 +241,12 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     )
   }
 
+  public func regenerateBill(billingID: BillingID, billID: BillID) async throws -> Bill {
+    try await prepareOperation()
+    guard let index = billIndex(billingID: billingID, billID: billID) else { throw DemoError.resourceNotFound }
+    return snapshot.bills[index]
+  }
+
   public func addReceipt(billingID: BillingID, billID: BillID, upload: FileUpload) async throws -> Receipt {
     try await prepareOperation()
     try requireWriteAccess()
@@ -405,6 +411,12 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     recordActivity(kind: .bill, title: "Comunicação simulada", detail: subject)
     return communication
   }
+
+  public func downloadInvoice(billingID: BillingID, billID: BillID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func downloadRecibo(billingID: BillingID, billID: BillID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func downloadReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func downloadAttachment(billingID: BillingID, attachmentID: AttachmentID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func requestExport(billingID: BillingID, format: String) async throws { try await prepareOperation() }
 
   public func dashboardSummary() async throws -> DashboardSummary {
     try await prepareOperation()

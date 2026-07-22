@@ -180,11 +180,9 @@ struct BillDetailView: View {
   @State private var state: LoadState<Bill> = .idle
   @State private var billing: Billing?
   @State private var showingEdit = false
-  @State private var showingDocument = false
-  @State private var showingPaymentReceipt = false
+  @State private var downloadedFile: DownloadedFile?
   @State private var showingCommunication = false
   @State private var confirmingDelete = false
-  @State private var documentTheme = ThemeValues.rentivo
 
   var body: some View {
     PageStateView(state: state) { bill in
@@ -209,26 +207,7 @@ struct BillDetailView: View {
         }
       }
     }
-    .sheet(isPresented: $showingDocument) {
-      if let bill = state.value {
-        BillDocumentPreview(
-          title: "FATURA",
-          bill: bill,
-          billingName: billing?.name ?? "Cobrança",
-          theme: documentTheme
-        )
-      }
-    }
-    .sheet(isPresented: $showingPaymentReceipt) {
-      if let bill = state.value {
-        BillDocumentPreview(
-          title: "RECIBO DE PAGAMENTO",
-          bill: bill,
-          billingName: billing?.name ?? "Cobrança",
-          theme: documentTheme
-        )
-      }
-    }
+    .sheet(item: $downloadedFile) { file in DownloadShareView(file: file) }
     .sheet(isPresented: $showingCommunication) {
       if let billing {
         NavigationStack {
@@ -286,16 +265,16 @@ struct BillDetailView: View {
         VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
           SectionTitle(title: "Documento", symbol: "doc.richtext.fill")
           Button {
-            showingDocument = true
+            Task { await downloadInvoice() }
           } label: {
-            Label("Visualizar PDF simulado", systemImage: "doc.text.magnifyingglass")
+            Label("Abrir fatura em PDF", systemImage: "doc.text.magnifyingglass")
           }
           .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
           HStack {
-            Button("Regenerar rascunho") { Task { await regenerate(bill) } }
+            Button("Regenerar documento") { Task { await regenerate(bill) } }
               .disabled(billing?.capabilities.canManageBills != true)
             if bill.status == .paid {
-              Button("Visualizar recibo") { showingPaymentReceipt = true }
+              Button("Abrir recibo") { Task { await downloadRecibo() } }
             }
           }
           .buttonStyle(.bordered)
@@ -311,7 +290,7 @@ struct BillDetailView: View {
           Button {
             showingCommunication = true
           } label: {
-            Label("Enviar comunicação simulada", systemImage: "paperplane.fill")
+            Label("Enviar comunicação", systemImage: "paperplane.fill")
           }
           .buttonStyle(RentivoButtonStyle())
         }
@@ -386,7 +365,6 @@ struct BillDetailView: View {
     state = .loading
     do {
       billing = try await app.dependencies.billings.billing(id: billingID)
-      documentTheme = try await app.dependencies.themes.theme(target: .billing(billingID)).effective
       state = .loaded(try await app.dependencies.bills.bill(billingID: billingID, id: billID))
     } catch {
       state = .failed(DemoError(error))
@@ -421,18 +399,21 @@ struct BillDetailView: View {
 
   private func regenerate(_ bill: Bill) async {
     do {
-      _ = try await app.dependencies.bills.createBill(
-        BillDraft(
-          billingID: billingID,
-          referenceMonth: bill.referenceMonth,
-          dueDate: bill.dueDate,
-          notes: "Regenerada localmente a partir da fatura \(bill.referenceMonth.label).",
-          lineItems: bill.lineItems
-        )
-      )
+      _ = try await app.dependencies.bills.regenerateBill(billingID: billingID, billID: bill.id)
+      await refreshAll()
       await onMutation()
-      app.showNotice("Novo rascunho regenerado localmente.")
+      app.showNotice("Documento enfileirado para regeneração.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  private func downloadInvoice() async {
+    do { downloadedFile = try await app.dependencies.downloads.downloadInvoice(billingID: billingID, billID: billID) }
+    catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  private func downloadRecibo() async {
+    do { downloadedFile = try await app.dependencies.downloads.downloadRecibo(billingID: billingID, billID: billID) }
+    catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 }
 
@@ -442,7 +423,7 @@ private struct ReceiptManagerView: View {
   let bill: Bill
   let canWrite: Bool
   let onMutation: () async -> Void
-  @State private var previewingReceipt: Receipt?
+  @State private var downloadedFile: DownloadedFile?
   @State private var showingFileImporter = false
 
   var body: some View {
@@ -460,10 +441,7 @@ private struct ReceiptManagerView: View {
                   .font(.subheadline)
                 Spacer()
                 Menu {
-                  Button("Visualizar") { previewingReceipt = receipt }
-                  Button("Simular download") {
-                    app.showNotice("Download de \(receipt.name) simulado.")
-                  }
+                  Button("Abrir") { Task { await download(receipt) } }
                   if canWrite {
                     Button("Excluir", role: .destructive) { Task { await remove(receipt) } }
                   }
@@ -471,6 +449,10 @@ private struct ReceiptManagerView: View {
                   Image(systemName: "ellipsis.circle")
                 }
               }
+            }
+            if bill.receipts.count > 1 && canWrite {
+              Button("Inverter ordem") { Task { await reverse() } }
+                .buttonStyle(.bordered)
             }
           }
         }
@@ -484,12 +466,10 @@ private struct ReceiptManagerView: View {
         .buttonStyle(.bordered)
       }
     }
-    .sheet(item: $previewingReceipt) { receipt in
-      ReceiptPreview(receipt: receipt)
-    }
+    .sheet(item: $downloadedFile) { file in DownloadShareView(file: file) }
     .fileImporter(
       isPresented: $showingFileImporter,
-      allowedContentTypes: [.pdf, .image],
+      allowedContentTypes: [UTType.pdf, UTType.image],
       allowsMultipleSelection: false
     ) { result in
       guard case .success(let urls) = result, let url = urls.first else { return }
@@ -522,87 +502,23 @@ private struct ReceiptManagerView: View {
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
-}
-
-private struct ReceiptPreview: View {
-  @Environment(\.dismiss) private var dismiss
-  let receipt: Receipt
-
-  var body: some View {
-    NavigationStack {
-      VStack(spacing: RentivoSpacing.large) {
-        Image(systemName: "checkmark.seal.fill")
-          .font(.system(size: 64))
-          .foregroundStyle(RentivoColors.emerald)
-        Text(receipt.name).font(RentivoTypography.title)
-        Text("Comprovante enviado para esta cobrança")
-          .foregroundStyle(RentivoColors.secondaryInk)
-        Spacer()
-      }
-      .padding(RentivoSpacing.page)
-      .navigationTitle("Comprovante")
-      .toolbar { Button("Concluir") { dismiss() } }
-    }
+  private func reverse() async {
+    do {
+      try await app.dependencies.bills.reorderReceipts(
+        billingID: billingID, billID: bill.id, receiptIDs: Array(bill.receipts.map(\.id).reversed())
+      )
+      await onMutation()
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
-}
 
-struct BillDocumentPreview: View {
-  @Environment(AppModel.self) private var app
-  @Environment(\.dismiss) private var dismiss
-  let title: String
-  let bill: Bill
-  let billingName: String
-  let theme: ThemeValues
-
-  var body: some View {
-    NavigationStack {
-      ScrollView {
-        VStack(alignment: .leading, spacing: RentivoSpacing.large) {
-          BrandMark()
-          Text(title)
-            .font(.system(.largeTitle, design: .monospaced, weight: .black))
-            .foregroundStyle(Color(hex: theme.textColor) ?? RentivoColors.ink)
-          Text(billingName).font(RentivoTypography.title)
-          Text(bill.referenceMonth.label.capitalized)
-          Divider()
-          ForEach(bill.lineItems) { line in
-            HStack {
-              Text(line.description)
-              Spacer()
-              Text(line.amount.formatted()).monospacedDigit()
-            }
-          }
-          Divider()
-          HStack {
-            Text("TOTAL").font(.headline)
-            Spacer()
-            MoneyText(money: bill.total)
-          }
-          Label("Prévia local — nenhum PDF foi gerado.", systemImage: "info.circle.fill")
-            .font(.footnote)
-            .foregroundStyle(RentivoColors.blue)
-          HStack {
-            Button("Simular download") {
-              app.showNotice("Download do documento simulado.")
-            }
-            Button("Simular compartilhamento") {
-              app.showNotice("Compartilhamento do documento simulado.")
-            }
-          }
-          .buttonStyle(.bordered)
-        }
-        .padding(RentivoSpacing.page)
-        .background(Color(hex: theme.primaryLight) ?? RentivoColors.surface)
-        .clipShape(RoundedRectangle(cornerRadius: 18))
-        .padding(RentivoSpacing.page)
-      }
-      .background(RentivoColors.paper)
-      .navigationTitle("Prévia")
-      .toolbar {
-        Button("Concluir") { dismiss() }
-      }
-    }
+  private func download(_ receipt: Receipt) async {
+    do {
+      downloadedFile = try await app.dependencies.downloads.downloadReceipt(
+        billingID: billingID, billID: bill.id, receiptID: receipt.id
+      )
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
+
 }
 
 extension BillLineItemKind {

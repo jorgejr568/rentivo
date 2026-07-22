@@ -244,7 +244,7 @@ struct OrganizationDetailView: View {
       Button("Confirmar") { Task { await toggleMFA() } }
       Button("Cancelar", role: .cancel) {}
     } message: {
-      Text("A política será aplicada apenas ao estado local desta demonstração.")
+      Text("A política será aplicada a todos os membros desta organização.")
     }
     .confirmationDialog("Excluir organização?", isPresented: $confirmingDelete) {
       Button("Excluir", role: .destructive) { Task { await deleteOrganization() } }

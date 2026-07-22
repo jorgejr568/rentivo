@@ -111,7 +111,7 @@ private struct HomeContent: View {
       Text("Olá, \(app.currentUser.email.split(separator: "@").first?.capitalized ?? "usuária")")
         .font(RentivoTypography.display)
         .foregroundStyle(RentivoColors.ink)
-      Text("Seu portfólio está pronto para a demonstração.")
+      Text(app.usesLiveAPI ? "Seu portfólio está conectado ao Rentivo." : "Seu portfólio está pronto para a demonstração.")
         .foregroundStyle(RentivoColors.secondaryInk)
       HStack {
         Label("Saldo em atraso", systemImage: "clock.badge.exclamationmark")
@@ -185,7 +185,7 @@ private struct HomeContent: View {
     VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
       SectionTitle(title: "Atividade recente", symbol: "clock.arrow.circlepath")
       if data.activities.isEmpty {
-        Text("As mudanças feitas na demonstração aparecerão aqui.")
+        Text(app.usesLiveAPI ? "Nenhuma atividade recente." : "As mudanças feitas na demonstração aparecerão aqui.")
           .foregroundStyle(RentivoColors.secondaryInk)
       } else {
         ForEach(data.activities.prefix(5)) { activity in

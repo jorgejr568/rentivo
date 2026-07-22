@@ -108,7 +108,7 @@ private struct APIKeyFormView: View {
     self.onSaved = onSaved
     let grants = key?.grants ?? [APIKeyGrant(resourceType: .user, resourceID: .personal)]
     originalGrants = Dictionary(uniqueKeysWithValues: grants.map { ($0.resourceID, $0) })
-    _name = State(initialValue: key?.name ?? "Integração de demonstração")
+    _name = State(initialValue: key?.name ?? "Nova integração")
     _scopes = State(initialValue: key?.scopes ?? [.profileRead, .billingsRead])
     _grantIDs = State(initialValue: Set(grants.map(\.resourceID)))
     _expiresAt = State(initialValue: key?.expiresAt ?? Date(timeIntervalSinceNow: 31_536_000))

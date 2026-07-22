@@ -94,6 +94,40 @@ actor LiveAPIClient {
 
   func logout() { accessToken = nil }
 
+  func download(path: String, filename: String, mediaType: String = "application/pdf") async throws -> DownloadedFile {
+    guard let accessToken else {
+      throw LiveAPIError.server(message: "Sua sessão expirou. Entre novamente para continuar.")
+    }
+    var request = URLRequest(url: Self.productionURL.appending(path: path))
+    request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+    request.setValue(mediaType, forHTTPHeaderField: "Accept")
+    let (data, response) = try await session.data(for: request)
+    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+      throw LiveAPIError.server(message: "Não foi possível baixar o arquivo.")
+    }
+    let responseMediaType = (http.value(forHTTPHeaderField: "Content-Type") ?? mediaType)
+      .split(separator: ";", maxSplits: 1).first.map(String.init) ?? mediaType
+    let resolvedFilename = filename.contains(".")
+      ? filename
+      : "\(filename).\(fileExtension(for: responseMediaType))"
+    let destination = FileManager.default.temporaryDirectory
+      .appendingPathComponent(UUID().uuidString)
+      .appendingPathExtension((resolvedFilename as NSString).pathExtension)
+    try data.write(to: destination, options: .atomic)
+    return DownloadedFile(fileURL: destination, filename: resolvedFilename, mediaType: responseMediaType)
+  }
+
+  private func fileExtension(for mediaType: String) -> String {
+    switch mediaType.lowercased() {
+    case "application/pdf": "pdf"
+    case "image/jpeg": "jpg"
+    case "image/png": "png"
+    case "image/heic": "heic"
+    case "text/plain": "txt"
+    default: "bin"
+    }
+  }
+
   private func send<Body: Encodable, Response: Decodable>(
     path: String,
     method: String,

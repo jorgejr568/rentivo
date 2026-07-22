@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRepository,
-  BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository,
+  BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository, FileDownloadRepository, ExportRepository,
   DashboardRepository, ActivityRepository, OrganizationRepository, InvitationRepository,
   SecurityRepository, APIKeyRepository, ThemeRepository
 {
@@ -50,25 +50,13 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     return response.items.map { item in
       Billing(
         id: BillingID(rawValue: item.uuid), name: item.name, description: item.description,
-        owner: owner(from: item.owner), items: [], capabilities: .full
+        owner: owner(from: item.owner), items: [], capabilities: capabilities(from: item.capabilities)
       )
     }
   }
   public func billing(id: BillingID) async throws -> Billing {
     let response: RemoteBilling = try await decode(path: "/api/v1/billings/\(id.rawValue)")
-    return Billing(
-      id: BillingID(rawValue: response.uuid), name: response.name, description: response.description,
-      owner: owner(from: response.owner),
-      items: response.items.enumerated().map { index, item in
-        BillingItem(
-          id: BillingItemID(rawValue: item.uuid), description: item.description,
-          amount: Money(centavos: item.amount), type: BillingItemType(rawValue: item.itemType) ?? .fixed,
-          sortOrder: index
-        )
-      },
-      pixOverride: pix(key: response.pixKey, name: response.pixMerchantName, city: response.pixMerchantCity),
-      capabilities: .full
-    )
+    return billing(from: response)
   }
   public func createBilling(_ draft: BillingDraft) async throws -> Billing {
     let remote: RemoteBilling = try await decode(
@@ -78,7 +66,7 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   }
   public func updateBilling(id: BillingID, draft: BillingDraft) async throws -> Billing {
     let remote: RemoteBilling = try await decode(
-      path: "/api/v1/billings/\(id.rawValue)", method: "PATCH", body: RemoteBillingDraft(draft: draft)
+      path: "/api/v1/billings/\(id.rawValue)", method: "PATCH", body: RemoteBillingUpdate(draft: draft)
     )
     return billing(from: remote)
   }
@@ -118,6 +106,12 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
       method: "POST", body: RemoteBillTransition(target: status.rawValue)
     )
   }
+  public func regenerateBill(billingID: BillingID, billID: BillID) async throws -> Bill {
+    let remote: RemoteBill = try await decode(
+      path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)/regenerate", method: "POST"
+    )
+    return bill(from: remote, billingID: billingID)
+  }
   public func addReceipt(billingID: BillingID, billID: BillID, upload: FileUpload) async throws -> Receipt {
     let response: RemoteReceiptUpload = try await decodeMultipart(
       path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)/receipts",
@@ -125,6 +119,12 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     )
     guard let receipt = response.items.first else { throw LiveAPIError.invalidResponse }
     return Receipt(id: ReceiptID(rawValue: receipt.uuid), name: receipt.filename, sortOrder: receipt.sortOrder)
+  }
+  public func reorderReceipts(billingID: BillingID, billID: BillID, receiptIDs: [ReceiptID]) async throws {
+    let _: RemoteReceiptList = try await decode(
+      path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)/receipt-order",
+      method: "PUT", body: RemoteReceiptOrder(order: receiptIDs.map(\.rawValue))
+    )
   }
   public func deleteReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws {
     try await execute(
@@ -187,6 +187,35 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     return CommunicationRecord(
       id: CommunicationID(rawValue: "queued-\(UUID().uuidString)"), billingID: billingID,
       billID: billID, recipients: recipients, subject: subject, message: message, sentAt: Date()
+    )
+  }
+  public func downloadInvoice(billingID: BillingID, billID: BillID) async throws -> DownloadedFile {
+    try await client.download(
+      path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)/invoice",
+      filename: "fatura-\(billID.rawValue)"
+    )
+  }
+  public func downloadRecibo(billingID: BillingID, billID: BillID) async throws -> DownloadedFile {
+    try await client.download(
+      path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)/recibo",
+      filename: "recibo-\(billID.rawValue)"
+    )
+  }
+  public func downloadReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws -> DownloadedFile {
+    try await client.download(
+      path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)/receipts/\(receiptID.rawValue)",
+      filename: "comprovante-\(receiptID.rawValue)"
+    )
+  }
+  public func downloadAttachment(billingID: BillingID, attachmentID: AttachmentID) async throws -> DownloadedFile {
+    try await client.download(
+      path: "/api/v1/billings/\(billingID.rawValue)/attachments/\(attachmentID.rawValue)",
+      filename: "arquivo-\(attachmentID.rawValue)"
+    )
+  }
+  public func requestExport(billingID: BillingID, format: String) async throws {
+    let _: RemoteExport = try await decode(
+      path: "/api/v1/billings/\(billingID.rawValue)/exports", method: "POST", body: RemoteExportRequest(format: format)
     )
   }
   public func dashboardSummary() async throws -> DashboardSummary {
@@ -403,12 +432,34 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
           sortOrder: index)
       },
       pixOverride: pix(key: remote.pixKey, name: remote.pixMerchantName, city: remote.pixMerchantCity),
-      capabilities: .full
+      recipients: remote.recipients.compactMap { contact in
+        guard let name = contact.name, let email = contact.email else { return nil }
+        return BillingRecipient(id: RecipientID(rawValue: contact.uuid), name: name, email: email)
+      },
+      replyTo: remote.replyTo.first?.email,
+      capabilities: capabilities(from: remote.capabilities)
+    )
+  }
+
+  private func capabilities(from remote: RemoteBillingCapabilities) -> BillingCapabilities {
+    BillingCapabilities(
+      canEdit: remote.canEdit, canReadBills: remote.canReadBills,
+      canCreateBills: remote.canCreateBills, canManageBills: remote.canManageBills,
+      canReadExpenses: remote.canReadExpenses, canWriteExpenses: remote.canWriteExpenses,
+      canCreateExports: remote.canCreateExports, canReadAttachments: remote.canReadAttachments,
+      canWriteAttachments: remote.canWriteAttachments, canReadTheme: remote.canReadTheme,
+      canManageTheme: remote.canManageTheme,
+      canUploadBillReceipts: remote.canUploadBillReceipts, canDelete: remote.canDelete,
+      canTransfer: remote.canTransfer
     )
   }
 
   private func organization(from remote: RemoteOrganization) -> Organization {
-    Organization(id: OrganizationID(rawValue: remote.uuid), name: remote.name, pix: nil, members: [],
+    Organization(id: OrganizationID(rawValue: remote.uuid), name: remote.name,
+      pix: remote.settings.flatMap { pix(key: $0.pixKey, name: $0.pixMerchantName, city: $0.pixMerchantCity) },
+      members: (remote.members ?? []).map {
+        OrganizationMember(userID: $0.userID, email: $0.email, role: OrganizationRole(rawValue: $0.role) ?? .viewer)
+      },
       requiresMFA: remote.enforceMFA, currentUserRole: OrganizationRole(rawValue: remote.currentRole) ?? .viewer,
       capabilities: OrganizationCapabilities(canManage: remote.capabilities.canManage, canInvite: remote.capabilities.canInvite,
         canCreateBilling: remote.capabilities.canCreateBilling, canViewBillingStats: remote.capabilities.canViewBillingStats))
@@ -460,9 +511,13 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
 private struct RemoteOrganizationList: Decodable { let items: [RemoteOrganization] }
 private struct RemoteOrganization: Decodable {
   let uuid, name, currentRole: String; let enforceMFA: Bool; let capabilities: RemoteOrganizationCapabilities
-  enum CodingKeys: String, CodingKey { case uuid, name, capabilities; case currentRole = "current_role"; case enforceMFA = "enforce_mfa" }
+  let settings: RemoteOrganizationSettings?
+  let members: [RemoteOrganizationMember]?
+  enum CodingKeys: String, CodingKey { case uuid, name, capabilities, settings, members; case currentRole = "current_role"; case enforceMFA = "enforce_mfa" }
 }
 private struct RemoteOrganizationCapabilities: Decodable { let canManage, canInvite, canCreateBilling, canViewBillingStats: Bool; enum CodingKeys: String, CodingKey { case canManage = "can_manage"; case canInvite = "can_invite"; case canCreateBilling = "can_create_billing"; case canViewBillingStats = "can_view_billing_stats" } }
+private struct RemoteOrganizationSettings: Decodable { let pixKey, pixMerchantName, pixMerchantCity: String; enum CodingKeys: String, CodingKey { case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" } }
+private struct RemoteOrganizationMember: Decodable { let userID: Int; let email, role: String; enum CodingKeys: String, CodingKey { case email, role; case userID = "user_id" } }
 private struct RemoteOrganizationCreate: Encodable { let name: String }
 private struct RemoteOrganizationUpdate: Encodable { let name, pixKey, pixMerchantName, pixMerchantCity: String?; enum CodingKeys: String, CodingKey { case name; case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" }; init(draft: OrganizationDraft) { name = draft.name; pixKey = draft.pix?.key; pixMerchantName = draft.pix?.merchantName; pixMerchantCity = draft.pix?.merchantCity } }
 private struct RemoteMemberRole: Encodable { let role: String }
@@ -504,7 +559,11 @@ private struct RemoteContactListUpdate: Encodable {
     }
   }
 }
-private struct RemoteContactInput: Encodable { let name, email: String }
+private struct RemoteContactInput: Encodable {
+  let name, email: String
+  init(name: String, email: String) { self.name = name; self.email = email }
+  init(_ recipient: BillingRecipient) { name = recipient.name; email = recipient.email }
+}
 private struct RemoteCommunicationSendRequest: Encodable {
   let billID, commType, subject, body: String
   let recipientIDs: [String]
@@ -522,7 +581,11 @@ private struct RemoteCommunicationSendRequest: Encodable {
   }
 }
 private struct RemoteCommunicationSend: Decodable { let queuedCount: Int; enum CodingKeys: String, CodingKey { case queuedCount = "queued_count" } }
+private struct RemoteExportRequest: Encodable { let format: String }
+private struct RemoteExport: Decodable { let format, status: String }
 private struct RemoteReceiptUpload: Decodable { let items: [RemoteReceipt] }
+private struct RemoteReceiptList: Decodable { let items: [RemoteReceipt] }
+private struct RemoteReceiptOrder: Encodable { let order: [String] }
 private struct RemoteReceipt: Decodable {
   let uuid, filename, contentType: String
   let fileSize, sortOrder: Int
@@ -659,11 +722,26 @@ private extension ThemeValues {
 private struct RemoteBillingDraft: Encodable {
   let name: String; let description: String; let owner: RemoteOwnerInput; let items: [RemoteBillingItemInput]
   let pixKey: String; let pixMerchantName: String; let pixMerchantCity: String
-  enum CodingKeys: String, CodingKey { case name, description, owner, items; case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" }
+  let recipients, replyTo: [RemoteContactInput]
+  enum CodingKeys: String, CodingKey { case name, description, owner, items, recipients; case replyTo = "reply_to"; case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" }
   init(draft: BillingDraft) {
     name = draft.name; description = draft.description; items = draft.items.map(RemoteBillingItemInput.init)
     pixKey = draft.pixOverride?.key ?? ""; pixMerchantName = draft.pixOverride?.merchantName ?? ""; pixMerchantCity = draft.pixOverride?.merchantCity ?? ""
+    recipients = draft.recipients.map(RemoteContactInput.init)
+    replyTo = draft.replyTo.map { [RemoteContactInput(name: "Resposta", email: $0)] } ?? []
     switch draft.owner { case .user: owner = RemoteOwnerInput(type: "user", uuid: nil); case .organization(let id, _): owner = RemoteOwnerInput(type: "organization", uuid: id.rawValue) }
+  }
+}
+private struct RemoteBillingUpdate: Encodable {
+  let name, description, pixKey, pixMerchantName, pixMerchantCity: String
+  let items: [RemoteBillingItemInput]
+  let recipients, replyTo: [RemoteContactInput]
+  enum CodingKeys: String, CodingKey { case name, description, items, recipients; case replyTo = "reply_to"; case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" }
+  init(draft: BillingDraft) {
+    name = draft.name; description = draft.description; items = draft.items.map(RemoteBillingItemInput.init)
+    pixKey = draft.pixOverride?.key ?? ""; pixMerchantName = draft.pixOverride?.merchantName ?? ""; pixMerchantCity = draft.pixOverride?.merchantCity ?? ""
+    recipients = draft.recipients.map(RemoteContactInput.init)
+    replyTo = draft.replyTo.map { [RemoteContactInput(name: "Resposta", email: $0)] } ?? []
   }
 }
 private struct RemoteOwnerInput: Encodable { let type: String; let uuid: String? }
@@ -698,13 +776,28 @@ private struct RemotePixUpdate: Encodable {
   init(pix: PixConfiguration) { pixKey = pix.key; pixMerchantName = pix.merchantName; pixMerchantCity = pix.merchantCity }
 }
 private struct RemotePixUpdateResponse: Decodable { let profile: RemoteProfile }
-private struct RemoteBillingListItem: Decodable { let uuid, name, description: String; let owner: RemoteOwner }
+private struct RemoteBillingListItem: Decodable { let uuid, name, description: String; let owner: RemoteOwner; let capabilities: RemoteBillingCapabilities }
 private struct RemoteBilling: Decodable {
   let uuid, name, description: String
   let owner: RemoteOwner
   let items: [RemoteBillingItem]
   let pixKey, pixMerchantName, pixMerchantCity: String
-  enum CodingKeys: String, CodingKey { case uuid, name, description, owner, items; case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" }
+  let recipients, replyTo: [RemoteBillingContact]
+  let capabilities: RemoteBillingCapabilities
+  enum CodingKeys: String, CodingKey { case uuid, name, description, owner, items, recipients, capabilities; case replyTo = "reply_to"; case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" }
+}
+private struct RemoteBillingContact: Decodable { let uuid: String; let name, email: String? }
+private struct RemoteBillingCapabilities: Decodable {
+  let canEdit, canReadBills, canCreateBills, canManageBills, canReadExpenses, canWriteExpenses: Bool
+  let canCreateExports, canReadAttachments, canWriteAttachments, canReadTheme, canManageTheme: Bool
+  let canUploadBillReceipts, canDelete, canTransfer: Bool
+  enum CodingKeys: String, CodingKey {
+    case canEdit = "can_edit"; case canReadBills = "can_read_bills"; case canCreateBills = "can_create_bills"
+    case canManageBills = "can_manage_bills"; case canReadExpenses = "can_read_expenses"; case canWriteExpenses = "can_write_expenses"
+    case canCreateExports = "can_create_exports"; case canReadAttachments = "can_read_attachments"; case canWriteAttachments = "can_write_attachments"
+    case canReadTheme = "can_read_theme"; case canManageTheme = "can_manage_theme"; case canUploadBillReceipts = "can_upload_bill_receipts"
+    case canDelete = "can_delete"; case canTransfer = "can_transfer"
+  }
 }
 private struct RemoteOwner: Decodable { let type: String; let uuid, name: String? }
 private struct RemoteBillingItem: Decodable { let uuid, description: String; let amount: Int; let itemType: String; enum CodingKeys: String, CodingKey { case uuid, description, amount; case itemType = "item_type" } }

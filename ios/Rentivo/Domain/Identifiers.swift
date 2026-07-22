@@ -76,3 +76,7 @@ public struct DownloadedFile: Hashable, Sendable {
     self.mediaType = mediaType
   }
 }
+
+extension DownloadedFile: Identifiable {
+  public var id: URL { fileURL }
+}

@@ -146,6 +146,7 @@ private struct ExpenseFormView: View {
   @State private var description = ""
   @State private var centavos = 0
   @State private var category: ExpenseCategory = .maintenance
+  @State private var incurredOn = Date()
 
   var body: some View {
     Form {
@@ -157,8 +158,7 @@ private struct ExpenseFormView: View {
           Text(category.label).tag(category)
         }
       }
-      Text("A data usada nesta demonstração será 20/07/2026.")
-        .font(.footnote)
+      DatePicker("Data", selection: $incurredOn, displayedComponents: .date)
     }
     .navigationTitle("Nova despesa")
     .toolbar {
@@ -176,12 +176,17 @@ private struct ExpenseFormView: View {
         billingID: billingID,
         description: description,
         category: category,
-        incurredOn: DateOnly(year: 2026, month: 7, day: 20),
+        incurredOn: selectedDate,
         amount: Money(centavos: centavos)
       )
       await onSaved()
       dismiss()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  private var selectedDate: DateOnly {
+    let components = Calendar.current.dateComponents([.year, .month, .day], from: incurredOn)
+    return DateOnly(year: components.year ?? 1970, month: components.month ?? 1, day: components.day ?? 1)
   }
 }
 
@@ -190,7 +195,7 @@ struct AttachmentListView: View {
   let billingID: BillingID
   let canWrite: Bool
   @State private var state: LoadState<[Attachment]> = .idle
-  @State private var previewingAttachment: Attachment?
+  @State private var downloadedFile: DownloadedFile?
   @State private var showingFileImporter = false
 
   var body: some View {
@@ -212,10 +217,7 @@ struct AttachmentListView: View {
             }
             Spacer()
             Menu {
-              Button("Visualizar") { previewingAttachment = attachment }
-              Button("Simular download") {
-                app.showNotice("Download local de \(attachment.name) simulado.")
-              }
+              Button("Abrir") { Task { await download(attachment) } }
             } label: {
               Image(systemName: "ellipsis.circle")
             }
@@ -242,12 +244,10 @@ struct AttachmentListView: View {
         }
       }
     }
-    .sheet(item: $previewingAttachment) { attachment in
-      LocalFilePreview(title: attachment.name, detail: "Arquivo da cobrança")
-    }
+    .sheet(item: $downloadedFile) { file in DownloadShareView(file: file) }
     .fileImporter(
       isPresented: $showingFileImporter,
-      allowedContentTypes: [.pdf, .image],
+      allowedContentTypes: [UTType.pdf, UTType.image],
       allowsMultipleSelection: false
     ) { result in
       guard case .success(let urls) = result, let url = urls.first else { return }
@@ -285,22 +285,32 @@ struct AttachmentListView: View {
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
+
+  private func download(_ attachment: Attachment) async {
+    do {
+      downloadedFile = try await app.dependencies.downloads.downloadAttachment(
+        billingID: billingID, attachmentID: attachment.id
+      )
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
 }
 
-private struct LocalFilePreview: View {
+struct DownloadShareView: View {
   @Environment(\.dismiss) private var dismiss
-  let title: String
-  let detail: String
+  let file: DownloadedFile
 
   var body: some View {
     NavigationStack {
       VStack(spacing: RentivoSpacing.large) {
-        Image(systemName: "doc.text.magnifyingglass")
+        Image(systemName: "doc.text.fill")
           .font(.system(size: 64))
           .foregroundStyle(RentivoColors.blue)
-        Text(title).font(RentivoTypography.title)
-        Text(detail).foregroundStyle(RentivoColors.secondaryInk)
-        Label("O download será aberto no navegador do sistema.", systemImage: "info.circle")
+        Text(file.filename).font(RentivoTypography.title)
+        Text("Arquivo baixado do Rentivo.").foregroundStyle(RentivoColors.secondaryInk)
+        ShareLink(item: file.fileURL) {
+          Label("Compartilhar ou salvar arquivo", systemImage: "square.and.arrow.up")
+        }
+        .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
           .font(.footnote)
         Spacer()
       }
@@ -399,12 +409,19 @@ struct ExportSimulationView: View {
         Label("Despesas", systemImage: "wrench.and.screwdriver")
         Label("Resumo financeiro", systemImage: "chart.bar")
       }
-      Button("Preparar exportação simulada") {
-        app.showNotice("Arquivo \(format) preparado localmente — nenhum download foi criado.")
+      Button("Solicitar exportação") {
+        Task { await requestExport() }
       }
       .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
       .listRowBackground(Color.clear)
     }
     .navigationTitle("Exportar")
+  }
+
+  private func requestExport() async {
+    do {
+      try await app.dependencies.exports.requestExport(billingID: billingID, format: format.lowercased())
+      app.showNotice("Exportação \(format) enfileirada.")
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 }

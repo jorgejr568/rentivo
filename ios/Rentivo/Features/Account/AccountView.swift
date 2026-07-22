@@ -113,7 +113,7 @@ struct ProfilePixView: View {
     Form {
       Section("Conta") {
         LabeledContent("E-mail", value: app.currentUser.email)
-        LabeledContent("Ambiente", value: "Demonstração local")
+        LabeledContent("Ambiente", value: app.usesLiveAPI ? "Rentivo" : "Demonstração local")
       }
       Section("PIX pessoal") {
         TextField("Chave PIX", text: $key)
