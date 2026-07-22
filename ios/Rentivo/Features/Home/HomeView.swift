@@ -108,7 +108,7 @@ private struct HomeContent: View {
 
   private var greeting: some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.small) {
-      Text("Olá, \(app.currentUser.email.split(separator: "@").first?.capitalized ?? "usuária")")
+      Text("Olá!")
         .font(RentivoTypography.display)
         .foregroundStyle(RentivoColors.ink)
       Text(app.usesLiveAPI ? "Seu portfólio está conectado ao Rentivo." : "Seu portfólio está pronto para a demonstração.")
