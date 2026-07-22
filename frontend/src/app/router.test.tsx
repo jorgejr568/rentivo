@@ -48,6 +48,7 @@ afterEach(() => {
 
 it.each([
   ["/login", "Entrar"],
+  ["/mobile-logout?state=native-state", "Sessão encerrada"],
   ["/signup", "Criar Conta"],
   ["/forgot-password", "Enviar link"],
   ["/reset-password", "Link inválido ou expirado. Solicite uma nova redefinição."],
