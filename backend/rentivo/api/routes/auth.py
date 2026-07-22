@@ -27,6 +27,9 @@ from rentivo.api.schemas.auth import (
     FeatureFlags,
     LoginRequest,
     MFARequiredResponse,
+    MobileAuthorizationExchangeRequest,
+    MobileAuthorizationRequest,
+    MobileAuthorizationResponse,
     PasswordForgotRequest,
     PasswordResetRequest,
     SessionResponse,
@@ -312,6 +315,60 @@ async def login(
 
 
 _login_principal = require_login_scope(APIScope.PROFILE_READ)
+
+
+def _invalid_mobile_authorization() -> ProblemException:
+    return ProblemException.unauthorized(
+        "invalid_or_expired_mobile_authorization",
+        "Autorização móvel inválida ou expirada.",
+    )
+
+
+@router.post("/mobile/authorize", response_model=MobileAuthorizationResponse, status_code=201)
+async def authorize_mobile(
+    payload: MobileAuthorizationRequest,
+    principal: Principal = Depends(_login_principal),
+    _csrf: None = Depends(require_csrf),
+    services: RequestServices = Depends(get_services),
+) -> MobileAuthorizationResponse:
+    issued = services.auth_challenge.issue(
+        user_id=principal.user.id,
+        phase="mobile_authorization",
+        allowed_methods=("exchange",),
+    )
+    return MobileAuthorizationResponse(
+        authorization_code=f"{issued.challenge.uuid}.{issued.nonce}", state=payload.state
+    )
+
+
+@router.post("/mobile/exchange", response_model=AuthenticatedResponse)
+async def exchange_mobile_authorization(
+    payload: MobileAuthorizationExchangeRequest,
+    request: Request,
+    services: RequestServices = Depends(get_services),
+) -> JSONResponse:
+    challenge_id, separator, nonce = payload.authorization_code.partition(".")
+    if not separator or not challenge_id or not nonce:
+        raise _invalid_mobile_authorization()
+    challenge = services.auth_challenge.consume(
+        challenge_id,
+        nonce,
+        expected_phase="mobile_authorization",
+        expected_method="exchange",
+    )
+    if challenge is None or challenge.user_id is None:
+        raise _invalid_mobile_authorization()
+    user = services.user.get_by_id(challenge.user_id)
+    if user is None:
+        raise _invalid_mobile_authorization()
+    result = services.login.complete_login(
+        user=user,
+        via="mobile_authorization",
+        client_ip=_client_ip(request),
+        user_agent=request.headers.get("user-agent", ""),
+        source="mobile",
+    )
+    return _authenticated_response(result, credential_transport="body")
 
 
 @router.get("/session", response_model=SessionResponse)

@@ -23,6 +23,7 @@ export function LoginPage() {
   const auth = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const mobileState = searchParams.get("mobile_state");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
@@ -67,6 +68,15 @@ export function LoginPage() {
       if (data.status === "mfa_required") {
         saveMfaChallenge({ challengeId: data.challenge_id, methods: data.methods });
         navigate(`/mfa-verify?challenge=${encodeURIComponent(data.challenge_id)}`);
+        return;
+      }
+      if (mobileState) {
+        const { data: authorization } = await apiRequest(
+          apiClient.POST("/api/v1/auth/mobile/authorize", { body: { state: mobileState } })
+        );
+        window.location.assign(
+          `rentivo://auth/callback?code=${encodeURIComponent(authorization.authorization_code)}&state=${encodeURIComponent(authorization.state)}`
+        );
         return;
       }
       auth.authenticate(data);

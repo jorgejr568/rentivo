@@ -125,6 +125,32 @@ class FakeLoginService:
         self.bootstrap_calls.append(principal.api_key.uuid)
         return BOOTSTRAP
 
+    def complete_login(self, *args: Any, **kwargs: Any) -> FakeLoginResult:
+        self.login_calls.append((args, kwargs))
+        return AUTHENTICATED_RESULT
+
+
+class FakeAuthChallengeService:
+    def __init__(self) -> None:
+        self.codes: dict[str, int] = {}
+
+    def issue(self, *, user_id: int, phase: str, allowed_methods: tuple[str, ...]) -> Any:
+        assert phase == "mobile_authorization"
+        assert allowed_methods == ("exchange",)
+        code = "01J00000000000000000000000.mobile-authorization-nonce"
+        self.codes[code] = user_id
+        return SimpleNamespace(
+            challenge=SimpleNamespace(uuid="01J00000000000000000000000", user_id=user_id),
+            nonce="mobile-authorization-nonce",
+        )
+
+    def consume(self, uuid: str, nonce: str, *, expected_phase: str, expected_method: str) -> Any:
+        assert expected_phase == "mobile_authorization"
+        assert expected_method == "exchange"
+        code = f"{uuid}.{nonce}"
+        user_id = self.codes.pop(code, None)
+        return None if user_id is None else SimpleNamespace(user_id=user_id)
+
 
 class FakeAPIKeyService:
     def __init__(self) -> None:
@@ -250,6 +276,7 @@ class AuthHarness:
     job: FakeJobService
     audit: FakeAuditService
     rate_limit: FakeRateLimitService
+    auth_challenge: FakeAuthChallengeService
 
 
 @pytest.fixture()
@@ -271,6 +298,7 @@ def auth_harness(monkeypatch: pytest.MonkeyPatch) -> AuthHarness:
     job = FakeJobService()
     audit = FakeAuditService()
     rate_limit = FakeRateLimitService()
+    auth_challenge = FakeAuthChallengeService()
     password_reset.api_key_service = api_key
     services = SimpleNamespace(
         login=login,
@@ -283,6 +311,7 @@ def auth_harness(monkeypatch: pytest.MonkeyPatch) -> AuthHarness:
         job=job,
         google_auth=SimpleNamespace(is_enabled=True),
         auth_rate_limit=rate_limit,
+        auth_challenge=auth_challenge,
     )
     app = create_app()
     app.dependency_overrides[get_services] = lambda: services
@@ -297,6 +326,7 @@ def auth_harness(monkeypatch: pytest.MonkeyPatch) -> AuthHarness:
         job=job,
         audit=audit,
         rate_limit=rate_limit,
+        auth_challenge=auth_challenge,
     )
 
 
@@ -352,6 +382,41 @@ def _assert_no_auth_secret(payload: Any) -> None:
 def _csrf_token_for(key: APIKey = LOGIN_KEY) -> str:
     principal = Principal(user=USER, api_key=key, source="web")
     return issue_csrf_token(Response(), principal)
+
+
+def test_mobile_authorization_code_exchanges_once_for_a_native_bearer_session(
+    auth_harness: AuthHarness,
+) -> None:
+    csrf = _csrf_token_for()
+    authorize = auth_harness.client.post(
+        "/api/v1/auth/mobile/authorize",
+        json={"state": "ios-state-value-that-is-long-enough"},
+        headers={"X-CSRF-Token": csrf},
+        cookies={settings.access_cookie_name: ACCESS_SECRET, settings.csrf_cookie_name: csrf},
+    )
+
+    assert authorize.status_code == 201
+    payload = authorize.json()
+    assert payload == {
+        "authorization_code": "01J00000000000000000000000.mobile-authorization-nonce",
+        "state": "ios-state-value-that-is-long-enough",
+    }
+
+    exchange = auth_harness.client.post(
+        "/api/v1/auth/mobile/exchange",
+        json={"authorization_code": payload["authorization_code"]},
+    )
+    assert exchange.status_code == 200
+    assert exchange.json()["credential_transport"] == "body"
+    assert exchange.json()["access_token"] == ACCESS_SECRET
+
+    assert (
+        auth_harness.client.post(
+            "/api/v1/auth/mobile/exchange",
+            json={"authorization_code": payload["authorization_code"]},
+        ).status_code
+        == 401
+    )
 
 
 def test_signup_returns_authenticated_bootstrap_and_secure_login_cookies(
