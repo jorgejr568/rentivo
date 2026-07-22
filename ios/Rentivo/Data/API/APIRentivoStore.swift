@@ -264,7 +264,12 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   }
   public func listOrganizations() async throws -> [Organization] {
     let response: RemoteOrganizationList = try await decode(path: "/api/v1/organizations")
-    return response.items.map(organization(from:))
+    var organizations: [Organization] = []
+    organizations.reserveCapacity(response.items.count)
+    for item in response.items {
+      organizations.append(try await organization(id: OrganizationID(rawValue: item.uuid)))
+    }
+    return organizations
   }
   public func organization(id: OrganizationID) async throws -> Organization {
     let response: RemoteOrganization = try await decode(path: "/api/v1/organizations/\(id.rawValue)")
