@@ -223,6 +223,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/mobile/authorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Authorize Mobile */
+        post: operations["authorize_mobile_api_v1_auth_mobile_authorize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/mobile/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Exchange Mobile Authorization */
+        post: operations["exchange_mobile_authorization_api_v1_auth_mobile_exchange_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/password/forgot": {
         parameters: {
             query?: never;
@@ -2387,6 +2421,23 @@ export interface components {
             /** Setup Required */
             setup_required: boolean;
         };
+        /** MobileAuthorizationExchangeRequest */
+        MobileAuthorizationExchangeRequest: {
+            /** Authorization Code */
+            authorization_code: string;
+        };
+        /** MobileAuthorizationRequest */
+        MobileAuthorizationRequest: {
+            /** State */
+            state: string;
+        };
+        /** MobileAuthorizationResponse */
+        MobileAuthorizationResponse: {
+            /** Authorization Code */
+            authorization_code: string;
+            /** State */
+            state: string;
+        };
         /** OrganizationCapabilitiesResponse */
         OrganizationCapabilitiesResponse: {
             /** Can Create Billing */
@@ -3766,6 +3817,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    authorize_mobile_api_v1_auth_mobile_authorize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MobileAuthorizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MobileAuthorizationResponse"];
+                };
+            };
+            /** @description Request validation problem */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    exchange_mobile_authorization_api_v1_auth_mobile_exchange_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MobileAuthorizationExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthenticatedResponse"];
+                };
+            };
+            /** @description Request validation problem */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
             };
         };
     };

@@ -2980,6 +2980,60 @@
         "title": "MFAStatusResponse",
         "type": "object"
       },
+      "MobileAuthorizationExchangeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "authorization_code": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Authorization Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_code"
+        ],
+        "title": "MobileAuthorizationExchangeRequest",
+        "type": "object"
+      },
+      "MobileAuthorizationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "maxLength": 512,
+            "minLength": 16,
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "MobileAuthorizationRequest",
+        "type": "object"
+      },
+      "MobileAuthorizationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "authorization_code": {
+            "minLength": 1,
+            "title": "Authorization Code",
+            "type": "string"
+          },
+          "state": {
+            "maxLength": 512,
+            "minLength": 16,
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "authorization_code",
+          "state"
+        ],
+        "title": "MobileAuthorizationResponse",
+        "type": "object"
+      },
       "OrganizationCapabilitiesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -5946,6 +6000,88 @@
           }
         },
         "summary": "Verify Totp",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mobile/authorize": {
+      "post": {
+        "operationId": "authorize_mobile_api_v1_auth_mobile_authorize_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MobileAuthorizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MobileAuthorizationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request validation problem"
+          }
+        },
+        "summary": "Authorize Mobile",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/mobile/exchange": {
+      "post": {
+        "operationId": "exchange_mobile_authorization_api_v1_auth_mobile_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MobileAuthorizationExchangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthenticatedResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request validation problem"
+          }
+        },
+        "summary": "Exchange Mobile Authorization",
         "tags": [
           "auth"
         ]

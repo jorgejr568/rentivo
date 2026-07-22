@@ -70,6 +70,19 @@ class LoginRequest(_CredentialTransportRequest):
         return value
 
 
+class MobileAuthorizationRequest(_AuthRequest):
+    state: str = Field(min_length=16, max_length=512)
+
+
+class MobileAuthorizationResponse(_StrictModel):
+    authorization_code: str = Field(min_length=1)
+    state: str = Field(min_length=16, max_length=512)
+
+
+class MobileAuthorizationExchangeRequest(_AuthRequest):
+    authorization_code: str = Field(min_length=1, max_length=512)
+
+
 class PasswordForgotRequest(_AuthRequest):
     email: str
     turnstile_token: str = ""
