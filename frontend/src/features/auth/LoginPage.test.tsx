@@ -106,6 +106,34 @@ describe("LoginPage", () => {
     expect(sessionStorage.getItem("rentivo.auth.mfa")).toContain("passkey");
   });
 
+  it("preserves the mobile authorization state when login requires MFA", async () => {
+    const user = userEvent.setup();
+    renderAuth(<LoginPage />, {
+      handlers: {
+        "/api/v1/auth/login": () =>
+          jsonResponse(
+            {
+              challenge_id: "challenge/id",
+              methods: ["totp"],
+              status: "mfa_required"
+            },
+            202
+          )
+      },
+      path: "/login?mobile_state=native-state"
+    });
+
+    await user.type(await screen.findByLabelText("E-mail"), "user@example.com");
+    await user.type(screen.getByLabelText("Senha"), "correct-password");
+    await user.click(screen.getByRole("button", { name: "Entrar" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "/mfa-verify?challenge=challenge%2Fid&mobile_state=native-state"
+      )
+    );
+  });
+
   it("shows API errors, restores focus, resets Turnstile, and forwards analytics", async () => {
     const user = userEvent.setup();
     const reset = vi.fn();
