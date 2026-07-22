@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { ApiError, apiClient, apiRequest } from "../../lib/api/client";
@@ -13,6 +13,7 @@ import {
 import { postLoginPath, useAuth } from "./AuthProvider";
 import { pushAnalyticsFromResponse } from "./analytics";
 import { saveMfaChallenge, takeAuthFlash } from "./authStorage";
+import { openMobileAuthorizationCallback } from "./mobileAuthorization";
 import { Turnstile, type TurnstileHandle } from "./Turnstile";
 
 type LoginRequest = components["schemas"]["LoginRequest"];
@@ -32,12 +33,35 @@ export function LoginPage() {
   );
   const [flash] = useState(takeAuthFlash);
   const [loading, setLoading] = useState(false);
+  const [mobileCallbackURL, setMobileCallbackURL] = useState<string | null>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
+  const mobileAuthorizationStarted = useRef(false);
+  const mobileCallbackOpened = useRef(false);
+
+  const completeMobileAuthorization = useCallback(async () => {
+    if (!mobileState) {
+      return;
+    }
+    const { data: authorization } = await apiRequest(
+      apiClient.POST("/api/v1/auth/mobile/authorize", { body: { state: mobileState } })
+    );
+    setMobileCallbackURL(
+      `rentivo://auth/callback?code=${encodeURIComponent(authorization.authorization_code)}&state=${encodeURIComponent(authorization.state)}`
+    );
+  }, [mobileState]);
+
+  const openMobileCallback = useCallback(() => {
+    if (!mobileCallbackURL || mobileCallbackOpened.current) {
+      return;
+    }
+    mobileCallbackOpened.current = true;
+    openMobileAuthorizationCallback(mobileCallbackURL);
+  }, [mobileCallbackURL]);
 
   useEffect(() => {
-    document.title = "Entrar - Rentivo";
-  }, []);
+    document.title = mobileCallbackURL ? "Voltar para o app - Rentivo" : "Entrar - Rentivo";
+  }, [mobileCallbackURL]);
 
   useEffect(() => {
     if (error) {
@@ -46,10 +70,28 @@ export function LoginPage() {
   }, [error]);
 
   useEffect(() => {
-    if (auth.status === "authenticated" && auth.bootstrap) {
+    if (!mobileState && auth.status === "authenticated" && auth.bootstrap) {
       navigate(postLoginPath(auth.bootstrap), { replace: true });
     }
-  }, [auth.bootstrap, auth.status, navigate]);
+  }, [auth.bootstrap, auth.status, mobileState, navigate]);
+
+  useEffect(() => {
+    if (!mobileState || auth.status !== "authenticated" || mobileAuthorizationStarted.current) {
+      return;
+    }
+    mobileAuthorizationStarted.current = true;
+    void completeMobileAuthorization().catch(() => {
+      setError("Não foi possível concluir a autorização no aplicativo. Tente novamente.");
+    });
+  }, [auth.status, completeMobileAuthorization, mobileState]);
+
+  useEffect(() => {
+    if (!mobileCallbackURL) {
+      return;
+    }
+    const timer = window.setTimeout(openMobileCallback, 1_000);
+    return () => window.clearTimeout(timer);
+  }, [mobileCallbackURL, openMobileCallback]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -71,12 +113,7 @@ export function LoginPage() {
         return;
       }
       if (mobileState) {
-        const { data: authorization } = await apiRequest(
-          apiClient.POST("/api/v1/auth/mobile/authorize", { body: { state: mobileState } })
-        );
-        window.location.assign(
-          `rentivo://auth/callback?code=${encodeURIComponent(authorization.authorization_code)}&state=${encodeURIComponent(authorization.state)}`
-        );
+        await completeMobileAuthorization();
         return;
       }
       auth.authenticate(data);
@@ -92,6 +129,10 @@ export function LoginPage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (mobileCallbackURL) {
+    return <MobileAuthorizationStatus onReturnToApp={openMobileCallback} />;
   }
 
   return (
@@ -174,5 +215,25 @@ export function LoginPage() {
         </div>
       )}
     </AuthConfigGate>
+  );
+}
+
+function MobileAuthorizationStatus({ onReturnToApp }: { onReturnToApp: () => void }) {
+  return (
+    <div className="login-wrap">
+      <div className="panel">
+        <div className="panel__body" style={{ padding: "2.25rem", textAlign: "center" }}>
+          <LoginAuthHeader />
+          <div aria-hidden="true" className="auth-mark" style={{ margin: "0 auto 1rem" }}>✓</div>
+          <h2 style={{ fontSize: "1.5rem", margin: 0 }}>Tudo pronto</h2>
+          <p className="muted" style={{ margin: "0.75rem 0 1.5rem" }}>
+            Você já pode continuar no app Rentivo. Esta página vai voltar ao aplicativo automaticamente.
+          </p>
+          <button className="btn btn--primary btn--block btn--lg" onClick={onReturnToApp} type="button">
+            Voltar para o app agora
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

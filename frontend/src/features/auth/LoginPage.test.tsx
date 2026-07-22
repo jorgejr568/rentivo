@@ -11,7 +11,15 @@ import { renderAuth } from "../../test/renderAuth";
 import { setAuthFlash } from "./authStorage";
 import { LoginPage } from "./LoginPage";
 
+const { openMobileAuthorizationCallback } = vi.hoisted(() => ({
+  openMobileAuthorizationCallback: vi.fn()
+}));
+
+vi.mock("./mobileAuthorization", () => ({ openMobileAuthorizationCallback }));
+
 afterEach(() => {
+  vi.clearAllMocks();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   sessionStorage.clear();
   delete window.dataLayer;
@@ -175,6 +183,64 @@ describe("LoginPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/billings/"));
+  });
+
+  it("shows a mobile handoff confirmation and lets an existing web session return immediately", async () => {
+    const { fetchMock } = renderAuth(<LoginPage />, {
+      path: "/login?mobile_state=native-state",
+      session: "authenticated",
+      handlers: {
+        "/api/v1/auth/mobile/authorize": (init) => {
+          expect(JSON.parse(String(init?.body))).toEqual({ state: "native-state" });
+          return jsonResponse({ authorization_code: "one-time-code", state: "native-state" });
+        }
+      }
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/auth/mobile/authorize",
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(await screen.findByRole("heading", { name: "Tudo pronto" })).toBeVisible();
+    expect(screen.getByText(/Você já pode continuar no app Rentivo\./)).toBeVisible();
+    expect(openMobileAuthorizationCallback).not.toHaveBeenCalled();
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Voltar para o app agora" }));
+
+    expect(openMobileAuthorizationCallback).toHaveBeenCalledOnce();
+    expect(openMobileAuthorizationCallback).toHaveBeenCalledWith(
+      "rentivo://auth/callback?code=one-time-code&state=native-state"
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/login?mobile_state=native-state");
+  });
+
+  it("automatically returns to the app one second after showing the handoff confirmation", async () => {
+    vi.useFakeTimers();
+    try {
+      renderAuth(<LoginPage />, {
+        path: "/login?mobile_state=native-state",
+        session: "authenticated",
+        handlers: {
+          "/api/v1/auth/mobile/authorize": () =>
+            jsonResponse({ authorization_code: "one-time-code", state: "native-state" })
+        }
+      });
+
+      await act(async () => vi.advanceTimersByTimeAsync(0));
+      expect(screen.getByRole("heading", { name: "Tudo pronto" })).toBeVisible();
+      expect(openMobileAuthorizationCallback).not.toHaveBeenCalled();
+
+      await act(async () => vi.advanceTimersByTimeAsync(1_000));
+
+      expect(openMobileAuthorizationCallback).toHaveBeenCalledOnce();
+      expect(openMobileAuthorizationCallback).toHaveBeenCalledWith(
+        "rentivo://auth/callback?code=one-time-code&state=native-state"
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the generic request error when no API response is available", async () => {
