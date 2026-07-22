@@ -9,7 +9,7 @@ private struct BillingDetailData: Sendable {
 struct BillingDetailView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
-  let billingID: UUID
+  let billingID: BillingID
   let onMutation: () async -> Void
 
   @State private var state: LoadState<BillingDetailData> = .idle
@@ -204,7 +204,7 @@ struct BillingDetailView: View {
             }
           }
           .buttonStyle(.plain)
-          .accessibilityIdentifier("bill.card.\(bill.id.uuidString)")
+          .accessibilityIdentifier("bill.card.\(bill.id.rawValue)")
         }
       }
     }

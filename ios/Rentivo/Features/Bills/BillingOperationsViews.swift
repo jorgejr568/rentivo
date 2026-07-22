@@ -1,7 +1,8 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct BillingOperationsLinks: View {
-  let billingID: UUID
+  let billingID: BillingID
   let recipients: [String]
   let capabilities: BillingCapabilities
   let onMutation: () async -> Void
@@ -31,18 +32,6 @@ struct BillingOperationsLinks: View {
               )
             } label: {
               OperationRow(title: "Arquivos", symbol: "folder.fill")
-            }
-          }
-          if capabilities.canManageBills {
-            Divider()
-            NavigationLink {
-              CommunicationComposerView(
-                billingID: billingID,
-                billID: nil,
-                initialRecipients: recipients
-              )
-            } label: {
-              OperationRow(title: "Comunicação", symbol: "paperplane.fill")
             }
           }
           if capabilities.canCreateExports {
@@ -79,7 +68,7 @@ private struct OperationRow: View {
 
 struct ExpenseListView: View {
   @Environment(AppModel.self) private var app
-  let billingID: UUID
+  let billingID: BillingID
   let canWrite: Bool
   let onMutation: () async -> Void
   @State private var state: LoadState<[Expense]> = .idle
@@ -152,7 +141,7 @@ struct ExpenseListView: View {
 private struct ExpenseFormView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
-  let billingID: UUID
+  let billingID: BillingID
   let onSaved: () async -> Void
   @State private var description = ""
   @State private var centavos = 0
@@ -198,10 +187,11 @@ private struct ExpenseFormView: View {
 
 struct AttachmentListView: View {
   @Environment(AppModel.self) private var app
-  let billingID: UUID
+  let billingID: BillingID
   let canWrite: Bool
   @State private var state: LoadState<[Attachment]> = .idle
   @State private var previewingAttachment: Attachment?
+  @State private var showingFileImporter = false
 
   var body: some View {
     PageStateView(state: state) { attachments in
@@ -246,7 +236,7 @@ struct AttachmentListView: View {
     .toolbar {
       if canWrite {
         Button {
-          Task { await add() }
+          showingFileImporter = true
         } label: {
           Label("Adicionar", systemImage: "plus")
         }
@@ -254,6 +244,14 @@ struct AttachmentListView: View {
     }
     .sheet(item: $previewingAttachment) { attachment in
       LocalFilePreview(title: attachment.name, detail: "Arquivo da cobrança")
+    }
+    .fileImporter(
+      isPresented: $showingFileImporter,
+      allowedContentTypes: [.pdf, .image],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else { return }
+      Task { await add(fileURL: url) }
     }
     .task(id: app.dataRevision) { await load() }
   }
@@ -266,15 +264,17 @@ struct AttachmentListView: View {
     } catch { state = .failed(DemoError(error)) }
   }
 
-  private func add() async {
+  private func add(fileURL: URL) async {
     do {
+      let accessGranted = fileURL.startAccessingSecurityScopedResource()
+      defer { if accessGranted { fileURL.stopAccessingSecurityScopedResource() } }
+      let upload = try FileUpload.from(url: fileURL)
       _ = try await app.dependencies.attachments.addAttachment(
         billingID: billingID,
-        name: "vistoria-demo.pdf",
-        mediaType: "application/pdf"
+        upload: upload
       )
       await load()
-      app.showNotice("Arquivo local simulado adicionado.")
+      app.showNotice("Arquivo enviado.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
@@ -300,7 +300,7 @@ private struct LocalFilePreview: View {
           .foregroundStyle(RentivoColors.blue)
         Text(title).font(RentivoTypography.title)
         Text(detail).foregroundStyle(RentivoColors.secondaryInk)
-        Label("Prévia local — nenhum arquivo foi baixado.", systemImage: "info.circle")
+        Label("O download será aberto no navegador do sistema.", systemImage: "info.circle")
           .font(.footnote)
         Spacer()
       }
@@ -314,14 +314,14 @@ private struct LocalFilePreview: View {
 struct CommunicationComposerView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
-  let billingID: UUID
-  let billID: UUID?
+  let billingID: BillingID
+  let billID: BillID?
   @State private var recipients: String
   @State private var subject = "Sua fatura está disponível"
   @State private var message = "Olá! Confira os detalhes da sua cobrança no Rentivo."
   @State private var previewing = false
 
-  init(billingID: UUID, billID: UUID?, initialRecipients: [String]) {
+  init(billingID: BillingID, billID: BillID?, initialRecipients: [String]) {
     self.billingID = billingID
     self.billID = billID
     _recipients = State(initialValue: initialRecipients.joined(separator: ", "))
@@ -336,7 +336,7 @@ struct CommunicationComposerView: View {
           .lineLimit(5...10)
       }
       Section {
-        Label("O envio é local e não dispara e-mails reais.", systemImage: "shield.checkered")
+        Label("O envio será enfileirado para os destinatários da cobrança.", systemImage: "paperplane.circle")
       }
     }
     .navigationTitle("Comunicação")
@@ -354,7 +354,7 @@ struct CommunicationComposerView: View {
           Divider()
           Text(message)
           Spacer()
-          Button("Simular envio") { Task { await send() } }
+          Button("Enviar") { Task { await send() } }
             .buttonStyle(RentivoButtonStyle())
         }
         .padding(RentivoSpacing.page)
@@ -377,14 +377,14 @@ struct CommunicationComposerView: View {
       )
       previewing = false
       dismiss()
-      app.showNotice("Comunicação registrada como simulação.")
+      app.showNotice("Comunicação enfileirada para envio.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 }
 
 struct ExportSimulationView: View {
   @Environment(AppModel.self) private var app
-  let billingID: UUID
+  let billingID: BillingID
   @State private var format = "CSV"
 
   var body: some View {

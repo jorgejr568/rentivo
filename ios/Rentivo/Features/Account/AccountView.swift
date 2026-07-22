@@ -9,7 +9,7 @@ struct AccountView: View {
         HStack(spacing: RentivoSpacing.medium) {
           BrandMark(compact: true)
           VStack(alignment: .leading, spacing: RentivoSpacing.tiny) {
-            Text("Conta de demonstração").font(.headline)
+            Text(app.usesLiveAPI ? "Sua conta" : "Conta de demonstração").font(.headline)
             Text(app.currentUser.email)
               .font(.subheadline)
               .foregroundStyle(RentivoColors.secondaryInk)
@@ -48,17 +48,19 @@ struct AccountView: View {
         }
       }
 
-      Section("Demonstração") {
-        NavigationLink {
-          DemoScenariosView()
-        } label: {
-          AccountRow(
-            title: "Cenários do app",
-            subtitle: "Atraso, falha, vazio e permissões",
-            symbol: "slider.horizontal.3"
-          )
+      if !app.usesLiveAPI {
+        Section("Demonstração") {
+          NavigationLink {
+            DemoScenariosView()
+          } label: {
+            AccountRow(
+              title: "Cenários do app",
+              subtitle: "Atraso, falha, vazio e permissões",
+              symbol: "slider.horizontal.3"
+            )
+          }
+          .accessibilityIdentifier("account.demo")
         }
-        .accessibilityIdentifier("account.demo")
       }
 
       Section {

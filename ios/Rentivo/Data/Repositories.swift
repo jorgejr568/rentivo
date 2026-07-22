@@ -14,50 +14,49 @@ public protocol ProfileRepository: AnyObject {
 @MainActor
 public protocol BillingRepository: AnyObject {
   func listBillings() async throws -> [Billing]
-  func billing(id: UUID) async throws -> Billing
+  func billing(id: BillingID) async throws -> Billing
   func createBilling(_ draft: BillingDraft) async throws -> Billing
-  func updateBilling(id: UUID, draft: BillingDraft) async throws -> Billing
-  func deleteBilling(id: UUID) async throws
+  func updateBilling(id: BillingID, draft: BillingDraft) async throws -> Billing
+  func deleteBilling(id: BillingID) async throws
 }
 
 @MainActor
 public protocol BillRepository: AnyObject {
-  func listBills(billingID: UUID) async throws -> [Bill]
-  func bill(billingID: UUID, id: UUID) async throws -> Bill
+  func listBills(billingID: BillingID) async throws -> [Bill]
+  func bill(billingID: BillingID, id: BillID) async throws -> Bill
   func createBill(_ draft: BillDraft) async throws -> Bill
-  func updateBill(billingID: UUID, billID: UUID, draft: BillDraft) async throws -> Bill
-  func deleteBill(billingID: UUID, billID: UUID) async throws
-  func transitionBill(billingID: UUID, billID: UUID, to status: BillStatus) async throws
-  func addReceipt(billingID: UUID, billID: UUID, name: String) async throws -> Receipt
-  func reorderReceipts(billingID: UUID, billID: UUID, receiptIDs: [UUID]) async throws
-  func deleteReceipt(billingID: UUID, billID: UUID, receiptID: UUID) async throws
+  func updateBill(billingID: BillingID, billID: BillID, draft: BillDraft) async throws -> Bill
+  func deleteBill(billingID: BillingID, billID: BillID) async throws
+  func transitionBill(billingID: BillingID, billID: BillID, to status: BillStatus) async throws
+  func addReceipt(billingID: BillingID, billID: BillID, upload: FileUpload) async throws -> Receipt
+  func deleteReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws
 }
 
 @MainActor
 public protocol ExpenseRepository: AnyObject {
-  func listExpenses(billingID: UUID) async throws -> [Expense]
+  func listExpenses(billingID: BillingID) async throws -> [Expense]
   func createExpense(
-    billingID: UUID,
+    billingID: BillingID,
     description: String,
     category: ExpenseCategory,
     incurredOn: DateOnly,
     amount: Money
   ) async throws -> Expense
-  func deleteExpense(billingID: UUID, expenseID: UUID) async throws
+  func deleteExpense(billingID: BillingID, expenseID: ExpenseID) async throws
 }
 
 @MainActor
 public protocol AttachmentRepository: AnyObject {
-  func listAttachments(billingID: UUID) async throws -> [Attachment]
-  func addAttachment(billingID: UUID, name: String, mediaType: String) async throws -> Attachment
-  func deleteAttachment(billingID: UUID, attachmentID: UUID) async throws
+  func listAttachments(billingID: BillingID) async throws -> [Attachment]
+  func addAttachment(billingID: BillingID, upload: FileUpload) async throws -> Attachment
+  func deleteAttachment(billingID: BillingID, attachmentID: AttachmentID) async throws
 }
 
 @MainActor
 public protocol CommunicationRepository: AnyObject {
   func sendCommunication(
-    billingID: UUID,
-    billID: UUID?,
+    billingID: BillingID,
+    billID: BillID?,
     recipients: [String],
     subject: String,
     message: String
@@ -77,46 +76,45 @@ public protocol ActivityRepository: AnyObject {
 @MainActor
 public protocol OrganizationRepository: AnyObject {
   func listOrganizations() async throws -> [Organization]
-  func organization(id: UUID) async throws -> Organization
+  func organization(id: OrganizationID) async throws -> Organization
   func createOrganization(_ draft: OrganizationDraft) async throws -> Organization
-  func updateOrganization(id: UUID, draft: OrganizationDraft) async throws -> Organization
-  func deleteOrganization(id: UUID) async throws
+  func updateOrganization(id: OrganizationID, draft: OrganizationDraft) async throws -> Organization
+  func deleteOrganization(id: OrganizationID) async throws
   func updateMemberRole(
-    organizationID: UUID,
-    userID: UUID,
+    organizationID: OrganizationID,
+    userID: Int,
     role: OrganizationRole
   ) async throws
-  func removeMember(organizationID: UUID, userID: UUID) async throws
-  func inviteMember(organizationID: UUID, email: String, role: OrganizationRole) async throws
+  func removeMember(organizationID: OrganizationID, userID: Int) async throws
+  func inviteMember(organizationID: OrganizationID, email: String, role: OrganizationRole) async throws
     -> Invitation
-  func setOrganizationMFA(organizationID: UUID, required: Bool) async throws
-  func transferBilling(billingID: UUID, toOrganizationID: UUID) async throws
-  func transferBillingToPersonal(billingID: UUID) async throws
+  func setOrganizationMFA(organizationID: OrganizationID, required: Bool) async throws
+  func transferBilling(billingID: BillingID, toOrganizationID: OrganizationID) async throws
 }
 
 @MainActor
 public protocol InvitationRepository: AnyObject {
   func listPendingInvitations() async throws -> [Invitation]
-  func acceptInvitation(id: UUID) async throws
-  func declineInvitation(id: UUID) async throws
+  func acceptInvitation(id: InvitationID) async throws
+  func declineInvitation(id: InvitationID) async throws
 }
 
 @MainActor
 public protocol SecurityRepository: AnyObject {
   func securitySummary() async throws -> SecuritySummary
-  func setTOTPEnabled(_ enabled: Bool) async throws
+  func beginTOTPEnrollment() async throws -> TOTPEnrollment
+  func confirmTOTPEnrollment(code: String) async throws -> [String]
+  func disableTOTP(password: String) async throws
   func regenerateRecoveryCodes() async throws -> [String]
-  func addPasskey(name: String) async throws -> Passkey
-  func renamePasskey(id: UUID, name: String) async throws
-  func deletePasskey(id: UUID) async throws
+  func deletePasskey(id: PasskeyID) async throws
 }
 
 @MainActor
 public protocol APIKeyRepository: AnyObject {
   func listAPIKeys() async throws -> [APIKeyMetadata]
   func createAPIKey(_ draft: APIKeyDraft) async throws -> CreatedAPIKeySecret
-  func updateAPIKey(id: UUID, draft: APIKeyDraft) async throws -> APIKeyMetadata
-  func revokeAPIKey(id: UUID) async throws
+  func updateAPIKey(id: APIKeyID, draft: APIKeyDraft) async throws -> APIKeyMetadata
+  func revokeAPIKey(id: APIKeyID) async throws
 }
 
 @MainActor
@@ -223,6 +221,16 @@ public struct AppDependencies {
       demo: store
     )
   }
+
+  public static func live(store: APIRentivoStore = APIRentivoStore()) -> AppDependencies {
+    let demo = LiveDemoRepository()
+    return AppDependencies(
+      auth: store, profile: store, billings: store, bills: store, expenses: store,
+      attachments: store, communications: store, dashboard: store, activities: store,
+      organizations: store, invitations: store, security: store, apiKeys: store,
+      themes: store, demo: demo
+    )
+  }
 }
 
 public struct DashboardSummary: Hashable, Sendable {
@@ -255,7 +263,7 @@ public struct StoreSnapshot: Equatable, Sendable {
   public var billings: [Billing]
   public var bills: [Bill]
   public var expenses: [Expense]
-  public var attachments: [UUID: [Attachment]]
+  public var attachments: [BillingID: [Attachment]]
   public var organizations: [Organization]
   public var invitations: [Invitation]
   public var communications: [CommunicationRecord]
@@ -269,7 +277,7 @@ public struct StoreSnapshot: Equatable, Sendable {
     billings: [Billing],
     bills: [Bill],
     expenses: [Expense],
-    attachments: [UUID: [Attachment]],
+    attachments: [BillingID: [Attachment]],
     organizations: [Organization],
     invitations: [Invitation],
     communications: [CommunicationRecord],

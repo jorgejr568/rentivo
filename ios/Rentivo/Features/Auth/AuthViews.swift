@@ -66,51 +66,26 @@ private struct AuthScaffold<Content: View>: View {
 struct LoginView: View {
   @Environment(AppModel.self) private var app
   @Binding var path: [AuthRoute]
-  @State private var email = ""
-  @State private var password = ""
   @State private var validationMessage: String?
 
   var body: some View {
     AuthScaffold(
       title: "Boas-vindas",
-      subtitle: "Entre para explorar a demonstração nativa do Rentivo. Nenhum dado será enviado."
+      subtitle: "Entre com sua conta Rentivo para acessar seus dados."
     ) {
       VStack(alignment: .leading, spacing: RentivoSpacing.large) {
-        TextField("E-mail", text: $email)
-          .textContentType(.emailAddress)
-          .keyboardType(.emailAddress)
-          .textInputAutocapitalization(.never)
-          .autocorrectionDisabled()
-          .accessibilityIdentifier("login.email")
-        SecureField("Senha", text: $password)
-          .textContentType(.password)
-          .accessibilityIdentifier("login.password")
         if let validationMessage {
           Label(validationMessage, systemImage: "exclamationmark.circle.fill")
             .font(.footnote.weight(.semibold))
             .foregroundStyle(RentivoColors.coral)
             .accessibilityIdentifier("login.error")
         }
-        Button("Entrar na demonstração", action: submit)
+        Button("Entrar", action: submit)
           .buttonStyle(RentivoButtonStyle())
           .accessibilityIdentifier("login.submit")
-        HStack {
-          Button("Criar conta") { path.append(.signup) }
-          Spacer()
-          Button("Esqueci a senha") { path.append(.recovery) }
-        }
-        .font(.subheadline.weight(.semibold))
-        Divider()
-        Button {
-          path.append(.passkey)
-        } label: {
-          Label("Entrar com chave de acesso", systemImage: "person.badge.key.fill")
-            .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.bordered)
-        Button("Demonstrar autenticação em duas etapas") { path.append(.mfa) }
-          .font(.footnote.weight(.semibold))
-          .frame(maxWidth: .infinity)
+        Text("O login continua no site seguro do Rentivo para concluir a verificação de segurança.")
+          .font(.footnote)
+          .foregroundStyle(RentivoColors.secondaryInk)
       }
       .textFieldStyle(.roundedBorder)
     }
@@ -118,13 +93,14 @@ struct LoginView: View {
   }
 
   private func submit() {
-    let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard trimmedEmail.contains("@"), !password.isEmpty else {
-      validationMessage = "Informe um e-mail válido e uma senha."
-      return
-    }
     validationMessage = nil
-    app.signIn()
+    Task {
+      do {
+        try await app.signInWithWebAuthorization()
+      } catch {
+        validationMessage = error.localizedDescription
+      }
+    }
   }
 }
 

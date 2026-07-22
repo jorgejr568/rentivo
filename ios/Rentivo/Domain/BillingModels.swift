@@ -8,30 +8,37 @@ public enum BillingItemType: String, CaseIterable, Codable, Sendable {
 }
 
 public struct BillingItem: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: BillingItemID
   public var description: String
   public var amount: Money
   public var type: BillingItemType
   public var sortOrder: Int
 
-  public init(id: UUID, description: String, amount: Money, type: BillingItemType, sortOrder: Int) {
+  public init(id: BillingItemID, description: String, amount: Money, type: BillingItemType, sortOrder: Int) {
     self.id = id
     self.description = description
     self.amount = amount
     self.type = type
     self.sortOrder = sortOrder
   }
+
+  init(id: UUID, description: String, amount: Money, type: BillingItemType, sortOrder: Int) {
+    self.init(id: BillingItemID(rawValue: id.uuidString), description: description, amount: amount, type: type, sortOrder: sortOrder)
+  }
 }
 
 public enum BillingOwner: Hashable, Codable, Sendable {
-  case user(id: UUID, name: String)
-  case organization(id: UUID, name: String)
+  case user(id: Int, name: String)
+  case organization(id: OrganizationID, name: String)
 
-  public var id: UUID {
+  public var workspaceID: WorkspaceID {
     switch self {
-    case .user(let id, _), .organization(let id, _): id
+    case .user: .personal
+    case .organization(let id, _): WorkspaceID(rawValue: id.rawValue)
     }
   }
+
+  public var id: WorkspaceID { workspaceID }
 
   public var name: String {
     switch self {
@@ -64,11 +71,11 @@ public struct PixConfiguration: Hashable, Codable, Sendable {
 }
 
 public struct BillingRecipient: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: RecipientID
   public var name: String
   public var email: String
 
-  public init(id: UUID, name: String, email: String) {
+  public init(id: RecipientID, name: String, email: String) {
     self.id = id
     self.name = name
     self.email = email
@@ -147,7 +154,7 @@ public struct BillingCapabilities: Hashable, Codable, Sendable {
 }
 
 public struct Billing: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: BillingID
   public var name: String
   public var description: String
   public var owner: BillingOwner
@@ -158,7 +165,7 @@ public struct Billing: Identifiable, Hashable, Codable, Sendable {
   public var capabilities: BillingCapabilities
 
   public init(
-    id: UUID,
+    id: BillingID,
     name: String,
     description: String,
     owner: BillingOwner,
@@ -268,16 +275,20 @@ public enum BillLineItemKind: String, CaseIterable, Codable, Sendable {
 }
 
 public struct BillLineItem: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: BillLineItemID
   public var description: String
   public var amount: Money
   public var kind: BillLineItemKind
 
-  public init(id: UUID, description: String, amount: Money, kind: BillLineItemKind) {
+  public init(id: BillLineItemID, description: String, amount: Money, kind: BillLineItemKind) {
     self.id = id
     self.description = description
     self.amount = amount
     self.kind = kind
+  }
+
+  init(id: UUID, description: String, amount: Money, kind: BillLineItemKind) {
+    self.init(id: BillLineItemID(rawValue: id.uuidString), description: description, amount: amount, kind: kind)
   }
 }
 
@@ -316,11 +327,11 @@ public enum BillStatus: String, CaseIterable, Codable, Sendable {
 }
 
 public struct Receipt: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: ReceiptID
   public var name: String
   public var sortOrder: Int
 
-  public init(id: UUID, name: String, sortOrder: Int) {
+  public init(id: ReceiptID, name: String, sortOrder: Int) {
     self.id = id
     self.name = name
     self.sortOrder = sortOrder
@@ -328,12 +339,12 @@ public struct Receipt: Identifiable, Hashable, Codable, Sendable {
 }
 
 public struct Attachment: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: AttachmentID
   public var name: String
   public var mediaType: String
   public var byteCount: Int
 
-  public init(id: UUID, name: String, mediaType: String, byteCount: Int) {
+  public init(id: AttachmentID, name: String, mediaType: String, byteCount: Int) {
     self.id = id
     self.name = name
     self.mediaType = mediaType
@@ -342,8 +353,8 @@ public struct Attachment: Identifiable, Hashable, Codable, Sendable {
 }
 
 public struct Bill: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
-  public let billingID: UUID
+  public let id: BillID
+  public let billingID: BillingID
   public var referenceMonth: ReferenceMonth
   public var dueDate: DateOnly
   public var paidAt: DateOnly?
@@ -353,8 +364,8 @@ public struct Bill: Identifiable, Hashable, Codable, Sendable {
   public var receipts: [Receipt]
 
   public init(
-    id: UUID,
-    billingID: UUID,
+    id: BillID,
+    billingID: BillingID,
     referenceMonth: ReferenceMonth,
     dueDate: DateOnly,
     paidAt: DateOnly?,
@@ -380,14 +391,14 @@ public struct Bill: Identifiable, Hashable, Codable, Sendable {
 }
 
 public struct BillDraft: Hashable, Sendable {
-  public let billingID: UUID
+  public let billingID: BillingID
   public var referenceMonth: ReferenceMonth
   public var dueDate: DateOnly
   public var notes: String
   public var lineItems: [BillLineItem]
 
   public init(
-    billingID: UUID,
+    billingID: BillingID,
     referenceMonth: ReferenceMonth,
     dueDate: DateOnly,
     notes: String,
@@ -444,16 +455,16 @@ public enum ExpenseCategory: String, CaseIterable, Codable, Sendable {
 }
 
 public struct Expense: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
-  public let billingID: UUID
+  public let id: ExpenseID
+  public let billingID: BillingID
   public var description: String
   public var amount: Money
   public var category: ExpenseCategory
   public var incurredOn: DateOnly
 
   public init(
-    id: UUID,
-    billingID: UUID,
+    id: ExpenseID,
+    billingID: BillingID,
     description: String,
     amount: Money,
     category: ExpenseCategory,
@@ -469,18 +480,18 @@ public struct Expense: Identifiable, Hashable, Codable, Sendable {
 }
 
 public struct CommunicationRecord: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
-  public let billingID: UUID
-  public var billID: UUID?
+  public let id: CommunicationID
+  public let billingID: BillingID
+  public var billID: BillID?
   public var recipients: [String]
   public var subject: String
   public var message: String
   public var sentAt: Date
 
   public init(
-    id: UUID,
-    billingID: UUID,
-    billID: UUID?,
+    id: CommunicationID,
+    billingID: BillingID,
+    billID: BillID?,
     recipients: [String],
     subject: String,
     message: String,

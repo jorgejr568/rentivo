@@ -4,7 +4,7 @@ private struct HomeData: Sendable {
   let summary: DashboardSummary
   let overdueBills: [Bill]
   let upcomingBills: [Bill]
-  let billingNames: [UUID: String]
+  let billingNames: [BillingID: String]
   let activities: [RecentActivity]
 }
 

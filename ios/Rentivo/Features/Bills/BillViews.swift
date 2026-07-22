@@ -1,7 +1,8 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 private struct EditableBillLine: Identifiable {
-  let id: UUID
+  let id: BillLineItemID
   var description: String
   var centavos: Int
   var kind: BillLineItemKind
@@ -14,7 +15,7 @@ private struct EditableBillLine: Identifiable {
   }
 
   init(description: String = "", centavos: Int = 0, kind: BillLineItemKind) {
-    id = UUID()
+    id = BillLineItemID(rawValue: UUID().uuidString)
     self.description = description
     self.centavos = centavos
     self.kind = kind
@@ -172,8 +173,8 @@ struct BillFormView: View {
 struct BillDetailView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
-  let billingID: UUID
-  let billID: UUID
+  let billingID: BillingID
+  let billID: BillID
   let onMutation: () async -> Void
 
   @State private var state: LoadState<Bill> = .idle
@@ -437,11 +438,12 @@ struct BillDetailView: View {
 
 private struct ReceiptManagerView: View {
   @Environment(AppModel.self) private var app
-  let billingID: UUID
+  let billingID: BillingID
   let bill: Bill
   let canWrite: Bool
   let onMutation: () async -> Void
   @State private var previewingReceipt: Receipt?
+  @State private var showingFileImporter = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
@@ -470,18 +472,14 @@ private struct ReceiptManagerView: View {
                 }
               }
             }
-            if bill.receipts.count > 1 && canWrite {
-              Button("Inverter ordem") { Task { await reverse() } }
-                .buttonStyle(.bordered)
-            }
           }
         }
       }
       if canWrite {
         Button {
-          Task { await add() }
+          showingFileImporter = true
         } label: {
-          Label("Adicionar comprovante simulado", systemImage: "plus")
+          Label("Adicionar comprovante", systemImage: "plus")
         }
         .buttonStyle(.bordered)
       }
@@ -489,14 +487,25 @@ private struct ReceiptManagerView: View {
     .sheet(item: $previewingReceipt) { receipt in
       ReceiptPreview(receipt: receipt)
     }
+    .fileImporter(
+      isPresented: $showingFileImporter,
+      allowedContentTypes: [.pdf, .image],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else { return }
+      Task { await add(fileURL: url) }
+    }
   }
 
-  private func add() async {
+  private func add(fileURL: URL) async {
     do {
+      let accessGranted = fileURL.startAccessingSecurityScopedResource()
+      defer { if accessGranted { fileURL.stopAccessingSecurityScopedResource() } }
+      let upload = try FileUpload.from(url: fileURL)
       _ = try await app.dependencies.bills.addReceipt(
         billingID: billingID,
         billID: bill.id,
-        name: "comprovante-demo.pdf"
+        upload: upload
       )
       await onMutation()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
@@ -513,16 +522,6 @@ private struct ReceiptManagerView: View {
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
-  private func reverse() async {
-    do {
-      try await app.dependencies.bills.reorderReceipts(
-        billingID: billingID,
-        billID: bill.id,
-        receiptIDs: Array(bill.receipts.map(\.id).reversed())
-      )
-      await onMutation()
-    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
-  }
 }
 
 private struct ReceiptPreview: View {
@@ -536,7 +535,7 @@ private struct ReceiptPreview: View {
           .font(.system(size: 64))
           .foregroundStyle(RentivoColors.emerald)
         Text(receipt.name).font(RentivoTypography.title)
-        Text("Comprovante local de demonstração")
+        Text("Comprovante enviado para esta cobrança")
           .foregroundStyle(RentivoColors.secondaryInk)
         Spacer()
       }

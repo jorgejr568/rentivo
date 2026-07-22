@@ -34,6 +34,7 @@ final class AppModel {
   var demoSettings: DemoSettings
   var dataRevision = 0
   let dependencies: AppDependencies
+  private let mobileWebAuthenticator = MobileWebAuthenticator()
 
   init(store: MockRentivoStore = MockRentivoStore(fixtures: .canonical)) {
     dependencies = .mock(store: store)
@@ -45,12 +46,17 @@ final class AppModel {
     demoSettings = dependencies.demo.demoSettings
   }
 
-  var currentUser: UserProfile { dependencies.auth.currentUser }
+  var currentUser: UserProfile {
+    if case .authenticated(let user) = session { return user }
+    return dependencies.auth.currentUser
+  }
 
   var isAuthenticated: Bool {
     if case .authenticated = session { return true }
     return false
   }
+
+  var usesLiveAPI: Bool { dependencies.auth is APIRentivoStore }
 
   func signIn() {
     session = .authenticated(currentUser)
@@ -58,7 +64,29 @@ final class AppModel {
     notice = AppNotice(kind: .success, message: "Bem-vinda à demonstração do Rentivo.")
   }
 
+  func signIn(email: String, password: String) async throws {
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      session = .authenticated(currentUser)
+      selectedTab = .home
+      return
+    }
+    session = .authenticated(try await liveStore.login(email: email, password: password))
+    selectedTab = .home
+    notice = AppNotice(kind: .success, message: "Sessão conectada ao Rentivo.")
+  }
+
+  func signInWithWebAuthorization() async throws {
+    guard let liveStore = dependencies.auth as? APIRentivoStore else { signIn(); return }
+    let code = try await mobileWebAuthenticator.authorize()
+    session = .authenticated(try await liveStore.exchangeMobileAuthorization(code: code))
+    selectedTab = .home
+    notice = AppNotice(kind: .success, message: "Sessão conectada ao Rentivo.")
+  }
+
   func signOut() {
+    if let liveStore = dependencies.auth as? APIRentivoStore {
+      Task { await liveStore.logout() }
+    }
     session = .anonymous
     selectedTab = .home
     notice = nil

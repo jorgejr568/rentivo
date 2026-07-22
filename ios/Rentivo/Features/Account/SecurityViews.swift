@@ -5,26 +5,21 @@ struct SecurityView: View {
   @State private var state: LoadState<SecuritySummary> = .idle
   @State private var recoveryCodes: [String] = []
   @State private var showingRecoveryCodes = false
-  @State private var showingPassword = false
+  @State private var enrollment: TOTPEnrollment?
+  @State private var showingDisableTOTP = false
+  @State private var password = ""
 
   var body: some View {
     PageStateView(state: state) { summary in
       List {
-        Section("Senha") {
-          if !app.demoSettings.viewerMode {
-            Button("Simular alteração de senha") { showingPassword = true }
-          }
-        }
         Section("Autenticação em duas etapas") {
-          Toggle(
-            "Aplicativo autenticador",
-            isOn: Binding(
-              get: { summary.totpEnabled },
-              set: { value in Task { await setTOTP(value) } }
-            )
-          )
-          .disabled(app.demoSettings.viewerMode)
+          LabeledContent("Aplicativo autenticador", value: summary.totpEnabled ? "Ativado" : "Desativado")
           if !app.demoSettings.viewerMode {
+            if summary.totpEnabled {
+              Button("Desativar", role: .destructive) { showingDisableTOTP = true }
+            } else {
+              Button("Configurar aplicativo autenticador") { Task { await beginTOTP() } }
+            }
             Button("Gerar novos códigos de recuperação") {
               Task { await regenerateCodes() }
             }
@@ -35,26 +30,18 @@ struct SecurityView: View {
           ForEach(summary.passkeys) { passkey in
             VStack(alignment: .leading, spacing: RentivoSpacing.small) {
               Text(passkey.name).font(.headline)
-              Text("Criada para esta demonstração")
+              Text("Último uso: \(passkey.lastUsedAt?.formatted(date: .abbreviated, time: .shortened) ?? "nunca")")
                 .font(.caption)
                 .foregroundStyle(RentivoColors.secondaryInk)
               if !app.demoSettings.viewerMode {
-                HStack {
-                  Button("Renomear") { Task { await rename(passkey) } }
-                  Button("Excluir", role: .destructive) { Task { await remove(passkey) } }
-                }
-                .font(.caption.weight(.semibold))
+                Button("Excluir", role: .destructive) { Task { await remove(passkey) } }
+                  .font(.caption.weight(.semibold))
               }
             }
           }
-          if !app.demoSettings.viewerMode {
-            Button {
-              Task { await addPasskey() }
-            } label: {
-              Label("Registrar chave simulada", systemImage: "plus")
-            }
-            .accessibilityIdentifier("security.passkey.add")
-          }
+          Text("Para registrar uma nova chave de acesso, entre pelo navegador do Rentivo. Ela ficará disponível automaticamente neste aplicativo.")
+            .font(.footnote)
+            .foregroundStyle(RentivoColors.secondaryInk)
         }
       }
       .scrollContentBackground(.hidden)
@@ -67,10 +54,19 @@ struct SecurityView: View {
     .sheet(isPresented: $showingRecoveryCodes) {
       RecoveryCodeView(codes: recoveryCodes)
     }
-    .alert("Senha atualizada", isPresented: $showingPassword) {
-      Button("OK") {}
+    .sheet(isPresented: Binding(get: { enrollment != nil }, set: { if !$0 { enrollment = nil } })) {
+      if let enrollment {
+        TOTPEnrollmentView(enrollment: enrollment) { code in
+          await confirmTOTP(code: code)
+        }
+      }
+    }
+    .alert("Desativar autenticação em duas etapas", isPresented: $showingDisableTOTP) {
+      SecureField("Senha atual", text: $password)
+      Button("Desativar", role: .destructive) { Task { await disableTOTP() } }
+      Button("Cancelar", role: .cancel) { password = "" }
     } message: {
-      Text("Simulação concluída. Nenhuma credencial real foi alterada.")
+      Text("Confirme sua senha para desativar o aplicativo autenticador.")
     }
   }
 
@@ -81,9 +77,25 @@ struct SecurityView: View {
     }
   }
 
-  private func setTOTP(_ enabled: Bool) async {
+  private func beginTOTP() async {
     do {
-      try await app.dependencies.security.setTOTPEnabled(enabled)
+      enrollment = try await app.dependencies.security.beginTOTPEnrollment()
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  private func confirmTOTP(code: String) async {
+    do {
+      recoveryCodes = try await app.dependencies.security.confirmTOTPEnrollment(code: code)
+      enrollment = nil
+      await load()
+      showingRecoveryCodes = true
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  private func disableTOTP() async {
+    do {
+      try await app.dependencies.security.disableTOTP(password: password)
+      password = ""
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
@@ -93,21 +105,6 @@ struct SecurityView: View {
       recoveryCodes = try await app.dependencies.security.regenerateRecoveryCodes()
       await load()
       showingRecoveryCodes = true
-    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
-  }
-
-  private func addPasskey() async {
-    do {
-      _ = try await app.dependencies.security.addPasskey(name: "iPhone de demonstração")
-      await load()
-    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
-  }
-
-  private func rename(_ passkey: Passkey) async {
-    do {
-      try await app.dependencies.security.renamePasskey(
-        id: passkey.id, name: "\(passkey.name) — pessoal")
-      await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
@@ -126,9 +123,9 @@ private struct RecoveryCodeView: View {
   var body: some View {
     NavigationStack {
       VStack(alignment: .leading, spacing: RentivoSpacing.large) {
-        Label("Códigos sintéticos", systemImage: "shield.lefthalf.filled")
+        Label("Códigos de recuperação", systemImage: "shield.lefthalf.filled")
           .font(RentivoTypography.title)
-        Text("Eles aparecem uma única vez nesta tela e não protegem nenhuma conta real.")
+        Text("Guarde estes códigos em local seguro. Eles aparecem uma única vez.")
           .foregroundStyle(RentivoColors.secondaryInk)
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())]) {
           ForEach(codes, id: \.self) { code in
@@ -146,6 +143,41 @@ private struct RecoveryCodeView: View {
       .background(RentivoColors.paper)
       .navigationTitle("Recuperação")
       .toolbar { Button("Concluir") { dismiss() } }
+    }
+  }
+}
+
+private struct TOTPEnrollmentView: View {
+  @Environment(\.dismiss) private var dismiss
+  let enrollment: TOTPEnrollment
+  let onConfirm: (String) async -> Void
+  @State private var code = ""
+
+  var body: some View {
+    NavigationStack {
+      VStack(alignment: .leading, spacing: RentivoSpacing.large) {
+        Label("Configure seu autenticador", systemImage: "qrcode")
+          .font(RentivoTypography.title)
+        Text("Adicione esta chave manualmente ao seu aplicativo autenticador e informe o código de seis dígitos.")
+        Text(enrollment.secret)
+          .font(.system(.body, design: .monospaced, weight: .bold))
+          .textSelection(.enabled)
+          .padding()
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .background(RentivoColors.surface)
+          .clipShape(RoundedRectangle(cornerRadius: 12))
+        TextField("Código do autenticador", text: $code)
+          .keyboardType(.numberPad)
+          .textContentType(.oneTimeCode)
+        Button("Confirmar") { Task { await onConfirm(code) } }
+          .buttonStyle(RentivoButtonStyle())
+          .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        Spacer()
+      }
+      .padding(RentivoSpacing.page)
+      .background(RentivoColors.paper)
+      .navigationTitle("Autenticador")
+      .toolbar { Button("Cancelar") { dismiss() } }
     }
   }
 }
