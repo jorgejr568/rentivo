@@ -16,6 +16,10 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     client = LiveAPIClient(credentials: credentials)
   }
 
+  init(client: LiveAPIClient) {
+    self.client = client
+  }
+
   public var currentUser: UserProfile { user }
   public var recentActivities: [RecentActivity] { [] }
 
@@ -57,12 +61,12 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   }
   public func listBillings() async throws -> [Billing] {
     let response: RemoteBillingList = try await decode(path: "/api/v1/billings")
-    return response.items.map { item in
-      Billing(
-        id: BillingID(rawValue: item.uuid), name: item.name, description: item.description,
-        owner: owner(from: item.owner), items: [], capabilities: capabilities(from: item.capabilities)
-      )
+    var billings: [Billing] = []
+    billings.reserveCapacity(response.items.count)
+    for item in response.items {
+      billings.append(try await billing(id: BillingID(rawValue: item.uuid)))
     }
+    return billings
   }
   public func billing(id: BillingID) async throws -> Billing {
     let response: RemoteBilling = try await decode(path: "/api/v1/billings/\(id.rawValue)")
