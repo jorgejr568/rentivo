@@ -246,7 +246,7 @@ import Testing
   )
 
   let billing = try await store.billing(id: StableID.billingAurora101)
-  #expect(billing.owner.id == StableID.organizationHorizonte)
+  #expect(billing.owner.workspaceID.rawValue == StableID.organizationHorizonte.rawValue)
   #expect(billing.owner.isOrganization)
 }
 
@@ -284,7 +284,7 @@ import Testing
   let updatedDraft = APIKeyDraft(
     name: "Integração contábil",
     scopes: [.profileRead, .expensesRead],
-    grants: [APIKeyGrant(resourceType: .user, resourceID: StableID.userAna)],
+    grants: [APIKeyGrant(resourceType: .user, resourceID: .personal)],
     expiresAt: Date(timeIntervalSince1970: 1_830_297_600)
   )
 

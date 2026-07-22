@@ -222,6 +222,11 @@ def create_app() -> FastAPI:
 
     def problem_openapi():
         schema = default_openapi()
+        bill_create_schema = schema["paths"]["/api/v1/billings/{billing_uuid}/bills"]["post"]["requestBody"]["content"][
+            "multipart/form-data"
+        ]["schema"]
+        if "$ref" in bill_create_schema and "properties" in bill_create_schema:
+            bill_create_schema.pop("$ref")
         schemas = schema.setdefault("components", {}).setdefault("schemas", {})
         schemas["Problem"] = Problem.model_json_schema(ref_template="#/components/schemas/{model}")
         validation_response = {

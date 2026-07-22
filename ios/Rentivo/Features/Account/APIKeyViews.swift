@@ -95,10 +95,10 @@ private struct APIKeyFormView: View {
   let onSaved: (CreatedAPIKeySecret?) async -> Void
   @State private var name: String
   @State private var scopes: Set<APIKeyScope>
-  @State private var grantIDs: Set<UUID>
+  @State private var grantIDs: Set<WorkspaceID>
   @State private var expiresAt: Date
   @State private var organizations: [Organization] = []
-  private let originalGrants: [UUID: APIKeyGrant]
+  private let originalGrants: [WorkspaceID: APIKeyGrant]
 
   init(
     key: APIKeyMetadata? = nil,
@@ -106,9 +106,9 @@ private struct APIKeyFormView: View {
   ) {
     self.key = key
     self.onSaved = onSaved
-    let grants = key?.grants ?? [APIKeyGrant(resourceType: .user, resourceID: StableID.userAna)]
+    let grants = key?.grants ?? [APIKeyGrant(resourceType: .user, resourceID: .personal)]
     originalGrants = Dictionary(uniqueKeysWithValues: grants.map { ($0.resourceID, $0) })
-    _name = State(initialValue: key?.name ?? "Integração de demonstração")
+    _name = State(initialValue: key?.name ?? "Nova integração")
     _scopes = State(initialValue: key?.scopes ?? [.profileRead, .billingsRead])
     _grantIDs = State(initialValue: Set(grants.map(\.resourceID)))
     _expiresAt = State(initialValue: key?.expiresAt ?? Date(timeIntervalSinceNow: 31_536_000))
@@ -131,9 +131,9 @@ private struct APIKeyFormView: View {
         }
       }
       Section("Acesso") {
-        resourceToggle("Conta pessoal", id: app.currentUser.id)
+        resourceToggle("Conta pessoal", id: .personal)
         ForEach(organizations) { organization in
-          resourceToggle(organization.name, id: organization.id)
+          resourceToggle(organization.name, id: WorkspaceID(rawValue: organization.id.rawValue))
         }
       }
       Section("Validade") {
@@ -153,7 +153,7 @@ private struct APIKeyFormView: View {
     }
   }
 
-  private func resourceToggle(_ label: String, id: UUID) -> some View {
+  private func resourceToggle(_ label: String, id: WorkspaceID) -> some View {
     Toggle(
       label,
       isOn: Binding(
@@ -168,11 +168,11 @@ private struct APIKeyFormView: View {
   private func save() async {
     let grants =
       grantIDs
-      .sorted { $0.uuidString < $1.uuidString }
+      .sorted { $0.rawValue < $1.rawValue }
       .map { resourceID in
         originalGrants[resourceID]
           ?? APIKeyGrant(
-            resourceType: resourceID == app.currentUser.id ? .user : .organization,
+            resourceType: resourceID == .personal ? .user : .organization,
             resourceID: resourceID
           )
       }
@@ -207,7 +207,7 @@ private struct APIKeySecretView: View {
         Label("Copie agora", systemImage: "exclamationmark.shield.fill")
           .font(RentivoTypography.title)
           .foregroundStyle(RentivoColors.amber)
-        Text("Este segredo sintético não será exibido novamente.")
+        Text("Este segredo não será exibido novamente.")
         Text(created.secret)
           .font(.system(.body, design: .monospaced, weight: .bold))
           .textSelection(.enabled)
@@ -227,7 +227,7 @@ private struct APIKeySecretView: View {
 }
 
 extension CreatedAPIKeySecret: Identifiable {
-  public var id: UUID { metadata.id }
+  public var id: APIKeyID { metadata.id }
 }
 
 extension APIKeyScope {

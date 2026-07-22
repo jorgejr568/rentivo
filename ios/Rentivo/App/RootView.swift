@@ -6,6 +6,9 @@ struct RootView: View {
   var body: some View {
     Group {
       switch app.session {
+      case .restoring:
+        ProgressView("Restaurando sessão…")
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
       case .anonymous:
         AuthenticationView()
       case .authenticated:
@@ -13,6 +16,7 @@ struct RootView: View {
       }
     }
     .background(RentivoColors.paper.ignoresSafeArea())
+    .task { await app.restoreSessionIfNeeded() }
     .overlay(alignment: .top) {
       if let notice = app.notice {
         NoticeBanner(notice: notice) {

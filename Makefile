@@ -143,6 +143,13 @@ openapi-generate:
 openapi-check:
 	$(NPM_FRONTEND) run api:check
 
+.PHONY: ios-openapi-sync ios-openapi-check
+ios-openapi-sync:
+	./scripts/sync-ios-openapi.sh sync
+
+ios-openapi-check:
+	./scripts/sync-ios-openapi.sh check
+
 # --- Worker (local) ---
 
 .PHONY: worker

@@ -1,7 +1,9 @@
 import SwiftUI
+import UniformTypeIdentifiers
+import WebKit
 
 struct BillingOperationsLinks: View {
-  let billingID: UUID
+  let billingID: BillingID
   let recipients: [String]
   let capabilities: BillingCapabilities
   let onMutation: () async -> Void
@@ -31,18 +33,6 @@ struct BillingOperationsLinks: View {
               )
             } label: {
               OperationRow(title: "Arquivos", symbol: "folder.fill")
-            }
-          }
-          if capabilities.canManageBills {
-            Divider()
-            NavigationLink {
-              CommunicationComposerView(
-                billingID: billingID,
-                billID: nil,
-                initialRecipients: recipients
-              )
-            } label: {
-              OperationRow(title: "Comunicação", symbol: "paperplane.fill")
             }
           }
           if capabilities.canCreateExports {
@@ -79,7 +69,7 @@ private struct OperationRow: View {
 
 struct ExpenseListView: View {
   @Environment(AppModel.self) private var app
-  let billingID: UUID
+  let billingID: BillingID
   let canWrite: Bool
   let onMutation: () async -> Void
   @State private var state: LoadState<[Expense]> = .idle
@@ -152,11 +142,12 @@ struct ExpenseListView: View {
 private struct ExpenseFormView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
-  let billingID: UUID
+  let billingID: BillingID
   let onSaved: () async -> Void
   @State private var description = ""
   @State private var centavos = 0
   @State private var category: ExpenseCategory = .maintenance
+  @State private var incurredOn = Date()
 
   var body: some View {
     Form {
@@ -168,8 +159,7 @@ private struct ExpenseFormView: View {
           Text(category.label).tag(category)
         }
       }
-      Text("A data usada nesta demonstração será 20/07/2026.")
-        .font(.footnote)
+      DatePicker("Data", selection: $incurredOn, displayedComponents: .date)
     }
     .navigationTitle("Nova despesa")
     .toolbar {
@@ -187,21 +177,27 @@ private struct ExpenseFormView: View {
         billingID: billingID,
         description: description,
         category: category,
-        incurredOn: DateOnly(year: 2026, month: 7, day: 20),
+        incurredOn: selectedDate,
         amount: Money(centavos: centavos)
       )
       await onSaved()
       dismiss()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
+
+  private var selectedDate: DateOnly {
+    let components = Calendar.current.dateComponents([.year, .month, .day], from: incurredOn)
+    return DateOnly(year: components.year ?? 1970, month: components.month ?? 1, day: components.day ?? 1)
+  }
 }
 
 struct AttachmentListView: View {
   @Environment(AppModel.self) private var app
-  let billingID: UUID
+  let billingID: BillingID
   let canWrite: Bool
   @State private var state: LoadState<[Attachment]> = .idle
-  @State private var previewingAttachment: Attachment?
+  @State private var downloadedFile: DownloadedFile?
+  @State private var showingFileImporter = false
 
   var body: some View {
     PageStateView(state: state) { attachments in
@@ -222,10 +218,7 @@ struct AttachmentListView: View {
             }
             Spacer()
             Menu {
-              Button("Visualizar") { previewingAttachment = attachment }
-              Button("Simular download") {
-                app.showNotice("Download local de \(attachment.name) simulado.")
-              }
+              Button("Abrir") { Task { await download(attachment) } }
             } label: {
               Image(systemName: "ellipsis.circle")
             }
@@ -246,14 +239,20 @@ struct AttachmentListView: View {
     .toolbar {
       if canWrite {
         Button {
-          Task { await add() }
+          showingFileImporter = true
         } label: {
           Label("Adicionar", systemImage: "plus")
         }
       }
     }
-    .sheet(item: $previewingAttachment) { attachment in
-      LocalFilePreview(title: attachment.name, detail: "Arquivo da cobrança")
+    .sheet(item: $downloadedFile) { file in DownloadShareView(file: file) }
+    .fileImporter(
+      isPresented: $showingFileImporter,
+      allowedContentTypes: [UTType.pdf, UTType.image],
+      allowsMultipleSelection: false
+    ) { result in
+      guard case .success(let urls) = result, let url = urls.first else { return }
+      Task { await add(fileURL: url) }
     }
     .task(id: app.dataRevision) { await load() }
   }
@@ -266,15 +265,17 @@ struct AttachmentListView: View {
     } catch { state = .failed(DemoError(error)) }
   }
 
-  private func add() async {
+  private func add(fileURL: URL) async {
     do {
+      let accessGranted = fileURL.startAccessingSecurityScopedResource()
+      defer { if accessGranted { fileURL.stopAccessingSecurityScopedResource() } }
+      let upload = try FileUpload.from(url: fileURL)
       _ = try await app.dependencies.attachments.addAttachment(
         billingID: billingID,
-        name: "vistoria-demo.pdf",
-        mediaType: "application/pdf"
+        upload: upload
       )
       await load()
-      app.showNotice("Arquivo local simulado adicionado.")
+      app.showNotice("Arquivo enviado.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 
@@ -285,22 +286,32 @@ struct AttachmentListView: View {
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
+
+  private func download(_ attachment: Attachment) async {
+    do {
+      downloadedFile = try await app.dependencies.downloads.downloadAttachment(
+        billingID: billingID, attachmentID: attachment.id
+      )
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
 }
 
-private struct LocalFilePreview: View {
+struct DownloadShareView: View {
   @Environment(\.dismiss) private var dismiss
-  let title: String
-  let detail: String
+  let file: DownloadedFile
 
   var body: some View {
     NavigationStack {
       VStack(spacing: RentivoSpacing.large) {
-        Image(systemName: "doc.text.magnifyingglass")
+        Image(systemName: "doc.text.fill")
           .font(.system(size: 64))
           .foregroundStyle(RentivoColors.blue)
-        Text(title).font(RentivoTypography.title)
-        Text(detail).foregroundStyle(RentivoColors.secondaryInk)
-        Label("Prévia local — nenhum arquivo foi baixado.", systemImage: "info.circle")
+        Text(file.filename).font(RentivoTypography.title)
+        Text("Arquivo baixado do Rentivo.").foregroundStyle(RentivoColors.secondaryInk)
+        ShareLink(item: file.fileURL) {
+          Label("Compartilhar ou salvar arquivo", systemImage: "square.and.arrow.up")
+        }
+        .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
           .font(.footnote)
         Spacer()
       }
@@ -314,14 +325,15 @@ private struct LocalFilePreview: View {
 struct CommunicationComposerView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
-  let billingID: UUID
-  let billID: UUID?
+  let billingID: BillingID
+  let billID: BillID?
   @State private var recipients: String
   @State private var subject = "Sua fatura está disponível"
   @State private var message = "Olá! Confira os detalhes da sua cobrança no Rentivo."
-  @State private var previewing = false
+  @State private var preview: CommunicationPreview?
+  @State private var isLoadingPreview = false
 
-  init(billingID: UUID, billID: UUID?, initialRecipients: [String]) {
+  init(billingID: BillingID, billID: BillID?, initialRecipients: [String]) {
     self.billingID = billingID
     self.billID = billID
     _recipients = State(initialValue: initialRecipients.joined(separator: ", "))
@@ -336,26 +348,34 @@ struct CommunicationComposerView: View {
           .lineLimit(5...10)
       }
       Section {
-        Label("O envio é local e não dispara e-mails reais.", systemImage: "shield.checkered")
+        Label("O envio será enfileirado para os destinatários da cobrança.", systemImage: "paperplane.circle")
       }
     }
     .navigationTitle("Comunicação")
     .toolbar {
       ToolbarItem(placement: .confirmationAction) {
-        Button("Visualizar") { previewing = true }
-          .disabled(recipients.isEmpty || subject.isEmpty)
+        Button("Visualizar") { Task { await loadPreview() } }
+          .disabled(isLoadingPreview || recipients.isEmpty || subject.isEmpty)
       }
     }
-    .sheet(isPresented: $previewing) {
+    .sheet(item: $preview) { preview in
       NavigationStack {
         VStack(alignment: .leading, spacing: RentivoSpacing.large) {
           Text(subject).font(RentivoTypography.title)
           Text("Para: \(recipients)").font(.caption)
           Divider()
-          Text(message)
+          HTMLPreviewView(html: preview.html)
+            .frame(minHeight: 180)
+          if !preview.mildWarnings.isEmpty {
+            WarningList(title: "Revise antes de enviar", warnings: preview.mildWarnings, color: RentivoColors.coral)
+          }
+          if !preview.severeWarnings.isEmpty {
+            WarningList(title: "Envio bloqueado", warnings: preview.severeWarnings, color: RentivoColors.coral)
+          }
           Spacer()
-          Button("Simular envio") { Task { await send() } }
+          Button("Enviar") { Task { await send() } }
             .buttonStyle(RentivoButtonStyle())
+            .disabled(!preview.severeWarnings.isEmpty)
         }
         .padding(RentivoSpacing.page)
         .background(RentivoColors.paper)
@@ -375,16 +395,61 @@ struct CommunicationComposerView: View {
         subject: subject,
         message: message
       )
-      previewing = false
+      preview = nil
       dismiss()
-      app.showNotice("Comunicação registrada como simulação.")
+      app.showNotice("Comunicação enfileirada para envio.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  private func loadPreview() async {
+    isLoadingPreview = true
+    defer { isLoadingPreview = false }
+    do {
+      preview = try await app.dependencies.communications.previewCommunication(
+        billingID: billingID, subject: subject, message: message
+      )
+    } catch {
+      app.showNotice(DemoError(error).message, kind: .warning)
+    }
+  }
+}
+
+private struct WarningList: View {
+  let title: String
+  let warnings: [String]
+  let color: Color
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: RentivoSpacing.small) {
+      Text(title).font(.headline).foregroundStyle(color)
+      ForEach(warnings, id: \.self) { warning in
+        Label(warning, systemImage: "exclamationmark.triangle.fill")
+          .font(.footnote)
+          .foregroundStyle(color)
+      }
+    }
+  }
+}
+
+private struct HTMLPreviewView: UIViewRepresentable {
+  let html: String
+
+  func makeUIView(context: Context) -> WKWebView {
+    let webView = WKWebView()
+    webView.isOpaque = false
+    webView.backgroundColor = .clear
+    webView.scrollView.isScrollEnabled = false
+    return webView
+  }
+
+  func updateUIView(_ webView: WKWebView, context: Context) {
+    webView.loadHTMLString(html, baseURL: nil)
   }
 }
 
 struct ExportSimulationView: View {
   @Environment(AppModel.self) private var app
-  let billingID: UUID
+  let billingID: BillingID
   @State private var format = "CSV"
 
   var body: some View {
@@ -399,12 +464,19 @@ struct ExportSimulationView: View {
         Label("Despesas", systemImage: "wrench.and.screwdriver")
         Label("Resumo financeiro", systemImage: "chart.bar")
       }
-      Button("Preparar exportação simulada") {
-        app.showNotice("Arquivo \(format) preparado localmente — nenhum download foi criado.")
+      Button("Solicitar exportação") {
+        Task { await requestExport() }
       }
       .buttonStyle(RentivoButtonStyle(color: RentivoColors.blue))
       .listRowBackground(Color.clear)
     }
     .navigationTitle("Exportar")
+  }
+
+  private func requestExport() async {
+    do {
+      try await app.dependencies.exports.requestExport(billingID: billingID, format: format.lowercased())
+      app.showNotice("Exportação \(format) enfileirada.")
+    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
 }

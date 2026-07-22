@@ -3,7 +3,7 @@ import SwiftUI
 private struct OrganizationListItem: Identifiable, Sendable {
   let organization: Organization
   let billingCount: Int
-  var id: UUID { organization.id }
+  var id: OrganizationID { organization.id }
 }
 
 struct OrganizationListView: View {
@@ -85,7 +85,7 @@ struct OrganizationListView: View {
       let values = organizations.map { organization in
         OrganizationListItem(
           organization: organization,
-          billingCount: billings.filter { $0.owner.id == organization.id }.count
+          billingCount: billings.filter { $0.owner.workspaceID.rawValue == organization.id.rawValue }.count
         )
       }
       pendingCount = try await app.dependencies.invitations.listPendingInvitations().count
@@ -200,7 +200,7 @@ struct OrganizationFormView: View {
 struct OrganizationDetailView: View {
   @Environment(AppModel.self) private var app
   @Environment(\.dismiss) private var dismiss
-  let organizationID: UUID
+  let organizationID: OrganizationID
   let onMutation: () async -> Void
   @State private var state: LoadState<Organization> = .idle
   @State private var billings: [Billing] = []
@@ -244,7 +244,7 @@ struct OrganizationDetailView: View {
       Button("Confirmar") { Task { await toggleMFA() } }
       Button("Cancelar", role: .cancel) {}
     } message: {
-      Text("A política será aplicada apenas ao estado local desta demonstração.")
+      Text("A política será aplicada a todos os membros desta organização.")
     }
     .confirmationDialog("Excluir organização?", isPresented: $confirmingDelete) {
       Button("Excluir", role: .destructive) { Task { await deleteOrganization() } }
@@ -327,11 +327,11 @@ struct OrganizationDetailView: View {
                   .foregroundStyle(RentivoColors.secondaryInk)
               }
               Spacer()
-              if member.role == .owner {
+              if member.role == .admin {
                 Image(systemName: "crown.fill").foregroundStyle(RentivoColors.amber)
               } else if organization.capabilities.canManage {
                 Menu {
-                  ForEach(OrganizationRole.allCases.filter { $0 != .owner }, id: \.self) { role in
+                  ForEach(OrganizationRole.allCases.filter { $0 != .admin }, id: \.self) { role in
                     Button(role.label) { Task { await changeRole(member, to: role) } }
                   }
                   Divider()
@@ -373,7 +373,7 @@ struct OrganizationDetailView: View {
   private func billingSection(_ organization: Organization) -> some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
       SectionTitle(title: "Cobranças", symbol: "house.fill")
-      let owned = billings.filter { $0.owner.id == organization.id }
+      let owned = billings.filter { $0.owner.workspaceID.rawValue == organization.id.rawValue }
       if owned.isEmpty {
         Text("Nenhuma cobrança pertence a esta organização.")
           .foregroundStyle(RentivoColors.secondaryInk)
@@ -383,10 +383,6 @@ struct OrganizationDetailView: View {
             HStack {
               Text(billing.name).font(.subheadline.weight(.semibold))
               Spacer()
-              if organization.capabilities.canCreateBilling && billing.capabilities.canTransfer {
-                Button("Tornar pessoal") { Task { await makePersonal(billing) } }
-                  .font(.caption)
-              }
             }
           }
         }
@@ -458,13 +454,6 @@ struct OrganizationDetailView: View {
         billingID: billing.id,
         toOrganizationID: organization.id
       )
-      await refreshAll()
-    } catch { app.showNotice(DemoError(error).message, kind: .warning) }
-  }
-
-  private func makePersonal(_ billing: Billing) async {
-    do {
-      try await app.dependencies.organizations.transferBillingToPersonal(billingID: billing.id)
       await refreshAll()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }

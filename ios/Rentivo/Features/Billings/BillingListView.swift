@@ -11,7 +11,7 @@ private enum BillingOwnerFilter: String, CaseIterable, Identifiable {
 private struct BillingPortfolioItem: Identifiable, Sendable {
   let billing: Billing
   let bills: [Bill]
-  var id: UUID { billing.id }
+  var id: BillingID { billing.id }
 }
 
 struct BillingListView: View {
@@ -47,7 +47,7 @@ struct BillingListView: View {
         BillingFormView { await load() }
       }
     }
-    .navigationDestination(for: UUID.self) { id in
+    .navigationDestination(for: BillingID.self) { id in
       BillingDetailView(billingID: id) { await load() }
     }
     .task(id: app.dataRevision) { await load() }
@@ -74,7 +74,7 @@ struct BillingListView: View {
               BillingPortfolioCard(item: item)
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("billing.card.\(item.id.uuidString)")
+            .accessibilityIdentifier("billing.card.\(item.id.rawValue)")
           }
         }
       }

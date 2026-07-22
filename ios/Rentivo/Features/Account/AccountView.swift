@@ -9,7 +9,7 @@ struct AccountView: View {
         HStack(spacing: RentivoSpacing.medium) {
           BrandMark(compact: true)
           VStack(alignment: .leading, spacing: RentivoSpacing.tiny) {
-            Text("Conta de demonstração").font(.headline)
+            Text(app.usesLiveAPI ? "Sua conta" : "Conta de demonstração").font(.headline)
             Text(app.currentUser.email)
               .font(.subheadline)
               .foregroundStyle(RentivoColors.secondaryInk)
@@ -48,26 +48,37 @@ struct AccountView: View {
         }
       }
 
-      Section("Demonstração") {
-        NavigationLink {
-          DemoScenariosView()
-        } label: {
-          AccountRow(
-            title: "Cenários do app",
-            subtitle: "Atraso, falha, vazio e permissões",
-            symbol: "slider.horizontal.3"
-          )
+      if !app.usesLiveAPI {
+        Section("Demonstração") {
+          NavigationLink {
+            DemoScenariosView()
+          } label: {
+            AccountRow(
+              title: "Cenários do app",
+              subtitle: "Atraso, falha, vazio e permissões",
+              symbol: "slider.horizontal.3"
+            )
+          }
+          .accessibilityIdentifier("account.demo")
         }
-        .accessibilityIdentifier("account.demo")
       }
 
       Section {
         Button(role: .destructive) {
-          app.signOut()
+          Task { await app.signOut() }
         } label: {
-          Label("Sair", systemImage: "rectangle.portrait.and.arrow.right")
+          if app.isSigningOut {
+            HStack {
+              ProgressView()
+              Text("Saindo...")
+            }
             .frame(maxWidth: .infinity)
+          } else {
+            Label("Sair", systemImage: "rectangle.portrait.and.arrow.right")
+              .frame(maxWidth: .infinity)
+          }
         }
+        .disabled(app.isSigningOut)
       }
     }
     .scrollContentBackground(.hidden)
@@ -97,27 +108,19 @@ private struct AccountRow: View {
 
 struct ProfilePixView: View {
   @Environment(AppModel.self) private var app
-  @State private var key: String
-  @State private var merchantName: String
-  @State private var city: String
-
-  init() {
-    _key = State(initialValue: "")
-    _merchantName = State(initialValue: "")
-    _city = State(initialValue: "")
-  }
+  @State private var form = ProfilePIXForm()
 
   var body: some View {
     Form {
       Section("Conta") {
         LabeledContent("E-mail", value: app.currentUser.email)
-        LabeledContent("Ambiente", value: "Demonstração local")
+        LabeledContent("Ambiente", value: app.usesLiveAPI ? "Rentivo" : "Demonstração local")
       }
       Section("PIX pessoal") {
-        TextField("Chave PIX", text: $key)
+        TextField("Chave PIX", text: $form.key)
           .textInputAutocapitalization(.never)
-        TextField("Nome do recebedor", text: $merchantName)
-        TextField("Cidade", text: $city)
+        TextField("Nome do recebedor", text: $form.merchantName)
+        TextField("Cidade", text: $form.merchantCity)
           .textInputAutocapitalization(.characters)
       }
       .disabled(app.demoSettings.viewerMode)
@@ -134,24 +137,23 @@ struct ProfilePixView: View {
       if !app.demoSettings.viewerMode {
         Button("Salvar") { Task { await save() } }
           .disabled(
-            !PixConfiguration(key: key, merchantName: merchantName, merchantCity: city).isComplete
+            !form.configuration.isComplete
           )
           .accessibilityIdentifier("profile.pix.save")
       }
     }
     .task {
-      guard let pix = app.currentUser.pix else { return }
-      key = pix.key
-      merchantName = pix.merchantName
-      city = pix.merchantCity
+      do {
+        form = ProfilePIXForm(profile: try await app.loadProfile())
+      } catch {
+        app.showNotice(DemoError(error).message, kind: .warning)
+      }
     }
   }
 
   private func save() async {
     do {
-      _ = try await app.dependencies.profile.updatePix(
-        PixConfiguration(key: key, merchantName: merchantName, merchantCity: city)
-      )
+      form = ProfilePIXForm(profile: try await app.updateProfilePIX(form.configuration))
       app.showNotice("PIX pessoal atualizado.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }

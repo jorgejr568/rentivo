@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingRepository,
-  BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository,
+  BillRepository, ExpenseRepository, AttachmentRepository, CommunicationRepository, FileDownloadRepository, ExportRepository,
   OrganizationRepository, InvitationRepository, SecurityRepository, APIKeyRepository,
   ThemeRepository, DemoRepository, DashboardRepository, ActivityRepository
 {
@@ -58,6 +58,15 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.profile
   }
 
+  public func changePassword(
+    currentPassword: String, newPassword: String, confirmPassword: String
+  ) async throws {
+    try await prepareOperation()
+    guard !currentPassword.isEmpty, !newPassword.isEmpty, newPassword == confirmPassword else {
+      throw DemoError.operationFailed
+    }
+  }
+
   public func updatePix(_ pix: PixConfiguration) async throws -> UserProfile {
     try await prepareOperation()
     guard !viewerMode else { throw DemoError.permissionDenied }
@@ -72,7 +81,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.billings.map(restrictIfNeeded)
   }
 
-  public func billing(id: UUID) async throws -> Billing {
+  public func billing(id: BillingID) async throws -> Billing {
     try await prepareOperation()
     guard let billing = snapshot.billings.first(where: { $0.id == id }) else {
       throw DemoError.resourceNotFound
@@ -84,7 +93,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     try await prepareOperation()
     try requireWriteAccess()
     let billing = Billing(
-      id: UUID(),
+      id: BillingID(rawValue: UUID().uuidString),
       name: draft.name,
       description: draft.description,
       owner: draft.owner,
@@ -98,7 +107,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return billing
   }
 
-  public func updateBilling(id: UUID, draft: BillingDraft) async throws -> Billing {
+  public func updateBilling(id: BillingID, draft: BillingDraft) async throws -> Billing {
     try await prepareOperation()
     try requireWriteAccess()
     guard let index = snapshot.billings.firstIndex(where: { $0.id == id }) else {
@@ -121,7 +130,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return billing
   }
 
-  public func deleteBilling(id: UUID) async throws {
+  public func deleteBilling(id: BillingID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard let index = snapshot.billings.firstIndex(where: { $0.id == id }) else {
@@ -136,7 +145,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     recordActivity(kind: .billing, title: "Cobrança excluída", detail: name)
   }
 
-  public func listBills(billingID: UUID) async throws -> [Bill] {
+  public func listBills(billingID: BillingID) async throws -> [Bill] {
     try await prepareOperation()
     guard snapshot.billings.contains(where: { $0.id == billingID }) else {
       throw DemoError.resourceNotFound
@@ -147,7 +156,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       .sorted { $0.referenceMonth > $1.referenceMonth }
   }
 
-  public func bill(billingID: UUID, id: UUID) async throws -> Bill {
+  public func bill(billingID: BillingID, id: BillID) async throws -> Bill {
     try await prepareOperation()
     guard let bill = snapshot.bills.first(where: { $0.billingID == billingID && $0.id == id })
     else {
@@ -164,7 +173,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     }
     guard draft.validate().isEmpty else { throw DemoError.operationFailed }
     let bill = Bill(
-      id: UUID(),
+      id: BillID(rawValue: UUID().uuidString),
       billingID: draft.billingID,
       referenceMonth: draft.referenceMonth,
       dueDate: draft.dueDate,
@@ -179,7 +188,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return bill
   }
 
-  public func updateBill(billingID: UUID, billID: UUID, draft: BillDraft) async throws -> Bill {
+  public func updateBill(billingID: BillingID, billID: BillID, draft: BillDraft) async throws -> Bill {
     try await prepareOperation()
     try requireWriteAccess()
     guard draft.billingID == billingID, draft.validate().isEmpty else {
@@ -201,7 +210,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.bills[index]
   }
 
-  public func deleteBill(billingID: UUID, billID: UUID) async throws {
+  public func deleteBill(billingID: BillingID, billID: BillID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard
@@ -216,7 +225,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     recordActivity(kind: .bill, title: "Fatura excluída", detail: reference)
   }
 
-  public func transitionBill(billingID: UUID, billID: UUID, to status: BillStatus) async throws {
+  public func transitionBill(billingID: BillingID, billID: BillID, to status: BillStatus) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard
@@ -241,26 +250,32 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     )
   }
 
-  public func addReceipt(billingID: UUID, billID: UUID, name: String) async throws -> Receipt {
+  public func regenerateBill(billingID: BillingID, billID: BillID) async throws -> Bill {
+    try await prepareOperation()
+    guard let index = billIndex(billingID: billingID, billID: billID) else { throw DemoError.resourceNotFound }
+    return snapshot.bills[index]
+  }
+
+  public func addReceipt(billingID: BillingID, billID: BillID, upload: FileUpload) async throws -> Receipt {
     try await prepareOperation()
     try requireWriteAccess()
     guard let index = billIndex(billingID: billingID, billID: billID) else {
       throw DemoError.resourceNotFound
     }
     let receipt = Receipt(
-      id: UUID(),
-      name: name,
+      id: ReceiptID(rawValue: UUID().uuidString),
+      name: upload.filename,
       sortOrder: snapshot.bills[index].receipts.count
     )
     snapshot.bills[index].receipts.append(receipt)
-    recordActivity(kind: .bill, title: "Comprovante adicionado", detail: name)
+    recordActivity(kind: .bill, title: "Comprovante adicionado", detail: upload.filename)
     return receipt
   }
 
   public func reorderReceipts(
-    billingID: UUID,
-    billID: UUID,
-    receiptIDs: [UUID]
+    billingID: BillingID,
+    billID: BillID,
+    receiptIDs: [ReceiptID]
   ) async throws {
     try await prepareOperation()
     try requireWriteAccess()
@@ -279,7 +294,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     }
   }
 
-  public func deleteReceipt(billingID: UUID, billID: UUID, receiptID: UUID) async throws {
+  public func deleteReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard let index = billIndex(billingID: billingID, billID: billID) else {
@@ -294,7 +309,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     }
   }
 
-  public func listExpenses(billingID: UUID) async throws -> [Expense] {
+  public func listExpenses(billingID: BillingID) async throws -> [Expense] {
     try await prepareOperation()
     guard snapshot.billings.contains(where: { $0.id == billingID }) else {
       throw DemoError.resourceNotFound
@@ -306,7 +321,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   }
 
   public func createExpense(
-    billingID: UUID,
+    billingID: BillingID,
     description: String,
     category: ExpenseCategory,
     incurredOn: DateOnly,
@@ -318,7 +333,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       throw DemoError.resourceNotFound
     }
     let expense = Expense(
-      id: UUID(),
+      id: ExpenseID(rawValue: UUID().uuidString),
       billingID: billingID,
       description: description,
       amount: amount,
@@ -330,7 +345,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return expense
   }
 
-  public func deleteExpense(billingID: UUID, expenseID: UUID) async throws {
+  public func deleteExpense(billingID: BillingID, expenseID: ExpenseID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard
@@ -345,7 +360,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     recordActivity(kind: .expense, title: "Despesa excluída", detail: description)
   }
 
-  public func listAttachments(billingID: UUID) async throws -> [Attachment] {
+  public func listAttachments(billingID: BillingID) async throws -> [Attachment] {
     try await prepareOperation()
     guard snapshot.billings.contains(where: { $0.id == billingID }) else {
       throw DemoError.resourceNotFound
@@ -354,28 +369,24 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.attachments[billingID] ?? []
   }
 
-  public func addAttachment(
-    billingID: UUID,
-    name: String,
-    mediaType: String
-  ) async throws -> Attachment {
+  public func addAttachment(billingID: BillingID, upload: FileUpload) async throws -> Attachment {
     try await prepareOperation()
     try requireWriteAccess()
     guard snapshot.billings.contains(where: { $0.id == billingID }) else {
       throw DemoError.resourceNotFound
     }
     let attachment = Attachment(
-      id: UUID(),
-      name: name,
-      mediaType: mediaType,
-      byteCount: 96_000
+      id: AttachmentID(rawValue: UUID().uuidString),
+      name: upload.filename,
+      mediaType: upload.mediaType,
+      byteCount: upload.byteCount
     )
     snapshot.attachments[billingID, default: []].append(attachment)
-    recordActivity(kind: .billing, title: "Arquivo adicionado", detail: name)
+    recordActivity(kind: .billing, title: "Arquivo adicionado", detail: upload.filename)
     return attachment
   }
 
-  public func deleteAttachment(billingID: UUID, attachmentID: UUID) async throws {
+  public func deleteAttachment(billingID: BillingID, attachmentID: AttachmentID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard snapshot.attachments[billingID]?.contains(where: { $0.id == attachmentID }) == true else {
@@ -384,9 +395,19 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     snapshot.attachments[billingID]?.removeAll { $0.id == attachmentID }
   }
 
+  public func previewCommunication(
+    billingID: BillingID, subject: String, message: String
+  ) async throws -> CommunicationPreview {
+    try await prepareOperation()
+    guard snapshot.billings.contains(where: { $0.id == billingID }) else {
+      throw DemoError.resourceNotFound
+    }
+    return CommunicationPreview(html: message, severeWarnings: [], mildWarnings: [])
+  }
+
   public func sendCommunication(
-    billingID: UUID,
-    billID: UUID?,
+    billingID: BillingID,
+    billID: BillID?,
     recipients: [String],
     subject: String,
     message: String
@@ -397,7 +418,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       throw DemoError.operationFailed
     }
     let communication = CommunicationRecord(
-      id: UUID(),
+      id: CommunicationID(rawValue: UUID().uuidString),
       billingID: billingID,
       billID: billID,
       recipients: recipients,
@@ -409,6 +430,12 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     recordActivity(kind: .bill, title: "Comunicação simulada", detail: subject)
     return communication
   }
+
+  public func downloadInvoice(billingID: BillingID, billID: BillID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func downloadRecibo(billingID: BillingID, billID: BillID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func downloadReceipt(billingID: BillingID, billID: BillID, receiptID: ReceiptID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func downloadAttachment(billingID: BillingID, attachmentID: AttachmentID) async throws -> DownloadedFile { throw DemoError.operationFailed }
+  public func requestExport(billingID: BillingID, format: String) async throws { try await prepareOperation() }
 
   public func dashboardSummary() async throws -> DashboardSummary {
     try await prepareOperation()
@@ -453,7 +480,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       .map(restrictIfNeeded)
   }
 
-  public func organization(id: UUID) async throws -> Organization {
+  public func organization(id: OrganizationID) async throws -> Organization {
     try await prepareOperation()
     guard let organization = snapshot.organizations.first(where: { $0.id == id }) else {
       throw DemoError.resourceNotFound
@@ -466,25 +493,25 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     try requireWriteAccess()
     guard draft.isValid else { throw DemoError.operationFailed }
     let organization = Organization(
-      id: UUID(),
+      id: OrganizationID(rawValue: UUID().uuidString),
       name: draft.name,
       pix: draft.pix,
       members: [
         OrganizationMember(
           userID: snapshot.profile.id,
           email: snapshot.profile.email,
-          role: .owner
+          role: .admin
         )
       ],
       requiresMFA: false,
-      currentUserRole: .owner
+      currentUserRole: .admin
     )
     snapshot.organizations.insert(organization, at: 0)
     recordActivity(kind: .organization, title: "Organização criada", detail: organization.name)
     return organization
   }
 
-  public func updateOrganization(id: UUID, draft: OrganizationDraft) async throws -> Organization {
+  public func updateOrganization(id: OrganizationID, draft: OrganizationDraft) async throws -> Organization {
     try await prepareOperation()
     try requireWriteAccess()
     try requireOrganizationCapability(id: id, \.canManage)
@@ -503,7 +530,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.organizations[index]
   }
 
-  public func deleteOrganization(id: UUID) async throws {
+  public func deleteOrganization(id: OrganizationID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     try requireOrganizationCapability(id: id, \.canManage)
@@ -520,8 +547,8 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   }
 
   public func updateMemberRole(
-    organizationID: UUID,
-    userID: UUID,
+    organizationID: OrganizationID,
+    userID: Int,
     role: OrganizationRole
   ) async throws {
     try await prepareOperation()
@@ -534,9 +561,6 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     else {
       throw DemoError.resourceNotFound
     }
-    guard snapshot.organizations[organizationIndex].members[memberIndex].role != .owner else {
-      throw DemoError.permissionDenied
-    }
     snapshot.organizations[organizationIndex].members[memberIndex].role = role
     recordActivity(
       kind: .organization,
@@ -545,7 +569,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     )
   }
 
-  public func removeMember(organizationID: UUID, userID: UUID) async throws {
+  public func removeMember(organizationID: OrganizationID, userID: Int) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     try requireOrganizationCapability(id: organizationID, \.canManage)
@@ -554,13 +578,12 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     else {
       throw DemoError.resourceNotFound
     }
-    guard member.role != .owner else { throw DemoError.permissionDenied }
     snapshot.organizations[index].members.removeAll { $0.userID == userID }
     recordActivity(kind: .organization, title: "Membro removido", detail: member.email)
   }
 
   public func inviteMember(
-    organizationID: UUID,
+    organizationID: OrganizationID,
     email: String,
     role: OrganizationRole
   ) async throws -> Invitation {
@@ -571,7 +594,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       throw DemoError.operationFailed
     }
     let invitation = Invitation(
-      id: UUID(),
+      id: InvitationID(rawValue: UUID().uuidString),
       organizationID: organizationID,
       organizationName: snapshot.organizations[index].name,
       email: email,
@@ -583,7 +606,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return invitation
   }
 
-  public func setOrganizationMFA(organizationID: UUID, required: Bool) async throws {
+  public func setOrganizationMFA(organizationID: OrganizationID, required: Bool) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     try requireOrganizationCapability(id: organizationID, \.canManage)
@@ -598,7 +621,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     )
   }
 
-  public func transferBilling(billingID: UUID, toOrganizationID: UUID) async throws {
+  public func transferBilling(billingID: BillingID, toOrganizationID: OrganizationID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     try requireOrganizationCapability(id: toOrganizationID, \.canCreateBilling)
@@ -622,7 +645,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     )
   }
 
-  public func transferBillingToPersonal(billingID: UUID) async throws {
+  public func transferBillingToPersonal(billingID: BillingID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard let index = snapshot.billings.firstIndex(where: { $0.id == billingID }) else {
@@ -641,11 +664,11 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.invitations.filter { $0.status == .pending }
   }
 
-  public func acceptInvitation(id: UUID) async throws {
+  public func acceptInvitation(id: InvitationID) async throws {
     try await respondToInvitation(id: id, status: .accepted)
   }
 
-  public func declineInvitation(id: UUID) async throws {
+  public func declineInvitation(id: InvitationID) async throws {
     try await respondToInvitation(id: id, status: .declined)
   }
 
@@ -663,6 +686,30 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       title: enabled ? "TOTP ativado" : "TOTP desativado",
       detail: snapshot.profile.email
     )
+  }
+
+  public func beginTOTPEnrollment() async throws -> TOTPEnrollment {
+    try await prepareOperation()
+    try requireWriteAccess()
+    return TOTPEnrollment(
+      secret: "JBSWY3DPEHPK3PXP", provisioningURI: "otpauth://totp/Rentivo:demo",
+      qrCodeBase64: ""
+    )
+  }
+
+  public func confirmTOTPEnrollment(code: String) async throws -> [String] {
+    guard !code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw DemoError.operationFailed
+    }
+    try await setTOTPEnabled(true)
+    return try await regenerateRecoveryCodes()
+  }
+
+  public func disableTOTP(password: String) async throws {
+    guard !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+      throw DemoError.operationFailed
+    }
+    try await setTOTPEnabled(false)
   }
 
   public func regenerateRecoveryCodes() async throws -> [String] {
@@ -683,13 +730,13 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw DemoError.operationFailed
     }
-    let passkey = Passkey(id: UUID(), name: name, createdAt: Date(), lastUsedAt: nil)
+    let passkey = Passkey(id: PasskeyID(rawValue: UUID().uuidString), name: name, createdAt: Date(), lastUsedAt: nil)
     snapshot.security.passkeys.append(passkey)
     recordActivity(kind: .security, title: "Chave de acesso criada", detail: name)
     return passkey
   }
 
-  public func renamePasskey(id: UUID, name: String) async throws {
+  public func renamePasskey(id: PasskeyID, name: String) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard let index = snapshot.security.passkeys.firstIndex(where: { $0.id == id }),
@@ -700,7 +747,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     snapshot.security.passkeys[index].name = name
   }
 
-  public func deletePasskey(id: UUID) async throws {
+  public func deletePasskey(id: PasskeyID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard snapshot.security.passkeys.contains(where: { $0.id == id }) else {
@@ -721,7 +768,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     try await prepareOperation()
     try requireWriteAccess()
     let metadata = APIKeyMetadata(
-      id: UUID(),
+      id: APIKeyID(rawValue: UUID().uuidString),
       name: draft.name,
       hint: "rntv-v1-demo••42",
       scopes: draft.scopes,
@@ -736,7 +783,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return CreatedAPIKeySecret(metadata: metadata, secret: "rntv-v1-demo-8K2P-N4M7-X9Q3")
   }
 
-  public func updateAPIKey(id: UUID, draft: APIKeyDraft) async throws -> APIKeyMetadata {
+  public func updateAPIKey(id: APIKeyID, draft: APIKeyDraft) async throws -> APIKeyMetadata {
     try await prepareOperation()
     try requireWriteAccess()
     guard !draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -759,7 +806,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.apiKeys[index]
   }
 
-  public func revokeAPIKey(id: UUID) async throws {
+  public func revokeAPIKey(id: APIKeyID) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard let index = snapshot.apiKeys.firstIndex(where: { $0.id == id }) else {
@@ -814,7 +861,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
   }
 
   private func requireOrganizationCapability(
-    id: UUID,
+    id: OrganizationID,
     _ capability: KeyPath<OrganizationCapabilities, Bool>
   ) throws {
     guard let organization = snapshot.organizations.first(where: { $0.id == id }) else {
@@ -861,11 +908,11 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     bills.map(\.total).reduce(.zero, +)
   }
 
-  private func billIndex(billingID: UUID, billID: UUID) -> Int? {
+  private func billIndex(billingID: BillingID, billID: BillID) -> Int? {
     snapshot.bills.firstIndex { $0.billingID == billingID && $0.id == billID }
   }
 
-  private func organizationIndex(_ id: UUID) -> Int? {
+  private func organizationIndex(_ id: OrganizationID) -> Int? {
     snapshot.organizations.firstIndex { $0.id == id }
   }
 
@@ -876,7 +923,7 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     )
   }
 
-  private func respondToInvitation(id: UUID, status: InvitationStatus) async throws {
+  private func respondToInvitation(id: InvitationID, status: InvitationStatus) async throws {
     try await prepareOperation()
     try requireWriteAccess()
     guard

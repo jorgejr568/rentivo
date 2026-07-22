@@ -1,7 +1,7 @@
 import SwiftUI
 
 private struct EditableBillingItem: Identifiable {
-  let id: UUID
+  let id: BillingItemID
   var description: String
   var centavos: Int
   var type: BillingItemType
@@ -14,7 +14,7 @@ private struct EditableBillingItem: Identifiable {
   }
 
   init(type: BillingItemType = .fixed) {
-    id = UUID()
+    id = BillingItemID(rawValue: UUID().uuidString)
     description = ""
     centavos = 0
     self.type = type
@@ -39,7 +39,7 @@ struct BillingFormView: View {
 
   @State private var name: String
   @State private var billingDescription: String
-  @State private var ownerID: UUID
+  @State private var ownerID: WorkspaceID
   @State private var items: [EditableBillingItem]
   @State private var pixKey: String
   @State private var recipientName: String
@@ -55,7 +55,7 @@ struct BillingFormView: View {
     self.onSaved = onSaved
     _name = State(initialValue: billing?.name ?? "")
     _billingDescription = State(initialValue: billing?.description ?? "")
-    _ownerID = State(initialValue: billing?.owner.id ?? StableID.userAna)
+    _ownerID = State(initialValue: billing?.owner.id ?? .personal)
     _items = State(initialValue: billing?.items.map(EditableBillingItem.init) ?? [])
     _pixKey = State(initialValue: billing?.pixOverride?.key ?? "")
     _recipientName = State(initialValue: billing?.recipients.first?.name ?? "")
@@ -185,7 +185,7 @@ struct BillingFormView: View {
     } else {
       recipients = [
         BillingRecipient(
-          id: billing?.recipients.first?.id ?? UUID(),
+          id: billing?.recipients.first?.id ?? RecipientID(rawValue: UUID().uuidString),
           name: recipientName,
           email: recipientEmail
         )

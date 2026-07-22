@@ -45,29 +45,22 @@ public struct DemoError: Error, Equatable, LocalizedError, Sendable {
 }
 
 public enum StableID {
-  public static let userAna = uuid("00000000-0000-0000-0000-000000000001")
-  public static let organizationHorizonte = uuid("00000000-0000-0000-0000-000000000010")
-  public static let billingAurora101 = uuid("00000000-0000-0000-0000-000000000101")
-  public static let billingAurora202 = uuid("00000000-0000-0000-0000-000000000102")
-  public static let billingSolNascente303 = uuid("00000000-0000-0000-0000-000000000103")
-  public static let billingVilaFlores1 = uuid("00000000-0000-0000-0000-000000000104")
-  public static let billingTorreNorte501 = uuid("00000000-0000-0000-0000-000000000105")
-  public static let billingCentro12 = uuid("00000000-0000-0000-0000-000000000106")
-  public static let billDraft = uuid("00000000-0000-0000-0000-000000001001")
-  public static let billPublished = uuid("00000000-0000-0000-0000-000000001002")
-  public static let billSent = uuid("00000000-0000-0000-0000-000000001003")
-  public static let billPaid = uuid("00000000-0000-0000-0000-000000001004")
-  public static let billCancelled = uuid("00000000-0000-0000-0000-000000001005")
-  public static let billDelayed = uuid("00000000-0000-0000-0000-000000001006")
-  public static let invitationHorizonte = uuid("00000000-0000-0000-0000-000000003001")
-  public static let apiKeyDashboard = uuid("00000000-0000-0000-0000-000000004001")
-
-  private static func uuid(_ value: String) -> UUID {
-    guard let identifier = UUID(uuidString: value) else {
-      preconditionFailure("Invalid stable UUID: \(value)")
-    }
-    return identifier
-  }
+  public static let userAna = 1
+  public static let organizationHorizonte = OrganizationID(rawValue: "00000000-0000-0000-0000-000000000010")
+  public static let billingAurora101 = BillingID(rawValue: "00000000-0000-0000-0000-000000000101")
+  public static let billingAurora202 = BillingID(rawValue: "00000000-0000-0000-0000-000000000102")
+  public static let billingSolNascente303 = BillingID(rawValue: "00000000-0000-0000-0000-000000000103")
+  public static let billingVilaFlores1 = BillingID(rawValue: "00000000-0000-0000-0000-000000000104")
+  public static let billingTorreNorte501 = BillingID(rawValue: "00000000-0000-0000-0000-000000000105")
+  public static let billingCentro12 = BillingID(rawValue: "00000000-0000-0000-0000-000000000106")
+  public static let billDraft = BillID(rawValue: "00000000-0000-0000-0000-000000001001")
+  public static let billPublished = BillID(rawValue: "00000000-0000-0000-0000-000000001002")
+  public static let billSent = BillID(rawValue: "00000000-0000-0000-0000-000000001003")
+  public static let billPaid = BillID(rawValue: "00000000-0000-0000-0000-000000001004")
+  public static let billCancelled = BillID(rawValue: "00000000-0000-0000-0000-000000001005")
+  public static let billDelayed = BillID(rawValue: "00000000-0000-0000-0000-000000001006")
+  public static let invitationHorizonte = InvitationID(rawValue: "00000000-0000-0000-0000-000000003001")
+  public static let apiKeyDashboard = APIKeyID(rawValue: "00000000-0000-0000-0000-000000004001")
 }
 
 public struct DateOnly: Hashable, Codable, Sendable, Comparable {
@@ -120,14 +113,30 @@ public struct ReferenceMonth: Hashable, Codable, Sendable, Comparable {
 }
 
 public struct UserProfile: Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: Int
   public var email: String
   public var pix: PixConfiguration?
 
-  public init(id: UUID, email: String, pix: PixConfiguration? = nil) {
+  public init(id: Int, email: String, pix: PixConfiguration? = nil) {
     self.id = id
     self.email = email
     self.pix = pix
+  }
+}
+
+public struct ProfilePIXForm: Equatable, Sendable {
+  public var key: String
+  public var merchantName: String
+  public var merchantCity: String
+
+  public init(profile: UserProfile? = nil) {
+    key = profile?.pix?.key ?? ""
+    merchantName = profile?.pix?.merchantName ?? ""
+    merchantCity = profile?.pix?.merchantCity ?? ""
+  }
+
+  public var configuration: PixConfiguration {
+    PixConfiguration(key: key, merchantName: merchantName, merchantCity: merchantCity)
   }
 }
 

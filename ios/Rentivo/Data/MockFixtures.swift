@@ -106,12 +106,12 @@ public struct MockFixtures: Sendable {
     ]
 
     let paidReceipt = Receipt(
-      id: stableUUID(2_001),
+      id: stableID(2_001),
       name: "comprovante-pix-junho.pdf",
       sortOrder: 0
     )
     let paidReceiptImage = Receipt(
-      id: stableUUID(2_002),
+      id: stableID(2_002),
       name: "confirmacao-bancaria.jpg",
       sortOrder: 1
     )
@@ -164,7 +164,7 @@ public struct MockFixtures: Sendable {
 
     let expenses = [
       Expense(
-        id: stableUUID(5_001),
+        id: stableID(5_001),
         billingID: StableID.billingAurora101,
         description: "Manutenção do interfone",
         amount: Money(centavos: 25_000),
@@ -172,7 +172,7 @@ public struct MockFixtures: Sendable {
         incurredOn: DateOnly(year: 2026, month: 5, day: 18)
       ),
       Expense(
-        id: stableUUID(5_002),
+        id: stableID(5_002),
         billingID: StableID.billingVilaFlores1,
         description: "Seguro residencial",
         amount: Money(centavos: 18_000),
@@ -181,7 +181,7 @@ public struct MockFixtures: Sendable {
       ),
     ]
 
-    let anaMember = OrganizationMember(userID: profile.id, email: profile.email, role: .owner)
+    let anaMember = OrganizationMember(userID: profile.id, email: profile.email, role: .admin)
     let organizations = [
       Organization(
         id: StableID.organizationHorizonte,
@@ -189,19 +189,19 @@ public struct MockFixtures: Sendable {
         pix: organizationPix,
         members: [
           anaMember,
-          OrganizationMember(userID: stableUUID(11), email: "bruno@example.com", role: .admin),
-          OrganizationMember(userID: stableUUID(12), email: "carla@example.com", role: .manager),
-          OrganizationMember(userID: stableUUID(13), email: "diego@example.com", role: .viewer),
+          OrganizationMember(userID: 11, email: "bruno@example.com", role: .admin),
+          OrganizationMember(userID: 12, email: "carla@example.com", role: .manager),
+          OrganizationMember(userID: 13, email: "diego@example.com", role: .viewer),
         ],
         requiresMFA: true,
-        currentUserRole: .owner
+        currentUserRole: .admin
       ),
       Organization(
-        id: stableUUID(20),
+        id: stableID(20),
         name: "Condomínio Aurora",
         pix: nil,
         members: [
-          OrganizationMember(userID: stableUUID(21), email: "sindico@aurora.com", role: .owner)
+          OrganizationMember(userID: 21, email: "sindico@aurora.com", role: .admin)
         ],
         requiresMFA: false,
         currentUserRole: .viewer
@@ -214,7 +214,7 @@ public struct MockFixtures: Sendable {
       name: "Painel financeiro",
       hint: "rntv-v1-abcd••yz",
       scopes: [.profileRead, .billingsRead, .expensesRead],
-      grants: [APIKeyGrant(resourceType: .user, resourceID: profile.id)],
+      grants: [APIKeyGrant(resourceType: .user, resourceID: .personal)],
       expiresAt: Date(timeIntervalSince1970: 1_798_761_600),
       lastUsedAt: now,
       createdAt: Date(timeIntervalSince1970: 1_752_796_800),
@@ -229,7 +229,7 @@ public struct MockFixtures: Sendable {
       attachments: [
         StableID.billingAurora101: [
           Attachment(
-            id: stableUUID(6_001),
+            id: stableID(6_001),
             name: "contrato-locacao.pdf",
             mediaType: "application/pdf",
             byteCount: 184_320
@@ -240,7 +240,7 @@ public struct MockFixtures: Sendable {
       invitations: [
         Invitation(
           id: StableID.invitationHorizonte,
-          organizationID: stableUUID(20),
+          organizationID: stableID(20),
           organizationName: "Condomínio Aurora",
           email: profile.email,
           role: .manager,
@@ -253,7 +253,7 @@ public struct MockFixtures: Sendable {
         recoveryCodeCount: 6,
         passkeys: [
           Passkey(
-            id: stableUUID(7_001),
+            id: stableID(7_001),
             name: "Notebook pessoal",
             createdAt: Date(timeIntervalSince1970: 1_736_640_000),
             lastUsedAt: now
@@ -268,7 +268,7 @@ public struct MockFixtures: Sendable {
       ],
       activities: [
         RecentActivity(
-          id: stableUUID(8_001),
+          id: UUID(uuidString: "00000000-0000-0000-0000-000000008001")!,
           kind: .bill,
           title: "Fatura paga",
           detail: "Apt 101 - Edifício Aurora · junho de 2026",
@@ -279,7 +279,7 @@ public struct MockFixtures: Sendable {
   }
 
   private static func billing(
-    id: UUID,
+    id: BillingID,
     name: String,
     description: String,
     owner: BillingOwner,
@@ -292,7 +292,7 @@ public struct MockFixtures: Sendable {
       owner: owner,
       items: items.enumerated().map { index, item in
         BillingItem(
-          id: stableUUID(10_000 + index + Int(id.uuid.15)),
+          id: stableID(10_000 + index),
           description: item.0,
           amount: Money(centavos: item.1),
           type: item.2,
@@ -301,7 +301,7 @@ public struct MockFixtures: Sendable {
       },
       recipients: [
         BillingRecipient(
-          id: stableUUID(20_000 + Int(id.uuid.15)),
+          id: stableID(20_000),
           name: "Locatário",
           email: "locatario@example.com"
         )
@@ -311,8 +311,8 @@ public struct MockFixtures: Sendable {
   }
 
   private static func bill(
-    id: UUID,
-    billingID: UUID,
+    id: BillID,
+    billingID: BillingID,
     month: Int,
     status: BillStatus,
     variableAmount: Int,
@@ -338,13 +338,13 @@ public struct MockFixtures: Sendable {
       status: status,
       lineItems: [
         BillLineItem(
-          id: stableUUID(30_000 + Int(id.uuid.15)),
+          id: stableID(30_000),
           description: "Itens fixos",
           amount: Money(centavos: fixedAmount),
           kind: .fixed
         ),
         BillLineItem(
-          id: stableUUID(31_000 + Int(id.uuid.15)),
+          id: stableID(31_000),
           description: "Consumo variável",
           amount: Money(centavos: variableAmount),
           kind: .variable
@@ -354,8 +354,8 @@ public struct MockFixtures: Sendable {
     )
   }
 
-  private static func stableUUID(_ value: Int) -> UUID {
+  private static func stableID<Tag>(_ value: Int) -> ResourceID<Tag> {
     let suffix = String(format: "%012d", value)
-    return UUID(uuidString: "00000000-0000-0000-0000-\(suffix)")!
+    return ResourceID(rawValue: "00000000-0000-0000-0000-\(suffix)")
   }
 }

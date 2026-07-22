@@ -24,6 +24,7 @@ struct AppNotice: Identifiable, Equatable {
 @Observable
 final class AppModel {
   enum Session {
+    case restoring
     case anonymous
     case authenticated(UserProfile)
   }
@@ -31,9 +32,11 @@ final class AppModel {
   var session: Session = .anonymous
   var selectedTab: AppTab = .home
   var notice: AppNotice?
+  var isSigningOut = false
   var demoSettings: DemoSettings
   var dataRevision = 0
   let dependencies: AppDependencies
+  private let mobileWebAuthenticator = MobileWebAuthenticator()
 
   init(store: MockRentivoStore = MockRentivoStore(fixtures: .canonical)) {
     dependencies = .mock(store: store)
@@ -43,14 +46,52 @@ final class AppModel {
   init(dependencies: AppDependencies) {
     self.dependencies = dependencies
     demoSettings = dependencies.demo.demoSettings
+    if dependencies.auth is APIRentivoStore {
+      session = .restoring
+    }
   }
 
-  var currentUser: UserProfile { dependencies.auth.currentUser }
+  var currentUser: UserProfile {
+    if case .authenticated(let user) = session { return user }
+    return dependencies.auth.currentUser
+  }
 
   var isAuthenticated: Bool {
     if case .authenticated = session { return true }
     return false
   }
+
+  func loadProfile() async throws -> UserProfile {
+    let profile = try await dependencies.profile.profile()
+    if case .authenticated = session {
+      session = .authenticated(profile)
+    }
+    return profile
+  }
+
+  func updateProfilePIX(_ pix: PixConfiguration) async throws -> UserProfile {
+    let profile = try await dependencies.profile.updatePix(pix)
+    if case .authenticated = session {
+      session = .authenticated(profile)
+    }
+    return profile
+  }
+
+  func restoreSessionIfNeeded() async {
+    guard case .restoring = session else { return }
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      session = .anonymous
+      return
+    }
+    do {
+      session = try await liveStore.restoreSession().map(Session.authenticated) ?? .anonymous
+    } catch {
+      session = .anonymous
+      notice = AppNotice(kind: .warning, message: "Não foi possível restaurar sua sessão. Entre novamente.")
+    }
+  }
+
+  var usesLiveAPI: Bool { dependencies.auth is APIRentivoStore }
 
   func signIn() {
     session = .authenticated(currentUser)
@@ -58,7 +99,47 @@ final class AppModel {
     notice = AppNotice(kind: .success, message: "Bem-vinda à demonstração do Rentivo.")
   }
 
-  func signOut() {
+  func signIn(email: String, password: String) async throws {
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      session = .authenticated(currentUser)
+      selectedTab = .home
+      return
+    }
+    session = .authenticated(try await liveStore.login(email: email, password: password))
+    selectedTab = .home
+    notice = AppNotice(kind: .success, message: "Sessão conectada ao Rentivo.")
+  }
+
+  func signInWithWebAuthorization() async throws {
+    guard let liveStore = dependencies.auth as? APIRentivoStore else { signIn(); return }
+    let code = try await mobileWebAuthenticator.authorize()
+    session = .authenticated(try await liveStore.exchangeMobileAuthorization(code: code))
+    selectedTab = .home
+    notice = AppNotice(kind: .success, message: "Sessão conectada ao Rentivo.")
+  }
+
+  func signOut() async {
+    guard !isSigningOut else { return }
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      completeSignOut()
+      return
+    }
+    isSigningOut = true
+    defer { isSigningOut = false }
+    do {
+      try await mobileWebAuthenticator.logout()
+    } catch {
+      notice = AppNotice(
+        kind: .warning,
+        message: "Não foi possível encerrar a sessão do site. Tente sair novamente."
+      )
+      return
+    }
+    await liveStore.logout()
+    completeSignOut()
+  }
+
+  private func completeSignOut() {
     session = .anonymous
     selectedTab = .home
     notice = nil

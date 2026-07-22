@@ -51,12 +51,12 @@ public struct OrganizationCapabilities: Hashable, Codable, Sendable {
 }
 
 public struct OrganizationMember: Identifiable, Hashable, Codable, Sendable {
-  public var id: UUID { userID }
-  public let userID: UUID
+  public var id: Int { userID }
+  public let userID: Int
   public var email: String
   public var role: OrganizationRole
 
-  public init(userID: UUID, email: String, role: OrganizationRole) {
+  public init(userID: Int, email: String, role: OrganizationRole) {
     self.userID = userID
     self.email = email
     self.role = role
@@ -64,7 +64,7 @@ public struct OrganizationMember: Identifiable, Hashable, Codable, Sendable {
 }
 
 public struct Organization: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: OrganizationID
   public var name: String
   public var pix: PixConfiguration?
   public var members: [OrganizationMember]
@@ -73,7 +73,7 @@ public struct Organization: Identifiable, Hashable, Codable, Sendable {
   public var capabilities: OrganizationCapabilities
 
   public init(
-    id: UUID,
+    id: OrganizationID,
     name: String,
     pix: PixConfiguration?,
     members: [OrganizationMember],
@@ -112,16 +112,16 @@ public enum InvitationStatus: String, CaseIterable, Codable, Sendable {
 }
 
 public struct Invitation: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
-  public let organizationID: UUID
+  public let id: InvitationID
+  public let organizationID: OrganizationID
   public var organizationName: String
   public var email: String
   public var role: OrganizationRole
   public var status: InvitationStatus
 
   public init(
-    id: UUID,
-    organizationID: UUID,
+    id: InvitationID,
+    organizationID: OrganizationID,
     organizationName: String,
     email: String,
     role: OrganizationRole,
@@ -137,12 +137,12 @@ public struct Invitation: Identifiable, Hashable, Codable, Sendable {
 }
 
 public struct Passkey: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: PasskeyID
   public var name: String
   public var createdAt: Date
   public var lastUsedAt: Date?
 
-  public init(id: UUID, name: String, createdAt: Date, lastUsedAt: Date?) {
+  public init(id: PasskeyID, name: String, createdAt: Date, lastUsedAt: Date?) {
     self.id = id
     self.name = name
     self.createdAt = createdAt
@@ -159,6 +159,18 @@ public struct SecuritySummary: Hashable, Codable, Sendable {
     self.totpEnabled = totpEnabled
     self.recoveryCodeCount = recoveryCodeCount
     self.passkeys = passkeys
+  }
+}
+
+public struct TOTPEnrollment: Hashable, Sendable {
+  public let secret: String
+  public let provisioningURI: String
+  public let qrCodeBase64: String
+
+  public init(secret: String, provisioningURI: String, qrCodeBase64: String) {
+    self.secret = secret
+    self.provisioningURI = provisioningURI
+    self.qrCodeBase64 = qrCodeBase64
   }
 }
 
@@ -198,10 +210,10 @@ public enum WorkspaceResourceType: String, Codable, Sendable {
 
 public struct APIKeyGrant: Hashable, Codable, Sendable {
   public var resourceType: WorkspaceResourceType
-  public var resourceID: UUID
+  public var resourceID: WorkspaceID
   public var available: Bool
 
-  public init(resourceType: WorkspaceResourceType, resourceID: UUID, available: Bool = true) {
+  public init(resourceType: WorkspaceResourceType, resourceID: WorkspaceID, available: Bool = true) {
     self.resourceType = resourceType
     self.resourceID = resourceID
     self.available = available
@@ -209,7 +221,7 @@ public struct APIKeyGrant: Hashable, Codable, Sendable {
 }
 
 public struct APIKeyMetadata: Identifiable, Hashable, Codable, Sendable {
-  public let id: UUID
+  public let id: APIKeyID
   public var name: String
   public var hint: String
   public var scopes: Set<APIKeyScope>
@@ -220,7 +232,7 @@ public struct APIKeyMetadata: Identifiable, Hashable, Codable, Sendable {
   public var revokedAt: Date?
 
   public init(
-    id: UUID,
+    id: APIKeyID,
     name: String,
     hint: String,
     scopes: Set<APIKeyScope>,
@@ -258,7 +270,7 @@ public struct APIKeyDraft: Hashable, Sendable {
   public static let demo = APIKeyDraft(
     name: "Painel financeiro",
     scopes: [.profileRead, .billingsRead],
-    grants: [APIKeyGrant(resourceType: .user, resourceID: StableID.userAna)],
+    grants: [APIKeyGrant(resourceType: .user, resourceID: .personal)],
     expiresAt: Date(timeIntervalSince1970: 1_798_761_600)
   )
 }
@@ -340,8 +352,8 @@ public enum ThemeSource: String, CaseIterable, Codable, Sendable {
 
 public enum ThemeTarget: Hashable, Sendable {
   case user
-  case organization(UUID)
-  case billing(UUID)
+  case organization(OrganizationID)
+  case billing(BillingID)
 }
 
 public struct ThemeRecord: Hashable, Sendable {

@@ -8,9 +8,9 @@ import Testing
 #endif
 
 @Test func stableIdentifiersAreDeterministic() {
-  #expect(StableID.userAna.uuidString == "00000000-0000-0000-0000-000000000001")
-  #expect(StableID.billingAurora101.uuidString == "00000000-0000-0000-0000-000000000101")
-  #expect(StableID.billPaid.uuidString == "00000000-0000-0000-0000-000000001004")
+  #expect(StableID.userAna == 1)
+  #expect(StableID.billingAurora101.rawValue == "00000000-0000-0000-0000-000000000101")
+  #expect(StableID.billPaid.rawValue == "00000000-0000-0000-0000-000000001004")
 }
 
 @Test func loadStateExposesLoadedValueOnly() {
