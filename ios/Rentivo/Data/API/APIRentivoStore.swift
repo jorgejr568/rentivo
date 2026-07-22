@@ -10,7 +10,10 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   private var user = UserProfile(id: 0, email: "")
 
   public init(inMemoryCredentialStore: Bool = false) {
-    client = LiveAPIClient()
+    let credentials: any CredentialStore = inMemoryCredentialStore
+      ? MemoryCredentialStore()
+      : KeychainCredentialStore()
+    client = LiveAPIClient(credentials: credentials)
   }
 
   public var currentUser: UserProfile { user }
@@ -27,7 +30,14 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     return user
   }
 
+  public func restoreSession() async throws -> UserProfile? {
+    guard let session = try await client.restoreSession() else { return nil }
+    user = session.profile
+    return user
+  }
+
   public func logout() async {
+    try? await execute(path: "/api/v1/auth/logout", method: "POST")
     await client.logout()
     user = UserProfile(id: 0, email: "")
   }

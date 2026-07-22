@@ -6,14 +6,19 @@ struct LiveSession: Sendable {
 }
 
 enum LiveAPIError: LocalizedError, Sendable {
-  case server(message: String)
+  case server(message: String, statusCode: Int? = nil)
   case invalidResponse
 
   var errorDescription: String? {
     switch self {
-    case .server(let message): message
+    case .server(let message, _): message
     case .invalidResponse: "Não foi possível interpretar a resposta do Rentivo."
     }
+  }
+
+  var statusCode: Int? {
+    guard case let .server(_, statusCode) = self else { return nil }
+    return statusCode
   }
 }
 
@@ -21,10 +26,12 @@ actor LiveAPIClient {
   static let productionURL = URL(string: "https://rentivo.com.br")!
 
   private let session: URLSession
+  private let credentials: any CredentialStore
   private var accessToken: String?
 
-  init(session: URLSession = .shared) {
+  init(session: URLSession = .shared, credentials: any CredentialStore) {
     self.session = session
+    self.credentials = credentials
   }
 
   func login(email: String, password: String) async throws -> LiveSession {
@@ -50,6 +57,7 @@ actor LiveAPIClient {
       token: accessToken
     )
     self.accessToken = accessToken
+    try await credentials.saveAccessToken(accessToken)
     return LiveSession(
       accessToken: accessToken,
       profile: UserProfile(id: response.bootstrap?.user.id ?? 0, email: profile.email)
@@ -65,7 +73,26 @@ actor LiveAPIClient {
       let user = response.bootstrap?.user
     else { throw LiveAPIError.invalidResponse }
     self.accessToken = accessToken
+    try await credentials.saveAccessToken(accessToken)
     return LiveSession(accessToken: accessToken, profile: UserProfile(id: user.id, email: user.email))
+  }
+
+  func restoreSession() async throws -> LiveSession? {
+    guard let storedToken = try await credentials.readAccessToken() else { return nil }
+    do {
+      let response: SessionResponse = try await send(
+        path: "/api/v1/auth/session", method: "GET", body: Optional<String>.none, token: storedToken
+      )
+      accessToken = storedToken
+      return LiveSession(
+        accessToken: storedToken,
+        profile: UserProfile(id: response.bootstrap.user.id, email: response.bootstrap.user.email)
+      )
+    } catch let error as LiveAPIError where error.statusCode == 401 {
+      accessToken = nil
+      try await credentials.deleteAccessToken()
+      return nil
+    }
   }
 
   func request(
@@ -87,12 +114,17 @@ actor LiveAPIClient {
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
     guard (200..<300).contains(http.statusCode) else {
       let problem = try? JSONDecoder().decode(ProblemResponse.self, from: data)
-      throw LiveAPIError.server(message: problem?.detail ?? "Não foi possível concluir a solicitação.")
+      throw LiveAPIError.server(
+        message: problem?.detail ?? "Não foi possível concluir a solicitação.", statusCode: http.statusCode
+      )
     }
     return data
   }
 
-  func logout() { accessToken = nil }
+  func logout() async {
+    accessToken = nil
+    try? await credentials.deleteAccessToken()
+  }
 
   func download(path: String, filename: String, mediaType: String = "application/pdf") async throws -> DownloadedFile {
     guard let accessToken else {
@@ -148,7 +180,9 @@ actor LiveAPIClient {
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
     guard (200..<300).contains(http.statusCode) else {
       let problem = try? JSONDecoder().decode(ProblemResponse.self, from: data)
-      throw LiveAPIError.server(message: problem?.detail ?? "Não foi possível concluir a solicitação.")
+      throw LiveAPIError.server(
+        message: problem?.detail ?? "Não foi possível concluir a solicitação.", statusCode: http.statusCode
+      )
     }
     do {
       return try JSONDecoder().decode(Response.self, from: data)
@@ -181,6 +215,10 @@ private struct LoginResponse: Decodable {
     case accessToken = "access_token"
     case bootstrap
   }
+}
+
+private struct SessionResponse: Decodable {
+  let bootstrap: BootstrapResponse
 }
 
 private struct BootstrapResponse: Decodable {

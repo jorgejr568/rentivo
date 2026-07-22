@@ -24,6 +24,7 @@ struct AppNotice: Identifiable, Equatable {
 @Observable
 final class AppModel {
   enum Session {
+    case restoring
     case anonymous
     case authenticated(UserProfile)
   }
@@ -44,6 +45,9 @@ final class AppModel {
   init(dependencies: AppDependencies) {
     self.dependencies = dependencies
     demoSettings = dependencies.demo.demoSettings
+    if dependencies.auth is APIRentivoStore {
+      session = .restoring
+    }
   }
 
   var currentUser: UserProfile {
@@ -54,6 +58,20 @@ final class AppModel {
   var isAuthenticated: Bool {
     if case .authenticated = session { return true }
     return false
+  }
+
+  func restoreSessionIfNeeded() async {
+    guard case .restoring = session else { return }
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      session = .anonymous
+      return
+    }
+    do {
+      session = try await liveStore.restoreSession().map(Session.authenticated) ?? .anonymous
+    } catch {
+      session = .anonymous
+      notice = AppNotice(kind: .warning, message: "Não foi possível restaurar sua sessão. Entre novamente.")
+    }
   }
 
   var usesLiveAPI: Bool { dependencies.auth is APIRentivoStore }

@@ -27,7 +27,11 @@ final class MobileWebAuthenticator: NSObject, ASWebAuthenticationPresentationCon
         continuation.resume(returning: code)
       }
       session.presentationContextProvider = self
-      session.prefersEphemeralWebBrowserSession = true
+      // Keep the website session between authorization attempts. The native
+      // bearer token is still stored separately in the Keychain, but retaining
+      // this cookie lets a signed-in user reauthorize without re-entering the
+      // password if that token has expired or was cleared.
+      session.prefersEphemeralWebBrowserSession = false
       self.session = session
       session.start()
     }
