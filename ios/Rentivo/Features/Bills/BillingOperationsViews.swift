@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import WebKit
 
 struct BillingOperationsLinks: View {
   let billingID: BillingID
@@ -329,7 +330,8 @@ struct CommunicationComposerView: View {
   @State private var recipients: String
   @State private var subject = "Sua fatura está disponível"
   @State private var message = "Olá! Confira os detalhes da sua cobrança no Rentivo."
-  @State private var previewing = false
+  @State private var preview: CommunicationPreview?
+  @State private var isLoadingPreview = false
 
   init(billingID: BillingID, billID: BillID?, initialRecipients: [String]) {
     self.billingID = billingID
@@ -352,20 +354,28 @@ struct CommunicationComposerView: View {
     .navigationTitle("Comunicação")
     .toolbar {
       ToolbarItem(placement: .confirmationAction) {
-        Button("Visualizar") { previewing = true }
-          .disabled(recipients.isEmpty || subject.isEmpty)
+        Button("Visualizar") { Task { await loadPreview() } }
+          .disabled(isLoadingPreview || recipients.isEmpty || subject.isEmpty)
       }
     }
-    .sheet(isPresented: $previewing) {
+    .sheet(item: $preview) { preview in
       NavigationStack {
         VStack(alignment: .leading, spacing: RentivoSpacing.large) {
           Text(subject).font(RentivoTypography.title)
           Text("Para: \(recipients)").font(.caption)
           Divider()
-          Text(message)
+          HTMLPreviewView(html: preview.html)
+            .frame(minHeight: 180)
+          if !preview.mildWarnings.isEmpty {
+            WarningList(title: "Revise antes de enviar", warnings: preview.mildWarnings, color: RentivoColors.coral)
+          }
+          if !preview.severeWarnings.isEmpty {
+            WarningList(title: "Envio bloqueado", warnings: preview.severeWarnings, color: RentivoColors.coral)
+          }
           Spacer()
           Button("Enviar") { Task { await send() } }
             .buttonStyle(RentivoButtonStyle())
+            .disabled(!preview.severeWarnings.isEmpty)
         }
         .padding(RentivoSpacing.page)
         .background(RentivoColors.paper)
@@ -385,10 +395,55 @@ struct CommunicationComposerView: View {
         subject: subject,
         message: message
       )
-      previewing = false
+      preview = nil
       dismiss()
       app.showNotice("Comunicação enfileirada para envio.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  private func loadPreview() async {
+    isLoadingPreview = true
+    defer { isLoadingPreview = false }
+    do {
+      preview = try await app.dependencies.communications.previewCommunication(
+        billingID: billingID, subject: subject, message: message
+      )
+    } catch {
+      app.showNotice(DemoError(error).message, kind: .warning)
+    }
+  }
+}
+
+private struct WarningList: View {
+  let title: String
+  let warnings: [String]
+  let color: Color
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: RentivoSpacing.small) {
+      Text(title).font(.headline).foregroundStyle(color)
+      ForEach(warnings, id: \.self) { warning in
+        Label(warning, systemImage: "exclamationmark.triangle.fill")
+          .font(.footnote)
+          .foregroundStyle(color)
+      }
+    }
+  }
+}
+
+private struct HTMLPreviewView: UIViewRepresentable {
+  let html: String
+
+  func makeUIView(context: Context) -> WKWebView {
+    let webView = WKWebView()
+    webView.isOpaque = false
+    webView.backgroundColor = .clear
+    webView.scrollView.isScrollEnabled = false
+    return webView
+  }
+
+  func updateUIView(_ webView: WKWebView, context: Context) {
+    webView.loadHTMLString(html, baseURL: nil)
   }
 }
 

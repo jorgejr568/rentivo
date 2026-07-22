@@ -124,6 +124,22 @@ public struct UserProfile: Hashable, Codable, Sendable {
   }
 }
 
+public struct ProfilePIXForm: Equatable, Sendable {
+  public var key: String
+  public var merchantName: String
+  public var merchantCity: String
+
+  public init(profile: UserProfile? = nil) {
+    key = profile?.pix?.key ?? ""
+    merchantName = profile?.pix?.merchantName ?? ""
+    merchantCity = profile?.pix?.merchantCity ?? ""
+  }
+
+  public var configuration: PixConfiguration {
+    PixConfiguration(key: key, merchantName: merchantName, merchantCity: merchantCity)
+  }
+}
+
 public enum ActivityKind: String, Codable, Sendable {
   case billing
   case bill

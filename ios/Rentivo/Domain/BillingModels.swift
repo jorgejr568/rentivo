@@ -506,3 +506,16 @@ public struct CommunicationRecord: Identifiable, Hashable, Codable, Sendable {
     self.sentAt = sentAt
   }
 }
+
+public struct CommunicationPreview: Identifiable, Hashable, Sendable {
+  public let id = UUID()
+  public let html: String
+  public let severeWarnings: [String]
+  public let mildWarnings: [String]
+
+  public init(html: String, severeWarnings: [String], mildWarnings: [String]) {
+    self.html = html
+    self.severeWarnings = severeWarnings
+    self.mildWarnings = mildWarnings
+  }
+}

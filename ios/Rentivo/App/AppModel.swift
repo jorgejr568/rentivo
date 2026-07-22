@@ -60,6 +60,22 @@ final class AppModel {
     return false
   }
 
+  func loadProfile() async throws -> UserProfile {
+    let profile = try await dependencies.profile.profile()
+    if case .authenticated = session {
+      session = .authenticated(profile)
+    }
+    return profile
+  }
+
+  func updateProfilePIX(_ pix: PixConfiguration) async throws -> UserProfile {
+    let profile = try await dependencies.profile.updatePix(pix)
+    if case .authenticated = session {
+      session = .authenticated(profile)
+    }
+    return profile
+  }
+
   func restoreSessionIfNeeded() async {
     guard case .restoring = session else { return }
     guard let liveStore = dependencies.auth as? APIRentivoStore else {

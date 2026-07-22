@@ -178,6 +178,17 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   public func deleteAttachment(billingID: BillingID, attachmentID: AttachmentID) async throws {
     try await execute(path: "/api/v1/billings/\(billingID.rawValue)/attachments/\(attachmentID.rawValue)", method: "DELETE")
   }
+  public func previewCommunication(
+    billingID: BillingID, subject: String, message: String
+  ) async throws -> CommunicationPreview {
+    let response: RemoteCommunicationPreview = try await decode(
+      path: "/api/v1/billings/\(billingID.rawValue)/communications/preview", method: "POST",
+      body: RemoteCommunicationPreviewRequest(subject: subject, body: message)
+    )
+    return CommunicationPreview(
+      html: response.html, severeWarnings: response.severe, mildWarnings: response.mild
+    )
+  }
   public func sendCommunication(billingID: BillingID, billID: BillID?, recipients: [String], subject: String, message: String) async throws -> CommunicationRecord {
     guard let billID else {
       throw LiveAPIError.server(message: "Escolha uma fatura antes de enviar a comunicação.")
@@ -284,6 +295,16 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   }
   public func acceptInvitation(id: InvitationID) async throws { try await execute(path: "/api/v1/invites/\(id.rawValue)/accept", method: "POST") }
   public func declineInvitation(id: InvitationID) async throws { try await execute(path: "/api/v1/invites/\(id.rawValue)/decline", method: "POST") }
+  public func changePassword(
+    currentPassword: String, newPassword: String, confirmPassword: String
+  ) async throws {
+    try await execute(
+      path: "/api/v1/security/change-password", method: "POST",
+      body: RemotePasswordChange(
+        currentPassword: currentPassword, newPassword: newPassword, confirmPassword: confirmPassword
+      )
+    )
+  }
   public func securitySummary() async throws -> SecuritySummary {
     let response: RemoteSecuritySummary = try await decode(path: "/api/v1/security")
     return SecuritySummary(totpEnabled: response.totp.enabled, recoveryCodeCount: response.totp.recoveryCodesRemaining,
@@ -556,6 +577,14 @@ private struct RemoteTOTPSetup: Decodable {
 }
 private struct RemoteTOTPConfirm: Encodable { let code: String }
 private struct RemoteTOTPDisable: Encodable { let password: String }
+struct RemotePasswordChange: Encodable {
+  let currentPassword, newPassword, confirmPassword: String
+  enum CodingKeys: String, CodingKey {
+    case currentPassword = "current_password"
+    case newPassword = "new_password"
+    case confirmPassword = "confirm_password"
+  }
+}
 private struct RemotePasskey: Decodable { let uuid, name, createdAt: String; let lastUsedAt: String?; enum CodingKeys: String, CodingKey { case uuid, name; case createdAt = "created_at"; case lastUsedAt = "last_used_at" } }
 private struct RemoteRecoveryCodes: Decodable { let recoveryCodes: [String]; enum CodingKeys: String, CodingKey { case recoveryCodes = "recovery_codes" } }
 private struct RemoteContactList: Decodable { let items: [RemoteContactReference] }
@@ -573,6 +602,15 @@ private struct RemoteContactInput: Encodable {
   let name, email: String
   init(name: String, email: String) { self.name = name; self.email = email }
   init(_ recipient: BillingRecipient) { name = recipient.name; email = recipient.email }
+}
+struct RemoteCommunicationPreviewRequest: Encodable {
+  let subject: String
+  let body: String
+}
+private struct RemoteCommunicationPreview: Decodable {
+  let html: String
+  let severe: [String]
+  let mild: [String]
 }
 private struct RemoteCommunicationSendRequest: Encodable {
   let billID, commType, subject, body: String

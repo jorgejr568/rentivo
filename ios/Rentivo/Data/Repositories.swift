@@ -56,6 +56,9 @@ public protocol AttachmentRepository: AnyObject {
 
 @MainActor
 public protocol CommunicationRepository: AnyObject {
+  func previewCommunication(
+    billingID: BillingID, subject: String, message: String
+  ) async throws -> CommunicationPreview
   func sendCommunication(
     billingID: BillingID,
     billID: BillID?,
@@ -116,6 +119,7 @@ public protocol InvitationRepository: AnyObject {
 
 @MainActor
 public protocol SecurityRepository: AnyObject {
+  func changePassword(currentPassword: String, newPassword: String, confirmPassword: String) async throws
   func securitySummary() async throws -> SecuritySummary
   func beginTOTPEnrollment() async throws -> TOTPEnrollment
   func confirmTOTPEnrollment(code: String) async throws -> [String]

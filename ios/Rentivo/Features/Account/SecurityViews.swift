@@ -12,6 +12,13 @@ struct SecurityView: View {
   var body: some View {
     PageStateView(state: state) { summary in
       List {
+        Section("Senha") {
+          NavigationLink {
+            ChangePasswordView()
+          } label: {
+            Label("Alterar senha", systemImage: "key.fill")
+          }
+        }
         Section("Autenticação em duas etapas") {
           LabeledContent("Aplicativo autenticador", value: summary.totpEnabled ? "Ativado" : "Desativado")
           if !app.demoSettings.viewerMode {
@@ -113,6 +120,70 @@ struct SecurityView: View {
       try await app.dependencies.security.deletePasskey(id: passkey.id)
       await load()
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+}
+
+private struct ChangePasswordView: View {
+  @Environment(AppModel.self) private var app
+  @Environment(\.dismiss) private var dismiss
+  @State private var currentPassword = ""
+  @State private var newPassword = ""
+  @State private var confirmPassword = ""
+  @State private var isSaving = false
+  @State private var validationMessage: String?
+
+  var body: some View {
+    Form {
+      Section {
+        SecureField("Senha atual", text: $currentPassword)
+          .textContentType(.password)
+        SecureField("Nova senha", text: $newPassword)
+          .textContentType(.newPassword)
+        SecureField("Confirmar nova senha", text: $confirmPassword)
+          .textContentType(.newPassword)
+      } header: {
+        Text("Alterar senha")
+      } footer: {
+        Text("Use uma senha forte e exclusiva para sua conta Rentivo.")
+      }
+
+      if let validationMessage {
+        Section {
+          Label(validationMessage, systemImage: "exclamationmark.circle.fill")
+            .foregroundStyle(RentivoColors.coral)
+        }
+      }
+
+      Section {
+        Button("Salvar nova senha", action: save)
+          .disabled(isSaving || currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty)
+      }
+    }
+    .navigationTitle("Senha")
+  }
+
+  private func save() {
+    guard newPassword == confirmPassword else {
+      validationMessage = "As senhas não coincidem."
+      return
+    }
+    validationMessage = nil
+    isSaving = true
+    Task {
+      defer { isSaving = false }
+      do {
+        try await app.dependencies.security.changePassword(
+          currentPassword: currentPassword, newPassword: newPassword, confirmPassword: confirmPassword
+        )
+        currentPassword = ""
+        newPassword = ""
+        confirmPassword = ""
+        app.showNotice("Senha alterada com sucesso.")
+        dismiss()
+      } catch {
+        validationMessage = DemoError(error).message
+      }
+    }
   }
 }
 

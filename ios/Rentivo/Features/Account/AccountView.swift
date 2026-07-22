@@ -99,15 +99,7 @@ private struct AccountRow: View {
 
 struct ProfilePixView: View {
   @Environment(AppModel.self) private var app
-  @State private var key: String
-  @State private var merchantName: String
-  @State private var city: String
-
-  init() {
-    _key = State(initialValue: "")
-    _merchantName = State(initialValue: "")
-    _city = State(initialValue: "")
-  }
+  @State private var form = ProfilePIXForm()
 
   var body: some View {
     Form {
@@ -116,10 +108,10 @@ struct ProfilePixView: View {
         LabeledContent("Ambiente", value: app.usesLiveAPI ? "Rentivo" : "Demonstração local")
       }
       Section("PIX pessoal") {
-        TextField("Chave PIX", text: $key)
+        TextField("Chave PIX", text: $form.key)
           .textInputAutocapitalization(.never)
-        TextField("Nome do recebedor", text: $merchantName)
-        TextField("Cidade", text: $city)
+        TextField("Nome do recebedor", text: $form.merchantName)
+        TextField("Cidade", text: $form.merchantCity)
           .textInputAutocapitalization(.characters)
       }
       .disabled(app.demoSettings.viewerMode)
@@ -136,24 +128,23 @@ struct ProfilePixView: View {
       if !app.demoSettings.viewerMode {
         Button("Salvar") { Task { await save() } }
           .disabled(
-            !PixConfiguration(key: key, merchantName: merchantName, merchantCity: city).isComplete
+            !form.configuration.isComplete
           )
           .accessibilityIdentifier("profile.pix.save")
       }
     }
     .task {
-      guard let pix = app.currentUser.pix else { return }
-      key = pix.key
-      merchantName = pix.merchantName
-      city = pix.merchantCity
+      do {
+        form = ProfilePIXForm(profile: try await app.loadProfile())
+      } catch {
+        app.showNotice(DemoError(error).message, kind: .warning)
+      }
     }
   }
 
   private func save() async {
     do {
-      _ = try await app.dependencies.profile.updatePix(
-        PixConfiguration(key: key, merchantName: merchantName, merchantCity: city)
-      )
+      form = ProfilePIXForm(profile: try await app.updateProfilePIX(form.configuration))
       app.showNotice("PIX pessoal atualizado.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }

@@ -58,6 +58,15 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     return snapshot.profile
   }
 
+  public func changePassword(
+    currentPassword: String, newPassword: String, confirmPassword: String
+  ) async throws {
+    try await prepareOperation()
+    guard !currentPassword.isEmpty, !newPassword.isEmpty, newPassword == confirmPassword else {
+      throw DemoError.operationFailed
+    }
+  }
+
   public func updatePix(_ pix: PixConfiguration) async throws -> UserProfile {
     try await prepareOperation()
     guard !viewerMode else { throw DemoError.permissionDenied }
@@ -384,6 +393,16 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       throw DemoError.resourceNotFound
     }
     snapshot.attachments[billingID]?.removeAll { $0.id == attachmentID }
+  }
+
+  public func previewCommunication(
+    billingID: BillingID, subject: String, message: String
+  ) async throws -> CommunicationPreview {
+    try await prepareOperation()
+    guard snapshot.billings.contains(where: { $0.id == billingID }) else {
+      throw DemoError.resourceNotFound
+    }
+    return CommunicationPreview(html: message, severeWarnings: [], mildWarnings: [])
   }
 
   public func sendCommunication(
