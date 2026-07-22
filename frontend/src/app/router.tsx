@@ -9,6 +9,7 @@ import { LoadingState } from "../components/PageState";
 import { ForgotPasswordPage } from "../features/auth/ForgotPasswordPage";
 import { GoogleCallbackPage } from "../features/auth/GoogleCallbackPage";
 import { LoginPage } from "../features/auth/LoginPage";
+import { MobileLogoutPage } from "../features/auth/MobileLogoutPage";
 import { MfaSetupGuard } from "../features/auth/MfaSetupGuard";
 import { MfaVerifyPage } from "../features/auth/MfaVerifyPage";
 import { ResetPasswordPage } from "../features/auth/ResetPasswordPage";
@@ -116,6 +117,7 @@ export function createAppRouter(children: RouteObject[] = []) {
         {
           children: [
             { element: <LoginPage />, path: "/login" },
+            { element: <MobileLogoutPage />, path: "/mobile-logout" },
             { element: <SignupPage />, path: "/signup" },
             { element: <MfaVerifyPage />, path: "/mfa-verify" },
             { element: <ForgotPasswordPage />, path: "/forgot-password" },
