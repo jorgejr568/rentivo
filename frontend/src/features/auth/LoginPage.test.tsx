@@ -11,6 +11,12 @@ import { renderAuth } from "../../test/renderAuth";
 import { setAuthFlash } from "./authStorage";
 import { LoginPage } from "./LoginPage";
 
+const { openMobileAuthorizationCallback } = vi.hoisted(() => ({
+  openMobileAuthorizationCallback: vi.fn()
+}));
+
+vi.mock("./mobileAuthorization", () => ({ openMobileAuthorizationCallback }));
+
 afterEach(() => {
   vi.unstubAllGlobals();
   sessionStorage.clear();
@@ -175,6 +181,30 @@ describe("LoginPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/billings/"));
+  });
+
+  it("exchanges an existing web session for a mobile callback instead of opening the dashboard", async () => {
+    const { fetchMock } = renderAuth(<LoginPage />, {
+      path: "/login?mobile_state=native-state",
+      session: "authenticated",
+      handlers: {
+        "/api/v1/auth/mobile/authorize": (init) => {
+          expect(JSON.parse(String(init?.body))).toEqual({ state: "native-state" });
+          return jsonResponse({ authorization_code: "one-time-code", state: "native-state" });
+        }
+      }
+    });
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/v1/auth/mobile/authorize",
+        expect.objectContaining({ method: "POST" })
+      )
+    );
+    expect(openMobileAuthorizationCallback).toHaveBeenCalledWith(
+      "rentivo://auth/callback?code=one-time-code&state=native-state"
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("/login?mobile_state=native-state");
   });
 
   it("shows the generic request error when no API response is available", async () => {

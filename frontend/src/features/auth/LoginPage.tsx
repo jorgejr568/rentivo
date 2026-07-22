@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { ApiError, apiClient, apiRequest } from "../../lib/api/client";
@@ -13,6 +13,7 @@ import {
 import { postLoginPath, useAuth } from "./AuthProvider";
 import { pushAnalyticsFromResponse } from "./analytics";
 import { saveMfaChallenge, takeAuthFlash } from "./authStorage";
+import { openMobileAuthorizationCallback } from "./mobileAuthorization";
 import { Turnstile, type TurnstileHandle } from "./Turnstile";
 
 type LoginRequest = components["schemas"]["LoginRequest"];
@@ -34,6 +35,19 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
+  const mobileAuthorizationStarted = useRef(false);
+
+  const completeMobileAuthorization = useCallback(async () => {
+    if (!mobileState) {
+      return;
+    }
+    const { data: authorization } = await apiRequest(
+      apiClient.POST("/api/v1/auth/mobile/authorize", { body: { state: mobileState } })
+    );
+    openMobileAuthorizationCallback(
+      `rentivo://auth/callback?code=${encodeURIComponent(authorization.authorization_code)}&state=${encodeURIComponent(authorization.state)}`
+    );
+  }, [mobileState]);
 
   useEffect(() => {
     document.title = "Entrar - Rentivo";
@@ -46,10 +60,20 @@ export function LoginPage() {
   }, [error]);
 
   useEffect(() => {
-    if (auth.status === "authenticated" && auth.bootstrap) {
+    if (!mobileState && auth.status === "authenticated" && auth.bootstrap) {
       navigate(postLoginPath(auth.bootstrap), { replace: true });
     }
-  }, [auth.bootstrap, auth.status, navigate]);
+  }, [auth.bootstrap, auth.status, mobileState, navigate]);
+
+  useEffect(() => {
+    if (!mobileState || auth.status !== "authenticated" || mobileAuthorizationStarted.current) {
+      return;
+    }
+    mobileAuthorizationStarted.current = true;
+    void completeMobileAuthorization().catch(() => {
+      setError("Não foi possível concluir a autorização no aplicativo. Tente novamente.");
+    });
+  }, [auth.status, completeMobileAuthorization, mobileState]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -71,12 +95,7 @@ export function LoginPage() {
         return;
       }
       if (mobileState) {
-        const { data: authorization } = await apiRequest(
-          apiClient.POST("/api/v1/auth/mobile/authorize", { body: { state: mobileState } })
-        );
-        window.location.assign(
-          `rentivo://auth/callback?code=${encodeURIComponent(authorization.authorization_code)}&state=${encodeURIComponent(authorization.state)}`
-        );
+        await completeMobileAuthorization();
         return;
       }
       auth.authenticate(data);
