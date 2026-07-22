@@ -32,6 +32,7 @@ final class AppModel {
   var session: Session = .anonymous
   var selectedTab: AppTab = .home
   var notice: AppNotice?
+  var isSigningOut = false
   var demoSettings: DemoSettings
   var dataRevision = 0
   let dependencies: AppDependencies
@@ -113,16 +114,32 @@ final class AppModel {
     guard let liveStore = dependencies.auth as? APIRentivoStore else { signIn(); return }
     let code = try await mobileWebAuthenticator.authorize()
     session = .authenticated(try await liveStore.exchangeMobileAuthorization(code: code))
-    mobileWebAuthenticator.completeAuthentication()
     selectedTab = .home
     notice = AppNotice(kind: .success, message: "Sessão conectada ao Rentivo.")
   }
 
-  func signOut() {
-    if let liveStore = dependencies.auth as? APIRentivoStore {
-      mobileWebAuthenticator.requireFreshAuthentication()
-      Task { await liveStore.logout() }
+  func signOut() async {
+    guard !isSigningOut else { return }
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      completeSignOut()
+      return
     }
+    isSigningOut = true
+    defer { isSigningOut = false }
+    do {
+      try await mobileWebAuthenticator.logout()
+    } catch {
+      notice = AppNotice(
+        kind: .warning,
+        message: "Não foi possível encerrar a sessão do site. Tente sair novamente."
+      )
+      return
+    }
+    await liveStore.logout()
+    completeSignOut()
+  }
+
+  private func completeSignOut() {
     session = .anonymous
     selectedTab = .home
     notice = nil

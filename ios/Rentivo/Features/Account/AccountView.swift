@@ -65,11 +65,20 @@ struct AccountView: View {
 
       Section {
         Button(role: .destructive) {
-          app.signOut()
+          Task { await app.signOut() }
         } label: {
-          Label("Sair", systemImage: "rectangle.portrait.and.arrow.right")
+          if app.isSigningOut {
+            HStack {
+              ProgressView()
+              Text("Saindo...")
+            }
             .frame(maxWidth: .infinity)
+          } else {
+            Label("Sair", systemImage: "rectangle.portrait.and.arrow.right")
+              .frame(maxWidth: .infinity)
+          }
         }
+        .disabled(app.isSigningOut)
       }
     }
     .scrollContentBackground(.hidden)
