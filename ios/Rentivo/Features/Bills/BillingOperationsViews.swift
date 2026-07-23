@@ -74,26 +74,31 @@ struct ExpenseListView: View {
   let onMutation: () async -> Void
   @State private var state: LoadState<[Expense]> = .idle
   @State private var showingAdd = false
+  @State private var pendingDeletion: Expense?
 
   var body: some View {
     PageStateView(state: state) { expenses in
       List {
-        ForEach(expenses) { expense in
-          VStack(alignment: .leading, spacing: RentivoSpacing.small) {
-            HStack {
-              Text(expense.description).font(.headline)
-              Spacer()
-              MoneyText(money: expense.amount)
+        Section {
+          ForEach(expenses) { expense in
+            VStack(alignment: .leading, spacing: RentivoSpacing.small) {
+              HStack {
+                Text(expense.description).font(.headline)
+                Spacer()
+                MoneyText(money: expense.amount)
+              }
+              Label(expense.category.label, systemImage: "tag.fill")
+                .font(.caption)
+                .foregroundStyle(RentivoColors.secondaryInk)
             }
-            Label(expense.category.label, systemImage: "tag.fill")
-              .font(.caption)
-              .foregroundStyle(RentivoColors.secondaryInk)
-          }
-          .swipeActions {
-            if canWrite {
-              Button("Excluir", role: .destructive) { Task { await remove(expense) } }
+            .swipeActions {
+              if canWrite {
+                Button("Excluir", role: .destructive) { pendingDeletion = expense }
+              }
             }
           }
+        } header: {
+          Text(ptBRCount(expenses.count, singular: "despesa", plural: "despesas"))
         }
       }
       .scrollContentBackground(.hidden)
@@ -118,6 +123,21 @@ struct ExpenseListView: View {
           await onMutation()
         }
       }
+    }
+    .confirmationDialog(
+      "Excluir esta despesa?",
+      isPresented: Binding(
+        get: { pendingDeletion != nil },
+        set: { isPresented in if !isPresented { pendingDeletion = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Excluir despesa", role: .destructive) {
+        if let expense = pendingDeletion { Task { await remove(expense) } }
+      }
+      Button("Cancelar", role: .cancel) { pendingDeletion = nil }
+    } message: {
+      Text("A despesa será removida permanentemente do registro desta cobrança.")
     }
     .task(id: app.dataRevision) { await load() }
   }
@@ -152,8 +172,7 @@ private struct ExpenseFormView: View {
   var body: some View {
     Form {
       TextField("Descrição", text: $description)
-      TextField("Valor em centavos", value: $centavos, format: .number)
-        .keyboardType(.numberPad)
+      CurrencyCentavosField("Valor em centavos", centavos: $centavos)
       Picker("Categoria", selection: $category) {
         ForEach(ExpenseCategory.allCases, id: \.self) { category in
           Text(category.label).tag(category)
@@ -198,36 +217,45 @@ struct AttachmentListView: View {
   @State private var state: LoadState<[Attachment]> = .idle
   @State private var downloadedFile: DownloadedFile?
   @State private var showingFileImporter = false
+  @State private var pendingDeletion: Attachment?
 
   var body: some View {
     PageStateView(state: state) { attachments in
       List {
-        ForEach(attachments) { attachment in
-          HStack {
-            Label {
-              VStack(alignment: .leading) {
-                Text(attachment.name).font(.headline)
-                Text(
-                  ByteCountFormatter.string(
-                    fromByteCount: Int64(attachment.byteCount), countStyle: .file)
-                )
-                .font(.caption)
+        Section {
+          ForEach(attachments) { attachment in
+            HStack {
+              Label {
+                VStack(alignment: .leading) {
+                  Text(attachment.name).font(.headline)
+                  Text(
+                    ByteCountFormatter.string(
+                      fromByteCount: Int64(attachment.byteCount), countStyle: .file)
+                  )
+                  .font(.caption)
+                }
+              } icon: {
+                Image(systemName: "doc.fill")
               }
-            } icon: {
-              Image(systemName: "doc.fill")
+              Spacer()
+              // A single-action menu behind an unlabeled "..." icon added an extra tap for no
+              // reason; this was the only action, so it is now a direct, accessibly-labeled button.
+              Button {
+                Task { await download(attachment) }
+              } label: {
+                Label("Abrir", systemImage: "arrow.down.circle")
+              }
+              .labelStyle(.iconOnly)
+              .buttonStyle(.borderless)
             }
-            Spacer()
-            Menu {
-              Button("Abrir") { Task { await download(attachment) } }
-            } label: {
-              Image(systemName: "ellipsis.circle")
+            .swipeActions {
+              if canWrite {
+                Button("Excluir", role: .destructive) { pendingDeletion = attachment }
+              }
             }
           }
-          .swipeActions {
-            if canWrite {
-              Button("Excluir", role: .destructive) { Task { await remove(attachment) } }
-            }
-          }
+        } header: {
+          Text(ptBRCount(attachments.count, singular: "arquivo", plural: "arquivos"))
         }
       }
       .scrollContentBackground(.hidden)
@@ -253,6 +281,21 @@ struct AttachmentListView: View {
     ) { result in
       guard case .success(let urls) = result, let url = urls.first else { return }
       Task { await add(fileURL: url) }
+    }
+    .confirmationDialog(
+      "Excluir este arquivo?",
+      isPresented: Binding(
+        get: { pendingDeletion != nil },
+        set: { isPresented in if !isPresented { pendingDeletion = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Excluir arquivo", role: .destructive) {
+        if let attachment = pendingDeletion { Task { await remove(attachment) } }
+      }
+      Button("Cancelar", role: .cancel) { pendingDeletion = nil }
+    } message: {
+      Text("O arquivo será removido permanentemente e não poderá ser recuperado.")
     }
     .task(id: app.dataRevision) { await load() }
   }
@@ -332,6 +375,7 @@ struct CommunicationComposerView: View {
   @State private var message = "Olá! Confira os detalhes da sua cobrança no Rentivo."
   @State private var preview: CommunicationPreview?
   @State private var isLoadingPreview = false
+  @State private var isSending = false
 
   init(billingID: BillingID, billID: BillID?, initialRecipients: [String]) {
     self.billingID = billingID
@@ -373,9 +417,19 @@ struct CommunicationComposerView: View {
             WarningList(title: "Envio bloqueado", warnings: preview.severeWarnings, color: RentivoColors.coral)
           }
           Spacer()
-          Button("Enviar") { Task { await send() } }
-            .buttonStyle(RentivoButtonStyle())
-            .disabled(!preview.severeWarnings.isEmpty)
+          Button {
+            Task { await send() }
+          } label: {
+            HStack(spacing: RentivoSpacing.small) {
+              if isSending {
+                ProgressView()
+                  .tint(.white)
+              }
+              Text("Enviar")
+            }
+          }
+          .buttonStyle(RentivoButtonStyle())
+          .disabled(isSending || !preview.severeWarnings.isEmpty)
         }
         .padding(RentivoSpacing.page)
         .background(RentivoColors.paper)
@@ -385,13 +439,31 @@ struct CommunicationComposerView: View {
   }
 
   private func send() async {
+    guard !isSending else { return }
+    let parsedRecipients = recipients
+      .split(separator: ",")
+      .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .filter { !$0.isEmpty }
+    guard !parsedRecipients.isEmpty else {
+      app.showNotice("Informe ao menos um destinatário válido.", kind: .warning)
+      return
+    }
+    let invalidRecipients = parsedRecipients.filter { !Self.isValidEmail($0) }
+    guard invalidRecipients.isEmpty else {
+      app.showNotice(
+        "E-mail inválido: \(invalidRecipients.joined(separator: ", ")). Revise os destinatários.",
+        kind: .warning
+      )
+      return
+    }
+
+    isSending = true
+    defer { isSending = false }
     do {
       _ = try await app.dependencies.communications.sendCommunication(
         billingID: billingID,
         billID: billID,
-        recipients: recipients.split(separator: ",").map {
-          $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        },
+        recipients: parsedRecipients,
         subject: subject,
         message: message
       )
@@ -399,6 +471,14 @@ struct CommunicationComposerView: View {
       dismiss()
       app.showNotice("Comunicação enfileirada para envio.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
+  }
+
+  // A pragmatic wire-boundary check (not full RFC 5322 validation): rejects obviously malformed
+  // addresses (missing "@", missing domain dot, embedded whitespace) before they ever reach the
+  // API, without blocking legitimate addresses on edge-case grammar the server itself accepts.
+  private static func isValidEmail(_ email: String) -> Bool {
+    let pattern = #"^[^\s@]+@[^\s@]+\.[^\s@]+$"#
+    return email.range(of: pattern, options: .regularExpression) != nil
   }
 
   private func loadPreview() async {

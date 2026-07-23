@@ -6,6 +6,7 @@ private struct HomeData: Sendable {
   let upcomingBills: [Bill]
   let billingNames: [BillingID: String]
   let activities: [RecentActivity]
+  let hasBillings: Bool
 }
 
 struct HomeView: View {
@@ -30,7 +31,16 @@ struct HomeView: View {
   }
 
   private func load() async {
-    state = .loading
+    // Only blank the screen with a spinner when nothing has been shown yet
+    // (first launch or a previously-failed load). Pull-to-refresh and every
+    // tab revisit (`.task(id: app.dataRevision)`) otherwise refresh the
+    // dashboard in place, keeping the current cards on screen.
+    switch state {
+    case .idle, .failed:
+      state = .loading
+    case .loading, .loaded, .empty:
+      break
+    }
     do {
       let summary = try await app.dependencies.dashboard.dashboardSummary()
       let billings = try await app.dependencies.billings.listBillings()
@@ -47,11 +57,20 @@ struct HomeView: View {
           $0.dueDate < $1.dueDate
         },
         billingNames: names,
-        activities: app.dependencies.activities.recentActivities
+        activities: app.dependencies.activities.recentActivities,
+        hasBillings: !billings.isEmpty
       )
-      state = billings.isEmpty ? .empty : .loaded(data)
+      // The dashboard (summary cards, activity) is always meaningful, even
+      // with zero billings — show it with zeroed cards plus an explainer
+      // section rather than replacing the whole screen with a generic empty
+      // state that has no create action on this screen.
+      state = .loaded(data)
     } catch {
-      state = .failed(DemoError(error))
+      if state.value != nil {
+        app.showNotice(DemoError(error).message, kind: .warning)
+      } else {
+        state = .failed(DemoError(error))
+      }
     }
   }
 }
@@ -90,15 +109,19 @@ private struct HomeContent: View {
           )
           CollectionCard(percent: data.summary.collectionRatePercent)
         }
-        if !data.overdueBills.isEmpty {
-          overdueSection
-        }
-        quickActions
-        if !data.upcomingBills.isEmpty {
-          billsSection(
-            title: "Próximas faturas",
-            bills: Array(data.upcomingBills.prefix(4))
-          )
+        if data.hasBillings {
+          if !data.overdueBills.isEmpty {
+            overdueSection
+          }
+          quickActions
+          if !data.upcomingBills.isEmpty {
+            billsSection(
+              title: "Próximas faturas",
+              bills: Array(data.upcomingBills.prefix(4))
+            )
+          }
+        } else {
+          noBillingsSection
         }
         activitySection
       }
@@ -128,8 +151,10 @@ private struct HomeContent: View {
       SectionTitle(title: "Atenção necessária", symbol: "exclamationmark.triangle.fill")
       RentivoCard {
         VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
-          Text("Há \(data.overdueBills.count) fatura em acompanhamento")
-            .font(RentivoTypography.cardTitle)
+          Text(
+            "Há \(ptBRCount(data.overdueBills.count, singular: "fatura em acompanhamento", plural: "faturas em acompanhamento"))"
+          )
+          .font(RentivoTypography.cardTitle)
           Text("Abra Cobranças para registrar o pagamento ou cancelar a fatura.")
             .font(.subheadline)
             .foregroundStyle(RentivoColors.secondaryInk)
@@ -146,9 +171,33 @@ private struct HomeContent: View {
       Button {
         app.selectedTab = .billings
       } label: {
-        Label("Nova cobrança recorrente", systemImage: "plus.circle.fill")
+        // This action only switches to the Billings tab — it does not open a
+        // create flow (that would require the Billings tab to observe a
+        // cross-tab "present create sheet" signal, which lives outside the
+        // files this fix owns). Naming it "Ver cobranças" keeps the label
+        // honest about what actually happens.
+        Label("Ver cobranças", systemImage: "list.bullet.rectangle.fill")
       }
       .buttonStyle(RentivoButtonStyle())
+    }
+  }
+
+  private var noBillingsSection: some View {
+    VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
+      SectionTitle(title: "Comece por aqui", symbol: "sparkles")
+      RentivoCard {
+        VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
+          Text("Nenhuma cobrança cadastrada ainda")
+            .font(RentivoTypography.cardTitle)
+          Text(
+            "Crie sua primeira cobrança recorrente na aba Cobranças para começar a acompanhar recebimentos, despesas e faturas por aqui."
+          )
+          .font(.subheadline)
+          .foregroundStyle(RentivoColors.secondaryInk)
+          Button("Ver cobranças") { app.selectedTab = .billings }
+            .buttonStyle(RentivoButtonStyle())
+        }
+      }
     }
   }
 
@@ -170,10 +219,10 @@ private struct HomeContent: View {
               StatusBadge(status: bill.status)
             }
             HStack {
-              Label("Vence em \(bill.dueDate.iso8601)", systemImage: "calendar")
+              Label("Vence em \(bill.dueDate.displayFormatted)", systemImage: "calendar")
                 .font(.caption)
               Spacer()
-              MoneyText(money: bill.total)
+              MoneyText(money: bill.effectiveTotal)
             }
           }
         }
@@ -224,11 +273,14 @@ private struct SummaryCard: View {
         Text(title)
           .font(.caption.weight(.semibold))
           .foregroundStyle(RentivoColors.secondaryInk)
-        Text(value.formatted())
-          .font(.system(.subheadline, design: .monospaced, weight: .bold))
-          .foregroundStyle(RentivoColors.ink)
-          .minimumScaleFactor(0.7)
-          .lineLimit(1)
+        MoneyText(
+          money: value,
+          color: RentivoColors.ink,
+          font: .system(.subheadline, design: .monospaced, weight: .bold),
+          minimumScaleFactor: 0.7,
+          lineLimit: 1,
+          accessibilityLabelOverride: "\(title): \(value.formatted())"
+        )
       }
     }
   }

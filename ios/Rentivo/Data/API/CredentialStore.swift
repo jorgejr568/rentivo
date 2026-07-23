@@ -51,8 +51,14 @@ public actor KeychainCredentialStore: CredentialStore {
 
   public func saveAccessToken(_ token: String) throws {
     let data = Data(token.utf8)
-    let update = [kSecValueData as String: data] as CFDictionary
-    let status = SecItemUpdate(baseQuery as CFDictionary, update)
+    // Re-assert the accessibility class on every update: an item created
+    // before this attribute was enforced (or by a future laxer write) would
+    // otherwise keep whatever class it was originally saved with.
+    let update: [String: Any] = [
+      kSecValueData as String: data,
+      kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+    ]
+    let status = SecItemUpdate(baseQuery as CFDictionary, update as CFDictionary)
     if status == errSecSuccess { return }
     guard status == errSecItemNotFound else { throw CredentialStoreError.keychain(status: status) }
 

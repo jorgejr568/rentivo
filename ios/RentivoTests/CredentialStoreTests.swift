@@ -1,5 +1,10 @@
 import Testing
-@testable import RentivoCore
+
+#if canImport(RentivoCore)
+  @testable import RentivoCore
+#else
+  @testable import Rentivo
+#endif
 
 @Test func memoryCredentialStoreRoundTripsAndDeletesToken() async {
   let credentials = MemoryCredentialStore()

@@ -23,12 +23,6 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   public var currentUser: UserProfile { user }
   public var recentActivities: [RecentActivity] { [] }
 
-  public func login(email: String, password: String) async throws -> UserProfile {
-    let session = try await client.login(email: email, password: password)
-    user = session.profile
-    return user
-  }
-
   public func exchangeMobileAuthorization(code: String) async throws -> UserProfile {
     user = try await client.exchangeMobileAuthorization(code: code).profile
     return user
@@ -47,7 +41,10 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   }
 
   public func profile() async throws -> UserProfile {
-    let remote: RemoteProfile = try await decode(path: "/api/v1/profile")
+    // GET /api/v1/profile only returns `CurrentProfileResponse` ({email}); the pix fields live on
+    // `SecuritySummaryResponse.profile` (a full `ProfileResponse`), so fetch security instead.
+    let response: RemoteSecuritySummary = try await decode(path: "/api/v1/security")
+    let remote = response.profile
     user = UserProfile(id: user.id, email: remote.email, pix: pix(key: remote.pixKey, name: remote.pixMerchantName, city: remote.pixMerchantCity))
     return user
   }
@@ -89,27 +86,27 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   }
   public func listBills(billingID: BillingID) async throws -> [Bill] {
     let response: RemoteBillList = try await decode(path: "/api/v1/billings/\(billingID.rawValue)/bills")
-    return response.items.map { bill(from: $0, billingID: billingID) }
+    return try response.items.map { try bill(from: $0, billingID: billingID) }
   }
   public func bill(billingID: BillingID, id: BillID) async throws -> Bill {
     let response: RemoteBill = try await decode(
       path: "/api/v1/billings/\(billingID.rawValue)/bills/\(id.rawValue)"
     )
-    return bill(from: response, billingID: billingID)
+    return try bill(from: response, billingID: billingID)
   }
   public func createBill(_ draft: BillDraft) async throws -> Bill {
     let remote: RemoteBill = try await decode(
       path: "/api/v1/billings/\(draft.billingID.rawValue)/bills", method: "POST",
       body: RemoteBillCreateDraft(draft: draft)
     )
-    return bill(from: remote, billingID: draft.billingID)
+    return try bill(from: remote, billingID: draft.billingID)
   }
   public func updateBill(billingID: BillingID, billID: BillID, draft: BillDraft) async throws -> Bill {
     let remote: RemoteBill = try await decode(
       path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)", method: "PATCH",
       body: RemoteBillUpdateDraft(draft: draft)
     )
-    return bill(from: remote, billingID: billingID)
+    return try bill(from: remote, billingID: billingID)
   }
   public func deleteBill(billingID: BillingID, billID: BillID) async throws {
     try await execute(path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)", method: "DELETE")
@@ -124,7 +121,7 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     let remote: RemoteBill = try await decode(
       path: "/api/v1/billings/\(billingID.rawValue)/bills/\(billID.rawValue)/regenerate", method: "POST"
     )
-    return bill(from: remote, billingID: billingID)
+    return try bill(from: remote, billingID: billingID)
   }
   public func addReceipt(billingID: BillingID, billID: BillID, upload: FileUpload) async throws -> Receipt {
     let response: RemoteReceiptUpload = try await decodeMultipart(
@@ -148,11 +145,11 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   }
   public func listExpenses(billingID: BillingID) async throws -> [Expense] {
     let response: RemoteExpenseList = try await decode(path: "/api/v1/billings/\(billingID.rawValue)/expenses")
-    return response.items.map {
+    return try response.items.map {
       Expense(
         id: ExpenseID(rawValue: $0.uuid), billingID: billingID, description: $0.description,
         amount: Money(centavos: $0.amount), category: ExpenseCategory(rawValue: $0.category) ?? .other,
-        incurredOn: dateOnly($0.incurredOn)
+        incurredOn: try dateOnly($0.incurredOn)
       )
     }
   }
@@ -163,7 +160,7 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     )
     return Expense(id: ExpenseID(rawValue: remote.uuid), billingID: billingID, description: remote.description,
       amount: Money(centavos: remote.amount), category: ExpenseCategory(rawValue: remote.category) ?? .other,
-      incurredOn: dateOnly(remote.incurredOn))
+      incurredOn: try dateOnly(remote.incurredOn))
   }
   public func deleteExpense(billingID: BillingID, expenseID: ExpenseID) async throws {
     try await execute(path: "/api/v1/billings/\(billingID.rawValue)/expenses/\(expenseID.rawValue)", method: "DELETE")
@@ -197,20 +194,47 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     guard let billID else {
       throw LiveAPIError.server(message: "Escolha uma fatura antes de enviar a comunicação.")
     }
+    guard !recipients.isEmpty else {
+      throw LiveAPIError.server(message: "Informe ao menos um destinatário.")
+    }
+    // PUT /recipients is a full replace, so we must resend every existing contact (preserving
+    // their names) plus only the genuinely new ad-hoc emails, or we'd delete the billing's
+    // configured recipients every time someone sends a one-off communication.
+    let existingRecipients = try await billing(id: billingID).recipients
+    var mergedContacts = existingRecipients.map(RemoteContactInput.init)
+    var knownEmails = Set(existingRecipients.map { $0.email.lowercased() })
+    for email in recipients {
+      let key = email.lowercased()
+      guard !knownEmails.contains(key) else { continue }
+      knownEmails.insert(key)
+      let localPart = email.split(separator: "@", maxSplits: 1).first.map(String.init) ?? email
+      mergedContacts.append(RemoteContactInput(name: localPart, email: email))
+    }
+
     let contactResponse: RemoteContactList = try await decode(
       path: "/api/v1/billings/\(billingID.rawValue)/recipients", method: "PUT",
-      body: RemoteContactListUpdate(recipients: recipients)
+      body: RemoteContactListPayload(items: mergedContacts)
     )
-    guard !contactResponse.items.isEmpty else { throw LiveAPIError.invalidResponse }
-    let _: RemoteCommunicationSend = try await decode(
+
+    // The server recreates every recipient row (with fresh uuids) on each replace, so we can
+    // only resolve the uuids to send to by matching the just-saved contacts back by email.
+    let requestedEmails = Set(recipients.map { $0.lowercased() })
+    let recipientIDs = contactResponse.items.compactMap { contact -> String? in
+      guard let email = contact.email?.lowercased(), requestedEmails.contains(email) else { return nil }
+      return contact.uuid
+    }
+    guard recipientIDs.count == requestedEmails.count else { throw LiveAPIError.invalidResponse }
+
+    let sendResponse: RemoteCommunicationSend = try await decode(
       path: "/api/v1/billings/\(billingID.rawValue)/communications/send", method: "POST",
       body: RemoteCommunicationSendRequest(
-        billID: billID.rawValue, recipients: contactResponse.items.map(\.uuid),
-        subject: subject, message: message
+        billID: billID.rawValue, recipients: recipientIDs, subject: subject, message: message
       )
     )
+    guard sendResponse.queuedCount > 0 else { throw LiveAPIError.invalidResponse }
+
     return CommunicationRecord(
-      id: CommunicationID(rawValue: "queued-\(UUID().uuidString)"), billingID: billingID,
+      id: CommunicationID(rawValue: UUID().uuidString), billingID: billingID,
       billID: billID, recipients: recipients, subject: subject, message: message, sentAt: Date()
     )
   }
@@ -244,22 +268,21 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     )
   }
   public func dashboardSummary() async throws -> DashboardSummary {
-    let billings = try await listBillings()
-    var bills: [Bill] = []
-    var expenses: [Expense] = []
-    for billing in billings {
-      bills += try await listBills(billingID: billing.id)
-      expenses += try await listExpenses(billingID: billing.id)
-    }
-    let received = bills.filter { $0.status == .paid }.map(\.total).reduce(.zero, +)
-    let expenseTotal = expenses.map(\.amount).reduce(.zero, +)
-    let overdue = bills.filter { $0.status == .delayedPayment }.map(\.total).reduce(.zero, +)
-    let upcoming = bills.filter { $0.status == .published || $0.status == .sent }.map(\.total).reduce(.zero, +)
-    let completed = bills.filter { $0.status == .paid || $0.status == .cancelled }.count
+    // `GET /api/v1/billings` already returns a `stats` rollup (`BillingStatsResponse`) computed
+    // server-side across every billing visible to the user, so a single request gives us every
+    // money figure the dashboard needs. This also sidesteps the previous ~3N fan-out entirely,
+    // so an individual billing lacking bill/expense read capability can no longer break the
+    // whole dashboard (the aggregate isn't gated by those per-billing capabilities).
+    let response: RemoteBillingList = try await decode(path: "/api/v1/billings")
+    let stats = response.stats
+    let collectionRate = stats.billedCount == 0 ? 0 : stats.paidCount * 100 / stats.billedCount
     return DashboardSummary(
-      received: received, expenses: expenseTotal, netIncome: received - expenseTotal,
-      overdue: overdue, upcoming: upcoming,
-      collectionRatePercent: bills.isEmpty ? 0 : completed * 100 / bills.count
+      received: Money(centavos: stats.received),
+      expenses: Money(centavos: stats.totalExpenses),
+      netIncome: Money(centavos: stats.netIncome),
+      overdue: Money(centavos: stats.overdue),
+      upcoming: Money(centavos: stats.pending),
+      collectionRatePercent: collectionRate
     )
   }
   public func listOrganizations() async throws -> [Organization] {
@@ -276,8 +299,23 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     return organization(from: response)
   }
   public func createOrganization(_ draft: OrganizationDraft) async throws -> Organization {
+    // OrganizationCreateRequest only accepts `name`; PIX has no create-time slot, so when the
+    // draft carries PIX data we follow up with the PATCH that does accept pix fields.
     let response: RemoteOrganization = try await decode(path: "/api/v1/organizations", method: "POST", body: RemoteOrganizationCreate(name: draft.name))
-    return organization(from: response)
+    guard draft.pix != nil else { return organization(from: response) }
+    do {
+      let updated: RemoteOrganization = try await decode(
+        path: "/api/v1/organizations/\(response.uuid)", method: "PATCH", body: RemoteOrganizationUpdate(draft: draft)
+      )
+      return organization(from: updated)
+    } catch {
+      // The organization already exists on the server from the POST above, so throwing here
+      // would surface as a failure to the caller, who would retry and create a duplicate
+      // organization. Return the created organization (without PIX) instead; the form-side
+      // validation makes this follow-up PATCH fail rarely, and the user can still edit the
+      // organization afterward to add PIX.
+      return organization(from: response)
+    }
   }
   public func updateOrganization(id: OrganizationID, draft: OrganizationDraft) async throws -> Organization {
     let response: RemoteOrganization = try await decode(path: "/api/v1/organizations/\(id.rawValue)", method: "PATCH", body: RemoteOrganizationUpdate(draft: draft))
@@ -288,7 +326,9 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   public func removeMember(organizationID: OrganizationID, userID: Int) async throws { try await execute(path: "/api/v1/organizations/\(organizationID.rawValue)/members/\(userID)", method: "DELETE") }
   public func inviteMember(organizationID: OrganizationID, email: String, role: OrganizationRole) async throws -> Invitation {
     let response: RemoteInvitation = try await decode(path: "/api/v1/organizations/\(organizationID.rawValue)/invites", method: "POST", body: RemoteInviteCreate(email: email, role: role.rawValue))
-    return Invitation(id: InvitationID(rawValue: response.uuid), organizationID: organizationID, organizationName: "Organização", email: response.invitedEmail, role: OrganizationRole(rawValue: response.role) ?? .viewer, status: InvitationStatus(rawValue: response.status) ?? .pending)
+    // Best-effort enrichment: the invite already succeeded, so a failure here shouldn't fail the whole call.
+    let organizationName = (try? await organization(id: organizationID))?.name ?? "Organização"
+    return Invitation(id: InvitationID(rawValue: response.uuid), organizationID: organizationID, organizationName: organizationName, email: response.invitedEmail, role: OrganizationRole(rawValue: response.role) ?? .viewer, status: InvitationStatus(rawValue: response.status) ?? .pending)
   }
   public func setOrganizationMFA(organizationID: OrganizationID, required: Bool) async throws { try await execute(path: "/api/v1/organizations/\(organizationID.rawValue)/mfa-policy", method: "PUT", body: RemoteMFAPolicy(enforceMFA: required)) }
   public func transferBilling(billingID: BillingID, toOrganizationID: OrganizationID) async throws { try await execute(path: "/api/v1/billings/\(billingID.rawValue)/transfer", method: "POST", body: RemoteBillingTransfer(organizationID: toOrganizationID.rawValue)) }
@@ -317,7 +357,7 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   public func securitySummary() async throws -> SecuritySummary {
     let response: RemoteSecuritySummary = try await decode(path: "/api/v1/security")
     return SecuritySummary(totpEnabled: response.totp.enabled, recoveryCodeCount: response.totp.recoveryCodesRemaining,
-      passkeys: response.passkeys.map { Passkey(id: PasskeyID(rawValue: $0.uuid), name: $0.name, createdAt: isoDate($0.createdAt), lastUsedAt: $0.lastUsedAt.map(isoDate)) })
+      passkeys: try response.passkeys.map { Passkey(id: PasskeyID(rawValue: $0.uuid), name: $0.name, createdAt: try isoDate($0.createdAt), lastUsedAt: try $0.lastUsedAt.map(isoDate)) })
   }
   public func beginTOTPEnrollment() async throws -> TOTPEnrollment {
     let response: RemoteTOTPSetup = try await decode(path: "/api/v1/security/totp/setup", method: "POST")
@@ -339,19 +379,20 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
   public func deletePasskey(id: PasskeyID) async throws { try await execute(path: "/api/v1/security/passkeys/\(id.rawValue)", method: "DELETE") }
   public func listAPIKeys() async throws -> [APIKeyMetadata] {
     let response: RemoteAPIKeyList = try await decode(path: "/api/v1/api-keys")
-    return response.items.map(apiKey(from:))
+    // The server returns revoked keys too (it doesn't filter them); match the mock and hide them.
+    return try response.items.filter { $0.revokedAt == nil }.map(apiKey(from:))
   }
   public func createAPIKey(_ draft: APIKeyDraft) async throws -> CreatedAPIKeySecret {
     let response: RemoteCreatedAPIKey = try await decode(
       path: "/api/v1/api-keys", method: "POST", body: RemoteAPIKeyCreate(draft: draft)
     )
-    return CreatedAPIKeySecret(metadata: apiKey(from: response.apiKey), secret: response.secret)
+    return CreatedAPIKeySecret(metadata: try apiKey(from: response.apiKey), secret: response.secret)
   }
   public func updateAPIKey(id: APIKeyID, draft: APIKeyDraft) async throws -> APIKeyMetadata {
     let response: RemoteAPIKey = try await decode(
       path: "/api/v1/api-keys/\(id.rawValue)", method: "PATCH", body: RemoteAPIKeyUpdate(draft: draft)
     )
-    return apiKey(from: response)
+    return try apiKey(from: response)
   }
   public func revokeAPIKey(id: APIKeyID) async throws {
     try await execute(path: "/api/v1/api-keys/\(id.rawValue)", method: "DELETE")
@@ -417,13 +458,23 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     }
     for file in files {
       append("--\(boundary)\r\n")
-      append("Content-Disposition: form-data; name=\"\(file.field)\"; filename=\"\(file.upload.filename)\"\r\n")
+      append("Content-Disposition: form-data; name=\"\(file.field)\"; filename=\"\(sanitizedFilename(file.upload.filename))\"\r\n")
       append("Content-Type: \(file.upload.mediaType)\r\n\r\n")
       body.append(file.upload.data)
       append("\r\n")
     }
     append("--\(boundary)--\r\n")
     return body
+  }
+
+  // Strips characters that could break out of the quoted `filename="..."` attribute (or the
+  // header line entirely) and inject extra multipart headers/parts.
+  private func sanitizedFilename(_ filename: String) -> String {
+    var sanitized = filename
+    for token in ["\r\n", "\r", "\n", "\""] {
+      sanitized = sanitized.replacingOccurrences(of: token, with: "")
+    }
+    return sanitized
   }
 
   private func owner(from owner: RemoteOwner) -> BillingOwner {
@@ -438,27 +489,61 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     return PixConfiguration(key: key, merchantName: name, merchantCity: city)
   }
 
-  private func dateOnly(_ value: String?) -> DateOnly {
-    let parts = (value ?? "1970-01-01").split(separator: "-").compactMap { Int($0) }
-    guard parts.count == 3 else { return DateOnly(year: 1970, month: 1, day: 1) }
-    return DateOnly(year: parts[0], month: parts[1], day: parts[2])
+  // Absent dates (a legitimate `null` from the server) fall back to the epoch default, as before.
+  // A *present but malformed* date string, however, now surfaces as a decode error via `DateOnly`'s
+  // failable wire initializer instead of reaching the precondition-enforcing `DateOnly.init(year:month:day:)`
+  // and trapping the process on out-of-range components.
+  private func dateOnly(_ value: String?) throws -> DateOnly {
+    guard let value else { return DateOnly(year: 1970, month: 1, day: 1) }
+    guard let parsed = DateOnly(iso8601String: value) else { throw LiveAPIError.invalidResponse }
+    return parsed
   }
 
-  private func isoDate(_ value: String) -> Date { ISO8601DateFormatter().date(from: value) ?? .distantPast }
+  // The backend emits fractional-second timestamps (microseconds); try that format first and
+  // fall back to the plain internet-date-time form. A total parse failure surfaces as a decode
+  // error instead of silently defaulting to `.distantPast`.
+  private static let isoDateTimeFormatterWithFraction: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+  }()
+  private static let isoDateTimeFormatter = ISO8601DateFormatter()
 
-  private func bill(from remote: RemoteBill, billingID: BillingID) -> Bill {
-    let month = remote.referenceMonth.split(separator: "-").compactMap { Int($0) }
+  private func isoDate(_ value: String) throws -> Date {
+    if let date = Self.isoDateTimeFormatterWithFraction.date(from: value) { return date }
+    if let date = Self.isoDateTimeFormatter.date(from: value) { return date }
+    throw LiveAPIError.invalidResponse
+  }
+
+  private func paidAt(from remote: RemoteBill) throws -> DateOnly? {
+    guard remote.status == "paid", let statusUpdatedAt = remote.statusUpdatedAt else { return nil }
+    let datePart = statusUpdatedAt.split(separator: "T", maxSplits: 1).first.map(String.init) ?? statusUpdatedAt
+    return try dateOnly(datePart)
+  }
+
+  private func bill(from remote: RemoteBill, billingID: BillingID) throws -> Bill {
+    // `ReferenceMonth`'s failable wire initializer replaces the previous manual split + the
+    // precondition-enforcing `ReferenceMonth.init(year:month:)`, so a malformed `reference_month`
+    // (e.g. an out-of-range month) now throws a decode error instead of trapping the process.
+    guard let referenceMonth = ReferenceMonth(apiValue: remote.referenceMonth) else {
+      throw LiveAPIError.invalidResponse
+    }
     return Bill(
       id: BillID(rawValue: remote.uuid), billingID: billingID,
-      referenceMonth: ReferenceMonth(year: month.first ?? 1970, month: month.dropFirst().first ?? 1),
-      dueDate: dateOnly(remote.dueDate), paidAt: remote.status == "paid" ? dateOnly(remote.dueDate) : nil,
+      referenceMonth: referenceMonth,
+      dueDate: try dateOnly(remote.dueDate), paidAt: try paidAt(from: remote),
       notes: remote.notes, status: BillStatus(rawValue: remote.status) ?? .draft,
       lineItems: remote.lineItems.enumerated().map { index, line in
         BillLineItem(id: BillLineItemID(rawValue: "\(remote.uuid)-\(index)"), description: line.description,
           amount: Money(centavos: line.amount), kind: BillLineItemKind(rawValue: line.itemType) ?? .fixed)
       }, receipts: (remote.receipts ?? []).map {
         Receipt(id: ReceiptID(rawValue: $0.uuid), name: $0.filename, sortOrder: $0.sortOrder)
-      }
+      },
+      // Server-authoritative transitions/total for this bill (see `Bill.effectiveTransitions` /
+      // `Bill.effectiveTotal`); unrecognized transition targets are dropped rather than failing the
+      // whole decode, since a missing action button is a much smaller failure than a hard error.
+      availableTransitions: remote.availableTransitions.compactMap { BillStatus(rawValue: $0.target) },
+      serverTotal: Money(centavos: remote.totalAmount)
     )
   }
 
@@ -505,7 +590,7 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
         canCreateBilling: remote.capabilities.canCreateBilling, canViewBillingStats: remote.capabilities.canViewBillingStats))
   }
 
-  private func apiKey(from remote: RemoteAPIKey) -> APIKeyMetadata {
+  private func apiKey(from remote: RemoteAPIKey) throws -> APIKeyMetadata {
     APIKeyMetadata(
       id: APIKeyID(rawValue: remote.uuid), name: remote.name, hint: remote.hint,
       scopes: Set(remote.scopes.compactMap(APIKeyScope.init(rawValue:))),
@@ -518,8 +603,8 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
           available: grant.available
         )
       },
-      expiresAt: isoDate(remote.expiresAt), lastUsedAt: remote.lastUsedAt.map(isoDate),
-      createdAt: isoDate(remote.createdAt), revokedAt: remote.revokedAt.map(isoDate)
+      expiresAt: try isoDate(remote.expiresAt), lastUsedAt: try remote.lastUsedAt.map(isoDate),
+      createdAt: try isoDate(remote.createdAt), revokedAt: try remote.revokedAt.map(isoDate)
     )
   }
 
@@ -574,7 +659,7 @@ private struct RemotePendingInvitation: Decodable {
     case organizationName = "organization_name"
   }
 }
-private struct RemoteSecuritySummary: Decodable { let totp: RemoteTOTPStatus; let passkeys: [RemotePasskey] }
+private struct RemoteSecuritySummary: Decodable { let profile: RemoteProfile; let totp: RemoteTOTPStatus; let passkeys: [RemotePasskey] }
 private struct RemoteTOTPStatus: Decodable { let enabled: Bool; let recoveryCodesRemaining: Int; enum CodingKeys: String, CodingKey { case enabled; case recoveryCodesRemaining = "recovery_codes_remaining" } }
 private struct RemoteTOTPSetup: Decodable {
   let secret, provisioningURI, qrCodeBase64: String
@@ -596,17 +681,12 @@ struct RemotePasswordChange: Encodable {
 }
 private struct RemotePasskey: Decodable { let uuid, name, createdAt: String; let lastUsedAt: String?; enum CodingKeys: String, CodingKey { case uuid, name; case createdAt = "created_at"; case lastUsedAt = "last_used_at" } }
 private struct RemoteRecoveryCodes: Decodable { let recoveryCodes: [String]; enum CodingKeys: String, CodingKey { case recoveryCodes = "recovery_codes" } }
-private struct RemoteContactList: Decodable { let items: [RemoteContactReference] }
-private struct RemoteContactReference: Decodable { let uuid: String }
-private struct RemoteContactListUpdate: Encodable {
-  let items: [RemoteContactInput]
-  init(recipients: [String]) {
-    items = recipients.map { email in
-      let localPart = email.split(separator: "@", maxSplits: 1).first.map(String.init) ?? email
-      return RemoteContactInput(name: localPart, email: email)
-    }
-  }
-}
+private struct RemoteContactList: Decodable { let items: [RemoteContactRecord] }
+// The send endpoint's response shape is `ContactReferenceResponse` (uuid only) for integration
+// keys, or `ContactResponse` (uuid+name+email) for login-token sessions (which is what the app
+// always uses). Both decode fine into this with name/email left nil when absent.
+private struct RemoteContactRecord: Decodable { let uuid: String; let name, email: String? }
+private struct RemoteContactListPayload: Encodable { let items: [RemoteContactInput] }
 private struct RemoteContactInput: Encodable {
   let name, email: String
   init(name: String, email: String) { self.name = name; self.email = email }
@@ -802,15 +882,42 @@ private struct RemoteBillingUpdate: Encodable {
   }
 }
 private struct RemoteOwnerInput: Encodable { let type: String; let uuid: String? }
+// Billing items minted client-side (a new row added in the form) carry a 36-char UUID as their
+// id; the server only accepts a 26-char Crockford-base32 ULID (or null) for `uuid`, so only
+// ids that already look like a server-issued ULID may be sent through — everything else must
+// be nil so the server mints its own.
+private let ulidAllowedCharacters = Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+private func isULID(_ value: String) -> Bool {
+  value.count == 26 && value.allSatisfy(ulidAllowedCharacters.contains)
+}
 private struct RemoteBillingItemInput: Encodable {
   let uuid: String?; let description: String; let amount: Int; let itemType: String
   enum CodingKeys: String, CodingKey { case uuid, description, amount; case itemType = "item_type" }
-  init(_ item: BillingItem) { uuid = item.id.rawValue; description = item.description; amount = item.amount.centavos; itemType = item.type.rawValue }
+  init(_ item: BillingItem) {
+    uuid = isULID(item.id.rawValue) ? item.id.rawValue : nil
+    description = item.description; amount = item.amount.centavos; itemType = item.type.rawValue
+  }
 }
 private struct RemoteBillCreateDraft: Encodable {
   let referenceMonth: String; let dueDate: String; let notes: String; let extras: [RemoteBillExtra]
-  enum CodingKeys: String, CodingKey { case referenceMonth = "reference_month"; case dueDate = "due_date"; case notes, extras }
-  init(draft: BillDraft) { referenceMonth = draft.referenceMonth.apiValue; dueDate = draft.dueDate.iso8601; notes = draft.notes; extras = draft.lineItems.filter { $0.kind == .extra }.map(RemoteBillExtra.init) }
+  let variableAmounts: [String: Int]
+  enum CodingKeys: String, CodingKey {
+    case referenceMonth = "reference_month"; case dueDate = "due_date"; case notes, extras
+    case variableAmounts = "variable_amounts"
+  }
+  init(draft: BillDraft) {
+    referenceMonth = draft.referenceMonth.apiValue; dueDate = draft.dueDate.iso8601; notes = draft.notes
+    extras = draft.lineItems.filter { $0.kind == .extra }.map(RemoteBillExtra.init)
+    // The server requires the variable_amounts key set to exactly match the billing's own
+    // variable BillingItem uuids, so only line items whose id is already a real ULID (i.e. one
+    // sourced from the billing's items, not a freshly client-minted id) can be included.
+    var amounts: [String: Int] = [:]
+    for item in draft.lineItems where item.kind == .variable {
+      guard isULID(item.id.rawValue) else { continue }
+      amounts[item.id.rawValue] = item.amount.centavos
+    }
+    variableAmounts = amounts
+  }
 }
 private struct RemoteBillExtra: Encodable { let description: String; let amount: Int; init(_ item: BillLineItem) { description = item.description; amount = item.amount.centavos } }
 private struct RemoteBillUpdateDraft: Encodable {
@@ -822,7 +929,17 @@ private struct RemoteBillLineItemInput: Encodable { let description: String; let
 private struct RemoteBillTransition: Encodable { let target: String }
 private struct RemoteExpenseCreate: Encodable { let description: String; let category: String; let incurredOn: String; let amount: Int; enum CodingKeys: String, CodingKey { case description, category, amount; case incurredOn = "incurred_on" } }
 
-private struct RemoteBillingList: Decodable { let items: [RemoteBillingListItem] }
+private struct RemoteBillingList: Decodable { let items: [RemoteBillingListItem]; let stats: RemoteBillingStats }
+private struct RemoteBillingStats: Decodable {
+  let received, pending, overdue, totalExpenses, netIncome, paidCount, billedCount: Int
+  enum CodingKeys: String, CodingKey {
+    case received, pending, overdue
+    case totalExpenses = "total_expenses"
+    case netIncome = "net_income"
+    case paidCount = "paid_count"
+    case billedCount = "billed_count"
+  }
+}
 private struct RemoteProfile: Decodable {
   let email: String; let pixKey, pixMerchantName, pixMerchantCity: String
   enum CodingKeys: String, CodingKey { case email; case pixKey = "pix_key"; case pixMerchantName = "pix_merchant_name"; case pixMerchantCity = "pix_merchant_city" }
@@ -860,9 +977,20 @@ private struct RemoteOwner: Decodable { let type: String; let uuid, name: String
 private struct RemoteBillingItem: Decodable { let uuid, description: String; let amount: Int; let itemType: String; enum CodingKeys: String, CodingKey { case uuid, description, amount; case itemType = "item_type" } }
 private struct RemoteBillList: Decodable { let items: [RemoteBill] }
 private struct RemoteBill: Decodable {
-  let uuid, referenceMonth, notes, status: String; let dueDate: String?; let lineItems: [RemoteBillLine]; let receipts: [RemoteReceipt]?
-  enum CodingKeys: String, CodingKey { case uuid, notes, status, receipts; case referenceMonth = "reference_month"; case dueDate = "due_date"; case lineItems = "line_items" }
+  let uuid, referenceMonth, notes, status: String; let dueDate: String?; let statusUpdatedAt: String?
+  let lineItems: [RemoteBillLine]; let receipts: [RemoteReceipt]?
+  let totalAmount: Int
+  let availableTransitions: [RemoteAvailableTransition]
+  enum CodingKeys: String, CodingKey {
+    case uuid, notes, status, receipts
+    case referenceMonth = "reference_month"; case dueDate = "due_date"
+    case statusUpdatedAt = "status_updated_at"; case lineItems = "line_items"
+    case totalAmount = "total_amount"; case availableTransitions = "available_transitions"
+  }
 }
+// `AvailableTransitionResponse` on the server also carries `label`/`style`/`requires_confirmation`,
+// but the domain only models the allowed target statuses today, so only `target` is decoded.
+private struct RemoteAvailableTransition: Decodable { let target: String }
 private struct RemoteBillLine: Decodable { let description: String; let amount: Int; let itemType: String; enum CodingKeys: String, CodingKey { case description, amount; case itemType = "item_type" } }
 private struct RemoteExpenseList: Decodable { let items: [RemoteExpense] }
 private struct RemoteExpense: Decodable { let uuid, description, category, incurredOn: String; let amount: Int; enum CodingKeys: String, CodingKey { case uuid, description, category, amount; case incurredOn = "incurred_on" } }

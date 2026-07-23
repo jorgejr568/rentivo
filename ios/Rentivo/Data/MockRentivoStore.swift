@@ -332,6 +332,9 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     guard snapshot.billings.contains(where: { $0.id == billingID }) else {
       throw DemoError.resourceNotFound
     }
+    // Matches the server contract: `ExpenseCreateRequest.amount` requires
+    // `exclusiveMinimum: 0`, so a zero or negative expense always 422s.
+    guard amount.centavos > 0 else { throw DemoError.invalidAmount }
     let expense = Expense(
       id: ExpenseID(rawValue: UUID().uuidString),
       billingID: billingID,
@@ -458,8 +461,8 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
     let expenses = snapshot.expenses.map(\.amount).reduce(.zero, +)
     let eligibleCount = activeBills.count
     let paidCount = activeBills.filter { $0.status == .paid }.count
-    let collectionRate =
-      eligibleCount == 0 ? 0 : Int((Double(paidCount) / Double(eligibleCount)) * 100)
+    // Integer math only, matching the live store and the repo's no-float rule.
+    let collectionRate = eligibleCount == 0 ? 0 : (paidCount * 100) / eligibleCount
     return DashboardSummary(
       received: received,
       expenses: expenses,
@@ -643,19 +646,6 @@ public final class MockRentivoStore: AuthRepository, ProfileRepository, BillingR
       title: "Cobrança transferida",
       detail: organization.name
     )
-  }
-
-  public func transferBillingToPersonal(billingID: BillingID) async throws {
-    try await prepareOperation()
-    try requireWriteAccess()
-    guard let index = snapshot.billings.firstIndex(where: { $0.id == billingID }) else {
-      throw DemoError.resourceNotFound
-    }
-    if case .organization(let organizationID, _) = snapshot.billings[index].owner {
-      try requireOrganizationCapability(id: organizationID, \.canCreateBilling)
-    }
-    snapshot.billings[index].owner = .user(id: snapshot.profile.id, name: "Pessoal")
-    recordActivity(kind: .billing, title: "Cobrança transferida", detail: "Pessoal")
   }
 
   public func listPendingInvitations() async throws -> [Invitation] {

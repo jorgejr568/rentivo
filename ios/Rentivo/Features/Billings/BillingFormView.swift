@@ -42,10 +42,13 @@ struct BillingFormView: View {
   @State private var ownerID: WorkspaceID
   @State private var items: [EditableBillingItem]
   @State private var pixKey: String
+  @State private var pixMerchantName: String
+  @State private var pixMerchantCity: String
   @State private var recipientName: String
   @State private var recipientEmail: String
   @State private var replyTo: String
   @State private var validationIssues: [ValidationIssue] = []
+  @State private var pixRecipientRequiredMessage: String?
   @State private var saving = false
   @State private var organizations: [Organization] = []
   @State private var organizationsLoaded = false
@@ -58,6 +61,8 @@ struct BillingFormView: View {
     _ownerID = State(initialValue: billing?.owner.id ?? .personal)
     _items = State(initialValue: billing?.items.map(EditableBillingItem.init) ?? [])
     _pixKey = State(initialValue: billing?.pixOverride?.key ?? "")
+    _pixMerchantName = State(initialValue: billing?.pixOverride?.merchantName ?? "")
+    _pixMerchantCity = State(initialValue: billing?.pixOverride?.merchantCity ?? "")
     _recipientName = State(initialValue: billing?.recipients.first?.name ?? "")
     _recipientEmail = State(initialValue: billing?.recipients.first?.email ?? "")
     _replyTo = State(initialValue: billing?.replyTo ?? "")
@@ -87,8 +92,7 @@ struct BillingFormView: View {
               }
             }
             .pickerStyle(.segmented)
-            TextField("Valor em centavos", value: $item.centavos, format: .number)
-              .keyboardType(.numberPad)
+            CurrencyCentavosField("Valor do item", centavos: $item.centavos)
           }
           .padding(.vertical, RentivoSpacing.tiny)
         }
@@ -112,6 +116,12 @@ struct BillingFormView: View {
       Section("PIX opcional") {
         TextField("Chave PIX própria", text: $pixKey)
           .textInputAutocapitalization(.never)
+          .accessibilityIdentifier("billing.form.pix.key")
+        TextField("Nome do recebedor", text: $pixMerchantName)
+          .accessibilityIdentifier("billing.form.pix.merchantName")
+        TextField("Cidade do recebedor", text: $pixMerchantCity)
+          .textInputAutocapitalization(.characters)
+          .accessibilityIdentifier("billing.form.pix.merchantCity")
         Text("Deixe em branco para herdar o PIX do responsável.")
           .font(.caption)
           .foregroundStyle(RentivoColors.secondaryInk)
@@ -127,10 +137,15 @@ struct BillingFormView: View {
           .textInputAutocapitalization(.never)
       }
 
-      if !validationIssues.isEmpty {
+      if !validationIssues.isEmpty || pixRecipientRequiredMessage != nil {
         Section("Revise os campos") {
           ForEach(validationIssues, id: \.self) { issue in
             Label(issue.message, systemImage: "exclamationmark.circle.fill")
+              .foregroundStyle(RentivoColors.coral)
+              .accessibilityIdentifier("billing.form.validation")
+          }
+          if let pixRecipientRequiredMessage {
+            Label(pixRecipientRequiredMessage, systemImage: "exclamationmark.circle.fill")
               .foregroundStyle(RentivoColors.coral)
               .accessibilityIdentifier("billing.form.validation")
           }
@@ -192,6 +207,16 @@ struct BillingFormView: View {
       ]
     }
     let pix = pixKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    let merchantName = pixMerchantName.trimmingCharacters(in: .whitespacesAndNewlines)
+    let merchantCity = pixMerchantCity.trimmingCharacters(in: .whitespacesAndNewlines)
+    if pix.isEmpty {
+      pixRecipientRequiredMessage = nil
+    } else if merchantName.isEmpty || merchantCity.isEmpty {
+      pixRecipientRequiredMessage =
+        "Informe o nome e a cidade do recebedor para usar uma chave PIX própria."
+    } else {
+      pixRecipientRequiredMessage = nil
+    }
     let draft = BillingDraft(
       name: name,
       description: billingDescription,
@@ -199,12 +224,12 @@ struct BillingFormView: View {
       items: items.enumerated().map { $0.element.domain(sortOrder: $0.offset) },
       pixOverride: pix.isEmpty
         ? nil
-        : PixConfiguration(key: pix, merchantName: "ANA SILVA", merchantCity: "SAO PAULO"),
+        : PixConfiguration(key: pix, merchantName: merchantName, merchantCity: merchantCity),
       recipients: recipients,
       replyTo: replyTo.isEmpty ? nil : replyTo
     )
     validationIssues = draft.validate()
-    guard validationIssues.isEmpty else { return }
+    guard validationIssues.isEmpty && pixRecipientRequiredMessage == nil else { return }
     saving = true
     defer { saving = false }
     do {

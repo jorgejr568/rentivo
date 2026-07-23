@@ -8,11 +8,13 @@ struct LiveSession: Sendable {
 enum LiveAPIError: LocalizedError, Sendable {
   case server(message: String, statusCode: Int? = nil)
   case invalidResponse
+  case sessionExpired
 
   var errorDescription: String? {
     switch self {
     case .server(let message, _): message
     case .invalidResponse: "Não foi possível interpretar a resposta do Rentivo."
+    case .sessionExpired: "Sua sessão expirou. Entre novamente para continuar."
     }
   }
 
@@ -22,6 +24,14 @@ enum LiveAPIError: LocalizedError, Sendable {
   }
 }
 
+extension Notification.Name {
+  /// Posted whenever `LiveAPIClient` observes a 401 response (or discovers it
+  /// has no stored token) while serving an authenticated request. `AppModel`
+  /// observes this to move the app back to the anonymous state; posting is
+  /// harmless if nothing is listening (e.g. before the app has authenticated).
+  static let liveAPIClientSessionExpired = Notification.Name("LiveAPIClient.sessionExpired")
+}
+
 actor LiveAPIClient {
   static let productionURL = URL(string: "https://rentivo.com.br")!
 
@@ -29,39 +39,40 @@ actor LiveAPIClient {
   private let credentials: any CredentialStore
   private var accessToken: String?
 
-  init(session: URLSession = .shared, credentials: any CredentialStore) {
-    self.session = session
+  init(session: URLSession? = nil, credentials: any CredentialStore) {
+    self.session = session ?? Self.makeSession()
     self.credentials = credentials
   }
 
-  func login(email: String, password: String) async throws -> LiveSession {
-    let request = LoginRequest(
-      email: email,
-      password: password,
-      credentialTransport: "body",
-      turnstileToken: ""
-    )
-    let response: LoginResponse = try await send(
-      path: "/api/v1/auth/login",
-      method: "POST",
-      body: request,
-      token: nil
-    )
-    guard response.credentialTransport == "body", let accessToken = response.accessToken else {
-      throw LiveAPIError.server(message: "O servidor solicitou uma etapa adicional de autenticação.")
+  /// The app's default session. Unlike `URLSession.shared` it bounds each request
+  /// so a stalled connection (e.g. the iOS Simulator's flaky HTTP/3 path, or a
+  /// dropped mobile network) fails fast and stays retryable instead of freezing
+  /// the UI on the system default timeout. Tests inject their own stubbed session.
+  private static func makeSession() -> URLSession {
+    let configuration = URLSessionConfiguration.default
+    configuration.timeoutIntervalForRequest = 30
+    configuration.waitsForConnectivity = false
+    return URLSession(configuration: configuration)
+  }
+
+  /// Translates a `URLSession` transport failure (thrown before any HTTP response
+  /// arrives) into a `LiveAPIError` carrying an actionable PT-BR message. Without
+  /// this, a `URLError` propagates raw and the login screen and app-wide error
+  /// mapping fall through to a generic message with no connectivity/retry cue.
+  private func transportError(from error: Error) -> Error {
+    guard let urlError = error as? URLError else { return error }
+    switch urlError.code {
+    case .timedOut:
+      return LiveAPIError.server(
+        message: "O Rentivo demorou para responder. Verifique sua conexão e tente novamente.")
+    case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost,
+      .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff:
+      return LiveAPIError.server(
+        message: "Sem conexão com o Rentivo. Verifique sua internet e tente novamente.")
+    default:
+      return LiveAPIError.server(
+        message: "Não foi possível conectar ao Rentivo. Tente novamente.")
     }
-    let profile: ProfileResponse = try await send(
-      path: "/api/v1/profile",
-      method: "GET",
-      body: Optional<String>.none,
-      token: accessToken
-    )
-    self.accessToken = accessToken
-    try await credentials.saveAccessToken(accessToken)
-    return LiveSession(
-      accessToken: accessToken,
-      profile: UserProfile(id: response.bootstrap?.user.id ?? 0, email: profile.email)
-    )
   }
 
   func exchangeMobileAuthorization(code: String) async throws -> LiveSession {
@@ -89,8 +100,7 @@ actor LiveAPIClient {
         profile: UserProfile(id: response.bootstrap.user.id, email: response.bootstrap.user.email)
       )
     } catch let error as LiveAPIError where error.statusCode == 401 {
-      accessToken = nil
-      try await credentials.deleteAccessToken()
+      await invalidateSession()
       return nil
     }
   }
@@ -100,7 +110,7 @@ actor LiveAPIClient {
     contentType: String = "application/json"
   ) async throws -> Data {
     guard let accessToken else {
-      throw LiveAPIError.server(message: "Sua sessão expirou. Entre novamente para continuar.")
+      throw LiveAPIError.sessionExpired
     }
     var request = URLRequest(url: Self.productionURL.appending(path: path))
     request.httpMethod = method
@@ -110,8 +120,17 @@ actor LiveAPIClient {
       request.setValue(contentType, forHTTPHeaderField: "Content-Type")
       request.httpBody = body
     }
-    let (data, response) = try await session.data(for: request)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await session.data(for: request)
+    } catch {
+      throw transportError(from: error)
+    }
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
+    if http.statusCode == 401 {
+      await invalidateSession()
+      throw LiveAPIError.sessionExpired
+    }
     guard (200..<300).contains(http.statusCode) else {
       let problem = try? JSONDecoder().decode(ProblemResponse.self, from: data)
       throw LiveAPIError.server(
@@ -126,15 +145,33 @@ actor LiveAPIClient {
     try? await credentials.deleteAccessToken()
   }
 
+  /// Clears the in-memory token and the persisted credential, then notifies
+  /// any observers (see `AppModel`) that the session is no longer valid.
+  private func invalidateSession() async {
+    accessToken = nil
+    try? await credentials.deleteAccessToken()
+    NotificationCenter.default.post(name: .liveAPIClientSessionExpired, object: nil)
+  }
+
   func download(path: String, filename: String, mediaType: String = "application/pdf") async throws -> DownloadedFile {
     guard let accessToken else {
-      throw LiveAPIError.server(message: "Sua sessão expirou. Entre novamente para continuar.")
+      throw LiveAPIError.sessionExpired
     }
     var request = URLRequest(url: Self.productionURL.appending(path: path))
     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
     request.setValue(mediaType, forHTTPHeaderField: "Accept")
-    let (data, response) = try await session.data(for: request)
-    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await session.data(for: request)
+    } catch {
+      throw transportError(from: error)
+    }
+    guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
+    if http.statusCode == 401 {
+      await invalidateSession()
+      throw LiveAPIError.sessionExpired
+    }
+    guard (200..<300).contains(http.statusCode) else {
       throw LiveAPIError.server(message: "Não foi possível baixar o arquivo.")
     }
     let responseMediaType = (http.value(forHTTPHeaderField: "Content-Type") ?? mediaType)
@@ -176,7 +213,12 @@ actor LiveAPIClient {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
       request.httpBody = try JSONEncoder().encode(body)
     }
-    let (data, response) = try await session.data(for: request)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await session.data(for: request)
+    } catch {
+      throw transportError(from: error)
+    }
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
     guard (200..<300).contains(http.statusCode) else {
       let problem = try? JSONDecoder().decode(ProblemResponse.self, from: data)
@@ -189,19 +231,6 @@ actor LiveAPIClient {
     } catch {
       throw LiveAPIError.invalidResponse
     }
-  }
-}
-
-private struct LoginRequest: Encodable {
-  let email: String
-  let password: String
-  let credentialTransport: String
-  let turnstileToken: String
-
-  enum CodingKeys: String, CodingKey {
-    case email, password
-    case credentialTransport = "credential_transport"
-    case turnstileToken = "turnstile_token"
   }
 }
 

@@ -1,6 +1,11 @@
 import Foundation
 import Testing
-@testable import RentivoCore
+
+#if canImport(RentivoCore)
+  @testable import RentivoCore
+#else
+  @testable import Rentivo
+#endif
 
 @Test func mobileWebAuthenticationBuildsProductionLoginAndLogoutURLs() throws {
   let baseURL = try #require(URL(string: "https://rentivo.com.br"))

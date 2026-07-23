@@ -1,5 +1,23 @@
 import XCTest
 
+// These UI tests drive the app in `--ui-testing` (mock store) mode against
+// `MockFixtures.canonical`. Two constraints shape what's testable here:
+//
+// - `AppModel.signInWithWebAuthorization()` short-circuits to the synchronous,
+//   unconditional `signIn()` whenever `dependencies.auth` isn't `APIRentivoStore`
+//   (always true in `--ui-testing` mode, see `RentivoApp.swift`). There is no
+//   launch argument, demo setting, or injectable seam that makes mock sign-in
+//   fail, and `LoginView` no longer has any credential fields to submit invalid
+//   values into — it is just a single "Entrar" button. A prior
+//   `testAuthenticationValidationIsRecoverable` test (typing a wrong
+//   password to trigger `login.error`) is therefore not reproducible without
+//   adding a test-only failure hook to `AppModel`/`MockRentivoStore`/
+//   `RentivoApp.swift`, which is out of scope for a test-only fix. Dropped.
+// - Every `FileDownloadRepository` method on `MockRentivoStore` (invoice,
+//   recibo, receipt, attachment downloads) unconditionally throws
+//   `DemoError.operationFailed` — the mock store never produces a real file.
+//   Any flow that taps a "download"/"open PDF" action in mock mode ends in
+//   the demonstration failure notice, never a document preview sheet.
 @MainActor
 final class RentivoUITests: XCTestCase {
   override func setUpWithError() throws {
@@ -36,18 +54,7 @@ final class RentivoUITests: XCTestCase {
     )
   }
 
-  func testAuthenticationValidationIsRecoverable() throws {
-    let app = XCUIApplication()
-    app.launchArguments = ["--ui-testing"]
-    app.launch()
-
-    app.buttons["login.submit"].tap()
-    XCTAssertTrue(app.staticTexts["login.error"].waitForExistence(timeout: 2))
-    signIn(app)
-    XCTAssertTrue(app.tabBars.buttons["Início"].waitForExistence(timeout: 3))
-  }
-
-  func testBillingCreationToPaidReceiptAndThemeJourney() throws {
+  func testBillingCreationToPaidAndThemeJourney() throws {
     let app = launchAndSignIn()
     app.tabBars.buttons["Cobranças"].tap()
     openCanonicalBilling(in: app)
@@ -64,10 +71,18 @@ final class RentivoUITests: XCTestCase {
     transition("published", in: app)
     transition("sent", in: app)
     transition("paid", in: app)
-    XCTAssertTrue(app.buttons["Visualizar recibo"].waitForExistence(timeout: 3))
-    app.buttons["Visualizar recibo"].tap()
-    XCTAssertTrue(app.staticTexts["RECIBO DE PAGAMENTO"].waitForExistence(timeout: 2))
-    app.buttons["Concluir"].tap()
+
+    // "Abrir recibo" only appears once the bill is paid. The mock store's
+    // download stub always fails (see file-level comment above), so this
+    // verifies the recoverable failure notice rather than a document preview.
+    let openReceipt = app.buttons["Abrir recibo"]
+    scrollTo(openReceipt, in: app)
+    openReceipt.tap()
+    XCTAssertTrue(
+      app.staticTexts["Não foi possível concluir esta ação de demonstração."]
+        .waitForExistence(timeout: 3)
+    )
+    app.buttons["Fechar aviso"].tap()
 
     app.navigationBars.buttons.element(boundBy: 0).tap()
     let theme = app.buttons["billing.theme"]
@@ -165,6 +180,17 @@ final class RentivoUITests: XCTestCase {
     )
   }
 
+  // A `testAPIKeyRevocationRequiresConfirmation` test (tapping the "Chaves de integração" row's
+  // small in-row "Editar"/"Revogar" buttons — see `APIKeyListView` in `APIKeyViews.swift`) was
+  // attempted here to cover the API-key revoke confirmation dialog. It was dropped: on this
+  // simulator, XCUITest's synthesized tap on either button in that row (not just the one opening
+  // the confirmationDialog) reliably fails to invoke the button's action — confirmed by "Editar"
+  // also never presenting its edit sheet, which rules out anything specific to confirmationDialog.
+  // Reproducing or fixing that would mean changing `APIKeyViews.swift`, which is out of scope for
+  // a test-only fix. The passkey-delete and expense/attachment/receipt-delete confirmation
+  // dialogs use the same `.confirmationDialog(_:isPresented:presenting:actions:message:)` pattern
+  // and may share this risk; a future change to those rows' layout should re-attempt UI coverage.
+
   private func launchAndSignIn() -> XCUIApplication {
     let app = XCUIApplication()
     app.launchArguments = ["--ui-testing"]
@@ -173,18 +199,13 @@ final class RentivoUITests: XCTestCase {
     return app
   }
 
+  /// Current `LoginView` (see `AuthViews.swift`) has no credential fields —
+  /// it is a single "Entrar" button that, in `--ui-testing` mode, resolves
+  /// synchronously via `AppModel.signIn()` without any browser hand-off.
   private func signIn(_ app: XCUIApplication) {
-    let email = app.textFields["login.email"]
-    XCTAssertTrue(email.waitForExistence(timeout: 3))
-    email.tap()
-    email.typeText("ana@example.com")
-    app.secureTextFields["login.password"].tap()
-    app.secureTextFields["login.password"].typeText("demonstracao")
-    app.buttons["login.submit"].tap()
-    let declinePasswordSave = app.buttons["Agora Não"]
-    if declinePasswordSave.waitForExistence(timeout: 2) {
-      declinePasswordSave.tap()
-    }
+    let submit = app.buttons["login.submit"]
+    XCTAssertTrue(submit.waitForExistence(timeout: 3))
+    submit.tap()
     XCTAssertTrue(app.tabBars.buttons["Início"].waitForExistence(timeout: 3))
   }
 

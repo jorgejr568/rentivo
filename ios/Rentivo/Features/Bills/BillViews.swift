@@ -21,6 +21,16 @@ private struct EditableBillLine: Identifiable {
     self.kind = kind
   }
 
+  /// Seeds a line from an existing `BillingItem`, preserving its original id (a server-issued
+  /// ULID). `createBill` keys `variable_amounts` by that original id, so minting a fresh client
+  /// UUID here would silently drop any user-edited variable amount for a new bill.
+  init(seededFrom item: BillingItem, kind: BillLineItemKind) {
+    id = BillLineItemID(rawValue: item.id.rawValue)
+    description = item.description
+    centavos = item.amount.centavos
+    self.kind = kind
+  }
+
   var domain: BillLineItem {
     BillLineItem(
       id: id,
@@ -50,18 +60,15 @@ struct BillFormView: View {
     self.billing = billing
     self.bill = bill
     self.onSaved = onSaved
-    _year = State(initialValue: bill?.referenceMonth.year ?? 2026)
-    _month = State(initialValue: bill?.referenceMonth.month ?? 7)
+    let currentComponents = Calendar.current.dateComponents([.year, .month], from: Date())
+    _year = State(initialValue: bill?.referenceMonth.year ?? currentComponents.year ?? 2026)
+    _month = State(initialValue: bill?.referenceMonth.month ?? currentComponents.month ?? 1)
     _dueDay = State(initialValue: bill?.dueDate.day ?? 10)
     _notes = State(initialValue: bill?.notes ?? "")
     let initialLines =
       bill?.lineItems.map(EditableBillLine.init)
       ?? billing.items.map { item in
-        EditableBillLine(
-          description: item.description,
-          centavos: item.amount.centavos,
-          kind: item.type == .fixed ? .fixed : .variable
-        )
+        EditableBillLine(seededFrom: item, kind: item.type == .fixed ? .fixed : .variable)
       }
     _lines = State(initialValue: initialLines)
   }
@@ -78,16 +85,26 @@ struct BillFormView: View {
 
       ForEach(BillLineItemKind.allCases, id: \.self) { kind in
         Section(kind.sectionTitle) {
-          ForEach($lines) { $line in
-            if line.kind == kind {
-              VStack(alignment: .leading, spacing: RentivoSpacing.small) {
-                TextField("Descrição", text: $line.description)
-                TextField("Valor em centavos", value: $line.centavos, format: .number)
-                  .keyboardType(.numberPad)
-              }
+          // Fixed lines mirror the billing's own recurring items and aren't deletable here; only
+          // user-added variable/extra lines get swipe-to-delete.
+          if kind == .fixed {
+            ForEach(lineIndices(for: kind), id: \.self) { index in
+              lineRow(index)
             }
+          } else {
+            ForEach(lineIndices(for: kind), id: \.self) { index in
+              lineRow(index)
+            }
+            .onDelete { offsets in removeLines(at: offsets, kind: kind) }
           }
-          if kind != .fixed {
+          if kind == .extra {
+            // Only extras get an "add new line" affordance here: extras are the server's
+            // mechanism for ad-hoc per-bill lines. Variable items are defined by the billing
+            // (cobrança) itself, seeded above from `billing.items`; the live store's
+            // `variable_amounts` only accepts the billing's own ULID-keyed variable items, so a
+            // client-minted UUID for a brand-new variable line would silently be dropped on
+            // save. Previously seeded variable lines still render and remain editable via
+            // `lineRow` and deletable via the `.onDelete` above.
             Button {
               lines.append(EditableBillLine(kind: kind))
             } label: {
@@ -131,6 +148,24 @@ struct BillFormView: View {
 
   private var total: Money {
     lines.map { Money(centavos: $0.centavos) }.reduce(.zero, +)
+  }
+
+  @ViewBuilder
+  private func lineRow(_ index: Int) -> some View {
+    VStack(alignment: .leading, spacing: RentivoSpacing.small) {
+      TextField("Descrição", text: $lines[index].description)
+      CurrencyCentavosField("Valor em centavos", centavos: $lines[index].centavos)
+    }
+  }
+
+  private func lineIndices(for kind: BillLineItemKind) -> [Int] {
+    lines.indices.filter { lines[$0].kind == kind }
+  }
+
+  private func removeLines(at offsets: IndexSet, kind: BillLineItemKind) {
+    let indices = lineIndices(for: kind)
+    let targets = offsets.map { indices[$0] }
+    lines.remove(atOffsets: IndexSet(targets))
   }
 
   private func save() async {
@@ -242,11 +277,11 @@ struct BillDetailView: View {
               Spacer()
               StatusBadge(status: bill.status)
             }
-            MoneyText(money: bill.total)
-            Label("Vencimento: \(bill.dueDate.iso8601)", systemImage: "calendar")
+            MoneyText(money: bill.effectiveTotal)
+            Label("Vencimento: \(bill.dueDate.displayFormatted)", systemImage: "calendar")
               .font(.subheadline)
             if let paidAt = bill.paidAt {
-              Label("Pago em \(paidAt.iso8601)", systemImage: "checkmark.seal.fill")
+              Label("Pago em \(paidAt.displayFormatted)", systemImage: "checkmark.seal.fill")
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(RentivoColors.emerald)
             }
@@ -340,12 +375,14 @@ struct BillDetailView: View {
   private func lifecycle(_ bill: Bill) -> some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
       SectionTitle(title: "Ciclo da fatura", symbol: "arrow.triangle.2.circlepath")
-      if bill.status.allowedTransitions.isEmpty {
+      // Prefer the server-authoritative transitions for this specific bill (`available_transitions`)
+      // over the local `BillStatus` state machine, when the API supplies them.
+      if bill.effectiveTransitions.isEmpty {
         Label("Esta fatura está em um estado final.", systemImage: "checkmark.circle")
           .foregroundStyle(RentivoColors.secondaryInk)
       } else {
         ForEach(
-          bill.status.allowedTransitions.sorted { $0.rawValue < $1.rawValue },
+          bill.effectiveTransitions.sorted { $0.rawValue < $1.rawValue },
           id: \.self
         ) { status in
           Button {
@@ -400,8 +437,8 @@ struct BillDetailView: View {
   private func regenerate(_ bill: Bill) async {
     do {
       _ = try await app.dependencies.bills.regenerateBill(billingID: billingID, billID: bill.id)
+      // `refreshAll()` already calls `onMutation()`; calling it again here made the parent reload twice.
       await refreshAll()
-      await onMutation()
       app.showNotice("Documento enfileirado para regeneração.")
     } catch { app.showNotice(DemoError(error).message, kind: .warning) }
   }
@@ -425,10 +462,19 @@ private struct ReceiptManagerView: View {
   let onMutation: () async -> Void
   @State private var downloadedFile: DownloadedFile?
   @State private var showingFileImporter = false
+  @State private var pendingDeletion: Receipt?
 
   var body: some View {
     VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
-      SectionTitle(title: "Comprovantes", symbol: "paperclip")
+      HStack {
+        SectionTitle(title: "Comprovantes", symbol: "paperclip")
+        if !bill.receipts.isEmpty {
+          Spacer()
+          Text(ptBRCount(bill.receipts.count, singular: "comprovante", plural: "comprovantes"))
+            .font(.caption)
+            .foregroundStyle(RentivoColors.secondaryInk)
+        }
+      }
       if bill.receipts.isEmpty {
         Text("Nenhum comprovante anexado.")
           .foregroundStyle(RentivoColors.secondaryInk)
@@ -443,13 +489,18 @@ private struct ReceiptManagerView: View {
                 Menu {
                   Button("Abrir") { Task { await download(receipt) } }
                   if canWrite {
-                    Button("Excluir", role: .destructive) { Task { await remove(receipt) } }
+                    Button("Excluir", role: .destructive) { pendingDeletion = receipt }
                   }
                 } label: {
                   Image(systemName: "ellipsis.circle")
                 }
+                .accessibilityLabel("Mais opções para \(receipt.name)")
               }
             }
+            // Drag-to-reorder (`.onMove`) would need these rows hosted in a `List`, but this
+            // section renders inside a `RentivoCard`/`VStack` (the surrounding screen is a
+            // `ScrollView`, not a `List`), so `.onMove` has no effect here. Kept as an explicit
+            // action instead of restructuring the whole detail screen's layout around a `List`.
             if bill.receipts.count > 1 && canWrite {
               Button("Inverter ordem") { Task { await reverse() } }
                 .buttonStyle(.bordered)
@@ -474,6 +525,21 @@ private struct ReceiptManagerView: View {
     ) { result in
       guard case .success(let urls) = result, let url = urls.first else { return }
       Task { await add(fileURL: url) }
+    }
+    .confirmationDialog(
+      "Excluir este comprovante?",
+      isPresented: Binding(
+        get: { pendingDeletion != nil },
+        set: { isPresented in if !isPresented { pendingDeletion = nil } }
+      ),
+      titleVisibility: .visible
+    ) {
+      Button("Excluir comprovante", role: .destructive) {
+        if let receipt = pendingDeletion { Task { await remove(receipt) } }
+      }
+      Button("Cancelar", role: .cancel) { pendingDeletion = nil }
+    } message: {
+      Text("O comprovante será removido permanentemente desta fatura.")
     }
   }
 

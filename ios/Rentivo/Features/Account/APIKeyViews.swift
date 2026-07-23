@@ -6,9 +6,25 @@ struct APIKeyListView: View {
   @State private var showingCreate = false
   @State private var createdSecret: CreatedAPIKeySecret?
   @State private var editingKey: APIKeyMetadata?
+  @State private var keyPendingRevoke: APIKeyMetadata?
+
+  /// Demo "viewer mode" is a local demo/mock-backend concept only. Once the app is
+  /// connected to the live API, the signed-in user owns their own account and this
+  /// screen should be fully enabled regardless of the demo viewer-mode toggle.
+  private var isDemoViewerLocked: Bool {
+    !app.usesLiveAPI && app.demoSettings.viewerMode
+  }
 
   var body: some View {
-    PageStateView(state: state) { keys in
+    let canCreate = !isDemoViewerLocked
+    PageStateView(
+      state: state,
+      emptyTitle: "Nenhuma chave de integração",
+      emptyMessage: "Crie uma chave de API para conectar integrações externas com escopos e acessos controlados.",
+      emptySystemImage: "key.fill",
+      emptyActionTitle: canCreate ? "Criar chave" : nil,
+      emptyAction: canCreate ? { showingCreate = true } : nil
+    ) { keys in
       List {
         ForEach(keys) { key in
           VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
@@ -20,14 +36,19 @@ struct APIKeyListView: View {
             Text(key.scopes.map(\.label).sorted().joined(separator: " · "))
               .font(.caption)
               .foregroundStyle(RentivoColors.secondaryInk)
+            Text(
+              "Criada em \(key.createdAt.formattedPTBR()) · Expira em \(key.expiresAt.formattedPTBR())"
+            )
+            .font(.caption)
+            .foregroundStyle(RentivoColors.secondaryInk)
             LabeledContent("Acessos", value: "\(key.grants.count)")
               .font(.caption)
-            if !app.demoSettings.viewerMode {
+            if !isDemoViewerLocked {
               HStack {
                 Button("Editar") { editingKey = key }
                   .accessibilityIdentifier("api-key.edit")
                 Spacer()
-                Button("Revogar", role: .destructive) { Task { await revoke(key) } }
+                Button("Revogar", role: .destructive) { keyPendingRevoke = key }
                   .accessibilityIdentifier("api-key.revoke")
               }
               .font(.caption.weight(.semibold))
@@ -41,9 +62,9 @@ struct APIKeyListView: View {
       await load()
     }
     .background(RentivoColors.paper)
-    .navigationTitle("Integrações")
+    .navigationTitle("Chaves de integração")
     .toolbar {
-      if !app.demoSettings.viewerMode {
+      if !isDemoViewerLocked {
         Button {
           showingCreate = true
         } label: {
@@ -69,6 +90,23 @@ struct APIKeyListView: View {
       APIKeySecretView(created: secret)
     }
     .task(id: app.dataRevision) { await load() }
+    .confirmationDialog(
+      "Revogar esta chave de integração?",
+      isPresented: Binding(
+        get: { keyPendingRevoke != nil },
+        set: { if !$0 { keyPendingRevoke = nil } }
+      ),
+      presenting: keyPendingRevoke
+    ) { key in
+      Button("Revogar chave", role: .destructive) {
+        Task { await revoke(key) }
+      }
+      .accessibilityIdentifier("api-key.revoke.confirm")
+      Button("Cancelar", role: .cancel) {}
+        .accessibilityIdentifier("api-key.revoke.cancel")
+    } message: { key in
+      Text("Qualquer integração usando \"\(key.name)\" perderá acesso imediatamente. Esta ação não pode ser desfeita.")
+    }
   }
 
   private func load() async {

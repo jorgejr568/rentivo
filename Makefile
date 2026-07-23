@@ -143,12 +143,15 @@ openapi-generate:
 openapi-check:
 	$(NPM_FRONTEND) run api:check
 
-.PHONY: ios-openapi-sync ios-openapi-check
+.PHONY: ios-openapi-sync ios-openapi-check ios-test
 ios-openapi-sync:
 	./scripts/sync-ios-openapi.sh sync
 
 ios-openapi-check:
 	./scripts/sync-ios-openapi.sh check
+
+ios-test:
+	swift test --package-path ios
 
 # --- Worker (local) ---
 

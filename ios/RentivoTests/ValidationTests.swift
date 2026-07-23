@@ -69,3 +69,60 @@ import Testing
 
   #expect(draft.validate().map(\.field) == [.itemDescription, .itemAmount])
 }
+
+@Test func invoiceDraftAllowsZeroAmountForFixedAndVariableLineItems() {
+  // Variable items (e.g. water/electricity meters) legitimately start at zero
+  // before this month's reading is filled in; only extras must be positive.
+  let draft = BillDraft(
+    billingID: StableID.billingAurora101,
+    referenceMonth: ReferenceMonth(year: 2026, month: 8),
+    dueDate: DateOnly(year: 2026, month: 8, day: 10),
+    notes: "",
+    lineItems: [
+      BillLineItem(id: UUID(), description: "Aluguel", amount: Money(centavos: 180_000), kind: .fixed),
+      BillLineItem(id: UUID(), description: "Água", amount: .zero, kind: .variable),
+    ]
+  )
+
+  #expect(draft.validate().isEmpty)
+}
+
+@Test func invoiceDraftRejectsZeroOrNegativeExtraLineItems() {
+  // The server requires `BillExtraRequest.amount` to be strictly positive
+  // (`exclusiveMinimum: 0`), so a zero-value extra must fail client-side too.
+  let zeroExtraDraft = BillDraft(
+    billingID: StableID.billingAurora101,
+    referenceMonth: ReferenceMonth(year: 2026, month: 8),
+    dueDate: DateOnly(year: 2026, month: 8, day: 10),
+    notes: "",
+    lineItems: [
+      BillLineItem(id: UUID(), description: "Pintura", amount: .zero, kind: .extra)
+    ]
+  )
+  #expect(zeroExtraDraft.validate().map(\.field) == [.itemAmount])
+
+  let negativeExtraDraft = BillDraft(
+    billingID: StableID.billingAurora101,
+    referenceMonth: ReferenceMonth(year: 2026, month: 8),
+    dueDate: DateOnly(year: 2026, month: 8, day: 10),
+    notes: "",
+    lineItems: [
+      BillLineItem(id: UUID(), description: "Pintura", amount: Money(centavos: -500), kind: .extra)
+    ]
+  )
+  #expect(negativeExtraDraft.validate().map(\.field) == [.itemAmount])
+}
+
+@Test func invoiceDraftAcceptsPositiveExtraLineItems() {
+  let draft = BillDraft(
+    billingID: StableID.billingAurora101,
+    referenceMonth: ReferenceMonth(year: 2026, month: 8),
+    dueDate: DateOnly(year: 2026, month: 8, day: 10),
+    notes: "",
+    lineItems: [
+      BillLineItem(id: UUID(), description: "Pintura", amount: Money(centavos: 5_000), kind: .extra)
+    ]
+  )
+
+  #expect(draft.validate().isEmpty)
+}

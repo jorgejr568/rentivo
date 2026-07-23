@@ -50,10 +50,19 @@ Always run Python tools through `uv run --project backend ...`; do not use bare
   generated API types and client code live under `frontend/src/api/`.
 - `frontend/e2e/` contains Playwright projects for mocked UI coverage and the
   production-stack workflow.
+- `ios/Rentivo` is the SwiftUI application. Its Domain and Data layers are
+  packaged as the `RentivoCore` Swift package defined by `ios/Package.swift`
+  (Swift tools 6.0, macOS 14 / iOS 17 minimums) and covered by
+  `swift test --package-path ios`, which requires a full Xcode toolchain
+  (Swift Testing is unavailable in CommandLineTools alone).
 
 The browser talks only to the FastAPI contract. When an API schema changes,
 update the committed OpenAPI snapshot and generated TypeScript client with the
-existing npm/Make targets, then verify `make openapi-check`.
+existing npm/Make targets, then verify `make openapi-check`. The iOS app keeps
+its own copy of the contract at `ios/Rentivo/openapi.json`, which must stay
+byte-identical to `frontend/openapi.json`; refresh it with
+`make ios-openapi-sync` and verify it with `make ios-openapi-check` whenever
+the API schema changes.
 
 ## HTTP and security
 
@@ -92,7 +101,9 @@ Backend coverage is 100 percent and is configured in
 `backend/pyproject.toml`. The normal suite uses SQLite and an ephemeral
 Temporal test server where required; migration and concurrency contracts run
 against MariaDB in CI. Frontend authored code also maintains 100 percent
-coverage.
+coverage. The iOS `RentivoCore` package suite (`make ios-test`) runs on
+`macos-15` CI runners with a full Xcode toolchain; it is not part of the
+SQLite/Temporal or Vitest suites and has no coverage gate configured yet.
 
 Before opening a PR, run the checks relevant to the change:
 
@@ -102,6 +113,8 @@ make test
 make openapi-check
 make frontend-check
 make e2e
+make ios-openapi-check       # if the API schema changed
+make ios-test                # if ios/ changed (requires full Xcode)
 ```
 
 The complete release gate also renders production/development Compose,
@@ -131,7 +144,8 @@ reachability before migration and rollout. See
 
 ## Contribution rules
 
-- Code, comments, and identifiers are English; customer-facing copy is PT-BR.
+- Code, comments, and identifiers are English; customer-facing copy —
+  including the iOS app's UI — is PT-BR.
 - Preserve repository, storage, encryption, email, cache, and job abstractions.
 - Keep dependencies locked with `uv.lock` and `frontend/package-lock.json`.
 - Use Conventional Commit PR titles and complete every PR template section.

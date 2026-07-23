@@ -58,20 +58,25 @@ final class MobileWebAuthenticator: NSObject, ASWebAuthenticationPresentationCon
     return try await withCheckedThrowingContinuation { continuation in
       let webSession = ASWebAuthenticationSession(
         url: url, callbackURLScheme: "rentivo"
-      ) { [self] callbackURL, error in
-        session = nil
-        if let error {
-          continuation.resume(throwing: error)
-          return
+      ) { callbackURL, error in
+        // The completion handler is invoked by AuthenticationServices off the
+        // main actor, but it needs to mutate `self.session` (main-actor
+        // state). Hop explicitly instead of touching it from this closure.
+        Task { @MainActor [self] in
+          session = nil
+          if let error {
+            continuation.resume(throwing: error)
+            return
+          }
+          guard let callbackURL,
+            let code = MobileWebAuthenticationFlow.authorizationCode(
+              from: callbackURL, expectedState: state)
+          else {
+            continuation.resume(throwing: LiveAPIError.invalidResponse)
+            return
+          }
+          continuation.resume(returning: code)
         }
-        guard let callbackURL,
-          let code = MobileWebAuthenticationFlow.authorizationCode(
-            from: callbackURL, expectedState: state)
-        else {
-          continuation.resume(throwing: LiveAPIError.invalidResponse)
-          return
-        }
-        continuation.resume(returning: code)
       }
       configure(webSession)
       guard webSession.start() else {
@@ -89,19 +94,23 @@ final class MobileWebAuthenticator: NSObject, ASWebAuthenticationPresentationCon
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
       let webSession = ASWebAuthenticationSession(
         url: url, callbackURLScheme: "rentivo"
-      ) { [self] callbackURL, error in
-        session = nil
-        if let error {
-          continuation.resume(throwing: error)
-          return
+      ) { callbackURL, error in
+        // Same as `authorize()`: hop to the main actor before touching
+        // `self.session`, since this completion runs off the main actor.
+        Task { @MainActor [self] in
+          session = nil
+          if let error {
+            continuation.resume(throwing: error)
+            return
+          }
+          guard let callbackURL,
+            MobileWebAuthenticationFlow.isLogoutCallback(callbackURL, expectedState: state)
+          else {
+            continuation.resume(throwing: LiveAPIError.invalidResponse)
+            return
+          }
+          continuation.resume()
         }
-        guard let callbackURL,
-          MobileWebAuthenticationFlow.isLogoutCallback(callbackURL, expectedState: state)
-        else {
-          continuation.resume(throwing: LiveAPIError.invalidResponse)
-          return
-        }
-        continuation.resume()
       }
       configure(webSession)
       guard webSession.start() else {
@@ -110,6 +119,14 @@ final class MobileWebAuthenticator: NSObject, ASWebAuthenticationPresentationCon
         return
       }
     }
+  }
+
+  /// Whether `error` represents the user dismissing the authentication sheet
+  /// themselves, as opposed to a genuine failure. Shared by `AppModel`
+  /// (best-effort browser logout) and the login screen (silence expected
+  /// cancellations instead of surfacing an English system message).
+  static func isUserCancellation(_ error: Error) -> Bool {
+    (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
   }
 
   private func configure(_ webSession: ASWebAuthenticationSession) {

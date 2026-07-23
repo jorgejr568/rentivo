@@ -6,14 +6,19 @@ struct InvitationListView: View {
   @State private var state: LoadState<[Invitation]> = .idle
 
   var body: some View {
-    PageStateView(state: state) { invitations in
+    PageStateView(
+      state: state,
+      emptyTitle: "Nenhum convite pendente",
+      emptyMessage: "Convites para participar de organizações aparecerão aqui assim que alguém te convidar.",
+      emptySystemImage: "envelope.open"
+    ) { invitations in
       List {
         ForEach(invitations) { invitation in
           VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
             Text(invitation.organizationName).font(.headline)
             Label(invitation.role.label, systemImage: "person.badge.shield.checkmark")
               .font(.caption)
-            if app.demoSettings.viewerMode {
+            if !app.usesLiveAPI && app.demoSettings.viewerMode {
               Label("Ações indisponíveis no modo visualizador.", systemImage: "eye.fill")
                 .font(.caption)
                 .foregroundStyle(RentivoColors.secondaryInk)
@@ -41,11 +46,26 @@ struct InvitationListView: View {
   }
 
   private func load() async {
-    state = .loading
+    // Only blank the sheet with a spinner on first load; a `dataRevision`
+    // bump while the sheet is open (e.g. toggling a demo setting) refreshes
+    // in place instead of tearing down the currently-shown list.
+    switch state {
+    case .idle, .failed:
+      state = .loading
+    case .loading, .loaded, .empty:
+      break
+    }
     do {
       let invitations = try await app.dependencies.invitations.listPendingInvitations()
       state = invitations.isEmpty ? .empty : .loaded(invitations)
-    } catch { state = .failed(DemoError(error)) }
+    } catch {
+      switch state {
+      case .loaded, .empty:
+        app.showNotice(DemoError(error).message, kind: .warning)
+      default:
+        state = .failed(DemoError(error))
+      }
+    }
   }
 
   private func respond(_ invitation: Invitation, accept: Bool) async {
@@ -76,12 +96,17 @@ struct InviteMemberView: View {
         .keyboardType(.emailAddress)
         .textInputAutocapitalization(.never)
       Picker("Função", selection: $role) {
-        ForEach(OrganizationRole.allCases.filter { $0 != .owner }, id: \.self) { role in
+        ForEach(OrganizationRole.allCases, id: \.self) { role in
           Text(role.label).tag(role)
         }
       }
-      Label("O convite ficará pendente apenas na memória do app.", systemImage: "info.circle")
-        .font(.footnote)
+      // This disclosure only describes the mock store's in-memory behavior;
+      // against the live API the invite is actually persisted server-side, so
+      // showing it there would be misleading demo residue.
+      if !app.usesLiveAPI {
+        Label("O convite ficará pendente apenas na memória do app.", systemImage: "info.circle")
+          .font(.footnote)
+      }
     }
     .navigationTitle("Convidar membro")
     .toolbar {

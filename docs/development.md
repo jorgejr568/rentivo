@@ -100,6 +100,33 @@ make openapi-check           # non-mutating CI freshness check
 
 Do not hand-edit generated OpenAPI types.
 
+## iOS development
+
+The iOS app lives in `ios/Rentivo`; its Domain and Data layers are packaged as
+the `RentivoCore` Swift package defined by `ios/Package.swift` (Swift tools
+6.0, macOS 14 / iOS 17 minimums). Xcode is required — Swift Testing, used by
+the `RentivoTests` target, is not available in Xcode Command Line Tools alone.
+
+```bash
+open ios/Rentivo.xcodeproj    # run the app in the simulator
+make ios-test                 # swift test --package-path ios
+```
+
+CI runs `make ios-test`'s equivalent on `macos-15` runners; it currently
+covers only the `RentivoCore` package, not the `Rentivo` app or
+`RentivoUITests` targets via `xcodebuild`.
+
+The iOS app carries its own copy of the OpenAPI contract at
+`ios/Rentivo/openapi.json`, which must stay byte-identical to
+`frontend/openapi.json`:
+
+```bash
+make ios-openapi-sync     # copy frontend/openapi.json into ios/Rentivo
+make ios-openapi-check    # non-mutating CI freshness check
+```
+
+Refresh the iOS copy any time the frontend OpenAPI snapshot changes.
+
 ## End-to-end and visual tests
 
 ```bash
@@ -123,11 +150,14 @@ npm --prefix frontend run lint
 npm --prefix frontend run typecheck
 make frontend-test-cov
 make openapi-check
+make ios-test            # requires full Xcode; see iOS development above
+make ios-openapi-check
 ```
 
 Backend and authored frontend code enforce 100% coverage. Backend tests run in
 parallel and normally use isolated SQLite databases. `make install` registers
-pre-commit hooks for formatting, lint, and the full test suite.
+pre-commit hooks for formatting, lint, and the full test suite. The iOS suite
+has no coverage gate configured.
 
 ## Jobs and worker
 

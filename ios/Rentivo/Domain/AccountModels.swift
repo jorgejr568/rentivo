@@ -1,14 +1,16 @@
 import Foundation
 
+/// Mirrors the server's role contract exactly (`admin`, `manager`, `viewer`).
+/// There is no "owner" role on the wire: `OrganizationMemberUpdateRequest.role`
+/// and every invite/member response enum accept only these three values, so no
+/// case here may be excluded from mutation paths or role pickers.
 public enum OrganizationRole: String, CaseIterable, Codable, Sendable {
-  case owner
   case admin
   case manager
   case viewer
 
   public var label: String {
     switch self {
-    case .owner: "Proprietário"
     case .admin: "Administrador"
     case .manager: "Gerente"
     case .viewer: "Visualizador"
@@ -43,7 +45,7 @@ public struct OrganizationCapabilities: Hashable, Codable, Sendable {
 
   public static func forRole(_ role: OrganizationRole) -> OrganizationCapabilities {
     switch role {
-    case .owner, .admin: .full
+    case .admin: .full
     case .manager: .manager
     case .viewer: .viewer
     }
