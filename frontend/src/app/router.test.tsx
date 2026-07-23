@@ -65,6 +65,23 @@ it.each([
   router.dispose();
 });
 
+it.each([
+  ["/privacy", "Política de Privacidade"],
+  ["/terms", "Termos de Uso"]
+])("renders the public legal page %s inside the public shell", async (path, heading) => {
+  window.history.pushState({}, "", path);
+  const router = createAppRouter();
+  const view = render(<RouterProvider router={router} />);
+
+  expect(
+    await screen.findByRole("heading", { level: 2, name: heading })
+  ).toBeVisible();
+  expect(screen.getByRole("main")).toHaveClass("wrapper", "main-content");
+
+  view.unmount();
+  router.dispose();
+});
+
 it("does not render or request private content until session authentication succeeds", async () => {
   const NativeRequest = globalThis.Request;
   class CompatibleNavigationRequest extends NativeRequest {
