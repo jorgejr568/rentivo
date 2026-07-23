@@ -38,6 +38,72 @@ def _insert_api_key(db_connection, *, user_id: int, uuid: str, is_login_token: b
     db_connection.commit()
 
 
+def _seed_account_graph(db_connection) -> None:
+    """Arrange user 1 with auth artifacts, owned content, a solo org, and a shared org.
+
+    User 1 is the account under test; user 2 shares the second organization so the
+    solo/shared branch of the org soft-delete is exercised. All rows are inserted
+    raw so SQLite's foreign keys (``PRAGMA foreign_keys = ON``) drive real cascades.
+    """
+    now = "2026-07-01 12:00:00"
+    for uid, ehash in ((1, "hash-1"), (2, "hash-2")):
+        db_connection.execute(
+            text(
+                "INSERT INTO users (id, email, email_hash, password_hash, created_at) "
+                "VALUES (:id, :email, :hash, 'x', :now)"
+            ),
+            {"id": uid, "email": f"u{uid}@example.com", "hash": ehash, "now": now},
+        )
+    # Auth artifact that cascades away with the user row.
+    db_connection.execute(
+        text(
+            "INSERT INTO user_passkeys (uuid, user_id, credential_id, public_key, created_at) "
+            "VALUES ('pk-1', 1, 'cred', 'pub', :now)"
+        ),
+        {"now": now},
+    )
+    # User-owned billing (soft-deleted, not cascaded) and a peer billing that must survive.
+    db_connection.execute(
+        text(
+            "INSERT INTO billings (name, uuid, owner_type, owner_id, created_at, updated_at) "
+            "VALUES ('Mine', 'b-user-1', 'user', 1, :now, :now), "
+            "('Theirs', 'b-user-2', 'user', 2, :now, :now)"
+        ),
+        {"now": now},
+    )
+    # Solo org: user 1 is the only member -> soft-deleted.
+    db_connection.execute(
+        text(
+            "INSERT INTO organizations (id, uuid, name, created_by, created_at, updated_at) "
+            "VALUES (10, 'org-solo', 'Solo', 1, :now, :now)"
+        ),
+        {"now": now},
+    )
+    db_connection.execute(
+        text(
+            "INSERT INTO organization_members (organization_id, user_id, role, created_at) "
+            "VALUES (10, 1, 'admin', :now)"
+        ),
+        {"now": now},
+    )
+    # Shared org: users 1 and 2 are both members -> survives with created_by nulled.
+    db_connection.execute(
+        text(
+            "INSERT INTO organizations (id, uuid, name, created_by, created_at, updated_at) "
+            "VALUES (20, 'org-shared', 'Shared', 1, :now, :now)"
+        ),
+        {"now": now},
+    )
+    db_connection.execute(
+        text(
+            "INSERT INTO organization_members (organization_id, user_id, role, created_at) "
+            "VALUES (20, 1, 'admin', :now), (20, 2, 'admin', :now)"
+        ),
+        {"now": now},
+    )
+    db_connection.commit()
+
+
 class TestUserRepo:
     def test_create_and_get(self, user_repo: SQLAlchemyUserRepository):
         user = User(email="admin@example.com", password_hash="hash123")
@@ -168,6 +234,67 @@ class TestUserRepo:
         assert user_repo.delete(user.id) is True
         assert user_repo.delete(user.id) is False
         assert user_repo.get_by_id(user.id) is None
+
+    def test_delete_account_soft_deletes_content_and_hard_deletes_user(self, db_connection, fake_encryption):
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        _seed_account_graph(db_connection)
+        _insert_api_key(db_connection, user_id=1, uuid="login-1", is_login_token=True)
+
+        assert repo.delete_account(1) is True
+
+        # User and its cascading auth artifacts are gone.
+        assert db_connection.execute(text("SELECT COUNT(*) FROM users WHERE id = 1")).scalar() == 0
+        assert db_connection.execute(text("SELECT COUNT(*) FROM user_passkeys WHERE user_id = 1")).scalar() == 0
+        assert db_connection.execute(text("SELECT COUNT(*) FROM api_keys WHERE user_id = 1")).scalar() == 0
+        assert db_connection.execute(text("SELECT COUNT(*) FROM organization_members WHERE user_id = 1")).scalar() == 0
+        # User-owned billing soft-deleted; the peer user's billing is untouched.
+        assert (
+            db_connection.execute(
+                text("SELECT deleted_at FROM billings WHERE owner_type = 'user' AND owner_id = 1")
+            ).scalar()
+            is not None
+        )
+        assert (
+            db_connection.execute(
+                text("SELECT deleted_at FROM billings WHERE owner_type = 'user' AND owner_id = 2")
+            ).scalar()
+            is None
+        )
+        # Solo org soft-deleted; shared org survives with created_by nulled and not soft-deleted.
+        assert db_connection.execute(text("SELECT deleted_at FROM organizations WHERE id = 10")).scalar() is not None
+        row = db_connection.execute(text("SELECT deleted_at, created_by FROM organizations WHERE id = 20")).fetchone()
+        assert row[0] is None and row[1] is None
+        # The peer user is unaffected.
+        assert db_connection.execute(text("SELECT COUNT(*) FROM users WHERE id = 2")).scalar() == 1
+
+    def test_delete_account_returns_false_for_missing_user(self, db_connection, fake_encryption):
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        assert repo.delete_account(999) is False
+
+    def test_delete_account_rolls_back_when_user_delete_fails(self, db_connection, fake_encryption):
+        repo = SQLAlchemyUserRepository(db_connection, fake_encryption)
+        _seed_account_graph(db_connection)
+        # Force the final hard-delete to abort after the soft-delete UPDATEs have run.
+        db_connection.execute(
+            text(
+                "CREATE TRIGGER fail_user_delete BEFORE DELETE ON users "
+                "WHEN OLD.id = 1 BEGIN SELECT RAISE(ABORT, 'forced failure'); END"
+            )
+        )
+        db_connection.commit()
+
+        with pytest.raises(SQLAlchemyError):
+            repo.delete_account(1)
+
+        # All-or-nothing: the user survives and no soft-delete stuck.
+        assert db_connection.execute(text("SELECT COUNT(*) FROM users WHERE id = 1")).scalar() == 1
+        assert (
+            db_connection.execute(
+                text("SELECT deleted_at FROM billings WHERE owner_type = 'user' AND owner_id = 1")
+            ).scalar()
+            is None
+        )
+        assert db_connection.execute(text("SELECT deleted_at FROM organizations WHERE id = 10")).scalar() is None
 
 
 class TestUserRepoEncryption:

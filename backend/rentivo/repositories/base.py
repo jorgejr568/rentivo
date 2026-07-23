@@ -223,6 +223,10 @@ class UserRepository(ABC):
     def delete(self, user_id: int) -> bool: ...
 
     @abstractmethod
+    def delete_account(self, user_id: int) -> bool:
+        """Atomically soft-delete owned content and hard-delete the user."""
+
+    @abstractmethod
     def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None: ...
 
 
