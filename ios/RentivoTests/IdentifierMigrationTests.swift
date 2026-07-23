@@ -1,6 +1,11 @@
 import Foundation
 import Testing
-@testable import RentivoCore
+
+#if canImport(RentivoCore)
+  @testable import RentivoCore
+#else
+  @testable import Rentivo
+#endif
 
 @Test func opaqueIdentifiersDoNotRequireUUIDParsing() {
   let billing = BillingID(rawValue: "01K0RENTIVO7QVK5R9H5G2Z0AB")

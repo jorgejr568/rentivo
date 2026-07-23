@@ -19,14 +19,27 @@ exists today plus the steps still needed, not a procedure to execute.
 - **No signing team is configured.** The targets use `CODE_SIGN_STYLE =
   Automatic` with no `DEVELOPMENT_TEAM` set. The project cannot produce a
   signed archive without a developer assigning a team locally in Xcode first.
-- **CI covers unit tests only.** `.github/workflows/test-pr.yaml` runs
-  `swift test --package-path ios` (the `RentivoCore` package's test suite) on
-  `macos-15` runners. It does not run `xcodebuild test`, `xcodebuild build`, or
-  `xcodebuild archive` for the `Rentivo` app or `RentivoUITests` targets. The
-  `xcodebuild test` action is currently broken — the `RentivoTests` target does
-  not correctly link `RentivoCore` — and is tracked as separate work; do not
-  assume `xcodebuild` builds succeed until that is fixed and this runbook is
-  updated.
+- **CI covers unit tests, not UI tests or archiving.** `.github/workflows/test-pr.yaml`
+  runs `swift test --package-path ios` (the `RentivoCore` package's test
+  suite) and, on the same `macos-15` runner, `xcodebuild test
+  -only-testing:RentivoTests` (the Xcode-hosted `RentivoTests` target) against
+  a dynamically-resolved iPhone simulator destination. The `RentivoTests`
+  build previously failed because several files under `ios/RentivoTests/`
+  imported `RentivoCore` unconditionally while the Xcode target does not link
+  the `RentivoCore` SPM package (`packageProductDependencies = ()` in
+  `project.pbxproj`); this is fixed by applying the dual-mode
+  `#if canImport(RentivoCore) @testable import RentivoCore #else @testable
+  import Rentivo #endif` guard uniformly (the pattern most test files already
+  used) instead of linking the package into the target. CI still does
+  not run `RentivoUITests` or `xcodebuild archive`: the UI test suite is
+  slower, more simulator/timing-sensitive, and (per its own file-level
+  comments) at least one interaction in it — tapping the small in-row
+  buttons on the API-key list screen — was found to be unreliable with
+  XCUITest's synthesized taps during local verification on this machine's
+  simulator/Xcode combination, so it is deliberately kept out of the required
+  PR path for now. Run it locally with `xcodebuild test
+  -only-testing:RentivoUITests` against a booted simulator before relying on
+  it.
 - **iOS is outside the backend/frontend release workflow.**
   `.github/workflows/release.yml`, which publishes API/worker/frontend images
   for a Git SHA, does not reference `ios/` at all. There is no versioning,
@@ -67,11 +80,14 @@ This is the path, not a schedule. None of the following is implemented yet.
 4. **Create the App Store Connect app record** under the chosen bundle ID,
    including app name, category, and PT-BR customer-facing metadata
    (description, screenshots) consistent with the product's copy rules.
-5. **Fix and extend CI to build/archive the app.** This depends on the
-   `RentivoTests`/`RentivoCore` link being fixed first (see Current state
-   above), then adding an `xcodebuild archive` + `xcodebuild -exportArchive`
-   step with a signed export options plist, followed by upload via
-   `xcrun altool` / `xcrun notarytool` or the App Store Connect API.
+5. **Extend CI to build/archive the app.** The `RentivoTests`/`RentivoCore`
+   link problem blocking `xcodebuild test` is fixed (see Current state above),
+   and unit tests now run in CI. What remains is adding an `xcodebuild
+   archive` + `xcodebuild -exportArchive` step with a signed export options
+   plist, followed by upload via `xcrun altool` / `xcrun notarytool` or the
+   App Store Connect API — plus deciding whether `RentivoUITests` ever joins
+   the required PR gate once its flaky in-row-button tap interaction (see
+   Current state above) is resolved.
 6. **Add App Store Connect API credentials as CI secrets**, scoped the same
    way production deployment secrets are scoped for `deploy.yml`, once the app
    record and signing exist.

@@ -113,11 +113,33 @@ jobs:
           key: ${{ runner.os }}-spm-${{ hashFiles('ios/Package.resolved') }}
           restore-keys: |
             ${{ runner.os }}-spm-
-      # TODO: add an `xcodebuild test` step for the Rentivo app and
-      # RentivoUITests targets once RentivoTests links RentivoCore correctly;
-      # that target is currently broken and is being fixed separately.
       - name: Run RentivoCore package tests
         run: swift test --package-path ios
+      # The Xcode-hosted `RentivoTests` target used to fail `xcodebuild test`: several files
+      # under ios/RentivoTests/ imported RentivoCore unconditionally, but the target does not
+      # link the RentivoCore SPM package. Fixed by applying the dual-mode
+      # `#if canImport(RentivoCore) @testable import RentivoCore #else @testable import Rentivo
+      # #endif` guard uniformly across the suite. Only unit tests run here — RentivoUITests is
+      # intentionally kept out of the required PR path (slower, more simulator/timing-sensitive,
+      # and at least one interaction in it was found unreliable with XCUITest's synthesized taps
+      # during local verification; see its file-level comments and docs/runbooks/ios-release.md).
+      - name: Resolve an available iOS Simulator destination
+        id: simulator
+        run: |
+          DESTINATION_ID=$(xcodebuild -project ios/Rentivo.xcodeproj -scheme Rentivo -showdestinations 2>/dev/null \
+            | grep "platform:iOS Simulator" | grep "name:iPhone" | head -1 \
+            | sed -E 's/.*id:([0-9A-Fa-f-]+).*/\1/')
+          if [ -z "$DESTINATION_ID" ]; then
+            echo "No iPhone Simulator destination available on this runner" >&2
+            exit 1
+          fi
+          echo "id=$DESTINATION_ID" >> "$GITHUB_OUTPUT"
+      - name: Run Xcode-hosted RentivoTests unit target
+        run: |
+          xcodebuild -project ios/Rentivo.xcodeproj -scheme Rentivo \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.id }}" \
+            -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO \
+            test -only-testing:RentivoTests
 
   e2e:
     name: mocked frontend E2E, accessibility, and visual parity
