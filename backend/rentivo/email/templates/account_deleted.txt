@@ -1,0 +1,14 @@
+RENTIVO — CONTA EXCLUÍDA
+=========================
+
+Olá,
+
+Sua conta no Rentivo ({{ email }}) foi excluída em {{ deleted_at }}.
+
+Seus dados pessoais foram removidos. Registros exigidos por lei podem ser
+retidos conforme a nossa Política de Privacidade.
+
+Se você não reconhece essa ação, fale com a gente imediatamente:
+suporte@rentivo.com.br
+
+{% include "_email_footer.txt" %}
