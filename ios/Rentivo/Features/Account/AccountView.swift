@@ -63,6 +63,30 @@ struct AccountView: View {
         }
       }
 
+      Section("Sobre e suporte") {
+        Link(destination: LiveAPIClient.productionURL.appending(path: "support")) {
+          AccountRow(
+            title: "Suporte",
+            subtitle: "Fale com a gente",
+            symbol: "questionmark.circle.fill"
+          )
+        }
+        Link(destination: LiveAPIClient.productionURL.appending(path: "privacy")) {
+          AccountRow(
+            title: "Política de privacidade",
+            subtitle: "Como tratamos seus dados",
+            symbol: "hand.raised.fill"
+          )
+        }
+        Link(destination: LiveAPIClient.productionURL.appending(path: "terms")) {
+          AccountRow(
+            title: "Termos de uso",
+            subtitle: "Regras do serviço",
+            symbol: "doc.text.fill"
+          )
+        }
+      }
+
       Section {
         Button(role: .destructive) {
           Task { await app.signOut() }
