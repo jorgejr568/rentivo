@@ -16,3 +16,7 @@ outbox/
 docs/superpowers/
 .superpowers/
 .worktrees/
+ios/.build/
+**/xcuserdata/
+DerivedData/
+*.xcuserstate

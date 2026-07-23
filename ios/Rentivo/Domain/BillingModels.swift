@@ -362,6 +362,14 @@ public struct Bill: Identifiable, Hashable, Codable, Sendable {
   public var status: BillStatus
   public var lineItems: [BillLineItem]
   public var receipts: [Receipt]
+  /// Server-authoritative transitions for this specific bill, when the API
+  /// supplies them. `nil` means "not provided by this response" — callers
+  /// should fall back to `status.allowedTransitions` (see `effectiveTransitions`).
+  public var availableTransitions: [BillStatus]?
+  /// Server-authoritative total for this bill, when the API supplies it.
+  /// `nil` means "not provided by this response" — callers should fall back
+  /// to the locally computed `total` (see `effectiveTotal`).
+  public var serverTotal: Money?
 
   public init(
     id: BillID,
@@ -372,7 +380,9 @@ public struct Bill: Identifiable, Hashable, Codable, Sendable {
     notes: String,
     status: BillStatus,
     lineItems: [BillLineItem],
-    receipts: [Receipt]
+    receipts: [Receipt],
+    availableTransitions: [BillStatus]? = nil,
+    serverTotal: Money? = nil
   ) {
     self.id = id
     self.billingID = billingID
@@ -383,10 +393,29 @@ public struct Bill: Identifiable, Hashable, Codable, Sendable {
     self.status = status
     self.lineItems = lineItems
     self.receipts = receipts
+    self.availableTransitions = availableTransitions
+    self.serverTotal = serverTotal
   }
 
   public var total: Money {
     lineItems.map(\.amount).reduce(.zero, +)
+  }
+
+  /// The locally computed total, unless the server supplied an authoritative
+  /// one for this bill.
+  public var effectiveTotal: Money {
+    serverTotal ?? total
+  }
+
+  /// The local state-machine rules (`BillStatus.allowedTransitions`), unless
+  /// the server supplied authoritative transitions for this specific bill.
+  public var effectiveTransitions: Set<BillStatus> {
+    if let availableTransitions { return Set(availableTransitions) }
+    return status.allowedTransitions
+  }
+
+  public func canTransition(to target: BillStatus) -> Bool {
+    effectiveTransitions.contains(target)
   }
 }
 
@@ -427,9 +456,18 @@ public struct BillDraft: Hashable, Sendable {
         ValidationIssue(field: .itemDescription, message: "Descreva todos os itens da fatura.")
       )
     }
-    if lineItems.contains(where: { $0.amount.centavos < 0 }) {
+    if lineItems.contains(where: { $0.kind != .extra && $0.amount.centavos < 0 }) {
       issues.append(
         ValidationIssue(field: .itemAmount, message: "Os valores não podem ser negativos.")
+      )
+    }
+    // The server requires `BillExtraRequest.amount` to be strictly positive
+    // (`exclusiveMinimum: 0`): a zero or negative extra always 422s.
+    if lineItems.contains(where: { $0.kind == .extra && $0.amount.centavos <= 0 }) {
+      issues.append(
+        ValidationIssue(
+          field: .itemAmount, message: "Os itens extras devem ter valor maior que zero."
+        )
       )
     }
     return issues

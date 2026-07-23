@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 import SwiftUI
 
@@ -48,6 +49,7 @@ final class AppModel {
     demoSettings = dependencies.demo.demoSettings
     if dependencies.auth is APIRentivoStore {
       session = .restoring
+      observeSessionExpiry()
     }
   }
 
@@ -99,17 +101,6 @@ final class AppModel {
     notice = AppNotice(kind: .success, message: "Bem-vinda à demonstração do Rentivo.")
   }
 
-  func signIn(email: String, password: String) async throws {
-    guard let liveStore = dependencies.auth as? APIRentivoStore else {
-      session = .authenticated(currentUser)
-      selectedTab = .home
-      return
-    }
-    session = .authenticated(try await liveStore.login(email: email, password: password))
-    selectedTab = .home
-    notice = AppNotice(kind: .success, message: "Sessão conectada ao Rentivo.")
-  }
-
   func signInWithWebAuthorization() async throws {
     guard let liveStore = dependencies.auth as? APIRentivoStore else { signIn(); return }
     let code = try await mobileWebAuthenticator.authorize()
@@ -126,23 +117,49 @@ final class AppModel {
     }
     isSigningOut = true
     defer { isSigningOut = false }
+    // Revoke the API token first (best-effort inside `liveStore.logout()`),
+    // then unconditionally drop local credentials/state: the user must never
+    // end up "signed out" locally while the server still honors the old
+    // token, nor stuck signed in locally because a later step failed.
+    await liveStore.logout()
+    completeSignOut()
+    // The browser-cookie logout is best-effort and must never block sign-out
+    // (which already happened above). Cancelling that sheet is an expected,
+    // silent outcome, not a failure worth reporting.
     do {
       try await mobileWebAuthenticator.logout()
     } catch {
+      guard !MobileWebAuthenticator.isUserCancellation(error) else { return }
       notice = AppNotice(
         kind: .warning,
-        message: "Não foi possível encerrar a sessão do site. Tente sair novamente."
+        message: "Você saiu do Rentivo, mas não foi possível encerrar a sessão do navegador."
       )
-      return
     }
-    await liveStore.logout()
-    completeSignOut()
   }
 
   private func completeSignOut() {
     session = .anonymous
     selectedTab = .home
     notice = nil
+  }
+
+  /// Reacts to `LiveAPIClient` reporting that the stored token is no longer
+  /// valid (a 401 during a background/foreground request), which otherwise
+  /// leaves the app "authenticated" while every screen keeps failing until
+  /// relaunch. This subscription lives for the lifetime of the app model.
+  private func observeSessionExpiry() {
+    Task { [weak self] in
+      for await _ in NotificationCenter.default.notifications(named: .liveAPIClientSessionExpired) {
+        self?.handleSessionExpired()
+      }
+    }
+  }
+
+  private func handleSessionExpired() {
+    guard case .authenticated = session else { return }
+    session = .anonymous
+    selectedTab = .home
+    notice = AppNotice(kind: .warning, message: "Sua sessão expirou. Entre novamente para continuar.")
   }
 
   func showNotice(_ message: String, kind: AppNotice.Kind = .success) {

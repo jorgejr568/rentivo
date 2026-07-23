@@ -223,6 +223,38 @@ import Testing
   #expect(store.recentActivities.first?.detail == communication.subject)
 }
 
+@Test @MainActor func creatingExpenseRejectsZeroOrNegativeAmounts() async throws {
+  // Matches the server contract: `ExpenseCreateRequest.amount` requires
+  // `exclusiveMinimum: 0`.
+  let store = MockRentivoStore(fixtures: .canonical)
+
+  do {
+    _ = try await store.createExpense(
+      billingID: StableID.billingAurora101,
+      description: "Reparo",
+      category: .maintenance,
+      incurredOn: DateOnly(year: 2026, month: 7, day: 20),
+      amount: .zero
+    )
+    Issue.record("Expected zero-amount expense to be rejected")
+  } catch let error as DemoError {
+    #expect(error == .invalidAmount)
+  }
+
+  do {
+    _ = try await store.createExpense(
+      billingID: StableID.billingAurora101,
+      description: "Reparo",
+      category: .maintenance,
+      incurredOn: DateOnly(year: 2026, month: 7, day: 20),
+      amount: Money(centavos: -100)
+    )
+    Issue.record("Expected negative-amount expense to be rejected")
+  } catch let error as DemoError {
+    #expect(error == .invalidAmount)
+  }
+}
+
 @Test @MainActor func deletingExpenseUpdatesDashboard() async throws {
   let store = MockRentivoStore(fixtures: .canonical)
   let expense = try #require(
@@ -265,6 +297,23 @@ import Testing
   let updated = try await store.organization(id: organization.id)
   #expect(updated.members.first { $0.userID == member.userID }?.role == .manager)
   #expect(!updated.requiresMFA)
+}
+
+@Test @MainActor func memberRoleCanBePromotedToAdmin() async throws {
+  // Regression coverage for the role picker bug: promoting a member to admin
+  // must be a supported mutation (the API accepts admin/manager/viewer).
+  let store = MockRentivoStore(fixtures: .canonical)
+  let organization = try await store.organization(id: StableID.organizationHorizonte)
+  let member = try #require(organization.members.first { $0.role == .manager })
+
+  try await store.updateMemberRole(
+    organizationID: organization.id,
+    userID: member.userID,
+    role: .admin
+  )
+
+  let updated = try await store.organization(id: organization.id)
+  #expect(updated.members.first { $0.userID == member.userID }?.role == .admin)
 }
 
 @Test @MainActor func createdKeySecretIsSeparateFromMetadata() async throws {

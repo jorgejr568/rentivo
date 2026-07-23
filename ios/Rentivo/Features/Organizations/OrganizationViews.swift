@@ -331,7 +331,7 @@ struct OrganizationDetailView: View {
                 Image(systemName: "crown.fill").foregroundStyle(RentivoColors.amber)
               } else if organization.capabilities.canManage {
                 Menu {
-                  ForEach(OrganizationRole.allCases.filter { $0 != .admin }, id: \.self) { role in
+                  ForEach(OrganizationRole.allCases, id: \.self) { role in
                     Button(role.label) { Task { await changeRole(member, to: role) } }
                   }
                   Divider()

@@ -8,11 +8,13 @@ struct LiveSession: Sendable {
 enum LiveAPIError: LocalizedError, Sendable {
   case server(message: String, statusCode: Int? = nil)
   case invalidResponse
+  case sessionExpired
 
   var errorDescription: String? {
     switch self {
     case .server(let message, _): message
     case .invalidResponse: "Não foi possível interpretar a resposta do Rentivo."
+    case .sessionExpired: "Sua sessão expirou. Entre novamente para continuar."
     }
   }
 
@@ -20,6 +22,14 @@ enum LiveAPIError: LocalizedError, Sendable {
     guard case let .server(_, statusCode) = self else { return nil }
     return statusCode
   }
+}
+
+extension Notification.Name {
+  /// Posted whenever `LiveAPIClient` observes a 401 response (or discovers it
+  /// has no stored token) while serving an authenticated request. `AppModel`
+  /// observes this to move the app back to the anonymous state; posting is
+  /// harmless if nothing is listening (e.g. before the app has authenticated).
+  static let liveAPIClientSessionExpired = Notification.Name("LiveAPIClient.sessionExpired")
 }
 
 actor LiveAPIClient {
@@ -34,6 +44,11 @@ actor LiveAPIClient {
     self.credentials = credentials
   }
 
+  // NOTE: No UI path calls `AppModel.signIn(email:password:)` anymore (auth
+  // moved to the web handoff), which makes this method dead from the app's
+  // perspective. It is kept because `APIRentivoStore.login(email:password:)`
+  // (not owned by this change) still calls it; removing it here would break
+  // that file's compilation. Remove both together in a follow-up.
   func login(email: String, password: String) async throws -> LiveSession {
     let request = LoginRequest(
       email: email,
@@ -89,8 +104,7 @@ actor LiveAPIClient {
         profile: UserProfile(id: response.bootstrap.user.id, email: response.bootstrap.user.email)
       )
     } catch let error as LiveAPIError where error.statusCode == 401 {
-      accessToken = nil
-      try await credentials.deleteAccessToken()
+      await invalidateSession()
       return nil
     }
   }
@@ -100,7 +114,7 @@ actor LiveAPIClient {
     contentType: String = "application/json"
   ) async throws -> Data {
     guard let accessToken else {
-      throw LiveAPIError.server(message: "Sua sessão expirou. Entre novamente para continuar.")
+      throw LiveAPIError.sessionExpired
     }
     var request = URLRequest(url: Self.productionURL.appending(path: path))
     request.httpMethod = method
@@ -112,6 +126,10 @@ actor LiveAPIClient {
     }
     let (data, response) = try await session.data(for: request)
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
+    if http.statusCode == 401 {
+      await invalidateSession()
+      throw LiveAPIError.sessionExpired
+    }
     guard (200..<300).contains(http.statusCode) else {
       let problem = try? JSONDecoder().decode(ProblemResponse.self, from: data)
       throw LiveAPIError.server(
@@ -126,15 +144,28 @@ actor LiveAPIClient {
     try? await credentials.deleteAccessToken()
   }
 
+  /// Clears the in-memory token and the persisted credential, then notifies
+  /// any observers (see `AppModel`) that the session is no longer valid.
+  private func invalidateSession() async {
+    accessToken = nil
+    try? await credentials.deleteAccessToken()
+    NotificationCenter.default.post(name: .liveAPIClientSessionExpired, object: nil)
+  }
+
   func download(path: String, filename: String, mediaType: String = "application/pdf") async throws -> DownloadedFile {
     guard let accessToken else {
-      throw LiveAPIError.server(message: "Sua sessão expirou. Entre novamente para continuar.")
+      throw LiveAPIError.sessionExpired
     }
     var request = URLRequest(url: Self.productionURL.appending(path: path))
     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
     request.setValue(mediaType, forHTTPHeaderField: "Accept")
     let (data, response) = try await session.data(for: request)
-    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+    guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
+    if http.statusCode == 401 {
+      await invalidateSession()
+      throw LiveAPIError.sessionExpired
+    }
+    guard (200..<300).contains(http.statusCode) else {
       throw LiveAPIError.server(message: "Não foi possível baixar o arquivo.")
     }
     let responseMediaType = (http.value(forHTTPHeaderField: "Content-Type") ?? mediaType)

@@ -23,8 +23,12 @@ public struct DemoError: Error, Equatable, LocalizedError, Sendable {
   public init(_ error: any Error) {
     if let demoError = error as? DemoError {
       self = demoError
+    } else if let localizedError = error as? LocalizedError,
+      let message = localizedError.errorDescription
+    {
+      self.init(message: message)
     } else {
-      self.init(message: "Não foi possível concluir esta ação de demonstração.")
+      self.init(message: "Não foi possível concluir esta ação. Tente novamente.")
     }
   }
 
@@ -41,6 +45,9 @@ public struct DemoError: Error, Equatable, LocalizedError, Sendable {
   )
   public static let permissionDenied = DemoError(
     message: "Seu perfil de demonstração não permite esta ação."
+  )
+  public static let invalidAmount = DemoError(
+    message: "O valor informado deve ser maior que zero."
   )
 }
 
@@ -76,8 +83,33 @@ public struct DateOnly: Hashable, Codable, Sendable, Comparable {
     self.day = day
   }
 
+  /// Failable parsing initializer intended for the wire boundary: malformed
+  /// server data (or user input) returns `nil` instead of trapping.
+  public init?(iso8601String: String) {
+    let parts = iso8601String.split(separator: "-", omittingEmptySubsequences: false)
+    guard parts.count == 3,
+      let year = Int(parts[0]),
+      let month = Int(parts[1]),
+      let day = Int(parts[2]),
+      (1...12).contains(month),
+      (1...31).contains(day)
+    else { return nil }
+    self.year = year
+    self.month = month
+    self.day = day
+  }
+
   public var iso8601: String {
     String(format: "%04d-%02d-%02d", year, month, day)
+  }
+
+  /// PT-BR display representation, e.g. "10/08/2026". The dd/MM/yyyy
+  /// ordering is the Brazilian convention regardless of the device's current
+  /// locale, so this is built directly from the stored components rather
+  /// than through a cached `DateFormatter` (a non-`Sendable` class that would
+  /// be unsafe to share as static state on a `Sendable` type).
+  public var displayFormatted: String {
+    String(format: "%02d/%02d/%04d", day, month, year)
   }
 
   public static func < (lhs: DateOnly, rhs: DateOnly) -> Bool {
@@ -95,6 +127,19 @@ public struct ReferenceMonth: Hashable, Codable, Sendable, Comparable {
     self.month = month
   }
 
+  /// Failable parsing initializer intended for the wire boundary: malformed
+  /// server data returns `nil` instead of trapping.
+  public init?(apiValue: String) {
+    let parts = apiValue.split(separator: "-", omittingEmptySubsequences: false)
+    guard parts.count == 2,
+      let year = Int(parts[0]),
+      let month = Int(parts[1]),
+      (1...12).contains(month)
+    else { return nil }
+    self.year = year
+    self.month = month
+  }
+
   public var apiValue: String {
     String(format: "%04d-%02d", year, month)
   }
@@ -106,6 +151,9 @@ public struct ReferenceMonth: Hashable, Codable, Sendable, Comparable {
     ]
     return "\(monthNames[month - 1]) de \(year)"
   }
+
+  /// PT-BR display representation, e.g. "agosto de 2026".
+  public var displayFormatted: String { label }
 
   public static func < (lhs: ReferenceMonth, rhs: ReferenceMonth) -> Bool {
     (lhs.year, lhs.month) < (rhs.year, rhs.month)

@@ -76,7 +76,7 @@ struct InviteMemberView: View {
         .keyboardType(.emailAddress)
         .textInputAutocapitalization(.never)
       Picker("Função", selection: $role) {
-        ForEach(OrganizationRole.allCases.filter { $0 != .owner }, id: \.self) { role in
+        ForEach(OrganizationRole.allCases, id: \.self) { role in
           Text(role.label).tag(role)
         }
       }

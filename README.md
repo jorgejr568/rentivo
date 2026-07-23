@@ -70,6 +70,21 @@ in the development guide, run `make migrate`, then run `make frontend-dev`, the
 FastAPI Uvicorn entrypoint, and `make worker` in separate terminals. See the
 [development guide](docs/development.md) for exact commands.
 
+## iOS app
+
+`ios/Rentivo` is a SwiftUI client backed by the `RentivoCore` Swift package
+(Domain and Data layers). Open `ios/Rentivo.xcodeproj` in Xcode to run it in
+the simulator.
+
+```bash
+make ios-test            # swift test --package-path ios (requires full Xcode)
+make ios-openapi-check   # verify ios/Rentivo/openapi.json matches frontend/openapi.json
+```
+
+The app has no configured release pipeline yet; see the
+[iOS release runbook](docs/runbooks/ios-release.md) for current state and the
+path to TestFlight distribution.
+
 ## Production configuration
 
 Production uses separate database interpolation and application environment
@@ -131,7 +146,7 @@ origins, local storage/email, and reversible encryption. See the generated
 ## Architecture
 
 The repository is a uv workspace with independently packaged backend and
-frontend applications.
+frontend applications, plus a Swift Package Manager package for the iOS app.
 
 ```text
 backend/
@@ -152,6 +167,9 @@ backend/
 frontend/
   src/                React/Vite/TypeScript application
   e2e/                Playwright workflows and reviewed visual baselines
+ios/
+  Rentivo/            SwiftUI app; RentivoCore package Domain/Data sources
+  RentivoTests/       RentivoCore package tests
 infra/proxy/           Nginx edge configuration
 ```
 
@@ -164,6 +182,7 @@ infra/proxy/           Nginx edge configuration
 | [Job drivers](docs/jobs.md) | Database and optional Temporal job execution |
 | [Observability](docs/observability.md) | Logging, traces, profiles, and production signals |
 | [Production release](docs/runbooks/production-release.md) | Big-bang deployment and recovery runbook |
+| [iOS release](docs/runbooks/ios-release.md) | Current iOS distribution state and the TestFlight path |
 | [Contributing](CONTRIBUTING.md) | Workflow, conventions, tests, and PR expectations |
 | [Security](SECURITY.md) | Private vulnerability reporting |
 | [Changelog](CHANGELOG.md) | SemVer release history |
@@ -173,6 +192,7 @@ infra/proxy/           Nginx edge configuration
 | Layer | Technology |
 |---|---|
 | Frontend | React, Vite, TypeScript |
+| iOS app | Swift, SwiftUI, Swift Package Manager (RentivoCore) |
 | Backend API | FastAPI, Uvicorn |
 | Database | MariaDB 11, SQLAlchemy Core |
 | Migrations | Alembic |

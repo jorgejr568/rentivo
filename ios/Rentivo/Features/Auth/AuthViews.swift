@@ -45,6 +45,7 @@ private struct AuthScaffold<Content: View>: View {
 struct LoginView: View {
   @Environment(AppModel.self) private var app
   @State private var validationMessage: String?
+  @State private var isAuthenticating = false
 
   var body: some View {
     AuthScaffold(
@@ -58,26 +59,44 @@ struct LoginView: View {
             .foregroundStyle(RentivoColors.coral)
             .accessibilityIdentifier("login.error")
         }
-        Button("Entrar", action: submit)
-          .buttonStyle(RentivoButtonStyle())
-          .accessibilityIdentifier("login.submit")
+        Button(action: submit) {
+          HStack(spacing: RentivoSpacing.small) {
+            if isAuthenticating {
+              ProgressView()
+                .tint(.white)
+            }
+            Text("Entrar")
+          }
+        }
+        .buttonStyle(RentivoButtonStyle())
+        .disabled(isAuthenticating)
+        .accessibilityIdentifier("login.submit")
         Text("O login continua no site seguro do Rentivo para concluir a verificação de segurança.")
           .font(.footnote)
           .foregroundStyle(RentivoColors.secondaryInk)
       }
-      .textFieldStyle(.roundedBorder)
     }
-    .navigationBarBackButtonHidden()
   }
 
   private func submit() {
+    guard !isAuthenticating else { return }
     validationMessage = nil
+    isAuthenticating = true
     Task {
+      defer { isAuthenticating = false }
       do {
         try await app.signInWithWebAuthorization()
       } catch {
-        validationMessage = error.localizedDescription
+        guard !MobileWebAuthenticator.isUserCancellation(error) else { return }
+        validationMessage = ptBRDescription(for: error)
       }
     }
+  }
+
+  private func ptBRDescription(for error: Error) -> String {
+    if let liveError = error as? LiveAPIError, let description = liveError.errorDescription {
+      return description
+    }
+    return "Não foi possível concluir o login. Tente novamente."
   }
 }
