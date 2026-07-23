@@ -39,9 +39,40 @@ actor LiveAPIClient {
   private let credentials: any CredentialStore
   private var accessToken: String?
 
-  init(session: URLSession = .shared, credentials: any CredentialStore) {
-    self.session = session
+  init(session: URLSession? = nil, credentials: any CredentialStore) {
+    self.session = session ?? Self.makeSession()
     self.credentials = credentials
+  }
+
+  /// The app's default session. Unlike `URLSession.shared` it bounds each request
+  /// so a stalled connection (e.g. the iOS Simulator's flaky HTTP/3 path, or a
+  /// dropped mobile network) fails fast and stays retryable instead of freezing
+  /// the UI on the system default timeout. Tests inject their own stubbed session.
+  private static func makeSession() -> URLSession {
+    let configuration = URLSessionConfiguration.default
+    configuration.timeoutIntervalForRequest = 30
+    configuration.waitsForConnectivity = false
+    return URLSession(configuration: configuration)
+  }
+
+  /// Translates a `URLSession` transport failure (thrown before any HTTP response
+  /// arrives) into a `LiveAPIError` carrying an actionable PT-BR message. Without
+  /// this, a `URLError` propagates raw and the login screen and app-wide error
+  /// mapping fall through to a generic message with no connectivity/retry cue.
+  private func transportError(from error: Error) -> Error {
+    guard let urlError = error as? URLError else { return error }
+    switch urlError.code {
+    case .timedOut:
+      return LiveAPIError.server(
+        message: "O Rentivo demorou para responder. Verifique sua conexão e tente novamente.")
+    case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost,
+      .dnsLookupFailed, .dataNotAllowed, .internationalRoamingOff:
+      return LiveAPIError.server(
+        message: "Sem conexão com o Rentivo. Verifique sua internet e tente novamente.")
+    default:
+      return LiveAPIError.server(
+        message: "Não foi possível conectar ao Rentivo. Tente novamente.")
+    }
   }
 
   func exchangeMobileAuthorization(code: String) async throws -> LiveSession {
@@ -89,7 +120,12 @@ actor LiveAPIClient {
       request.setValue(contentType, forHTTPHeaderField: "Content-Type")
       request.httpBody = body
     }
-    let (data, response) = try await session.data(for: request)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await session.data(for: request)
+    } catch {
+      throw transportError(from: error)
+    }
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
     if http.statusCode == 401 {
       await invalidateSession()
@@ -124,7 +160,12 @@ actor LiveAPIClient {
     var request = URLRequest(url: Self.productionURL.appending(path: path))
     request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
     request.setValue(mediaType, forHTTPHeaderField: "Accept")
-    let (data, response) = try await session.data(for: request)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await session.data(for: request)
+    } catch {
+      throw transportError(from: error)
+    }
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
     if http.statusCode == 401 {
       await invalidateSession()
@@ -172,7 +213,12 @@ actor LiveAPIClient {
       request.setValue("application/json", forHTTPHeaderField: "Content-Type")
       request.httpBody = try JSONEncoder().encode(body)
     }
-    let (data, response) = try await session.data(for: request)
+    let (data, response): (Data, URLResponse)
+    do {
+      (data, response) = try await session.data(for: request)
+    } catch {
+      throw transportError(from: error)
+    }
     guard let http = response as? HTTPURLResponse else { throw LiveAPIError.invalidResponse }
     guard (200..<300).contains(http.statusCode) else {
       let problem = try? JSONDecoder().decode(ProblemResponse.self, from: data)

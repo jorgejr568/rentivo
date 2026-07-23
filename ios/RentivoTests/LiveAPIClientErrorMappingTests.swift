@@ -240,3 +240,62 @@ private final class DownloadPDFURLProtocol: URLProtocol, @unchecked Sendable {
 
   override func stopLoading() {}
 }
+
+// MARK: - Transport error mapping (timeout / offline)
+//
+// A stalled request (e.g. the iOS Simulator's flaky HTTP/3 path, or a real device losing
+// connectivity) surfaces as a `URLError` from `URLSession`. Those must be translated into a
+// `LiveAPIError` carrying a clear, actionable PT-BR message — otherwise the login screen (and the
+// app-wide `DemoError` mapping) fall through to a generic message with no "check your connection /
+// try again" signal. Each scenario uses its own `URLProtocol` subclass (Swift Testing runs tests
+// concurrently).
+
+@Test func exchangeMapsARequestTimeoutToARetryableLiveAPIError() async throws {
+  let credentials = MemoryCredentialStore()
+  let configuration = URLSessionConfiguration.ephemeral
+  configuration.protocolClasses = [TimeoutURLProtocol.self]
+  let client = LiveAPIClient(session: URLSession(configuration: configuration), credentials: credentials)
+
+  do {
+    _ = try await client.exchangeMobileAuthorization(code: "any-code")
+    Issue.record("Expected a timeout to throw")
+  } catch let error as LiveAPIError {
+    guard case .server(let message, _) = error else {
+      Issue.record("Expected .server, got \(error)")
+      return
+    }
+    #expect(message.contains("demorou"))
+  }
+}
+
+@Test func exchangeMapsAnOfflineErrorToAConnectivityLiveAPIError() async throws {
+  let credentials = MemoryCredentialStore()
+  let configuration = URLSessionConfiguration.ephemeral
+  configuration.protocolClasses = [OfflineURLProtocol.self]
+  let client = LiveAPIClient(session: URLSession(configuration: configuration), credentials: credentials)
+
+  do {
+    _ = try await client.exchangeMobileAuthorization(code: "any-code")
+    Issue.record("Expected an offline error to throw")
+  } catch let error as LiveAPIError {
+    guard case .server(let message, _) = error else {
+      Issue.record("Expected .server, got \(error)")
+      return
+    }
+    #expect(message.contains("conexão"))
+  }
+}
+
+private final class TimeoutURLProtocol: URLProtocol, @unchecked Sendable {
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func startLoading() { client?.urlProtocol(self, didFailWithError: URLError(.timedOut)) }
+  override func stopLoading() {}
+}
+
+private final class OfflineURLProtocol: URLProtocol, @unchecked Sendable {
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+  override func startLoading() { client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet)) }
+  override func stopLoading() {}
+}
