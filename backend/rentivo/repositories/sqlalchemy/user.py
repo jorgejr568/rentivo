@@ -148,6 +148,9 @@ class SQLAlchemyUserRepository(UserRepository):
         commits together or rolls back on any error. Returns ``False`` when no
         such user exists.
         """
+        # Authentication performs reads on this request connection first. End
+        # that read view before locking so MariaDB always starts current.
+        self.conn.rollback()
         try:
             locked = self.conn.execute(_USER_LOCK, {"user_id": user_id}).fetchone()
             if locked is None:
