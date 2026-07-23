@@ -1,11 +1,19 @@
 {% extends "_email_layout.html" %}
+{% import "_email_macros.html" as m %}
 {% block title %}Conta excluída — Rentivo{% endblock %}
 {% block accent_color %}#e74c3c{% endblock %}
 {% block content %}
-<p>Olá,</p>
-<p>Sua conta no Rentivo ({{ email }}) foi excluída em {{ deleted_at }}.</p>
-<p>Seus dados pessoais foram removidos. Registros exigidos por lei podem ser
-retidos conforme a nossa Política de Privacidade.</p>
-<p>Se você não reconhece essa ação, fale com a gente imediatamente:
-suporte@rentivo.com.br.</p>
+{{ m.heading("Conta excluída") }}
+<p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    Sua conta no Rentivo (<strong style="font-weight:600;">{{ email }}</strong>) foi excluída em
+    <strong style="font-weight:600;">{{ deleted_at }}</strong>.
+</p>
+<p style="margin:0 0 14px;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    Seus dados pessoais foram removidos. Registros exigidos por lei podem ser
+    retidos conforme a nossa Política de Privacidade.
+</p>
+<p style="margin:0;font-size:16px;line-height:1.55;color:#1a1a2e;">
+    Se você não reconhece essa ação, fale com a gente imediatamente:
+    suporte@rentivo.com.br.
+</p>
 {% endblock %}
