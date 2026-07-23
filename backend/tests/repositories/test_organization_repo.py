@@ -148,6 +148,61 @@ class TestOrganizationRepoEdgeCases:
                 org_repo.add_member(org.id, user.id, "admin")
 
 
+class TestListBlockingAccountDeletion:
+    def test_list_blocking_account_deletion_flags_sole_admin_with_other_members(
+        self, db_connection, fake_encryption, user_repo
+    ):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+
+        repo = SQLAlchemyOrganizationRepository(db_connection, fake_encryption)
+        admin = _create_user(user_repo, "admin@example.com")
+        viewer = _create_user(user_repo, "viewer@example.com")
+
+        # Org where the target user is the only admin and another member remains.
+        org_admin = repo.create(Organization(name="Admin-led", created_by=admin.id))
+        repo.add_member(org_admin.id, admin.id, "admin")
+        repo.add_member(org_admin.id, viewer.id, "viewer")
+
+        # Same shape but the target user's admin-equivalent role is stored as "owner".
+        org_owner = repo.create(Organization(name="Owner-led", created_by=admin.id))
+        repo.add_member(org_owner.id, admin.id, "owner")
+        repo.add_member(org_owner.id, viewer.id, "viewer")
+
+        assert repo.list_blocking_account_deletion(admin.id) == [org_admin.id, org_owner.id]
+
+    def test_list_blocking_account_deletion_ignores_solo_and_co_admin_orgs(
+        self, db_connection, fake_encryption, user_repo
+    ):
+        from rentivo.repositories.sqlalchemy import SQLAlchemyOrganizationRepository
+
+        repo = SQLAlchemyOrganizationRepository(db_connection, fake_encryption)
+        user = _create_user(user_repo, "user@example.com")
+        co_admin = _create_user(user_repo, "coadmin@example.com")
+        other = _create_user(user_repo, "other@example.com")
+
+        # Org A: target user is the only member (solo) -> not blocking.
+        org_solo = repo.create(Organization(name="Solo", created_by=user.id))
+        repo.add_member(org_solo.id, user.id, "admin")
+
+        # Org B: target user and another user are both admins -> not blocking.
+        org_co_admin = repo.create(Organization(name="Co-admin", created_by=user.id))
+        repo.add_member(org_co_admin.id, user.id, "admin")
+        repo.add_member(org_co_admin.id, co_admin.id, "admin")
+
+        # Org C: target user is a viewer, someone else is the admin -> not blocking.
+        org_viewer = repo.create(Organization(name="Viewer", created_by=other.id))
+        repo.add_member(org_viewer.id, user.id, "viewer")
+        repo.add_member(org_viewer.id, other.id, "admin")
+
+        # Org D: soft-deleted org where target user is the sole admin -> not blocking.
+        org_deleted = repo.create(Organization(name="Deleted", created_by=user.id))
+        repo.add_member(org_deleted.id, user.id, "admin")
+        repo.add_member(org_deleted.id, other.id, "viewer")
+        repo.delete(org_deleted.id)
+
+        assert repo.list_blocking_account_deletion(user.id) == []
+
+
 class TestOrgRepoEncryption:
     def test_update_encrypts_pix(self, db_connection, fake_encryption, user_repo):
         from sqlalchemy import text

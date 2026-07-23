@@ -266,6 +266,11 @@ class OrganizationRepository(ABC):
     @abstractmethod
     def user_has_enforcing_org(self, user_id: int) -> bool: ...
 
+    @abstractmethod
+    def list_blocking_account_deletion(self, user_id: int) -> list[int]:
+        """Live orgs where the user is the only admin but other members remain."""
+        ...
+
 
 class InviteRepository(ABC):
     @abstractmethod
