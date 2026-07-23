@@ -222,7 +222,7 @@ private struct HomeContent: View {
               Label("Vence em \(bill.dueDate.displayFormatted)", systemImage: "calendar")
                 .font(.caption)
               Spacer()
-              MoneyText(money: bill.total)
+              MoneyText(money: bill.effectiveTotal)
             }
           }
         }

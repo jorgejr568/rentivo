@@ -303,10 +303,19 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     // draft carries PIX data we follow up with the PATCH that does accept pix fields.
     let response: RemoteOrganization = try await decode(path: "/api/v1/organizations", method: "POST", body: RemoteOrganizationCreate(name: draft.name))
     guard draft.pix != nil else { return organization(from: response) }
-    let updated: RemoteOrganization = try await decode(
-      path: "/api/v1/organizations/\(response.uuid)", method: "PATCH", body: RemoteOrganizationUpdate(draft: draft)
-    )
-    return organization(from: updated)
+    do {
+      let updated: RemoteOrganization = try await decode(
+        path: "/api/v1/organizations/\(response.uuid)", method: "PATCH", body: RemoteOrganizationUpdate(draft: draft)
+      )
+      return organization(from: updated)
+    } catch {
+      // The organization already exists on the server from the POST above, so throwing here
+      // would surface as a failure to the caller, who would retry and create a duplicate
+      // organization. Return the created organization (without PIX) instead; the form-side
+      // validation makes this follow-up PATCH fail rarely, and the user can still edit the
+      // organization afterward to add PIX.
+      return organization(from: response)
+    }
   }
   public func updateOrganization(id: OrganizationID, draft: OrganizationDraft) async throws -> Organization {
     let response: RemoteOrganization = try await decode(path: "/api/v1/organizations/\(id.rawValue)", method: "PATCH", body: RemoteOrganizationUpdate(draft: draft))

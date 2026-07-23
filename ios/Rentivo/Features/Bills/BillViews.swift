@@ -97,7 +97,14 @@ struct BillFormView: View {
             }
             .onDelete { offsets in removeLines(at: offsets, kind: kind) }
           }
-          if kind != .fixed {
+          if kind == .extra {
+            // Only extras get an "add new line" affordance here: extras are the server's
+            // mechanism for ad-hoc per-bill lines. Variable items are defined by the billing
+            // (cobrança) itself, seeded above from `billing.items`; the live store's
+            // `variable_amounts` only accepts the billing's own ULID-keyed variable items, so a
+            // client-minted UUID for a brand-new variable line would silently be dropped on
+            // save. Previously seeded variable lines still render and remain editable via
+            // `lineRow` and deletable via the `.onDelete` above.
             Button {
               lines.append(EditableBillLine(kind: kind))
             } label: {

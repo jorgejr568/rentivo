@@ -195,7 +195,7 @@ struct BillingDetailView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: RentivoSpacing.small) {
-                  MoneyText(money: bill.total)
+                  MoneyText(money: bill.effectiveTotal)
                   Text("Vence \(bill.dueDate.displayFormatted)")
                     .font(.caption)
                     .foregroundStyle(RentivoColors.secondaryInk)
@@ -211,7 +211,7 @@ struct BillingDetailView: View {
   }
 
   private func financialSummary(_ data: BillingDetailData) -> some View {
-    let paid = data.bills.filter { $0.status == .paid }.map(\.total).reduce(.zero, +)
+    let paid = data.bills.filter { $0.status == .paid }.map(\.effectiveTotal).reduce(.zero, +)
     let expenses = data.expenses.map(\.amount).reduce(.zero, +)
     return VStack(alignment: .leading, spacing: RentivoSpacing.medium) {
       SectionTitle(title: "Resumo financeiro", symbol: "chart.bar.fill")

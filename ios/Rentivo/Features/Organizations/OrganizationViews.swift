@@ -184,6 +184,7 @@ struct OrganizationFormView: View {
   @State private var pixKey: String
   @State private var merchantName: String
   @State private var city: String
+  @State private var pixValidationMessage: String?
 
   init(organization: Organization? = nil, onSaved: @escaping () async -> Void) {
     self.organization = organization
@@ -205,6 +206,14 @@ struct OrganizationFormView: View {
         TextField("Cidade", text: $city)
           .textInputAutocapitalization(.characters)
       }
+
+      if let pixValidationMessage {
+        Section("Revise os campos") {
+          Label(pixValidationMessage, systemImage: "exclamationmark.circle.fill")
+            .foregroundStyle(RentivoColors.coral)
+            .accessibilityIdentifier("organization.form.validation")
+        }
+      }
     }
     .navigationTitle(organization == nil ? "Nova organização" : "Editar organização")
     .navigationBarTitleDisplayMode(.inline)
@@ -217,10 +226,30 @@ struct OrganizationFormView: View {
   }
 
   private func save() async {
+    let trimmedKey = pixKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedMerchantName = merchantName.trimmingCharacters(in: .whitespacesAndNewlines)
+    let trimmedCity = city.trimmingCharacters(in: .whitespacesAndNewlines)
+    // Mirrors BillingFormView's PIX validation: a blank key means no PIX at all, but once a key
+    // is present the recipient name/city are required, and must respect the server's column
+    // limits (`OrganizationUpdateRequest.pix_merchant_name` maxLength 25, `pix_merchant_city`
+    // maxLength 15) so the follow-up PATCH in `createOrganization`/`updateOrganization` can't
+    // 422 on data the form already accepted.
+    if trimmedKey.isEmpty {
+      pixValidationMessage = nil
+    } else if trimmedMerchantName.isEmpty || trimmedCity.isEmpty {
+      pixValidationMessage = "Informe o nome e a cidade do recebedor para usar uma chave PIX."
+    } else if trimmedMerchantName.count > 25 {
+      pixValidationMessage = "O nome do recebedor deve ter até 25 caracteres."
+    } else if trimmedCity.count > 15 {
+      pixValidationMessage = "A cidade do recebedor deve ter até 15 caracteres."
+    } else {
+      pixValidationMessage = nil
+    }
+    guard pixValidationMessage == nil else { return }
     let pix: PixConfiguration? =
-      pixKey.isEmpty
+      trimmedKey.isEmpty
       ? nil
-      : PixConfiguration(key: pixKey, merchantName: merchantName, merchantCity: city)
+      : PixConfiguration(key: trimmedKey, merchantName: trimmedMerchantName, merchantCity: trimmedCity)
     let draft = OrganizationDraft(name: name, pix: pix)
     do {
       if let organization {
@@ -370,7 +399,14 @@ struct OrganizationDetailView: View {
                 Image(systemName: "crown.fill").foregroundStyle(RentivoColors.amber)
               } else if organization.capabilities.canManage {
                 Menu {
-                  ForEach(OrganizationRole.allCases, id: \.self) { role in
+                  // Admin has no menu at all (see the `member.role == .admin` branch above), so
+                  // offering "admin" here would promote a member to a role with no way back
+                  // through the UI. The member's current role is also excluded: re-selecting it
+                  // is a no-op that only clutters the menu.
+                  ForEach(
+                    OrganizationRole.allCases.filter { $0 != .admin && $0 != member.role },
+                    id: \.self
+                  ) { role in
                     Button(role.label) { Task { await changeRole(member, to: role) } }
                   }
                   Divider()

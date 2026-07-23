@@ -54,6 +54,26 @@ import Testing
   #expect(organization.pix == PixConfiguration(key: "chave-pix", merchantName: "Nova Org", merchantCity: "Sao Paulo"))
 }
 
+@MainActor
+@Test func liveCreateOrganizationReturnsTheCreatedOrganizationWhenTheFollowUpPixPatchFails() async throws {
+  // Regression test: the org already exists on the server once the POST above succeeds, so a
+  // failing follow-up PATCH must not throw — throwing here used to surface as a failure to the
+  // caller, who would retry `createOrganization` and create a duplicate organization.
+  let credentials = MemoryCredentialStore(token: "stored-token")
+  let client = LiveAPIClient(session: failingPixPatchSession(), credentials: credentials)
+  let store = APIRentivoStore(client: client)
+
+  _ = try #require(try await store.restoreSession())
+  let draft = OrganizationDraft(
+    name: "Nova Org",
+    pix: PixConfiguration(key: "chave-pix", merchantName: "Nova Org", merchantCity: "Sao Paulo")
+  )
+  let organization = try await store.createOrganization(draft)
+
+  #expect(organization.id == OrganizationID(rawValue: "organization-3"))
+  #expect(organization.pix == nil)
+}
+
 private func organizationSession() -> URLSession {
   let configuration = URLSessionConfiguration.ephemeral
   configuration.protocolClasses = [OrganizationURLProtocol.self]
@@ -85,6 +105,48 @@ private final class OrganizationURLProtocol: URLProtocol, @unchecked Sendable {
     }
     let response = HTTPURLResponse(
       url: request.url!, statusCode: 200, httpVersion: nil,
+      headerFields: ["Content-Type": "application/json"]
+    )!
+    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+    client?.urlProtocol(self, didLoad: Data(body.utf8))
+    client?.urlProtocolDidFinishLoading(self)
+  }
+
+  override func stopLoading() {}
+}
+
+private func failingPixPatchSession() -> URLSession {
+  let configuration = URLSessionConfiguration.ephemeral
+  configuration.protocolClasses = [FailingPixPatchURLProtocol.self]
+  return URLSession(configuration: configuration)
+}
+
+/// Simulates the org-create POST succeeding but the follow-up PIX PATCH 500ing, so
+/// `createOrganization` must fall back to the created organization instead of throwing.
+private final class FailingPixPatchURLProtocol: URLProtocol, @unchecked Sendable {
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  override func startLoading() {
+    let path = request.url?.path
+    let statusCode: Int
+    let body: String
+    switch (request.httpMethod, path) {
+    case ("GET", "/api/v1/auth/session"):
+      statusCode = 200
+      body = #"{"status":"authenticated","bootstrap":{"user":{"id":7,"email":"ana@rentivo.com.br"}}}"#
+    case ("POST", "/api/v1/organizations"):
+      statusCode = 200
+      body = #"{"uuid":"organization-3","name":"Nova Org","enforce_mfa":false,"current_role":"admin","capabilities":{"can_manage":true,"can_invite":true,"can_create_billing":true,"can_view_billing_stats":true}}"#
+    case ("PATCH", "/api/v1/organizations/organization-3"):
+      statusCode = 500
+      body = #"{"detail":"Falha ao salvar as configurações de PIX."}"#
+    default:
+      statusCode = 500
+      body = #"{"detail":"Endpoint inesperado: \#(request.httpMethod ?? "?") \#(path ?? "nil")"}"#
+    }
+    let response = HTTPURLResponse(
+      url: request.url!, statusCode: statusCode, httpVersion: nil,
       headerFields: ["Content-Type": "application/json"]
     )!
     client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

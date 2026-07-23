@@ -139,6 +139,46 @@ private final class ExpiringSessionURLProtocol: URLProtocol, @unchecked Sendable
   }
 
   @MainActor
+  @Test func sessionExpiryNotificationIsIgnoredWhileIsSigningOutIsSet() async throws {
+    // Regression test: `signOut()`'s own logout POST can itself 401 (the token it's revoking is,
+    // after all, about to become invalid), which used to race the session-expiry notification
+    // against the deliberate sign-out and briefly show "Sua sessão expirou". `isSigningOut` (set
+    // for the duration of `signOut()`) must make `handleSessionExpired()` a no-op instead of
+    // tearing down an already-authenticated session out from under a sign-out in progress.
+    let credentials = MemoryCredentialStore(token: "stored-token")
+    let client = LiveAPIClient(session: expiringSession(), credentials: credentials)
+    let store = APIRentivoStore(client: client)
+    let app = AppModel(dependencies: .live(store: store))
+
+    await app.restoreSessionIfNeeded()
+    guard case .authenticated = app.session else {
+      Issue.record("Expected restoreSessionIfNeeded to authenticate from the stubbed session response")
+      return
+    }
+
+    app.isSigningOut = true
+    defer { app.isSigningOut = false }
+
+    do {
+      _ = try await store.listBillings()
+      Issue.record("Expected the stubbed 401 response to throw")
+    } catch {
+      // Expected: the stubbed billings call 401s, which posts the session-expiry notification.
+    }
+
+    // Give the async NotificationCenter observation loop a generous window to process the
+    // notification; `handleSessionExpired()` must return early because `isSigningOut` is set, so
+    // the session/notice should never move.
+    try? await Task.sleep(nanoseconds: 100_000_000)
+
+    guard case .authenticated = app.session else {
+      Issue.record("Expected the session to remain authenticated while isSigningOut suppresses the notification")
+      return
+    }
+    #expect(app.notice == nil)
+  }
+
+  @MainActor
   private func waitUntilAnonymous(_ app: AppModel, attempts: Int = 200) async {
     for _ in 0..<attempts {
       if case .anonymous = app.session { return }

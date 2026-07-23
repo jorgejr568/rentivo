@@ -156,6 +156,12 @@ final class AppModel {
   }
 
   private func handleSessionExpired() {
+    // A deliberate `signOut()` also revokes the token via `liveStore.logout()`, whose POST can
+    // itself 401 (the token it's revoking is, after all, about to become invalid) and fire this
+    // same notification concurrently. Without this guard that race would flash "Sua sessão
+    // expirou" mid-sign-out even though the user chose to sign out, not because the session
+    // actually expired out from under them.
+    guard !isSigningOut else { return }
     guard case .authenticated = session else { return }
     session = .anonymous
     selectedTab = .home
