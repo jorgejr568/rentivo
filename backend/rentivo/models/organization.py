@@ -30,7 +30,7 @@ class Organization(BaseModel):
     id: int | None = None
     uuid: str = ""
     name: str
-    created_by: int = 0
+    created_by: int | None = None
     enforce_mfa: bool = False
     pix_key: str = ""
     pix_merchant_name: str = ""
