@@ -17,6 +17,14 @@ it("renders the public landing content and its primary paths", () => {
     "href",
     "https://github.com/jorgejr568/rentivo"
   );
+  expect(screen.getByRole("link", { name: "Privacidade" })).toHaveAttribute(
+    "href",
+    "/privacy"
+  );
+  expect(screen.getByRole("link", { name: "Termos" })).toHaveAttribute(
+    "href",
+    "/terms"
+  );
   expect(screen.getByRole("heading", { name: "Tudo que um locador precisa" })).toBeVisible();
   expect(screen.getByRole("heading", { name: "Três passos por mês" })).toBeVisible();
   expect(screen.getByRole("contentinfo")).toHaveTextContent(
