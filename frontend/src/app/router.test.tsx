@@ -82,6 +82,20 @@ it.each([
   router.dispose();
 });
 
+it("renders the public support page inside the public shell", async () => {
+  window.history.pushState({}, "", "/support");
+  const router = createAppRouter();
+  const view = render(<RouterProvider router={router} />);
+
+  expect(
+    await screen.findByRole("heading", { level: 2, name: "Suporte" })
+  ).toBeVisible();
+  expect(screen.getByRole("main")).toHaveClass("wrapper", "main-content");
+
+  view.unmount();
+  router.dispose();
+});
+
 it("does not render or request private content until session authentication succeeds", async () => {
   const NativeRequest = globalThis.Request;
   class CompatibleNavigationRequest extends NativeRequest {

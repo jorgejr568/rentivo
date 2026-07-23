@@ -33,6 +33,7 @@ import { OrganizationListPage } from "../features/organizations/OrganizationList
 import { RecoveryCodesPage } from "../features/security/RecoveryCodesPage";
 import { SecurityPage } from "../features/security/SecurityPage";
 import { TotpSetupPage } from "../features/security/TotpSetupPage";
+import { SupportPage } from "../features/support/SupportPage";
 import { ThemePage } from "../features/themes/ThemePage";
 import { LandingPage } from "../features/landing/LandingPage";
 
@@ -126,7 +127,8 @@ export function createAppRouter(children: RouteObject[] = []) {
             { element: <ResetPasswordPage />, path: "/reset-password" },
             { element: <GoogleCallbackPage />, path: "/auth/google/callback" },
             { element: <PrivacyPolicyPage />, path: "/privacy" },
-            { element: <TermsPage />, path: "/terms" }
+            { element: <TermsPage />, path: "/terms" },
+            { element: <SupportPage />, path: "/support" }
           ],
           element: <PublicAuthLayout />
         },
