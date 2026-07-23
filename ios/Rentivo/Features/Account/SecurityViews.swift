@@ -8,6 +8,14 @@ struct SecurityView: View {
   @State private var enrollment: TOTPEnrollment?
   @State private var showingDisableTOTP = false
   @State private var password = ""
+  @State private var passkeyPendingDelete: Passkey?
+
+  /// Demo "viewer mode" is a local demo/mock-backend concept only. Once the app is
+  /// connected to the live API, the signed-in user owns their own account and this
+  /// screen should be fully enabled regardless of the demo viewer-mode toggle.
+  private var isDemoViewerLocked: Bool {
+    !app.usesLiveAPI && app.demoSettings.viewerMode
+  }
 
   var body: some View {
     PageStateView(state: state) { summary in
@@ -21,7 +29,7 @@ struct SecurityView: View {
         }
         Section("Autenticação em duas etapas") {
           LabeledContent("Aplicativo autenticador", value: summary.totpEnabled ? "Ativado" : "Desativado")
-          if !app.demoSettings.viewerMode {
+          if !isDemoViewerLocked {
             if summary.totpEnabled {
               Button("Desativar", role: .destructive) { showingDisableTOTP = true }
             } else {
@@ -34,15 +42,22 @@ struct SecurityView: View {
           LabeledContent("Códigos disponíveis", value: "\(summary.recoveryCodeCount)")
         }
         Section("Chaves de acesso") {
-          ForEach(summary.passkeys) { passkey in
-            VStack(alignment: .leading, spacing: RentivoSpacing.small) {
-              Text(passkey.name).font(.headline)
-              Text("Último uso: \(passkey.lastUsedAt?.formatted(date: .abbreviated, time: .shortened) ?? "nunca")")
-                .font(.caption)
-                .foregroundStyle(RentivoColors.secondaryInk)
-              if !app.demoSettings.viewerMode {
-                Button("Excluir", role: .destructive) { Task { await remove(passkey) } }
-                  .font(.caption.weight(.semibold))
+          if summary.passkeys.isEmpty {
+            Text("Nenhuma chave de acesso registrada ainda.")
+              .font(.footnote)
+              .foregroundStyle(RentivoColors.secondaryInk)
+          } else {
+            ForEach(summary.passkeys) { passkey in
+              VStack(alignment: .leading, spacing: RentivoSpacing.small) {
+                Text(passkey.name).font(.headline)
+                Text("Último uso: \(passkey.lastUsedAt?.formattedPTBR(time: .shortened) ?? "nunca")")
+                  .font(.caption)
+                  .foregroundStyle(RentivoColors.secondaryInk)
+                if !isDemoViewerLocked {
+                  Button("Excluir", role: .destructive) { passkeyPendingDelete = passkey }
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("security.passkey.delete")
+                }
               }
             }
           }
@@ -74,6 +89,23 @@ struct SecurityView: View {
       Button("Cancelar", role: .cancel) { password = "" }
     } message: {
       Text("Confirme sua senha para desativar o aplicativo autenticador.")
+    }
+    .confirmationDialog(
+      "Excluir esta chave de acesso?",
+      isPresented: Binding(
+        get: { passkeyPendingDelete != nil },
+        set: { if !$0 { passkeyPendingDelete = nil } }
+      ),
+      presenting: passkeyPendingDelete
+    ) { passkey in
+      Button("Excluir chave de acesso", role: .destructive) {
+        Task { await remove(passkey) }
+      }
+      .accessibilityIdentifier("security.passkey.delete.confirm")
+      Button("Cancelar", role: .cancel) {}
+        .accessibilityIdentifier("security.passkey.delete.cancel")
+    } message: { passkey in
+      Text("\"\(passkey.name)\" não poderá mais ser usada para entrar neste dispositivo. Esta ação não pode ser desfeita.")
     }
   }
 
@@ -250,5 +282,17 @@ private struct TOTPEnrollmentView: View {
       .navigationTitle("Autenticador")
       .toolbar { Button("Cancelar") { dismiss() } }
     }
+  }
+}
+
+extension Date {
+  /// Formats this date pinned to the pt-BR locale, so PT-BR sentences never leak a
+  /// device-locale date string (e.g. "Jul 23, 2026" showing up on an en-US device
+  /// inside otherwise-Portuguese copy).
+  func formattedPTBR(
+    date dateStyle: Date.FormatStyle.DateStyle = .abbreviated,
+    time timeStyle: Date.FormatStyle.TimeStyle = .omitted
+  ) -> String {
+    formatted(Date.FormatStyle(date: dateStyle, time: timeStyle, locale: Locale(identifier: "pt_BR")))
   }
 }

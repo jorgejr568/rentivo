@@ -13,8 +13,26 @@ struct OrganizationListView: View {
   @State private var showingCreate = false
   @State private var showingInvitations = false
 
+  // `viewerMode` is a demo-mode-only concept: `LiveDemoRepository.setViewerMode`
+  // just flips a local flag with zero effect on the live server, so gating a
+  // real affordance on it while connected live would hide a working action
+  // for no server-backed reason. Organization creation has no per-payload
+  // capability to check (it isn't scoped to an existing organization), so we
+  // only respect the demo toggle when actually running against the mock store.
+  private var canCreateOrganization: Bool {
+    app.usesLiveAPI || !app.demoSettings.viewerMode
+  }
+
   var body: some View {
-    PageStateView(state: state) { organizations in
+    PageStateView(
+      state: state,
+      emptyTitle: "Nenhuma organização ainda",
+      emptyMessage:
+        "Organizações reúnem cobranças e membros sob papéis e permissões compartilhados. Crie uma para colaborar com sua equipe.",
+      emptySystemImage: "building.2.fill",
+      emptyActionTitle: canCreateOrganization ? "Criar organização" : nil,
+      emptyAction: canCreateOrganization ? { showingCreate = true } : nil
+    ) { organizations in
       ScrollView {
         LazyVStack(spacing: RentivoSpacing.large) {
           if pendingCount > 0 {
@@ -24,7 +42,7 @@ struct OrganizationListView: View {
               RentivoCard {
                 HStack {
                   Label(
-                    "\(pendingCount) convite pendente",
+                    ptBRCount(pendingCount, singular: "convite pendente", plural: "convites pendentes"),
                     systemImage: "envelope.badge.fill"
                   )
                   .font(.headline)
@@ -54,7 +72,7 @@ struct OrganizationListView: View {
     .navigationTitle("Organizações")
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
-        if !app.demoSettings.viewerMode {
+        if canCreateOrganization {
           Button {
             showingCreate = true
           } label: {
@@ -78,7 +96,15 @@ struct OrganizationListView: View {
   }
 
   private func load() async {
-    state = .loading
+    // Only show the loading spinner when nothing is on screen yet; pull-to-
+    // refresh and every tab revisit (`.task(id: app.dataRevision)`) otherwise
+    // refresh in place instead of tearing down the list.
+    switch state {
+    case .idle, .failed:
+      state = .loading
+    case .loading, .loaded, .empty:
+      break
+    }
     do {
       let organizations = try await app.dependencies.organizations.listOrganizations()
       let billings = try await app.dependencies.billings.listBillings()
@@ -90,7 +116,14 @@ struct OrganizationListView: View {
       }
       pendingCount = try await app.dependencies.invitations.listPendingInvitations().count
       state = values.isEmpty ? .empty : .loaded(values)
-    } catch { state = .failed(DemoError(error)) }
+    } catch {
+      switch state {
+      case .loaded, .empty:
+        app.showNotice(DemoError(error).message, kind: .warning)
+      default:
+        state = .failed(DemoError(error))
+      }
+    }
   }
 }
 
@@ -117,9 +150,15 @@ private struct OrganizationCard: View {
             .foregroundStyle(RentivoColors.secondaryInk)
         }
         HStack {
-          Label("\(item.organization.members.count) membros", systemImage: "person.2.fill")
+          Label(
+            ptBRCount(item.organization.members.count, singular: "membro", plural: "membros"),
+            systemImage: "person.2.fill"
+          )
           Spacer()
-          Label("\(item.billingCount) cobranças", systemImage: "house.fill")
+          Label(
+            ptBRCount(item.billingCount, singular: "cobrança", plural: "cobranças"),
+            systemImage: "house.fill"
+          )
         }
         .font(.caption.weight(.semibold))
         .foregroundStyle(RentivoColors.secondaryInk)
@@ -359,13 +398,25 @@ struct OrganizationDetailView: View {
               .foregroundStyle(RentivoColors.secondaryInk)
           }
           Spacer()
-          Toggle("MFA", isOn: .constant(organization.requiresMFA))
-            .labelsHidden()
-            .allowsHitTesting(false)
+          // A real `Toggle` (not a hit-test-disabled decoration behind an
+          // `onTapGesture`) so VoiceOver can focus and activate it directly.
+          // The binding never applies the tap's intended value: it only
+          // opens the confirmation dialog. The switch's visual position stays
+          // driven entirely by `organization.requiresMFA`, so it only moves
+          // once `toggleMFA()` actually persists the change and reloads —
+          // if the user cancels the dialog, nothing changes and the toggle
+          // silently reverts to its true state.
+          Toggle(
+            "Autenticação em duas etapas obrigatória",
+            isOn: Binding(
+              get: { organization.requiresMFA },
+              set: { _ in confirmingMFA = true }
+            )
+          )
+          .labelsHidden()
+          .disabled(!organization.capabilities.canManage)
+          .accessibilityIdentifier("organization.mfa.toggle")
         }
-        .contentShape(Rectangle())
-        .onTapGesture { confirmingMFA = true }
-        .allowsHitTesting(organization.capabilities.canManage)
       }
     }
   }
@@ -402,7 +453,17 @@ struct OrganizationDetailView: View {
   }
 
   private func load() async {
-    state = .loading
+    // Same "don't blank on refresh" rule as the organization list: every
+    // member/role/MFA/billing mutation calls `refreshAll()` -> `load()`, and
+    // `.task(id: app.dataRevision)` reruns on demo-state changes too, so
+    // resetting to `.loading` unconditionally would flash a spinner over an
+    // already-visible organization on every one of those actions.
+    switch state {
+    case .idle, .failed:
+      state = .loading
+    case .loading, .loaded, .empty:
+      break
+    }
     do {
       let loadedOrganization = try await app.dependencies.organizations.organization(
         id: organizationID
@@ -410,7 +471,14 @@ struct OrganizationDetailView: View {
       let loadedBillings = try await app.dependencies.billings.listBillings()
       billings = loadedBillings
       state = .loaded(loadedOrganization)
-    } catch { state = .failed(DemoError(error)) }
+    } catch {
+      switch state {
+      case .loaded, .empty:
+        app.showNotice(DemoError(error).message, kind: .warning)
+      default:
+        state = .failed(DemoError(error))
+      }
+    }
   }
 
   private func refreshAll() async {

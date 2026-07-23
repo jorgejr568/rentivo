@@ -189,14 +189,14 @@ struct BillingDetailView: View {
             RentivoCard {
               HStack {
                 VStack(alignment: .leading, spacing: RentivoSpacing.small) {
-                  Text(bill.referenceMonth.label.capitalized)
+                  Text(bill.referenceMonth.displayFormatted.capitalized)
                     .font(.headline)
                   StatusBadge(status: bill.status)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: RentivoSpacing.small) {
                   MoneyText(money: bill.total)
-                  Text("Vence \(bill.dueDate.iso8601)")
+                  Text("Vence \(bill.dueDate.displayFormatted)")
                     .font(.caption)
                     .foregroundStyle(RentivoColors.secondaryInk)
                 }

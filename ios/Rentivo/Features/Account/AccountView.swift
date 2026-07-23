@@ -110,6 +110,13 @@ struct ProfilePixView: View {
   @Environment(AppModel.self) private var app
   @State private var form = ProfilePIXForm()
 
+  /// Demo "viewer mode" is a local demo/mock-backend concept only. Once the app is
+  /// connected to the live API, the signed-in user owns their own account and this
+  /// screen should be fully enabled regardless of the demo viewer-mode toggle.
+  private var isDemoViewerLocked: Bool {
+    !app.usesLiveAPI && app.demoSettings.viewerMode
+  }
+
   var body: some View {
     Form {
       Section("Conta") {
@@ -123,7 +130,7 @@ struct ProfilePixView: View {
         TextField("Cidade", text: $form.merchantCity)
           .textInputAutocapitalization(.characters)
       }
-      .disabled(app.demoSettings.viewerMode)
+      .disabled(isDemoViewerLocked)
       Section {
         Label(
           "Cobranças pessoais sem PIX próprio herdam esta configuração.",
@@ -134,7 +141,7 @@ struct ProfilePixView: View {
     }
     .navigationTitle("Dados e PIX")
     .toolbar {
-      if !app.demoSettings.viewerMode {
+      if !isDemoViewerLocked {
         Button("Salvar") { Task { await save() } }
           .disabled(
             !form.configuration.isComplete

@@ -22,17 +22,24 @@ struct BillingListView: View {
   @State private var showingCreate = false
 
   var body: some View {
-    PageStateView(state: state) { items in
+    PageStateView(
+      state: state,
+      emptyTitle: "Nenhuma cobrança ainda",
+      emptyMessage: "Crie sua primeira cobrança para começar a gerar faturas.",
+      emptySystemImage: "doc.text",
+      emptyActionTitle: canCreateBilling ? "Nova cobrança" : nil,
+      emptyAction: canCreateBilling ? { showingCreate = true } : nil
+    ) { items in
       portfolio(items)
     } retry: {
       await load()
     }
     .background(RentivoColors.paper)
     .navigationTitle("Cobranças")
-    .searchable(text: $searchText, prompt: "Buscar por nome ou responsável")
+    .searchable(text: $searchText, prompt: "Buscar por nome, responsável ou descrição")
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
-        if !app.demoSettings.viewerMode {
+        if canCreateBilling {
           Button {
             showingCreate = true
           } label: {
@@ -53,6 +60,8 @@ struct BillingListView: View {
     .task(id: app.dataRevision) { await load() }
     .refreshable { await load() }
   }
+
+  private var canCreateBilling: Bool { !app.demoSettings.viewerMode }
 
   private func portfolio(_ items: [BillingPortfolioItem]) -> some View {
     let filtered = filteredItems(items)
@@ -101,7 +110,10 @@ struct BillingListView: View {
   }
 
   private func load() async {
-    state = .loading
+    let hadContent = state.value != nil
+    if !hadContent {
+      state = .loading
+    }
     do {
       let billings = try await app.dependencies.billings.listBillings()
       var items: [BillingPortfolioItem] = []
@@ -115,7 +127,14 @@ struct BillingListView: View {
       }
       state = items.isEmpty ? .empty : .loaded(items)
     } catch {
-      state = .failed(DemoError(error))
+      // Preserve already-loaded content across a failed refresh instead of tearing
+      // down the scroll view; only surface the full-page error state when there was
+      // nothing previously loaded to fall back to.
+      if hadContent {
+        app.showNotice(DemoError(error).message, kind: .warning)
+      } else {
+        state = .failed(DemoError(error))
+      }
     }
   }
 }
@@ -153,7 +172,10 @@ private struct BillingPortfolioCard: View {
           }
           Spacer()
           VStack(alignment: .trailing, spacing: RentivoSpacing.tiny) {
-            Label("\(item.bills.count) faturas", systemImage: "doc.text")
+            Label(
+              ptBRCount(item.bills.count, singular: "fatura", plural: "faturas"),
+              systemImage: "doc.text"
+            )
             Label(pixLabel, systemImage: pixSymbol)
           }
           .font(.caption.weight(.semibold))

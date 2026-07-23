@@ -1,6 +1,11 @@
 import Foundation
 import Testing
-@testable import RentivoCore
+
+#if canImport(RentivoCore)
+  @testable import RentivoCore
+#else
+  @testable import Rentivo
+#endif
 
 @MainActor
 @Test func liveOrganizationListHydratesMembersForTheOrganizationCardCount() async throws {

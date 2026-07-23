@@ -5,7 +5,16 @@ struct ThemeEditorView: View {
   let target: ThemeTarget
   @State private var record: ThemeRecord?
   @State private var values = ThemeValues.rentivo
+  @State private var loadedValues: ThemeValues?
   @State private var error: DemoError?
+
+  /// True once the user has changed a field since the last successful load/save.
+  /// Guards against `.task(id:)` reloads (triggered by unrelated `app.dataRevision`
+  /// bumps) silently overwriting in-progress, unsaved color edits.
+  private var isDirty: Bool {
+    guard let loadedValues else { return false }
+    return values != loadedValues
+  }
 
   var body: some View {
     Form {
@@ -59,8 +68,14 @@ struct ThemeEditorView: View {
           .accessibilityIdentifier("theme.save")
       }
     }
-    .task(id: app.dataRevision) { await load() }
-    .alert("Não foi possível atualizar", isPresented: .constant(error != nil)) {
+    .task(id: app.dataRevision) {
+      guard !isDirty else { return }
+      await load()
+    }
+    .alert(
+      "Não foi possível atualizar",
+      isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })
+    ) {
       Button("OK") { error = nil }
     } message: {
       Text(error?.message ?? "")
@@ -72,6 +87,7 @@ struct ThemeEditorView: View {
       let loaded = try await app.dependencies.themes.theme(target: target)
       record = loaded
       values = loaded.stored ?? loaded.effective
+      loadedValues = values
     } catch { self.error = DemoError(error) }
   }
 

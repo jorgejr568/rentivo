@@ -1,6 +1,11 @@
 import Foundation
 import Testing
-@testable import RentivoCore
+
+#if canImport(RentivoCore)
+  @testable import RentivoCore
+#else
+  @testable import Rentivo
+#endif
 
 @MainActor
 @Test func liveBillingListHydratesRecurringItemsForThePortfolioSubtotal() async throws {
@@ -65,6 +70,47 @@ import Testing
   #expect(items.count == 2)
   #expect(items[0]["uuid"] == nil || items[0]["uuid"] is NSNull)
   #expect(items[1]["uuid"] as? String == serverULID)
+}
+
+@MainActor
+@Test func liveBillDecodesServerAvailableTransitionsAndTotalAmount() async throws {
+  // Regression test: `available_transitions`/`total_amount` from `BillResponse` weren't decoded
+  // into `Bill.availableTransitions`/`Bill.serverTotal`, so the UI always fell back to the local
+  // `BillStatus` state machine and the client-summed total instead of the server-authoritative
+  // values this endpoint already returns.
+  let credentials = MemoryCredentialStore(token: "stored-token")
+  let client = LiveAPIClient(session: billDetailSession(), credentials: credentials)
+  let store = APIRentivoStore(client: client)
+  _ = try #require(try await store.restoreSession())
+
+  let bill = try await store.bill(billingID: BillingID(rawValue: "billing-1"), id: BillID(rawValue: "bill-1"))
+
+  #expect(bill.availableTransitions == [.paid, .delayedPayment])
+  #expect(bill.serverTotal == Money(centavos: 10_000))
+  #expect(bill.effectiveTotal == Money(centavos: 10_000))
+  #expect(bill.effectiveTransitions == Set([.paid, .delayedPayment]))
+}
+
+@MainActor
+@Test func liveBillWithMalformedReferenceMonthThrowsInsteadOfCrashing() async throws {
+  // Regression test: `bill(from:)` used to build `ReferenceMonth`/`DateOnly` with their
+  // precondition-enforcing initializers straight from unchecked server strings, so a malformed
+  // `reference_month` would trap the process. Adopting the failable wire initializers must turn
+  // this into an ordinary decode error instead.
+  let credentials = MemoryCredentialStore(token: "stored-token")
+  let client = LiveAPIClient(session: malformedBillSession(), credentials: credentials)
+  let store = APIRentivoStore(client: client)
+  _ = try #require(try await store.restoreSession())
+
+  do {
+    _ = try await store.bill(billingID: BillingID(rawValue: "billing-1"), id: BillID(rawValue: "bill-1"))
+    Issue.record("Expected the malformed reference_month to throw instead of crashing")
+  } catch let error as LiveAPIError {
+    guard case .invalidResponse = error else {
+      Issue.record("Expected .invalidResponse, got \(error)")
+      return
+    }
+  }
 }
 
 private func billingSession() -> URLSession {
@@ -148,4 +194,72 @@ private final class CapturingBillingCreateURLProtocol: URLProtocol, @unchecked S
     }
     return data
   }
+}
+
+private func billDetailSession() -> URLSession {
+  let configuration = URLSessionConfiguration.ephemeral
+  configuration.protocolClasses = [BillDetailURLProtocol.self]
+  return URLSession(configuration: configuration)
+}
+
+private final class BillDetailURLProtocol: URLProtocol, @unchecked Sendable {
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  override func startLoading() {
+    let path = request.url?.path
+    let body: String
+    switch path {
+    case "/api/v1/auth/session":
+      body = #"{"status":"authenticated","bootstrap":{"user":{"id":7,"email":"ana@rentivo.com.br"}}}"#
+    case "/api/v1/billings/billing-1/bills/bill-1":
+      body = #"{"uuid":"bill-1","reference_month":"2026-07","notes":"","status":"sent","due_date":"2026-07-10","status_updated_at": null,"line_items":[{"description":"Aluguel","amount":10000,"item_type":"fixed"}],"receipts":[],"total_amount":10000,"available_transitions":[{"target":"paid","label":"Marcar como paga","style":"primary","requires_confirmation":false},{"target":"delayed_payment","label":"Marcar como atrasada","style":"secondary","requires_confirmation":true}]}"#
+    default:
+      body = #"{"detail":"Endpoint inesperado: \#(path ?? "nil")"}"#
+    }
+    let response = HTTPURLResponse(
+      url: request.url!, statusCode: 200, httpVersion: nil,
+      headerFields: ["Content-Type": "application/json"]
+    )!
+    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+    client?.urlProtocol(self, didLoad: Data(body.utf8))
+    client?.urlProtocolDidFinishLoading(self)
+  }
+
+  override func stopLoading() {}
+}
+
+private func malformedBillSession() -> URLSession {
+  let configuration = URLSessionConfiguration.ephemeral
+  configuration.protocolClasses = [MalformedBillURLProtocol.self]
+  return URLSession(configuration: configuration)
+}
+
+private final class MalformedBillURLProtocol: URLProtocol, @unchecked Sendable {
+  override class func canInit(with request: URLRequest) -> Bool { true }
+  override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+  override func startLoading() {
+    let path = request.url?.path
+    let body: String
+    switch path {
+    case "/api/v1/auth/session":
+      body = #"{"status":"authenticated","bootstrap":{"user":{"id":7,"email":"ana@rentivo.com.br"}}}"#
+    case "/api/v1/billings/billing-1/bills/bill-1":
+      // Out-of-range month (13): with the raw precondition initializer this used to trap the
+      // process instead of throwing a decode error.
+      body = #"{"uuid":"bill-1","reference_month":"2026-13","notes":"","status":"draft","due_date":"2026-07-10","status_updated_at": null,"line_items":[],"receipts":[],"total_amount":0,"available_transitions":[]}"#
+    default:
+      body = #"{"detail":"Endpoint inesperado: \#(path ?? "nil")"}"#
+    }
+    let response = HTTPURLResponse(
+      url: request.url!, statusCode: 200, httpVersion: nil,
+      headerFields: ["Content-Type": "application/json"]
+    )!
+    client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+    client?.urlProtocol(self, didLoad: Data(body.utf8))
+    client?.urlProtocolDidFinishLoading(self)
+  }
+
+  override func stopLoading() {}
 }

@@ -1,6 +1,11 @@
 import Foundation
 import Testing
-@testable import RentivoCore
+
+#if canImport(RentivoCore)
+  @testable import RentivoCore
+#else
+  @testable import Rentivo
+#endif
 
 @MainActor
 @Test func liveCreateBillEncodesVariableAmountsForMatchingULIDsAndOmitsClientMintedIDs() async throws {
@@ -97,7 +102,7 @@ private final class CapturingBillCreateURLProtocol: URLProtocol, @unchecked Send
       body = #"{"status":"authenticated","bootstrap":{"user":{"id":7,"email":"ana@rentivo.com.br"}}}"#
     case "/api/v1/billings/billing-1/bills":
       Self.capturedBody = Self.requestBody(from: request)
-      body = #"{"uuid":"bill-1","reference_month":"2026-07","notes":"","status":"draft","due_date":"2026-07-10","status_updated_at": null,"line_items":[{"description":"Água","amount":4200,"item_type":"variable"},{"description":"Taxa extra","amount":1000,"item_type":"extra"}],"receipts":[]}"#
+      body = #"{"uuid":"bill-1","reference_month":"2026-07","notes":"","status":"draft","due_date":"2026-07-10","status_updated_at": null,"line_items":[{"description":"Água","amount":4200,"item_type":"variable"},{"description":"Taxa extra","amount":1000,"item_type":"extra"}],"receipts":[],"total_amount":5200,"available_transitions":[{"target":"published","label":"Publicar","style":"primary","requires_confirmation":false},{"target":"cancelled","label":"Cancelar","style":"destructive","requires_confirmation":true}]}"#
     default:
       body = #"{"detail":"Endpoint inesperado: \#(path ?? "nil")"}"#
     }

@@ -44,41 +44,6 @@ actor LiveAPIClient {
     self.credentials = credentials
   }
 
-  // NOTE: No UI path calls `AppModel.signIn(email:password:)` anymore (auth
-  // moved to the web handoff), which makes this method dead from the app's
-  // perspective. It is kept because `APIRentivoStore.login(email:password:)`
-  // (not owned by this change) still calls it; removing it here would break
-  // that file's compilation. Remove both together in a follow-up.
-  func login(email: String, password: String) async throws -> LiveSession {
-    let request = LoginRequest(
-      email: email,
-      password: password,
-      credentialTransport: "body",
-      turnstileToken: ""
-    )
-    let response: LoginResponse = try await send(
-      path: "/api/v1/auth/login",
-      method: "POST",
-      body: request,
-      token: nil
-    )
-    guard response.credentialTransport == "body", let accessToken = response.accessToken else {
-      throw LiveAPIError.server(message: "O servidor solicitou uma etapa adicional de autenticação.")
-    }
-    let profile: ProfileResponse = try await send(
-      path: "/api/v1/profile",
-      method: "GET",
-      body: Optional<String>.none,
-      token: accessToken
-    )
-    self.accessToken = accessToken
-    try await credentials.saveAccessToken(accessToken)
-    return LiveSession(
-      accessToken: accessToken,
-      profile: UserProfile(id: response.bootstrap?.user.id ?? 0, email: profile.email)
-    )
-  }
-
   func exchangeMobileAuthorization(code: String) async throws -> LiveSession {
     let response: LoginResponse = try await send(
       path: "/api/v1/auth/mobile/exchange", method: "POST",
@@ -220,19 +185,6 @@ actor LiveAPIClient {
     } catch {
       throw LiveAPIError.invalidResponse
     }
-  }
-}
-
-private struct LoginRequest: Encodable {
-  let email: String
-  let password: String
-  let credentialTransport: String
-  let turnstileToken: String
-
-  enum CodingKeys: String, CodingKey {
-    case email, password
-    case credentialTransport = "credential_transport"
-    case turnstileToken = "turnstile_token"
   }
 }
 
