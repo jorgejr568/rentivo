@@ -22,6 +22,7 @@ from rentivo.models.auth_challenge import AuthChallenge
 from rentivo.models.mfa import UserPasskey, UserTOTP
 from rentivo.models.user import User
 from rentivo.pix import validate_pix_key
+from rentivo.services.account_deletion_service import SoleOrganizationAdminError
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.services.mfa_service import LastMFAFactorError
 from rentivo.settings import settings
@@ -440,6 +441,17 @@ class FakeJobService:
             raise self.error
 
 
+class FakeAccountDeletionService:
+    def __init__(self) -> None:
+        self.deleted: list[int] = []
+        self.error: Exception | None = None
+
+    def delete_account(self, user_id: int) -> None:
+        if self.error is not None:
+            raise self.error
+        self.deleted.append(user_id)
+
+
 class DeterministicWebAuthn:
     def __init__(self) -> None:
         self.generate_calls: list[dict[str, Any]] = []
@@ -480,6 +492,7 @@ class SecurityHarness:
     challenge: FakeAuthChallengeService
     audit: FakeAuditService
     job: FakeJobService
+    account_deletion: FakeAccountDeletionService
     webauthn: DeterministicWebAuthn
 
     def request(
@@ -555,6 +568,7 @@ def security_harness(monkeypatch: pytest.MonkeyPatch) -> SecurityHarness:
     challenge = FakeAuthChallengeService()
     audit = FakeAuditService()
     job = FakeJobService()
+    account_deletion = FakeAccountDeletionService()
     services = SimpleNamespace(
         api_key=api_key,
         user=user,
@@ -563,6 +577,7 @@ def security_harness(monkeypatch: pytest.MonkeyPatch) -> SecurityHarness:
         auth_challenge=challenge,
         audit=audit,
         job=job,
+        account_deletion=account_deletion,
     )
     app = create_app()
     app.dependency_overrides[get_services] = lambda: services
@@ -576,6 +591,7 @@ def security_harness(monkeypatch: pytest.MonkeyPatch) -> SecurityHarness:
         challenge=challenge,
         audit=audit,
         job=job,
+        account_deletion=account_deletion,
         webauthn=deterministic_webauthn,
     )
 
@@ -619,6 +635,7 @@ PRIVILEGED_REQUESTS = [
     ("POST", "/api/v1/security/totp/setup", None),
     ("POST", "/api/v1/security/totp/confirm", {"code": "123456"}),
     ("POST", "/api/v1/security/totp/disable", {"password": "senha-atual"}),
+    ("POST", "/api/v1/security/delete-account", {"password": "senha-atual"}),
     ("POST", "/api/v1/security/recovery-codes/regenerate", None),
     ("GET", "/api/v1/security/passkeys", None),
     ("POST", "/api/v1/security/passkeys/register/begin", None),
@@ -676,6 +693,12 @@ def test_integration_key_cannot_access_any_security_management_route(
             "/api/v1/security/pix",
             APIScope.ACCOUNT_WRITE.value,
             {"pix_key": "person@example.com", "pix_merchant_name": "Person", "pix_merchant_city": "Recife"},
+        ),
+        (
+            "POST",
+            "/api/v1/security/delete-account",
+            APIScope.ACCOUNT_WRITE.value,
+            {"password": "senha-atual"},
         ),
         ("GET", "/api/v1/security", APIScope.SECURITY_MANAGE.value, None),
         ("POST", "/api/v1/security/passkeys/register/begin", APIScope.SECURITY_MANAGE.value, None),
@@ -1205,6 +1228,79 @@ def test_totp_disable_reports_when_totp_is_not_enabled(
 
     _assert_problem(response, status=409, code="totp_not_enabled", detail="TOTP não está ativado.")
     assert security_harness.audit.calls == []
+
+
+def test_delete_account_deletes_clears_cookies_and_notifies(
+    security_harness: SecurityHarness,
+) -> None:
+    response = security_harness.request(
+        "POST",
+        "/api/v1/security/delete-account",
+        json={"password": "senha-atual"},
+    )
+
+    assert response.status_code == 204
+    assert response.headers["x-rentivo-analytics-event"] == "rentivo_account_deleted"
+    assert security_harness.account_deletion.deleted == [USER.id]
+    set_cookies = response.headers.get_list("set-cookie")
+    assert any(line.startswith(f"{settings.access_cookie_name}=") and "Max-Age=0" in line for line in set_cookies)
+    assert any(line.startswith(f"{settings.csrf_cookie_name}=") and "Max-Age=0" in line for line in set_cookies)
+    assert any(line.startswith(f"{settings.challenge_cookie_name}=") and "Max-Age=0" in line for line in set_cookies)
+    assert _audit_events(security_harness) == [AuditEventType.USER_DELETE_ACCOUNT]
+    _args, audit_kwargs = security_harness.audit.calls[0]
+    assert audit_kwargs["entity_type"] == "user"
+    assert audit_kwargs["entity_id"] == USER.id
+    assert audit_kwargs["previous_state"] == serialize_user(USER)
+    assert "metadata" not in audit_kwargs
+    payloads = _job_payloads(security_harness)
+    assert [payload["event"] for payload in payloads] == ["account_deleted"]
+    assert payloads[0]["to_email"] == USER.email
+    assert payloads[0]["ctx"]["email"] == USER.email
+    assert "deleted_at" in payloads[0]["ctx"]
+    _assert_absent_from_side_effects(
+        security_harness,
+        LOGIN_SECRET,
+        "senha-atual",
+        USER.password_hash,
+    )
+
+
+def test_delete_account_rejects_an_incorrect_password_before_deleting(
+    security_harness: SecurityHarness,
+) -> None:
+    response = security_harness.request(
+        "POST",
+        "/api/v1/security/delete-account",
+        json={"password": "senha-incorreta"},
+    )
+
+    _assert_problem(response, status=400, code="incorrect_password", detail="Senha incorreta.")
+    assert security_harness.account_deletion.deleted == []
+    assert security_harness.audit.calls == []
+    assert security_harness.job.calls == []
+
+
+def test_delete_account_conflicts_when_user_is_sole_organization_admin(
+    security_harness: SecurityHarness,
+) -> None:
+    detail = "Transfira a administração ou exclua suas organizações antes de excluir a conta."
+    security_harness.account_deletion.error = SoleOrganizationAdminError(detail)
+
+    response = security_harness.request(
+        "POST",
+        "/api/v1/security/delete-account",
+        json={"password": "senha-atual"},
+    )
+
+    _assert_problem(
+        response,
+        status=409,
+        code="organization_admin_transfer_required",
+        detail=detail,
+    )
+    assert security_harness.account_deletion.deleted == []
+    assert security_harness.audit.calls == []
+    assert security_harness.job.calls == []
 
 
 def test_recovery_code_regeneration_is_one_time_no_store_and_audited(
