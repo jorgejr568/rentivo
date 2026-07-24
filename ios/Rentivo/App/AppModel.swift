@@ -153,10 +153,7 @@ final class AppModel {
       completeSignOut()
       notice = AppNotice(kind: .success, message: "Sua conta foi excluída.")
     } catch {
-      notice = AppNotice(
-        kind: .warning,
-        message: "Não foi possível excluir a conta. Verifique sua senha e tente novamente."
-      )
+      notice = AppNotice(kind: .warning, message: error.localizedDescription)
     }
   }
 
