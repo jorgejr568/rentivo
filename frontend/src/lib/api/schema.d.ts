@@ -969,6 +969,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/security/delete-account": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Account */
+        post: operations["delete_account_api_v1_security_delete_account_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/security/passkeys": {
         parameters: {
             query?: never;
@@ -1383,6 +1400,11 @@ export interface components {
              * @constant
              */
             status: "accepted";
+        };
+        /** AccountDeleteRequest */
+        AccountDeleteRequest: {
+            /** Password */
+            password: string;
         };
         /** AnalyticsEvent */
         AnalyticsEvent: {
@@ -4347,7 +4369,10 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BillCreateRequest"];
-                "multipart/form-data": components["schemas"]["Body_create_bill_api_v1_billings__billing_uuid__bills_post"];
+                "multipart/form-data": {
+                    payload: components["schemas"]["BillCreateRequest"];
+                    receipt_files?: Blob[];
+                };
             };
         };
         responses: {
@@ -6136,6 +6161,37 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["PasswordChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Request validation problem */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_account_api_v1_security_delete_account_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountDeleteRequest"];
             };
         };
         responses: {
