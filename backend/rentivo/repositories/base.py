@@ -223,6 +223,10 @@ class UserRepository(ABC):
     def delete(self, user_id: int) -> bool: ...
 
     @abstractmethod
+    def delete_account(self, user_id: int) -> bool:
+        """Atomically soft-delete owned content and hard-delete the user."""
+
+    @abstractmethod
     def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None: ...
 
 
@@ -265,6 +269,11 @@ class OrganizationRepository(ABC):
 
     @abstractmethod
     def user_has_enforcing_org(self, user_id: int) -> bool: ...
+
+    @abstractmethod
+    def list_blocking_account_deletion(self, user_id: int) -> list[int]:
+        """Live orgs where the user is the only admin but other members remain."""
+        ...
 
 
 class InviteRepository(ABC):

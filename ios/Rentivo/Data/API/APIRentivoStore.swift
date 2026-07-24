@@ -40,6 +40,16 @@ public final class APIRentivoStore: AuthRepository, ProfileRepository, BillingRe
     user = UserProfile(id: 0, email: "")
   }
 
+  public func deleteAccount(password: String) async throws {
+    struct DeleteAccountPayload: Encodable { let password: String }
+    try await execute(
+      path: "/api/v1/security/delete-account", method: "POST",
+      body: DeleteAccountPayload(password: password)
+    )
+    await client.logout()
+    user = UserProfile(id: 0, email: "")
+  }
+
   public func profile() async throws -> UserProfile {
     // GET /api/v1/profile only returns `CurrentProfileResponse` ({email}); the pix fields live on
     // `SecuritySummaryResponse.profile` (a full `ProfileResponse`), so fetch security instead.

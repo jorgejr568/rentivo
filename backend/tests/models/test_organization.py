@@ -26,7 +26,7 @@ class TestOrganization:
         org = Organization(name="Test Org")
         assert org.id is None
         assert org.uuid == ""
-        assert org.created_by == 0
+        assert org.created_by is None
         assert org.created_at is None
         assert org.deleted_at is None
 

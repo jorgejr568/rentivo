@@ -32,6 +32,7 @@ from rentivo.repositories.sqlalchemy import (
     SQLAlchemyThemeRepository,
     SQLAlchemyUserRepository,
 )
+from rentivo.services.account_deletion_service import AccountDeletionService
 from rentivo.services.api_key_service import APIKeyService
 from rentivo.services.audit_service import AuditService
 from rentivo.services.auth_challenge_service import AuthChallengeService
@@ -166,6 +167,13 @@ class RequestServices:
     @cached_property
     def pix(self) -> PixService:
         return PixService(
+            SQLAlchemyUserRepository(self._conn, self._encryption),
+            SQLAlchemyOrganizationRepository(self._conn, self._encryption),
+        )
+
+    @cached_property
+    def account_deletion(self) -> AccountDeletionService:
+        return AccountDeletionService(
             SQLAlchemyUserRepository(self._conn, self._encryption),
             SQLAlchemyOrganizationRepository(self._conn, self._encryption),
         )

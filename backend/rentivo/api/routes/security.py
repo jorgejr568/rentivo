@@ -24,6 +24,7 @@ from rentivo.api.errors import ProblemException, problem
 from rentivo.api.principal import Principal
 from rentivo.api.routes.auth import _clear_auth_cookies, _client_ip, _delete_cookie, _set_challenge_cookie
 from rentivo.api.schemas.security import (
+    AccountDeleteRequest,
     MFAStatusResponse,
     PasskeyListResponse,
     PasskeyRegistrationBeginResponse,
@@ -43,6 +44,7 @@ from rentivo.api.schemas.security import (
 from rentivo.constants.api_scopes import APIScope
 from rentivo.models.audit_log import AuditEventType
 from rentivo.models.mfa import UserPasskey
+from rentivo.services.account_deletion_service import SoleOrganizationAdminError
 from rentivo.services.audit_serializers import serialize_user
 from rentivo.services.container import RequestServices
 from rentivo.services.mfa_service import LastMFAFactorError
@@ -319,6 +321,52 @@ async def disable_totp(
     )
     _send_mfa_changed_email(request, principal, services, "totp_disabled")
     response = Response(status_code=204, headers={"X-Rentivo-Analytics-Event": "rentivo_mfa_disabled"})
+    _clear_auth_cookies(response, include_challenge=True)
+    return response
+
+
+@router.post("/delete-account", status_code=204)
+async def delete_account(
+    payload: AccountDeleteRequest,
+    principal: Principal = Depends(_account_principal),
+    _csrf: None = Depends(require_csrf),
+    services: RequestServices = Depends(get_services),
+) -> Response:
+    if services.user.authenticate(principal.user.email, payload.password) is None:
+        raise ProblemException.bad_request("incorrect_password", "Senha incorreta.")
+    try:
+        services.account_deletion.delete_account(principal.user.id)
+    except SoleOrganizationAdminError as exc:
+        raise _conflict("organization_admin_transfer_required", str(exc)) from None
+    # The wipe is irreversible and now committed: record the audit trail before
+    # attempting the (best-effort) notification so a failed email dispatch can
+    # never leave the deletion unaudited.
+    services.audit.safe_log_for(
+        principal.actor,
+        AuditEventType.USER_DELETE_ACCOUNT,
+        entity_type="user",
+        entity_id=principal.user.id,
+        previous_state=serialize_user(principal.user),
+    )
+    try:
+        services.job.enqueue_for(
+            principal.actor,
+            "email.send",
+            {
+                "event": "account_deleted",
+                "to_email": principal.user.email,
+                "ctx": {
+                    "email": principal.user.email,
+                    "deleted_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                },
+            },
+        )
+    except Exception:
+        logger.exception("account_deleted_dispatch_failed", user_id=principal.user.id)
+    response = Response(
+        status_code=204,
+        headers={"X-Rentivo-Analytics-Event": "rentivo_account_deleted"},
+    )
     _clear_auth_cookies(response, include_challenge=True)
     return response
 

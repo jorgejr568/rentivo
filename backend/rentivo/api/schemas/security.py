@@ -81,6 +81,10 @@ class TOTPDisableRequest(_StrictModel):
     password: str = Field(min_length=1)
 
 
+class AccountDeleteRequest(_StrictModel):
+    password: str = Field(min_length=1)
+
+
 class RecoveryCodesResponse(_StrictModel):
     recovery_codes: tuple[str, ...]
 

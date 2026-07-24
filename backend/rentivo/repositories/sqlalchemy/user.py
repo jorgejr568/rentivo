@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Connection, text
+from sqlalchemy import Connection, bindparam, column, select, table, text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import IntegrityError
 
@@ -9,6 +9,10 @@ from rentivo.models.user import User
 from rentivo.observability import traced
 from rentivo.repositories.base import UserAlreadyRegisteredError, UserRepository
 from rentivo.repositories.sqlalchemy._common import _now
+
+_USERS = table("users", column("id"))
+_USER_ID = bindparam("user_id")
+_USER_LOCK = select(_USERS.c.id).where(_USERS.c.id == _USER_ID).with_for_update()
 
 
 class SQLAlchemyUserRepository(UserRepository):
@@ -133,6 +137,55 @@ class SQLAlchemyUserRepository(UserRepository):
         result = self.conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
         self.conn.commit()
         return result.rowcount > 0
+
+    @traced("user_repo.delete_account")
+    def delete_account(self, user_id: int) -> bool:
+        """Atomically soft-delete user-owned content, then hard-delete the user.
+
+        Locks the user row (same idiom as the MFA repository), soft-deletes the
+        user's own billings and the organizations where they are the sole member,
+        then hard-deletes the user so authentication artifacts cascade. All work
+        commits together or rolls back on any error. Returns ``False`` when no
+        such user exists.
+        """
+        # Authentication performs reads on this request connection first. End
+        # that read view before locking so MariaDB always starts current.
+        self.conn.rollback()
+        try:
+            locked = self.conn.execute(_USER_LOCK, {"user_id": user_id}).fetchone()
+            if locked is None:
+                self.conn.rollback()
+                return False
+            now = _now()
+            self.conn.execute(
+                text(
+                    "UPDATE billings SET deleted_at = :now "
+                    "WHERE owner_type = 'user' AND owner_id = :id AND deleted_at IS NULL"
+                ),
+                {"id": user_id, "now": now},
+            )
+            self.conn.execute(
+                text(
+                    """
+                    UPDATE organizations SET deleted_at = :now
+                    WHERE deleted_at IS NULL
+                      AND id IN (
+                        SELECT organization_id FROM organization_members
+                        WHERE user_id = :id)
+                      AND NOT EXISTS (
+                        SELECT 1 FROM organization_members m2
+                        WHERE m2.organization_id = organizations.id
+                          AND m2.user_id != :id)
+                    """
+                ),
+                {"id": user_id, "now": now},
+            )
+            result = self.conn.execute(text("DELETE FROM users WHERE id = :id"), {"id": user_id})
+            self.conn.commit()
+            return result.rowcount > 0
+        except BaseException:
+            self.conn.rollback()
+            raise
 
     @traced("user_repo.update_pix")
     def update_pix(self, user_id: int, pix_key: str, pix_merchant_name: str, pix_merchant_city: str) -> None:

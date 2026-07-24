@@ -396,6 +396,21 @@
         "title": "AcceptedResponse",
         "type": "object"
       },
+      "AccountDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": {
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "password"
+        ],
+        "title": "AccountDeleteRequest",
+        "type": "object"
+      },
       "AnalyticsEvent": {
         "additionalProperties": false,
         "properties": {
@@ -9194,6 +9209,40 @@
           }
         },
         "summary": "Change Password",
+        "tags": [
+          "security"
+        ]
+      }
+    },
+    "/api/v1/security/delete-account": {
+      "post": {
+        "operationId": "delete_account_api_v1_security_delete_account_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Request validation problem"
+          }
+        },
+        "summary": "Delete Account",
         "tags": [
           "security"
         ]

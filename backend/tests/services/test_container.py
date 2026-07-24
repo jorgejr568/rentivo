@@ -118,6 +118,7 @@ def test_mfa_and_pix_services_resolve_with_their_own_repositories(db_connection,
 
 
 def test_all_retained_request_services_resolve_and_are_cached(db_connection, fake_encryption):
+    from rentivo.services.account_deletion_service import AccountDeletionService
     from rentivo.services.api_key_service import APIKeyService
     from rentivo.services.audit_service import AuditService
     from rentivo.services.auth_challenge_service import AuthChallengeService
@@ -148,6 +149,7 @@ def test_all_retained_request_services_resolve_and_are_cached(db_connection, fak
 
     services = RequestServices(conn=db_connection, encryption=fake_encryption)
     expected_types = {
+        "account_deletion": AccountDeletionService,
         "billing": BillingService,
         "api_key": APIKeyService,
         "auth_challenge": AuthChallengeService,

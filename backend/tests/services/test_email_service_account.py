@@ -95,3 +95,18 @@ def test_send_new_device_login_renders_metadata():
     assert "Novo acesso" in sent.subject
     assert "Mozilla/5.0" in sent.html_body
     assert "203.0.113.5" in sent.text_body
+
+
+def test_send_account_deleted_renders_email_and_timestamp():
+    service, backend = _service()
+    service.send(
+        to_email="alice@example.com",
+        event="account_deleted",
+        ctx={"email": "a@b.com", "deleted_at": "23/07/2026 10:00"},
+    )
+    sent = backend.send.call_args[0][0]
+    assert "Conta excluída — Rentivo" == sent.subject
+    assert "a@b.com" in sent.html_body
+    assert "a@b.com" in sent.text_body
+    assert "23/07/2026 10:00" in sent.html_body
+    assert "23/07/2026 10:00" in sent.text_body

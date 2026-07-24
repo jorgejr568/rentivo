@@ -34,6 +34,7 @@ final class AppModel {
   var selectedTab: AppTab = .home
   var notice: AppNotice?
   var isSigningOut = false
+  var isDeletingAccount = false
   var demoSettings: DemoSettings
   var dataRevision = 0
   let dependencies: AppDependencies
@@ -134,6 +135,23 @@ final class AppModel {
         kind: .warning,
         message: "Você saiu do Rentivo, mas não foi possível encerrar a sessão do navegador."
       )
+    }
+  }
+
+  func deleteAccount(password: String) async {
+    guard !isDeletingAccount else { return }
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      completeSignOut()
+      return
+    }
+    isDeletingAccount = true
+    defer { isDeletingAccount = false }
+    do {
+      try await liveStore.deleteAccount(password: password)
+      completeSignOut()
+      notice = AppNotice(kind: .success, message: "Sua conta foi excluída.")
+    } catch {
+      notice = AppNotice(kind: .warning, message: error.localizedDescription)
     }
   }
 

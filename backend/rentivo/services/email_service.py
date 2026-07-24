@@ -37,6 +37,7 @@ def _jinja_env() -> Environment:
 EMAIL_SUBJECTS: dict[str, str | Callable[[dict], str]] = {
     "welcome": "Bem-vindo à Rentivo",
     "password_changed": "Senha alterada — Rentivo",
+    "account_deleted": "Conta excluída — Rentivo",
     "password_reset_completed": "Senha redefinida — Rentivo",
     "password_reset": "Redefinir senha — Rentivo",
     "mfa_changed": "Alteração de MFA — Rentivo",

@@ -23,6 +23,8 @@ import { BillEditPage } from "../features/bills/BillEditPage";
 import { BillGeneratePage } from "../features/bills/BillGeneratePage";
 import { CommunicationComposePage } from "../features/bills/CommunicationComposePage";
 import { InviteListPage } from "../features/invites/InviteListPage";
+import { PrivacyPolicyPage } from "../features/legal/PrivacyPolicyPage";
+import { TermsPage } from "../features/legal/TermsPage";
 import { NotFoundPage } from "../features/notFound/NotFoundPage";
 import { OrganizationCreatePage } from "../features/organizations/OrganizationCreatePage";
 import { OrganizationDetailPage } from "../features/organizations/OrganizationDetailPage";
@@ -31,6 +33,7 @@ import { OrganizationListPage } from "../features/organizations/OrganizationList
 import { RecoveryCodesPage } from "../features/security/RecoveryCodesPage";
 import { SecurityPage } from "../features/security/SecurityPage";
 import { TotpSetupPage } from "../features/security/TotpSetupPage";
+import { SupportPage } from "../features/support/SupportPage";
 import { ThemePage } from "../features/themes/ThemePage";
 import { LandingPage } from "../features/landing/LandingPage";
 
@@ -122,7 +125,10 @@ export function createAppRouter(children: RouteObject[] = []) {
             { element: <MfaVerifyPage />, path: "/mfa-verify" },
             { element: <ForgotPasswordPage />, path: "/forgot-password" },
             { element: <ResetPasswordPage />, path: "/reset-password" },
-            { element: <GoogleCallbackPage />, path: "/auth/google/callback" }
+            { element: <GoogleCallbackPage />, path: "/auth/google/callback" },
+            { element: <PrivacyPolicyPage />, path: "/privacy" },
+            { element: <TermsPage />, path: "/terms" },
+            { element: <SupportPage />, path: "/support" }
           ],
           element: <PublicAuthLayout />
         },

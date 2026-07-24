@@ -67,3 +67,20 @@ test("completes TOTP setup and registers a passkey through browser credentials",
   });
   expect(api.unexpectedRequests).toEqual([]);
 });
+
+test("deletes the account and returns to the login screen", async ({ page }) => {
+  const api = await installApiMocks(page);
+  await page.goto("/security");
+  await expect(page.getByRole("heading", { name: "Segurança" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Excluir conta" }).click();
+  await page.getByLabel("Confirme sua senha para excluir a conta").fill("current-password-e2e");
+  await page.getByRole("button", { name: "Excluir minha conta permanentemente" }).click();
+
+  await expect(page).toHaveURL(/\/login$/);
+
+  const deletion = api.requests.find((request) => request.path === "/security/delete-account");
+  expect(deletion?.body).toEqual({ password: "current-password-e2e" });
+  expect(api.requests.some((request) => request.path === "/auth/logout")).toBe(true);
+  expect(api.unexpectedRequests).toEqual([]);
+});

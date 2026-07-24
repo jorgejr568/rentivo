@@ -222,6 +222,31 @@ class SQLAlchemyOrganizationRepository(OrganizationRepository):
         )
         self.conn.commit()
 
+    @traced("organization_repo.list_blocking_account_deletion")
+    def list_blocking_account_deletion(self, user_id: int) -> list[int]:
+        rows = self.conn.execute(
+            text(
+                """
+                SELECT o.id FROM organizations o
+                WHERE o.deleted_at IS NULL
+                  AND EXISTS (
+                    SELECT 1 FROM organization_members m
+                    WHERE m.organization_id = o.id AND m.user_id = :uid
+                      AND m.role IN ('admin', 'owner'))
+                  AND EXISTS (
+                    SELECT 1 FROM organization_members mo
+                    WHERE mo.organization_id = o.id AND mo.user_id != :uid)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM organization_members ma
+                    WHERE ma.organization_id = o.id AND ma.user_id != :uid
+                      AND ma.role IN ('admin', 'owner'))
+                ORDER BY o.id
+                """
+            ),
+            {"uid": user_id},
+        ).fetchall()
+        return [row[0] for row in rows]
+
     @traced("organization_repo.user_has_enforcing_org")
     def user_has_enforcing_org(self, user_id: int) -> bool:
         result = (
