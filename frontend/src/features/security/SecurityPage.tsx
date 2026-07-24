@@ -28,6 +28,9 @@ export function SecurityPage() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [disablingTotp, setDisablingTotp] = useState(false);
   const [showDisableTotp, setShowDisableTotp] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [pixKey, setPixKey] = useState("");
   const [pixName, setPixName] = useState("");
   const [pixCity, setPixCity] = useState("");
@@ -40,6 +43,7 @@ export function SecurityPage() {
   const passwordRef = useRef<HTMLInputElement>(null);
   const recoveryRef = useRef<HTMLButtonElement>(null);
   const disableTotpRef = useRef<HTMLInputElement>(null);
+  const deleteAccountRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -149,6 +153,24 @@ export function SecurityPage() {
     }
   }
 
+  async function deleteAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    startAction(deleteAccountRef.current);
+    setDeletingAccount(true);
+    try {
+      await apiRequest(
+        apiClient.POST("/api/v1/security/delete-account", {
+          body: { password: deletePassword }
+        })
+      );
+      await logout().catch(() => undefined);
+    } catch (caught: unknown) {
+      setActionError(messageFor(caught, "Não foi possível excluir a conta."));
+    } finally {
+      setDeletingAccount(false);
+    }
+  }
+
   async function registerPasskey(name: string) {
     startAction();
     const { data: begin } = await apiRequest(
@@ -207,6 +229,17 @@ export function SecurityPage() {
       </div></div>
       <PasskeyManager onDelete={deletePasskey} onRegister={registerPasskey} onSessionRevoked={() => { void logout().catch(() => undefined); }} organizationEnforced={summary.mfa.organization_enforced} passkeys={summary.passkeys} />
       <ApiKeySection />
+      <div className="panel">
+        <div className="panel-head"><h5>Excluir conta</h5></div>
+        <div className="panel-body">
+          <p>A exclusão é permanente: suas cobranças são removidas e seus dados pessoais são apagados. Registros exigidos por lei podem ser retidos conforme a <Link to="/privacy">Política de Privacidade</Link>. Se você entra apenas com o Google, defina uma senha antes em Esqueci minha senha.</p>
+          {!showDeleteAccount ? <button className="btn btn--sm btn--danger" onClick={() => setShowDeleteAccount(true)} type="button">Excluir conta</button> : null}
+          {showDeleteAccount ? <form onSubmit={(event) => void deleteAccount(event)}>
+            <div className="field"><label className="field-label" htmlFor="delete-account-password">Confirme sua senha para excluir a conta</label><input className="field-input" id="delete-account-password" onChange={(event) => setDeletePassword(event.target.value)} ref={deleteAccountRef} required type="password" value={deletePassword} /></div>
+            <SubmitButton className="btn btn--danger btn--sm" loading={deletingAccount}>Excluir minha conta permanentemente</SubmitButton>
+          </form> : null}
+        </div>
+      </div>
     </>
   );
 }

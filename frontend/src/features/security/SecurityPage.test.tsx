@@ -184,6 +184,79 @@ it("surfaces API and network action failures", async () => {
   expect(screen.getByLabelText("Confirme sua senha para desativar")).toHaveFocus();
 });
 
+it("reveals the delete-account form and deletes the account", async () => {
+  const user = userEvent.setup();
+  renderPage({
+    "/api/v1/security/delete-account": (init) => {
+      expect(JSON.parse(String(init?.body))).toEqual({ password: "s3cret" });
+      return new Response(null, { status: 204 });
+    }
+  });
+  await screen.findByRole("heading", { name: "Segurança" });
+
+  await user.click(screen.getByRole("button", { name: "Excluir conta" }));
+  await user.type(screen.getByLabelText("Confirme sua senha para excluir a conta"), "s3cret");
+  await user.click(screen.getByRole("button", { name: "Excluir minha conta permanentemente" }));
+
+  await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/login"));
+});
+
+it("shows the API problem message when deletion fails", async () => {
+  const user = userEvent.setup();
+  renderPage({
+    "/api/v1/security/delete-account": () =>
+      problemResponse({
+        code: "organization_admin_transfer_required",
+        detail: "Transfira a administração ou exclua suas organizações antes de excluir a conta.",
+        fields: {},
+        request_id: "id",
+        status: 409,
+        title: "Conflito",
+        type: "problem"
+      })
+  });
+  await screen.findByRole("heading", { name: "Segurança" });
+
+  await user.click(screen.getByRole("button", { name: "Excluir conta" }));
+  await user.type(screen.getByLabelText("Confirme sua senha para excluir a conta"), "s3cret");
+  await user.click(screen.getByRole("button", { name: "Excluir minha conta permanentemente" }));
+
+  expect(await screen.findByText(/Transfira a administração/)).toBeVisible();
+});
+
+it("still lands on /login when logout fails after the account is deleted", async () => {
+  const user = userEvent.setup();
+  renderPage({
+    "/api/v1/security/delete-account": () => new Response(null, { status: 204 }),
+    "/api/v1/auth/logout": () => {
+      throw new Error("offline");
+    }
+  });
+  await screen.findByRole("heading", { name: "Segurança" });
+
+  await user.click(screen.getByRole("button", { name: "Excluir conta" }));
+  await user.type(screen.getByLabelText("Confirme sua senha para excluir a conta"), "s3cret");
+  await user.click(screen.getByRole("button", { name: "Excluir minha conta permanentemente" }));
+
+  await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/login"));
+});
+
+it("shows the fallback message on a network failure during deletion", async () => {
+  const user = userEvent.setup();
+  renderPage({
+    "/api/v1/security/delete-account": () => {
+      throw new Error("network");
+    }
+  });
+  await screen.findByRole("heading", { name: "Segurança" });
+
+  await user.click(screen.getByRole("button", { name: "Excluir conta" }));
+  await user.type(screen.getByLabelText("Confirme sua senha para excluir a conta"), "x");
+  await user.click(screen.getByRole("button", { name: "Excluir minha conta permanentemente" }));
+
+  expect(await screen.findByText("Não foi possível excluir a conta.")).toBeVisible();
+});
+
 it("retries a failed security-summary request", async () => {
   const user = userEvent.setup();
   let attempts = 0;
