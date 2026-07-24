@@ -33,6 +33,7 @@ final class AppModel {
   var selectedTab: AppTab = .home
   var notice: AppNotice?
   var isSigningOut = false
+  var isDeletingAccount = false
   var demoSettings: DemoSettings
   var dataRevision = 0
   let dependencies: AppDependencies
@@ -137,6 +138,26 @@ final class AppModel {
     }
     await liveStore.logout()
     completeSignOut()
+  }
+
+  func deleteAccount(password: String) async {
+    guard !isDeletingAccount else { return }
+    guard let liveStore = dependencies.auth as? APIRentivoStore else {
+      completeSignOut()
+      return
+    }
+    isDeletingAccount = true
+    defer { isDeletingAccount = false }
+    do {
+      try await liveStore.deleteAccount(password: password)
+      completeSignOut()
+      notice = AppNotice(kind: .success, message: "Sua conta foi excluída.")
+    } catch {
+      notice = AppNotice(
+        kind: .warning,
+        message: "Não foi possível excluir a conta. Verifique sua senha e tente novamente."
+      )
+    }
   }
 
   private func completeSignOut() {

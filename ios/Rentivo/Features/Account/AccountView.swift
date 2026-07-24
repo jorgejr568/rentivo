@@ -2,6 +2,8 @@ import SwiftUI
 
 struct AccountView: View {
   @Environment(AppModel.self) private var app
+  @State private var showDeleteAccountAlert = false
+  @State private var deleteAccountPassword = ""
 
   var body: some View {
     List {
@@ -103,11 +105,27 @@ struct AccountView: View {
           }
         }
         .disabled(app.isSigningOut)
+
+        Button(role: .destructive) { showDeleteAccountAlert = true } label: {
+          Label("Excluir conta", systemImage: "trash.fill").frame(maxWidth: .infinity)
+        }
+        .disabled(app.isDeletingAccount)
       }
     }
     .scrollContentBackground(.hidden)
     .background(RentivoColors.paper)
     .navigationTitle("Conta")
+    .alert("Excluir sua conta?", isPresented: $showDeleteAccountAlert) {
+      SecureField("Senha", text: $deleteAccountPassword)
+      Button("Cancelar", role: .cancel) { deleteAccountPassword = "" }
+      Button("Excluir conta", role: .destructive) {
+        let password = deleteAccountPassword
+        deleteAccountPassword = ""
+        Task { await app.deleteAccount(password: password) }
+      }
+    } message: {
+      Text("Essa ação é permanente. Suas cobranças e seus dados pessoais serão excluídos.")
+    }
   }
 }
 
