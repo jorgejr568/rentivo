@@ -371,6 +371,10 @@ export async function installApiMocks(
       await route.fulfill({ status: 204 });
       return;
     }
+    if (path === "/security/delete-account" && method === "POST") {
+      await route.fulfill({ status: 204 });
+      return;
+    }
     if (path === "/security/recovery-codes/regenerate" && method === "POST") {
       await fulfillJson(route, {
         recovery_codes: ["RECOVERY-ALPHA", "RECOVERY-BRAVO", "RECOVERY-CHARLIE"]
