@@ -5,7 +5,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { FieldError } from "../../components/FieldError";
 import { EmptyState, LoadError, LoadingState } from "../../components/PageState";
 import { apiClient, apiRequest } from "../../lib/api/client";
-import type { components } from "../../lib/api/schema";
+import type { paths } from "../../lib/api/schema";
 import { formatBrl, formatBrlInput, parseBrl } from "../../lib/format";
 import { pushAnalyticsFromResponse } from "../auth/analytics";
 import type { Billing } from "./billSupport";
@@ -161,11 +161,14 @@ export function BillGeneratePage() {
       reference_month: referenceMonth,
       variable_amounts: variableValues
     };
-    type CreateBody = components["schemas"]["Body_create_bill_api_v1_billings__billing_uuid__bills_post"];
+    type CreateBody =
+      paths["/api/v1/billings/{billing_uuid}/bills"]["post"]["requestBody"]["content"]["multipart/form-data"];
+    // The multipart `payload` field is sent as a JSON string on the wire; the generated
+    // client models it as the pre-serialized BillCreateRequest object, so bridge via `unknown`.
     const requestBody = {
       payload: JSON.stringify(payload),
       ...(billing.capabilities.can_upload_bill_receipts ? { receipt_files: files } : {})
-    } as CreateBody;
+    } as unknown as CreateBody;
     mutationController.current?.abort();
     const controller = new AbortController();
     mutationController.current = controller;
