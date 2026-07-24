@@ -189,7 +189,7 @@ it("reveals the delete-account form and deletes the account", async () => {
   renderPage({
     "/api/v1/security/delete-account": (init) => {
       expect(JSON.parse(String(init?.body))).toEqual({ password: "s3cret" });
-      return new Response(null, { status: 204 });
+      return new Response(null, { headers: { "X-Rentivo-Analytics-Event": "rentivo_account_deleted" }, status: 204 });
     }
   });
   await screen.findByRole("heading", { name: "Segurança" });
@@ -199,6 +199,7 @@ it("reveals the delete-account form and deletes the account", async () => {
   await user.click(screen.getByRole("button", { name: "Excluir minha conta permanentemente" }));
 
   await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/login"));
+  expect(window.dataLayer?.at(-1)).toEqual({ event: "rentivo_account_deleted" });
 });
 
 it("shows the API problem message when deletion fails", async () => {

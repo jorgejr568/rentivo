@@ -158,11 +158,12 @@ export function SecurityPage() {
     startAction(deleteAccountRef.current);
     setDeletingAccount(true);
     try {
-      await apiRequest(
+      const { response } = await apiRequest(
         apiClient.POST("/api/v1/security/delete-account", {
           body: { password: deletePassword }
         })
       );
+      pushAnalyticsFromResponse(response);
       await logout().catch(() => undefined);
     } catch (caught: unknown) {
       setActionError(messageFor(caught, "Não foi possível excluir a conta."));
