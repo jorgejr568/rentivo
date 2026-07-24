@@ -1265,6 +1265,26 @@ def test_delete_account_deletes_clears_cookies_and_notifies(
     )
 
 
+def test_delete_account_succeeds_when_notification_dispatch_fails(
+    security_harness: SecurityHarness,
+) -> None:
+    security_harness.job.error = RuntimeError("queue unavailable")
+
+    response = security_harness.request(
+        "POST",
+        "/api/v1/security/delete-account",
+        json={"password": "senha-atual"},
+    )
+
+    assert response.status_code == 204
+    assert security_harness.account_deletion.deleted == [USER.id]
+    set_cookies = response.headers.get_list("set-cookie")
+    assert any(line.startswith(f"{settings.access_cookie_name}=") and "Max-Age=0" in line for line in set_cookies)
+    assert any(line.startswith(f"{settings.csrf_cookie_name}=") and "Max-Age=0" in line for line in set_cookies)
+    assert any(line.startswith(f"{settings.challenge_cookie_name}=") and "Max-Age=0" in line for line in set_cookies)
+    assert _audit_events(security_harness) == [AuditEventType.USER_DELETE_ACCOUNT]
+
+
 def test_delete_account_rejects_an_incorrect_password_before_deleting(
     security_harness: SecurityHarness,
 ) -> None:

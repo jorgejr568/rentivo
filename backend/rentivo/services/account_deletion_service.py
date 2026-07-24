@@ -24,6 +24,9 @@ class AccountDeletionService:
             raise SoleOrganizationAdminError(
                 "Transfira a administração ou exclua suas organizações antes de excluir a conta."
             )
+        # Accepted milliseconds-window TOCTOU: a member joining this user's solo
+        # org between the check above and the row-locked wipe below could leave an
+        # org with zero admins. The window is tiny and the state is support-recoverable.
         if not self.users.delete_account(user_id):
             raise ValueError("Usuário não encontrado.")
         logger.info("account_deleted", user_id=user_id)

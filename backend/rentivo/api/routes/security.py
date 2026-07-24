@@ -338,18 +338,9 @@ async def delete_account(
         services.account_deletion.delete_account(principal.user.id)
     except SoleOrganizationAdminError as exc:
         raise _conflict("organization_admin_transfer_required", str(exc)) from None
-    services.job.enqueue_for(
-        principal.actor,
-        "email.send",
-        {
-            "event": "account_deleted",
-            "to_email": principal.user.email,
-            "ctx": {
-                "email": principal.user.email,
-                "deleted_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
-            },
-        },
-    )
+    # The wipe is irreversible and now committed: record the audit trail before
+    # attempting the (best-effort) notification so a failed email dispatch can
+    # never leave the deletion unaudited.
     services.audit.safe_log_for(
         principal.actor,
         AuditEventType.USER_DELETE_ACCOUNT,
@@ -357,6 +348,21 @@ async def delete_account(
         entity_id=principal.user.id,
         previous_state=serialize_user(principal.user),
     )
+    try:
+        services.job.enqueue_for(
+            principal.actor,
+            "email.send",
+            {
+                "event": "account_deleted",
+                "to_email": principal.user.email,
+                "ctx": {
+                    "email": principal.user.email,
+                    "deleted_at": datetime.now().strftime("%d/%m/%Y %H:%M"),
+                },
+            },
+        )
+    except Exception:
+        logger.exception("account_deleted_dispatch_failed", user_id=principal.user.id)
     response = Response(
         status_code=204,
         headers={"X-Rentivo-Analytics-Event": "rentivo_account_deleted"},
