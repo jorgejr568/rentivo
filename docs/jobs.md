@@ -4,8 +4,9 @@ Rentivo runs background work such as `email.send`, `communication.send`,
 `pdf.render`, `recibo.render`, `export.generate`, `export.send`, `s3.delete`, and
 `auth.cleanup` through a pluggable **job driver** selected by
 `RENTIVO_JOB_BACKEND`. State-changing API flows enqueue work; the worker process
-executes it. Two drivers are available: `database` (the default) and `temporal`
-(optional).
+executes it. The exception is `auth.cleanup`, which recurs on a timer rather
+than following a request — see [Cleanup scheduling](#cleanup-scheduling). Two
+drivers are available: `database` (the default) and `temporal` (optional).
 
 ## Database driver (`database`, default)
 
@@ -14,6 +15,7 @@ The default and fully supported production driver. It needs **zero extra depende
 - Enqueue inserts a row into the `jobs` table (`DatabaseJobBackend` over `SQLAlchemyJobRepository`).
 - A polling `Worker` (`backend/rentivo/jobs/worker.py`) claims due jobs in batches, runs the registered handler, and updates the row.
 - Retries use an exponential backoff schedule (see the parity table below); on exhaustion or a `PermanentJobError` the job is dead-lettered.
+- The worker also **self-schedules** the recurring `auth.cleanup` job (see [Cleanup scheduling](#cleanup-scheduling)); every other job type is enqueued by an API flow.
 
 Tunables (see [`configuration.md`](configuration.md) for the full reference):
 
@@ -22,6 +24,7 @@ Tunables (see [`configuration.md`](configuration.md) for the full reference):
 | `RENTIVO_JOB_WORKER_BATCH_SIZE` | `10` | Jobs claimed per poll |
 | `RENTIVO_JOB_WORKER_IDLE_SLEEP_SECONDS` | `5.0` | Sleep when the queue is empty |
 | `RENTIVO_JOB_WORKER_STUCK_AFTER_SECONDS` | `600` | Reclaim window for jobs left `running` by a dead worker |
+| `RENTIVO_AUTH_CLEANUP_INTERVAL_SECONDS` | `3600` | How often the worker makes sure an `auth.cleanup` job is queued (`0` disables) |
 
 ### Payload encryption at rest
 
@@ -58,6 +61,45 @@ worker retries on the next poll. A row that can never be decrypted (for example
 after key destruction) is skipped on every poll and logged as
 `job_payload_decode_failed` with its `job_id` and `ulid`; quarantine it with
 `UPDATE jobs SET status='failed', last_error='undecryptable payload' WHERE id = ...`.
+
+### Cleanup scheduling
+
+`auth.cleanup` is the one recurring job: it deletes expired login tokens, stale
+authentication challenges, and old job rows. Nothing in the API enqueues it, so
+each driver is responsible for producing it.
+
+- **Database driver:** the worker self-schedules it. Once every
+  `RENTIVO_AUTH_CLEANUP_INTERVAL_SECONDS` (default `3600`; `0` disables
+  self-scheduling) it checks the `jobs` table and enqueues `auth.cleanup` with an
+  empty payload unless one is already `pending`/`running` or a previous run
+  finished inside the *recency window*, which is half the interval. The window is
+  deliberately shorter than the check period: a full-interval window would always
+  cover the run enqueued at the previous check and suppress it, so cleanup would
+  land every two intervals. With the half-interval window the job is enqueued
+  roughly once per interval — hourly at the default — while a restarted worker,
+  whose check timer resets, still does not pile on a duplicate. Running several
+  workers is safe: the check makes duplicates unlikely and the handler is
+  idempotent. Each enqueue is logged as `auth_cleanup_scheduled`.
+- **Temporal driver:** the worker does **not** self-schedule. Create a Temporal
+  schedule (or cron workflow) that starts `AuthCleanupWorkflow` on
+  `RENTIVO_TEMPORAL_TASK_QUEUE` with the arguments `({}, "<id>", 5)` — empty
+  payload, an identifier used only for the audit entries, and the maximum
+  attempts — hourly, matching the database driver's default cadence. Without that
+  schedule the cleanups below never run, and
+  `RENTIVO_AUTH_CLEANUP_INTERVAL_SECONDS` has no effect.
+
+### Retention
+
+Each `auth.cleanup` run deletes expired login tokens, stale authentication
+challenges, and `succeeded`/`failed` job rows whose `updated_at` is older than
+`RENTIVO_JOB_RETENTION_DAYS` (default 30; `0` disables the job purge). All three
+purges drain in batches of 100 until no eligible row remains or the run has
+removed 10,000 rows from that table (`AUTH_CLEANUP_MAX_PURGED_ROWS`), so a large
+backlog is worked down over consecutive runs. The whole run — all three drains —
+happens inside a single transaction; the per-table cap is what bounds how long
+that transaction stays open, while the batch size only bounds the size of each
+statement's `IN` list. `pending` and `running` job rows are never touched, so a
+job scheduled far in the future and the cleanup job's own row are safe.
 
 Run the worker:
 

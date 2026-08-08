@@ -133,6 +133,20 @@ class Settings(BaseSettings):
     job_worker_idle_sleep_seconds: float = 5.0
     job_worker_stuck_after_seconds: int = 600
 
+    # Terminal-state (`succeeded` / `failed`) job rows older than this are
+    # purged by the `auth.cleanup` handler. Payloads are encrypted at rest, but
+    # they still hold third-party recipient addresses, client IPs, and user
+    # agents -- retaining them forever grows the blast radius of any future key
+    # compromise for no operational benefit. `0` disables the purge.
+    job_retention_days: int = 30
+
+    # How often the database driver's worker makes sure an `auth.cleanup` job is
+    # queued. Nothing else produces that job, so without this the login-token,
+    # challenge, and job-row cleanups never run. Only the database driver
+    # self-schedules -- Temporal deployments schedule `auth.cleanup` themselves
+    # (see docs/jobs.md). `0` disables self-scheduling.
+    auth_cleanup_interval_seconds: int = 3600
+
     # Background-job execution driver. `database` (default) uses the built-in
     # polling worker over the `jobs` table — zero extra dependencies. `temporal`
     # offloads execution to a Temporal cluster (requires the `temporal` extra;

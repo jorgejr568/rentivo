@@ -343,12 +343,16 @@ def test_default_job_worker_settings():
     assert s.job_worker_batch_size == 10
     assert s.job_worker_idle_sleep_seconds == 5.0
     assert s.job_worker_stuck_after_seconds == 600
+    assert s.job_retention_days == 30
+    assert s.auth_cleanup_interval_seconds == 3600
 
 
 def test_job_worker_settings_overrides_via_env(monkeypatch):
     monkeypatch.setenv("RENTIVO_JOB_WORKER_BATCH_SIZE", "25")
     monkeypatch.setenv("RENTIVO_JOB_WORKER_IDLE_SLEEP_SECONDS", "1.5")
     monkeypatch.setenv("RENTIVO_JOB_WORKER_STUCK_AFTER_SECONDS", "120")
+    monkeypatch.setenv("RENTIVO_JOB_RETENTION_DAYS", "14")
+    monkeypatch.setenv("RENTIVO_AUTH_CLEANUP_INTERVAL_SECONDS", "900")
 
     from rentivo.settings import Settings
 
@@ -356,6 +360,26 @@ def test_job_worker_settings_overrides_via_env(monkeypatch):
     assert s.job_worker_batch_size == 25
     assert s.job_worker_idle_sleep_seconds == 1.5
     assert s.job_worker_stuck_after_seconds == 120
+    assert s.job_retention_days == 14
+    assert s.auth_cleanup_interval_seconds == 900
+
+
+def test_job_retention_days_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("RENTIVO_JOB_RETENTION_DAYS", "0")
+
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.job_retention_days == 0
+
+
+def test_auth_cleanup_self_scheduling_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("RENTIVO_AUTH_CLEANUP_INTERVAL_SECONDS", "0")
+
+    from rentivo.settings import Settings
+
+    s = Settings(_env_file=None)
+    assert s.auth_cleanup_interval_seconds == 0
 
 
 def test_encryption_backend_default_is_base64(monkeypatch):

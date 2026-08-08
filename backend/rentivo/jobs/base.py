@@ -59,6 +59,9 @@ class JobRepository(ABC):
         statuses: Sequence[str],
     ) -> int: ...
 
+    @abstractmethod
+    def has_active_or_recent(self, job_type: str, within_seconds: int) -> bool: ...
+
 
 class PermanentJobError(Exception):
     """Handler raises this to skip retries and dead-letter the job immediately."""

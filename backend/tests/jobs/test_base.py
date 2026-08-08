@@ -51,6 +51,10 @@ def test_job_repository_abc_requires_count_by_type_and_statuses():
         def mark_failed(self, *args, **kwargs):
             raise NotImplementedError
 
-    # Missing count_by_type_and_statuses → cannot instantiate.
+        def has_active_or_recent(self, *args, **kwargs):
+            raise NotImplementedError
+
+    # Every other abstract method is implemented, so only the missing
+    # count_by_type_and_statuses can be what blocks instantiation.
     with pytest.raises(TypeError):
         Incomplete()  # type: ignore[abstract]

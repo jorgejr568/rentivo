@@ -20,8 +20,33 @@ from rentivo.models.billing import Billing, BillingItem, ItemType
 sqlite3.register_adapter(datetime, datetime.isoformat)
 sqlite3.register_adapter(date, date.isoformat)
 
-# Matches Alembic head: a7b8c9d0e1f2 (replace UUID4 with ULID)
-SCHEMA_DDL = """
+# Single source of truth for the jobs table in SQLite tests: it is appended to
+# SCHEMA_DDL below and imported directly by suites that build a jobs-only schema,
+# so the column list is transcribed once.
+JOBS_TABLE_DDL = """
+CREATE TABLE jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ulid VARCHAR(26) NOT NULL UNIQUE,
+    job_type VARCHAR(64) NOT NULL,
+    payload TEXT NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    run_after DATETIME NOT NULL,
+    claimed_at DATETIME,
+    claimed_by VARCHAR(64),
+    last_error TEXT,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    succeeded_at DATETIME,
+    failed_at DATETIME
+)"""
+
+# Mirrors the schema produced by the whole Alembic chain (head at the time of
+# writing: 69034275ea88, add jobs retention index). Keep it in step with every
+# new revision that changes a table these tests touch.
+SCHEMA_DDL = (
+    """
 CREATE TABLE billings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -289,25 +314,10 @@ CREATE TABLE known_devices (
     last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, device_hash)
 );
-
-CREATE TABLE jobs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ulid VARCHAR(26) NOT NULL UNIQUE,
-    job_type VARCHAR(64) NOT NULL,
-    payload TEXT NOT NULL,
-    status VARCHAR(16) NOT NULL DEFAULT 'pending',
-    attempts INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 5,
-    run_after DATETIME NOT NULL,
-    claimed_at DATETIME,
-    claimed_by VARCHAR(64),
-    last_error TEXT,
-    created_at DATETIME NOT NULL,
-    updated_at DATETIME NOT NULL,
-    succeeded_at DATETIME,
-    failed_at DATETIME
-);
 """
+    + JOBS_TABLE_DDL
+    + ";\n"
+)
 
 
 @pytest.fixture()

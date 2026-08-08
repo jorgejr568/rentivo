@@ -229,6 +229,101 @@ class TestWorkerTick:
         assert len(err) <= 4096
 
 
+class TestAuthCleanupScheduling:
+    """The database worker is the only producer of `auth.cleanup`."""
+
+    def _repo(self, active_or_recent: bool) -> MagicMock:
+        repo = MagicMock()
+        repo.claim_batch.return_value = []
+        repo.has_active_or_recent.return_value = active_or_recent
+        return repo
+
+    def test_tick_enqueues_auth_cleanup_when_none_is_active_or_recent(self):
+        repo = self._repo(active_or_recent=False)
+        w = Worker(repo, MagicMock(), worker_id="t:1", auth_cleanup_interval_seconds=3600)
+
+        w.tick()
+
+        repo.has_active_or_recent.assert_called_once_with("auth.cleanup", 1800)
+        repo.enqueue.assert_called_once_with("auth.cleanup", {})
+
+    def test_recency_window_is_half_the_interval(self):
+        """A full-interval window would halve the cleanup cadence.
+
+        The monotonic deadline already paces the checks at `interval`, so a run
+        enqueued at T is still inside a full-interval window at the T+interval
+        check and suppresses it — cleanup would only land every 2x interval.
+        Half the interval keeps the cadence at roughly `interval` while still
+        covering a worker restart, which resets the deadline but not the window.
+        """
+        repo = self._repo(active_or_recent=False)
+        w = Worker(repo, MagicMock(), worker_id="t:1", auth_cleanup_interval_seconds=600)
+
+        w.tick()
+
+        repo.has_active_or_recent.assert_called_once_with("auth.cleanup", 300)
+
+    def test_recency_window_never_collapses_to_zero(self):
+        """A zero-second window would make every finished run look stale."""
+        repo = self._repo(active_or_recent=False)
+        w = Worker(repo, MagicMock(), worker_id="t:1", auth_cleanup_interval_seconds=1)
+
+        w.tick()
+
+        repo.has_active_or_recent.assert_called_once_with("auth.cleanup", 1)
+
+    def test_tick_does_not_enqueue_when_one_is_active_or_recent(self):
+        """Covers both `pending`/`running` and a run finished inside the window
+        — the repository answers with a single query."""
+        repo = self._repo(active_or_recent=True)
+        w = Worker(repo, MagicMock(), worker_id="t:1", auth_cleanup_interval_seconds=3600)
+
+        w.tick()
+
+        repo.enqueue.assert_not_called()
+
+    def test_interval_zero_never_queries_or_enqueues(self):
+        repo = self._repo(active_or_recent=False)
+        w = Worker(repo, MagicMock(), worker_id="t:1", auth_cleanup_interval_seconds=0)
+
+        w.tick()
+        w.tick()
+
+        repo.has_active_or_recent.assert_not_called()
+        repo.enqueue.assert_not_called()
+
+    def test_consecutive_ticks_do_not_requery_within_the_interval(self):
+        repo = self._repo(active_or_recent=False)
+        w = Worker(repo, MagicMock(), worker_id="t:1", auth_cleanup_interval_seconds=3600)
+
+        w.tick()
+        w.tick()
+
+        assert repo.has_active_or_recent.call_count == 1, "the poll loop must not query every cycle"
+        assert repo.enqueue.call_count == 1
+
+    def test_checks_again_once_the_interval_elapses(self, monkeypatch):
+        repo = self._repo(active_or_recent=False)
+        clock = {"now": 1_000.0}
+        monkeypatch.setattr("rentivo.jobs.worker.time.monotonic", lambda: clock["now"])
+        w = Worker(repo, MagicMock(), worker_id="t:1", auth_cleanup_interval_seconds=60)
+
+        w.tick()
+        clock["now"] += 59
+        w.tick()
+        assert repo.has_active_or_recent.call_count == 1
+
+        clock["now"] += 2
+        w.tick()
+        assert repo.has_active_or_recent.call_count == 2
+        assert repo.enqueue.call_count == 2
+
+    def test_default_interval_mirrors_the_settings_default(self):
+        assert Worker(MagicMock(), MagicMock()).auth_cleanup_interval_seconds == 3600, (
+            "keep in sync with Settings.auth_cleanup_interval_seconds"
+        )
+
+
 class TestWorkerLoop:
     def test_run_forever_exits_when_stop_called(self):
         repo = MagicMock()

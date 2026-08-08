@@ -49,6 +49,7 @@ def main() -> None:
         batch_size=settings.job_worker_batch_size,
         idle_sleep_seconds=settings.job_worker_idle_sleep_seconds,
         stuck_after_seconds=settings.job_worker_stuck_after_seconds,
+        auth_cleanup_interval_seconds=settings.auth_cleanup_interval_seconds,
     )
     engine = get_engine()
     with engine.connect() as conn:
@@ -63,6 +64,7 @@ def main() -> None:
             audit,
             batch_size=settings.job_worker_batch_size,
             idle_sleep_seconds=settings.job_worker_idle_sleep_seconds,
+            auth_cleanup_interval_seconds=settings.auth_cleanup_interval_seconds,
         )
         worker.run_forever()
 
